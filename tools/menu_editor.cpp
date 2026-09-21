@@ -19,18 +19,18 @@ namespace {
 // each carry — see keys_editor.cpp's comment on why this is not a header of its own). There is
 // no `set_options` here as there is there: this editor's one dynamic option list (Load) changes
 // only when the host hands it new names, and `rebuild_menu` already runs then. --------------
-void set_enabled(RolltuiMenu* m, std::string_view id, bool enabled) {
+void set_enabled(RolltuiMenu* m, StrView id, bool enabled) {
   rolltui_menu_set_enabled(m, id.data(), id.size(), enabled ? 1 : 0);
 }
-void set_value(RolltuiMenu* m, std::string_view id, std::string_view value) {
+void set_value(RolltuiMenu* m, StrView id, StrView value) {
   rolltui_menu_set_value(m, id.data(), id.size(), value.data(), value.size());
 }
-void set_checked(RolltuiMenu* m, std::string_view id, bool checked) {
+void set_checked(RolltuiMenu* m, StrView id, bool checked) {
   rolltui_menu_set_checked(m, id.data(), id.size(), checked ? 1 : 0);
 }
 
 // ---- the item's own vocabulary, each one C call, none of them a decision of this file's ----
-std::string kind_name(unsigned char k) {
+const char* kind_name(unsigned char k) {
   switch (k) {
     case ROLLTUI_MENU_SUBMENU: return "submenu";
     case ROLLTUI_MENU_TOGGLE: return "toggle";
@@ -41,7 +41,7 @@ std::string kind_name(unsigned char k) {
     default: return "action";
   }
 }
-std::optional<unsigned char> kind_from_name(std::string_view s) {
+std::optional<unsigned char> kind_from_name(StrView s) {
   if (s == "action") return ROLLTUI_MENU_ACTION;
   if (s == "submenu") return ROLLTUI_MENU_SUBMENU;
   if (s == "toggle") return ROLLTUI_MENU_TOGGLE;
@@ -51,28 +51,27 @@ std::optional<unsigned char> kind_from_name(std::string_view s) {
   if (s == "separator") return ROLLTUI_MENU_SEPARATOR;
   return std::nullopt;
 }
-std::string input_type_name(unsigned char t) {
+RolltuiStr input_type_name(unsigned char t) {
   std::size_t len = 0;
   const char* p = rolltui_input_type_name(t, &len);
-  return std::string(p ? p : "", len);
+  return rolltui::own(StrView(p, len));
 }
-std::optional<unsigned char> input_type_from_name(std::string_view s) {
+std::optional<unsigned char> input_type_from_name(StrView s) {
   unsigned char out = 0;
   if (!rolltui_input_type_from_name(s.data(), s.size(), &out)) return std::nullopt;
   return out;
 }
 // A number as a field's text. `%g` so 0 reads "0" and not "0.000000" — a range a person
 // typed as 9 must read back as 9, which is what makes the round trip legible.
-std::string num_text(double v) {
-  char b[32];
-  const int n = std::snprintf(b, sizeof b, "%g", v);
-  return std::string(b, n > 0 ? static_cast<std::size_t>(n) : 0);
-}
+RolltuiStr num_text(double v) { return rolltui::format("%g", v); }
 // The offered names as one line, for a field's hint — layout_editor.cpp's `joined`, and every
 // list here is short enough that a plain join is the whole of it.
-std::string joined(const std::vector<std::string>& names) {
-  std::string out;
-  for (const std::string& n : names) out += (out.empty() ? "" : " | ") + n;
+RolltuiStr joined(const StrVec& names) {
+  RolltuiStr out;
+  for (const RolltuiStr& n : names) {
+    if (!out.empty()) out += " | ";
+    out += n;
+  }
   return out;
 }
 // A child list rebuilt from a predicate over its indices. `RolltuiMenuItemList` has no erase
@@ -144,7 +143,7 @@ void MenuEditor::select_next(bool backwards) {
 
 // A root submenu with the typed name and ONE action item — the whole skeleton, stated here
 // rather than rendered from whatever was open. See the header for why nothing is inherited.
-MenuItem MenuEditor::skeleton(std::string name) const {
+MenuItem MenuEditor::skeleton(const RolltuiStr& name) const {
   MenuItem root = MenuItem::submenu("root", name.c_str());
   root.children.push_back(MenuItem::action("item", "New item"));
   return root;
@@ -165,21 +164,19 @@ void MenuEditor::replace(MenuItem root) {
   rebuild_menu();
 }
 
-void MenuEditor::set_menus(std::vector<std::string> names) {
-  menus_ = std::move(names);
+void MenuEditor::set_menus(const StrVec& names) {
+  menus_.assign(names);
   rebuild_menu();
 }
-void MenuEditor::set_actions(std::vector<std::string> names) {
-  actions_ = std::move(names);
+void MenuEditor::set_actions(const StrVec& names) {
+  actions_.assign(names);
   sync_values();
 }
 
-std::string MenuEditor::to_json() const {
-  RolltuiStr out{};
+RolltuiStr MenuEditor::to_json() const {
+  RolltuiStr out;
   rolltui_menu_dump_json(&current_, &out);
-  const std::string s(out.p ? out.p : "", out.n);
-  rolltui_str_free(&out);
-  return s;
+  return out;
 }
 
 // ---- operations ----------------------------------------------------------------------------
@@ -187,21 +184,21 @@ std::string MenuEditor::to_json() const {
 // An id no sibling already has. A Choice's options have their OWN id namespace (the loader's
 // `option_ids`), so uniqueness is asked of the SIBLINGS and never of the whole tree — which is
 // also why the selection is a path and not an id.
-std::string MenuEditor::unique_id(const MenuItem& parent, const std::string& base) const {
-  const auto taken = [&parent](const std::string& id) {
+RolltuiStr MenuEditor::unique_id(const MenuItem& parent, StrView base) const {
+  const auto taken = [&parent](StrView id) {
     for (std::size_t i = 0; i < parent.children.size(); ++i)
-      if (view_of(parent.children[i].id) == id) return true;
+      if (StrView(parent.children[i].id) == id) return true;
     return false;
   };
-  if (!taken(base)) return base;
+  if (!taken(base)) return rolltui::own(base);
   for (int n = 2; n < 1000; ++n) {
-    const std::string candidate = base + "-" + std::to_string(n);
+    RolltuiStr candidate = rolltui::format("%.*s-%d", static_cast<int>(base.size()), base.data(), n);
     if (!taken(candidate)) return candidate;
   }
-  return base;
+  return rolltui::own(base);
 }
 
-bool MenuEditor::add_item(bool as_child, const std::string& id) {
+bool MenuEditor::add_item(bool as_child, StrView id) {
   if (id.empty()) { status_ = "an item needs an id"; return false; }
   // As a CHILD: into the selected item. As a SIBLING: into its parent, after it. The root has
   // no parent, so a sibling of the root is a child of the root — said, not silently ignored.
@@ -218,7 +215,7 @@ bool MenuEditor::add_item(bool as_child, const std::string& id) {
   }
   MenuItem* parent = at_path(current_, parent_path);
   if (!parent) return false;
-  const std::string fresh = unique_id(*parent, id);
+  const RolltuiStr fresh = unique_id(*parent, id);
   // The order the rebuild takes: every existing index, with a gap where the new one goes.
   std::vector<std::size_t> order;
   for (std::size_t i = 0; i < parent->children.size(); ++i) order.push_back(i);
@@ -232,7 +229,7 @@ bool MenuEditor::add_item(bool as_child, const std::string& id) {
   sel_ = parent_path;
   // A Choice's children ARE its options, so what was just added is named for what it is —
   // one operation, and the PARENT's kind is what says which. See the header.
-  status_ = (parent->kind == MenuItem::Kind::Choice ? "added option " : "added item ") + fresh;
+  status_ = RolltuiStr(parent->kind == MenuItem::Kind::Choice ? "added option " : "added item ") + fresh;
   return true;
 }
 
@@ -266,14 +263,14 @@ bool MenuEditor::remove_item() {
   parent_path.pop_back();
   MenuItem* parent = at_path(current_, parent_path);
   if (!parent) return false;
-  const std::string gone = str_of(parent->children[i].id);
+  const RolltuiStr gone = rolltui::own(parent->children[i].id);
   std::vector<std::size_t> order;
   for (std::size_t k = 0; k < parent->children.size(); ++k)
     if (k != i) order.push_back(k);
   rebuild_children(parent->children, order);
   if (!parent->children.empty()) parent_path.push_back(std::min(i, parent->children.size() - 1));
   sel_ = parent_path;
-  status_ = "removed " + gone + " and everything under it";
+  status_ = RolltuiStr("removed ") + gone + " and everything under it";
   return true;
 }
 
@@ -284,10 +281,10 @@ void MenuEditor::rebuild_menu() {
   for (const char* k : {"action", "submenu", "toggle", "choice", "input", "section", "separator"})
     kinds.push_back(MenuItem::action(k, k));
   for (unsigned char t = 0; t < ROLLTUI_INPUT_TYPE_COUNT; ++t) {
-    const std::string n = input_type_name(t);
+    const RolltuiStr n = input_type_name(t);
     types.push_back(MenuItem::action(n.c_str(), n.c_str()));
   }
-  for (const std::string& n : menus_) loads.push_back(MenuItem::action(n.c_str(), n.c_str()));
+  for (const RolltuiStr& n : menus_) loads.push_back(MenuItem::action(n.c_str(), n.c_str()));
 
   InputSpec name, text, number;
   name.type = InputType::Name;
@@ -390,31 +387,31 @@ void MenuEditor::sync_values() {
   const MenuItem* it = selected_item();
   if (!it) return;
   set_value(menu_, "kind", kind_name(static_cast<unsigned char>(it->kind)));
-  set_value(menu_, "id", str_of(it->id));
-  set_value(menu_, "label", str_of(it->label));
-  set_value(menu_, "action", str_of(it->action_name));
+  set_value(menu_, "id", it->id);
+  set_value(menu_, "label", it->label);
+  set_value(menu_, "action", it->action_name);
   set_checked(menu_, "checked", it->checked != 0);
   set_checked(menu_, "dropdown", it->dropdown != 0);
   set_checked(menu_, "swatch", it->swatch != 0);
   set_checked(menu_, "popup", it->popup != 0);
-  set_value(menu_, "value", str_of(it->value));
+  set_value(menu_, "value", it->value);
   set_checked(menu_, "enabled", it->enabled != 0);
   set_value(menu_, "input_type", input_type_name(static_cast<unsigned char>(it->spec.type)));
   set_value(menu_, "min", num_text(it->spec.min));
   set_value(menu_, "max", num_text(it->spec.max));
   set_value(menu_, "step", num_text(it->spec.step));
-  set_value(menu_, "hint", str_of(it->spec.hint));
-  set_value(menu_, "precision", std::to_string(it->spec.precision));
-  set_value(menu_, "min_len", std::to_string(it->spec.min_len));
-  set_value(menu_, "max_len", std::to_string(it->spec.max_len));
-  set_value(menu_, "validator", str_of(it->spec.validator));
+  set_value(menu_, "hint", it->spec.hint);
+  set_value(menu_, "precision", rolltui::to_str(it->spec.precision));
+  set_value(menu_, "min_len", rolltui::to_str(static_cast<long long>(it->spec.min_len)));
+  set_value(menu_, "max_len", rolltui::to_str(static_cast<long long>(it->spec.max_len)));
+  set_value(menu_, "validator", it->spec.validator);
   set_checked(menu_, "optional", it->spec.optional != 0);
-  set_value(menu_, "shortcut", str_of(it->shortcut));
+  set_value(menu_, "shortcut", it->shortcut);
   // The actions THIS BINARY knows are the field's HINT and never its option list: an item may
   // name an action the app declares and this tool has never heard of, which is the
   // direction — the screen is the intent and the app reports what it cannot reach.
   if (MenuItem* field = rolltui_menu_find(menu_, "action", 6); field && !actions_.empty())
-    set_str(field->spec.hint, joined(actions_));
+    field->spec.hint = joined(actions_);
   sync_fields();
 }
 
@@ -443,28 +440,32 @@ bool MenuEditor::redo() {
 
 // ---- the lines the host draws --------------------------------------------------------------
 
-void MenuEditor::status_line(std::string& out) const {
+void MenuEditor::status_line(RolltuiStr& out) const {
   out.clear();
-  out += status_.empty() ? "Enter commits, Esc cancels" : status_;
-  out += " \xC2\xB7 undo ";
-  append_count(out, undo_.undo_depth());
-  out += " \xC2\xB7 redo ";
-  append_count(out, undo_.redo_depth());
+  if (status_.empty()) out += "Enter commits, Esc cancels";
+  else out += status_;
+  rolltui::appendf(out, " \xC2\xB7 undo %zu \xC2\xB7 redo %zu", undo_.undo_depth(), undo_.redo_depth());
 }
-std::string MenuEditor::status_line() const {
-  std::string s;
+RolltuiStr MenuEditor::status_line() const {
+  RolltuiStr s;
   status_line(s);
   return s;
 }
 
-std::string MenuEditor::selection_line() const {
+RolltuiStr MenuEditor::selection_line() const {
   const MenuItem* it = selected_item();
   if (!it) return {};
-  std::string s = "selected: " + str_of(it->id) + "  " + kind_name(static_cast<unsigned char>(it->kind));
-  if (it->kind == MenuItem::Kind::Choice) s += "  " + std::to_string(it->children.size()) + " options";
-  else if (it->children.size() != 0) s += "  " + std::to_string(it->children.size()) + " items";
-  if (it->kind == MenuItem::Kind::Input) s += "  " + input_type_name(static_cast<unsigned char>(it->spec.type));
-  if (it->action_name.n != 0) s += "  \xE2\x86\x92 " + str_of(it->action_name);
+  RolltuiStr s = rolltui::format("selected: %s  %s", it->id.c_str(), kind_name(static_cast<unsigned char>(it->kind)));
+  if (it->kind == MenuItem::Kind::Choice) rolltui::appendf(s, "  %zu options", it->children.size());
+  else if (it->children.size() != 0) rolltui::appendf(s, "  %zu items", it->children.size());
+  if (it->kind == MenuItem::Kind::Input) {
+    s += "  ";
+    s += input_type_name(static_cast<unsigned char>(it->spec.type));
+  }
+  if (it->action_name.n != 0) {
+    s += "  \xE2\x86\x92 ";
+    s += it->action_name;
+  }
   return s;
 }
 
@@ -476,11 +477,11 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     const RolltuiChord& k = e->key;
     std::size_t len = 0;
     const char* ed_p = rolltui_bindings_action_for(nav, &k, "editor", 6, &len);
-    const std::string_view ed = ed_p ? std::string_view(ed_p, len) : std::string_view();
+    const StrView ed = ed_p ? StrView(ed_p, len) : StrView();
     if (ed == "editor.undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
     if (ed == "editor.redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
     const char* st_p = rolltui_bindings_action_for(nav, &k, "stack", 5, &len);
-    const std::string_view st = st_p ? std::string_view(st_p, len) : std::string_view();
+    const StrView st = st_p ? StrView(st_p, len) : StrView();
     if ((st == "stack.focus_next" || st == "stack.focus_prev") && !rolltui_menu_editing(menu_)) {
       select_next(st == "stack.focus_prev");
       return {O::Changed, {}};
@@ -490,8 +491,8 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
   RolltuiMenuEvent raw{};
   rolltui_menu_handle(menu_, e, nav, rolltui_menu_default_actions(), &raw);
   const unsigned char kind = raw.kind;
-  const std::string id = str_of(raw.id);
-  const std::string value = str_of(raw.value);
+  const RolltuiStr id = std::move(raw.id);
+  const RolltuiStr value = std::move(raw.value);
   const bool checked = raw.checked != 0;
   rolltui_menu_event_release(&raw);
 
@@ -525,29 +526,29 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
   }
   if (kind == ROLLTUI_MENU_EVENT_CHOOSE) {
     MenuItem* it = sel_item();
-    if (id == "load") return {O::LoadMenu, value};
+    if (id == "load") return {O::LoadMenu, rolltui::own(value)};
     if (!it) return {O::None, {}};
     if (id == "kind") {
       if (const auto k = kind_from_name(value)) {
         it->kind = static_cast<MenuItem::Kind>(*k);
-        status_ = "kind " + value;
+        status_ = RolltuiStr("kind ") + value;
       }
       return commit_current();
     }
     if (id == "input_type") {
       if (const auto t = input_type_from_name(value)) {
         it->spec.type = static_cast<InputType>(*t);
-        status_ = "type " + value;
+        status_ = RolltuiStr("type ") + value;
       }
       return commit_current();
     }
     return {O::None, {}};
   }
   if (kind == ROLLTUI_MENU_EVENT_INPUT) {
-    if (id == "save") return {O::SaveAs, value};
+    if (id == "save") return {O::SaveAs, rolltui::own(value)};
     if (id == "new") {
-      replace(skeleton(value.empty() ? "main" : value));
-      status_ = "new menu '" + (value.empty() ? std::string("main") : value) + "'";
+      replace(value.empty() ? skeleton("main") : skeleton(value));
+      status_ = rolltui::format("new menu '%s'", value.empty() ? "main" : value.c_str());
       return {O::Committed, {}};
     }
     if (id == "add_child" || id == "add_sibling") {
@@ -556,13 +557,13 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     }
     MenuItem* it = sel_item();
     if (!it) return {O::None, {}};
-    if (id == "id") { set_str(it->id, value); return commit_current(); }
-    if (id == "label") { set_str(it->label, value); return commit_current(); }
-    if (id == "action") { set_str(it->action_name, value); return commit_current(); }
-    if (id == "value") { set_str(it->value, value); return commit_current(); }
-    if (id == "hint") { set_str(it->spec.hint, value); return commit_current(); }
-    if (id == "validator") { set_str(it->spec.validator, value); return commit_current(); }
-    if (id == "shortcut") { set_str(it->shortcut, value); return commit_current(); }
+    if (id == "id") { it->id.assign(value); return commit_current(); }
+    if (id == "label") { it->label.assign(value); return commit_current(); }
+    if (id == "action") { it->action_name.assign(value); return commit_current(); }
+    if (id == "value") { it->value.assign(value); return commit_current(); }
+    if (id == "hint") { it->spec.hint.assign(value); return commit_current(); }
+    if (id == "validator") { it->spec.validator.assign(value); return commit_current(); }
+    if (id == "shortcut") { it->shortcut.assign(value); return commit_current(); }
     if (id == "precision") { it->spec.precision = std::atoi(value.c_str()); return commit_current(); }
     if (id == "min_len" || id == "max_len") {
       const std::size_t n = static_cast<std::size_t>(std::atol(value.c_str()));

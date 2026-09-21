@@ -152,7 +152,7 @@ int main() {
               str_of(root.children[0].children[0].id) == "16",
           "an option and a top-level item may share an id — so an id could not select either");
     bool clean = false;
-    const auto back = parse_menu(ed.to_json(), &clean);
+    const auto back = parse_menu(str_of(ed.to_json()), &clean);
     check(back && clean, "…and the library reads that file back with no complaint");
   }
 
@@ -192,7 +192,7 @@ int main() {
           "a range types back as it was typed [" + value_of(ed, "min") + ".." + value_of(ed, "max") + "]");
 
     bool clean = false;
-    const std::string text = ed.to_json();
+    const std::string text = str_of(ed.to_json());
     const auto back = parse_menu(text, &clean);
     check(back && clean, "the file the editor writes loads clean through the library's own reader");
     check(back && back->children.size() == 1 && back->children[0].kind == MenuItem::Kind::Input &&
@@ -267,7 +267,7 @@ int main() {
     check(field && str_of(field->spec.hint).find("app.help") != std::string::npos,
           "…and what this binary knows is the field's HINT, never its option list");
     bool clean = false;
-    check(parse_menu(ed.to_json(), &clean) && clean,
+    check(parse_menu(str_of(ed.to_json()), &clean) && clean,
           "…and the file carrying it is a clean menu file: the gap is the APP's to report at start-up");
   }
 

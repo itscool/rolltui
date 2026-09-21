@@ -72,6 +72,7 @@ std::string scope_of(const std::string& action) {
   const char* p = rolltui_bindings_scope_of(action.c_str(), action.size(), &n);
   return std::string(p, n);
 }
+std::string status(const KeysEditor& ed) { return str_of(ed.status_line()); }
 RolltuiMenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m, id.data(), id.size()); }
 
 }  // namespace
@@ -91,35 +92,35 @@ int main() {
   type(ed, "word_left");
   go(ed, key(ROLLTUI_KEY_ENTER));          // the action's level
   KeysEditor::Outcome o = go(ed, key(ROLLTUI_KEY_ENTER));  // add a chord
-  check(o.kind == O::Changed && ed.capturing() && ed.capturing_action() == "input.word_left" && ed.status_line().find("press the chord for input.word_left") == 0,
+  check(o.kind == O::Changed && ed.capturing() && ed.capturing_action() == "input.word_left" && status(ed).find("press the chord for input.word_left") == 0,
         "Enter on 'add a chord' starts capture and says so");
   RolltuiChord unknown{};
   unknown.key = ROLLTUI_KEY_UNKNOWN;
   o = go(ed, unknown);
-  check(ed.capturing() && o.kind == O::Changed && ed.status_line().find("no chord name") != std::string::npos, "a key with no chord name is refused and the capture continues");
+  check(ed.capturing() && o.kind == O::Changed && status(ed).find("no chord name") != std::string::npos, "a key with no chord name is refused and the capture continues");
   o = go(ed, key(ROLLTUI_KEY_ESCAPE));
-  check(!ed.capturing() && o.kind == O::Changed && ed.status_line().find("cancelled") != std::string::npos, "Escape cancels the capture");
+  check(!ed.capturing() && o.kind == O::Changed && status(ed).find("cancelled") != std::string::npos, "Escape cancels the capture");
   go(ed, key(ROLLTUI_KEY_ENTER));
   o = go(ed, ch('b', false, true));  // Alt-B
   check(o.kind == O::Committed && !ed.capturing() && action_for(ed.current(), ch('b', false, true), "input") == "input.word_left" && ed.undo_depth() == 1,
         "the next key becomes the chord: Alt-B → word_left, one commit");
-  check(ed.status_line().find("bound Alt-B \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-B") != std::string::npos,
-        "the status and the action's label show the new chord [" + ed.status_line() + "]");
+  check(status(ed).find("bound Alt-B \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-B") != std::string::npos,
+        "the status and the action's label show the new chord [" + status(ed) + "]");
   check(find(ed.menu(), "unbind.input.word_left.alt+b") != nullptr, "…and a remove item for it appears");
   // ---- a conflict moves ----
   go(ed, key(ROLLTUI_KEY_HOME));
   o = go(ed, key(ROLLTUI_KEY_ENTER));      // add another chord
   o = go(ed, ch('d', false, true)); // Alt-D: currently kill_word_forward's
-  check(o.kind == O::Committed && ed.status_line().find("(was kill_word_forward)") != std::string::npos &&
+  check(o.kind == O::Committed && status(ed).find("(was kill_word_forward)") != std::string::npos &&
             action_for(ed.current(), ch('d', false, true), "input") == "input.word_left" && chord_count(ed.current(), "input.kill_word_forward") == 1,
-        "a chord bound elsewhere in the scope moves, and the status names the loser [" + ed.status_line() + "]");
+        "a chord bound elsewhere in the scope moves, and the status names the loser [" + status(ed) + "]");
   // ---- the Enter rule ----
   go(ed, key(ROLLTUI_KEY_HOME));
   go(ed, key(ROLLTUI_KEY_ENTER));
   o = go(ed, key(ROLLTUI_KEY_ENTER));      // Enter as the chord
-  check(o.kind == O::Changed && ed.status_line().find("refused") == 0 && ed.status_line().find("Enter is always input.submit") != std::string::npos &&
+  check(o.kind == O::Changed && status(ed).find("refused") == 0 && status(ed).find("Enter is always input.submit") != std::string::npos &&
             action_for(ed.current(), key(ROLLTUI_KEY_ENTER), "input") == "input.submit",
-        "Enter cannot be captured for another input action: refused by name [" + ed.status_line() + "]");
+        "Enter cannot be captured for another input action: refused by name [" + status(ed) + "]");
   // ---- remove, clear ----
   go(ed, key(ROLLTUI_KEY_END));            // clear every chord
   go(ed, key(ROLLTUI_KEY_UP));             // remove Alt-D (the last remove item)

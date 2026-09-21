@@ -1,25 +1,14 @@
-// rolltui/tools/tool_str.hpp — the tools' OWN bridge from rolltui's C shapes to the std:: types
-// the studio and the editors compose with. One file for one application (the
-// studio, paint and the three editors ship together); it is not the library's and must not
-// become a second one.
+// rolltui/tools/tool_str.hpp — the tools' menu-tree builders. The studio and its editors compose a menu as a std::vector of items,
+// then hand it to a rolltui item: the consumer's container, the library's items. Strings are not here: the studio and its editors
+// hold `RolltuiStr`, `StrView` and `StrVec` (`rolltui/str.hpp`) from the library's calls to their own logic.
 #pragma once
-#include <cstdio>
-#include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "rolltui/rolltui.h"
 
-#ifndef ROLLTUI_STD_BRIDGE_DEFINED
-#define ROLLTUI_STD_BRIDGE_DEFINED
-inline std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
-inline std::string_view view_of(const RolltuiStr& s) { return std::string_view(s.p ? s.p : "", s.n); }
-
-inline void set_str(RolltuiStr& s, std::string_view v) { rolltui_str_set(&s, v.data(), v.size()); }
-inline void set_note(RolltuiNote& n, std::string_view v) { n.set(v.data(), v.size()); }
-// The tree shapes the tools and tests compose in a std::vector of their own, then hand to a
-// rolltui item — the consumer's container, the library's items.
+#ifndef ROLLTUI_TREE_BRIDGE_DEFINED
+#define ROLLTUI_TREE_BRIDGE_DEFINED
 inline RolltuiMenuItem submenu_of(const char* id, const char* label, std::vector<RolltuiMenuItem>&& children) {
   RolltuiMenuItem it = RolltuiMenuItem::submenu(id, label);
   for (RolltuiMenuItem& c : children) it.children.push_back(std::move(c));
@@ -30,18 +19,10 @@ inline RolltuiMenuItem choice_of(const char* id, const char* label, std::vector<
   for (RolltuiMenuItem& c : options) it.children.push_back(std::move(c));
   return it;
 }
-// A count appended in place — `std::to_string`'s temporary without the temporary. The studio's
-// status line and the editors' status lines refill one held string per frame with it.
-template <typename T>
-inline void append_count(std::string& s, T v) {
-  char b[24];
-  const int n = std::snprintf(b, sizeof b, "%lld", static_cast<long long>(v));
-  if (n > 0) s.append(b, static_cast<std::size_t>(n) < sizeof b ? static_cast<std::size_t>(n) : sizeof b - 1);
-}
 inline std::vector<RolltuiMenuItem> clone_items(const std::vector<RolltuiMenuItem>& v) {
   std::vector<RolltuiMenuItem> out;
   out.reserve(v.size());
   for (const RolltuiMenuItem& c : v) out.push_back(c.clone());
   return out;
 }
-#endif  /* ROLLTUI_STD_BRIDGE_DEFINED */
+#endif  /* ROLLTUI_TREE_BRIDGE_DEFINED */

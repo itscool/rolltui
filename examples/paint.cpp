@@ -1173,7 +1173,7 @@ int main(int argc, char** argv) {
       // is what runs sync/autosize/layout, so until it has run the stack has a popup that has
       // never been placed, and the router cannot deliver to a window it has not resolved. Keys
       // reached the canvas instead, silently, and a script could only ever test the first one.
-      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(std::string(keys_spec.data(), keys_spec.size()), app.w, app.h))
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
         if (!st.tick) {
           app.handle(st.ev);
           app.prepare();

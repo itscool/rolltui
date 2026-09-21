@@ -23,30 +23,26 @@ static_assert(static_cast<int>(ThemeEditor::Outcome::Kind::Closed) == ROLLTUI_TH
 
 namespace {
 
-std::string owned(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
-
-// A caller's `RolltuiStr` filled by the model, as a std::string.
-std::string filled_by(void (*fn)(const RolltuiThemeEditor*, RolltuiStr*), const RolltuiThemeEditor* e) {
-  RolltuiStr s{};
+// A fresh `RolltuiStr` filled by one of the model's appending calls.
+RolltuiStr filled_by(void (*fn)(const RolltuiThemeEditor*, RolltuiStr*), const RolltuiThemeEditor* e) {
+  RolltuiStr s;
   fn(e, &s);
-  std::string out = owned(s);
-  rolltui_str_free(&s);
-  return out;
+  return s;
 }
 
 }  // namespace
 
 // A `RolltuiStrList` lives for the length of one call: the model COPIES what it is handed.
-void ThemeEditor::set_presets(const std::vector<std::string>& names) {
+void ThemeEditor::set_presets(const StrVec& names) {
   RolltuiStrList l{};
-  for (const std::string& n : names) rolltui_str_list_add(&l, n.data(), n.size());
+  for (const RolltuiStr& n : names) rolltui_str_list_add(&l, n.data(), n.size());
   rolltui_theme_editor_set_presets(e_, &l);
   rolltui_str_list_release(&l);
 }
 
-void ThemeEditor::set_shipped(const std::vector<std::string>& names, bool may_write) {
+void ThemeEditor::set_shipped(const StrVec& names, bool may_write) {
   RolltuiStrList l{};
-  for (const std::string& n : names) rolltui_str_list_add(&l, n.data(), n.size());
+  for (const RolltuiStr& n : names) rolltui_str_list_add(&l, n.data(), n.size());
   rolltui_theme_editor_set_shipped(e_, &l, may_write ? 1 : 0);
   rolltui_str_list_release(&l);
 }
@@ -62,8 +58,8 @@ ThemeEdit ThemeEditor::committed() const {
   }
   const char* dname = rolltui_theme_editor_variant_name(e_, ROLLTUI_MODE_DARK, &dn);
   const char* lname = rolltui_theme_editor_variant_name(e_, ROLLTUI_MODE_LIGHT, &ln);
-  v.dark_name.assign(dname ? dname : "", dn);
-  v.light_name.assign(lname ? lname : "", ln);
+  v.dark_name.assign(dname, dn);
+  v.light_name.assign(lname, ln);
   v.dark_meta = rolltui_json_clone(rolltui_theme_editor_variant_meta(e_, ROLLTUI_MODE_DARK));
   v.light_meta = rolltui_json_clone(rolltui_theme_editor_variant_meta(e_, ROLLTUI_MODE_LIGHT));
   return v;
@@ -85,8 +81,8 @@ PaletteEntry ThemeEditor::palette_at(std::size_t i) const {
   const char* id = rolltui_theme_editor_palette_id(e_, i, &id_len);
   const char* label = rolltui_theme_editor_palette_label(e_, i, &label_len);
   rolltui_theme_editor_palette_color(e_, i, &p.color);
-  p.id.assign(id ? id : "", id_len);
-  p.label.assign(label ? label : "", label_len);
+  p.id.assign(id, id_len);
+  p.label.assign(label, label_len);
   return p;
 }
 
@@ -95,20 +91,18 @@ ThemeEditor::Outcome ThemeEditor::handle(const RolltuiEvent* e, const RolltuiBin
   rolltui_theme_editor_handle(e_, e, nav, &raw);
   Outcome out;
   out.kind = static_cast<Outcome::Kind>(raw.kind);
-  out.value = owned(raw.value);
+  out.value = std::move(raw.value);
   rolltui_theme_editor_outcome_release(&raw);
   return out;
 }
 
-void ThemeEditor::status_line(std::string& out) const {
-  RolltuiStr s{};
-  rolltui_theme_editor_status_line(e_, &s);
-  out.assign(s.p ? s.p : "", s.n);
-  rolltui_str_free(&s);
+void ThemeEditor::status_line(RolltuiStr& out) const {
+  out.clear();  // the C function APPENDS
+  rolltui_theme_editor_status_line(e_, &out);
 }
 
-std::string ThemeEditor::status_line() const { return filled_by(rolltui_theme_editor_status_line, e_); }
-std::string ThemeEditor::badges_line() const { return filled_by(rolltui_theme_editor_badges_line, e_); }
-std::string ThemeEditor::report() const { return filled_by(rolltui_theme_editor_report, e_); }
+RolltuiStr ThemeEditor::status_line() const { return filled_by(rolltui_theme_editor_status_line, e_); }
+RolltuiStr ThemeEditor::badges_line() const { return filled_by(rolltui_theme_editor_badges_line, e_); }
+RolltuiStr ThemeEditor::report() const { return filled_by(rolltui_theme_editor_report, e_); }
 
 }  // namespace rolltui::tools

@@ -29,6 +29,7 @@
 // TRAP**: `/` passes through untouched so `Type:/tmp/x` is fine, but an underscore ANYWHERE in a
 // typed path becomes a space and the path silently stops existing. Write `\_` for it.
 #include "rolltui/rolltui.h"
+#include "rolltui/str.hpp"
 
 // TWO INTERNAL HEADERS, and the reason is worth stating rather than hiding. Naming a key
 // ("CtrlHome") and splitting a string into code points are both things a driver must do, and
@@ -39,8 +40,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 
 #include <cstdint>
-#include <sstream>
-#include <string>
+#include <cstdlib>
 #include <vector>
 
 namespace rolltui_selftest {
@@ -49,13 +49,28 @@ struct Step {
   bool tick = false;
   RolltuiEvent ev{};
   std::uint64_t ms = 0;
-  std::string owned_text;
+  RolltuiStr owned_text;
 };
 
-std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
+// A number out of a view that is not NUL-terminated: `atoi` needs the terminator, so the digits are copied first.
+inline int view_atoi(rolltui::StrView v) { return std::atoi(rolltui::own(v).c_str()); }
+inline long long view_atoll(rolltui::StrView v) { return std::atoll(rolltui::own(v).c_str()); }
+
+inline std::vector<Step> scripted_keys(rolltui::StrView spec, int w, int h) {
+  using rolltui::StrView;
   std::vector<Step> out;
-  std::istringstream in(spec);
-  std::string tok;
+  // Whitespace-separated tokens, read in place. `at` is the read position, so a token that turns out not to belong to the one
+  // before it (an optional cell) is handed back by setting it to where it was.
+  std::size_t at = 0;
+  auto is_space = [](char c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
+  auto next_token = [&](StrView& tok) {
+    while (at < spec.size() && is_space(spec[at])) ++at;
+    if (at >= spec.size()) return false;
+    const std::size_t begin = at;
+    while (at < spec.size() && !is_space(spec[at])) ++at;
+    tok = spec.substr(begin, at - begin);
+    return true;
+  };
   std::uint64_t clock = 1000;
   std::uint64_t last = 1000;  // the clock of the step most recently pushed: what `Tick:MS` counts from
   auto key_ev = [](unsigned char k, bool shift = false, bool ctrl = false, bool alt = false) {
@@ -70,26 +85,26 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   auto ctrl_ev = [](char c) { RolltuiEvent e{}; e.kind = ROLLTUI_EVENT_KEY; e.key.key = ROLLTUI_KEY_CHAR; e.key.ch = static_cast<RolltuiCodepoint>(c); e.key.ctrl = 1; return e; };
   auto alt_ev = [](char c) { RolltuiEvent e{}; e.kind = ROLLTUI_EVENT_KEY; e.key.key = ROLLTUI_KEY_CHAR; e.key.ch = static_cast<RolltuiCodepoint>(c); e.key.alt = 1; return e; };
   // "Type:hello_world" → h e l l o ␠ w o r l d; "Paste:a\nb" → one paste event.
-  auto unescape = [](std::string s, bool newlines) {
-    std::string out;
+  auto unescape = [](StrView s, bool newlines) {
+    RolltuiStr out;
     for (std::size_t i = 0; i < s.size(); ++i) {
       // `\_` is a LITERAL underscore, the escape that `_`-means-space needs: an identifier is
       // the thing you most often want to type into a Name field, and without it
       // `Type:my_window` silently produces `mywindow`, because the Name spec drops the space.
-      if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '_') { out.push_back('_'); ++i; }
-      else if (s[i] == '_') out.push_back(' ');
-      else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out.push_back('\n'); ++i; }
-      else out.push_back(s[i]);
+      if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '_') { out += '_'; ++i; }
+      else if (s[i] == '_') out += ' ';
+      else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out += '\n'; ++i; }
+      else out += s[i];
     }
     return out;
   };
   // A named key with an optional Shift/Ctrl/Alt prefix: "ShiftLeft", "CtrlHome", "AltEnter".
-  auto named = [&](std::string name, RolltuiEvent& out_ev) {
+  auto named = [&](StrView name, RolltuiEvent& out_ev) {
     bool shift = false, c = false, a = false;
     for (;;) {
-      if (name.rfind("Shift", 0) == 0) { shift = true; name.erase(0, 5); }
-      else if (name.rfind("Ctrl", 0) == 0) { c = true; name.erase(0, 4); }
-      else if (name.rfind("Alt", 0) == 0) { a = true; name.erase(0, 3); }
+      if (name.starts_with("Shift")) { shift = true; name = name.drop_front(5); }
+      else if (name.starts_with("Ctrl")) { c = true; name = name.drop_front(4); }
+      else if (name.starts_with("Alt")) { a = true; name = name.drop_front(3); }
       else break;
     }
     // The name -> Key table is `rolltui_key_from_display_name`, which reads the same
@@ -121,24 +136,25 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
     if (advance) clock += 1000;
   };
   auto xy = [&](int& x, int& y) {
-    std::string pos;
-    if (!(in >> pos)) return false;
-    std::size_t comma = pos.find(',');
-    if (comma == std::string::npos) return false;
-    x = std::atoi(pos.substr(0, comma).c_str());
-    y = std::atoi(pos.substr(comma + 1).c_str());
+    StrView pos;
+    if (!next_token(pos)) return false;
+    const std::size_t comma = pos.find(',');
+    if (comma == StrView::npos) return false;
+    x = view_atoi(pos.first(comma));
+    y = view_atoi(pos.drop_front(comma + 1));
     return true;
   };
-  while (in >> tok) {
+  StrView tok;
+  while (next_token(tok)) {
     int x = 0, y = 0;
     RolltuiEvent k{};
     if (tok == "Tick") { last = clock; out.push_back({true, {}, clock, ""}); }
-    else if (tok.rfind("Tick:", 0) == 0) {
-      clock = last + static_cast<std::uint64_t>(std::atoll(tok.substr(5).c_str()));
+    else if (tok.starts_with("Tick:")) {
+      clock = last + static_cast<std::uint64_t>(view_atoll(tok.drop_front(5)));
       last = clock;
       out.push_back({true, {}, clock, ""});
-    } else if (tok.rfind("Type:", 0) == 0) {
-      const std::string s = unescape(tok.substr(5), false);
+    } else if (tok.starts_with("Type:")) {
+      const RolltuiStr s = unescape(tok.drop_front(5), false);
       std::vector<RolltuiDecodedChar> chars(s.size());
       const std::size_t n = rolltui_u_decode_utf8_chars(s.data(), s.size(), chars.data());
       for (std::size_t i = 0; i < n; ++i) {
@@ -149,25 +165,24 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
         push(e, false);
       }
       clock += 1000;
-    } else if (tok.rfind("Paste:", 0) == 0) {
+    } else if (tok.starts_with("Paste:")) {
       RolltuiEvent e{};
       e.kind = ROLLTUI_EVENT_PASTE;
       last = clock;
-      out.push_back({false, e, clock, unescape(tok.substr(6), true)});
+      out.push_back({false, e, clock, unescape(tok.drop_front(6), true)});
       clock += 1000;
     } else if (named(tok, k)) push(k);
     else if (tok == "WheelUp" || tok == "WheelDown") {
       // Over the middle of the screen, which every built-in layout gives to the transcript —
       // or at a named cell, for a widget whose wheel depends on where the pointer is.
       int wx = w / 4, wy = h / 3;
-      std::streampos here = in.tellg();
-      std::string maybe;
-      if (in >> maybe && maybe.find(',') != std::string::npos) {
-        wx = std::atoi(maybe.substr(0, maybe.find(',')).c_str());
-        wy = std::atoi(maybe.substr(maybe.find(',') + 1).c_str());
+      const std::size_t here = at;
+      StrView maybe;
+      if (next_token(maybe) && maybe.contains(',')) {
+        wx = view_atoi(maybe.first(maybe.find(',')));
+        wy = view_atoi(maybe.drop_front(maybe.find(',') + 1));
       } else {
-        in.clear();
-        in.seekg(here);
+        at = here;
       }
       push(mouse_ev(tok == "WheelUp" ? RolltuiMouseEvent::Kind::WheelUp : RolltuiMouseEvent::Kind::WheelDown, wx, wy, 0));
     } else if (tok == "Click" || tok == "ShiftClick") {
@@ -188,14 +203,13 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
       if (xy(x, y)) push(mouse_ev(RolltuiMouseEvent::Kind::Drag, x, y));
     } else if (tok == "Release") {
       // Optional position; without one the release lands where the last event was.
-      std::streampos here = in.tellg();
-      std::string maybe;
-      if (in >> maybe && maybe.find(',') != std::string::npos) {
-        x = std::atoi(maybe.substr(0, maybe.find(',')).c_str());
-        y = std::atoi(maybe.substr(maybe.find(',') + 1).c_str());
+      const std::size_t here = at;
+      StrView maybe;
+      if (next_token(maybe) && maybe.contains(',')) {
+        x = view_atoi(maybe.first(maybe.find(',')));
+        y = view_atoi(maybe.drop_front(maybe.find(',') + 1));
       } else {
-        in.clear();
-        in.seekg(here);
+        at = here;
         const RolltuiMouseEvent* last = nullptr;
         for (const Step& s : out)
           if (s.ev.kind == ROLLTUI_EVENT_MOUSE) last = &s.ev.mouse;

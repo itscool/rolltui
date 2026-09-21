@@ -2692,8 +2692,7 @@ int main(int argc, char** argv) {
       // press on the status line is answered by where the hint bar landed on the last draw.
       RolltuiSwap* between = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
       app.render_into(rolltui_swap_begin(between, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND)));
-      // (The shared self-test harness, which three apps use and which ships in none, speaks std::string: converted here, once.)
-      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(std::string(keys_spec.data(), keys_spec.size()), app.w, app.h)) {
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h)) {
         app.now_ms = st.ms;
         if (st.tick) { moving = true; continue; }
         RolltuiEvent ev = st.ev;

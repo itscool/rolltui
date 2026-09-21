@@ -116,11 +116,10 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_layout_tree.h"  /* INTERNAL: this editor opts in — it walks and MUTATES a tree */
 #include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
-#include <string>
-#include <string_view>
 #include <vector>
 
 #include "tool_actions.hpp"
@@ -151,14 +150,14 @@ using InputSpec = RolltuiInputSpec;
 // entry points, the last one promoted for exactly this call. An unknown
 // name parses the empty string and comes back an empty Layout; every caller here only
 // ever asks for "default", which always exists.
-Layout builtin_layout(RolltuiContext* ctx, std::string_view name);
+Layout builtin_layout(RolltuiContext* ctx, StrView name);
 
 class LayoutEditor {
  public:
   struct Outcome {
     enum class Kind { None, Changed, Committed, SaveAs, LoadLayout, ResetLoaded, Closed };
     Kind kind = Kind::None;
-    std::string value;  // SaveAs: the file name; LoadLayout: the name or path
+    RolltuiStr value;  // SaveAs: the file name; LoadLayout: the name or path
     bool operator==(const Outcome&) const = default;
   };
 
@@ -174,25 +173,25 @@ class LayoutEditor {
   // The contents the host OFFERS ("transcript:session", "rows:status", …) — the hint
   // beside the source field for the selected kind. A hint, not a menu: a source the
   // host has not bound is still typeable, and reports itself in the window.
-  void set_sources(std::vector<std::string> contents);
+  void set_sources(const StrVec& contents);
   // The kinds THIS BINARY can preview — the widget-kind field's HINT, and nothing more. Making
   // it the field's closed option list, with a name outside it refused, is a design tool
   // deciding what an app may be asked for.
-  void set_kinds(std::vector<std::string> names);
-  void set_menus(std::vector<std::string> names);      // the menu names that RESOLVE, as that field's hint
-  void set_layouts(std::vector<std::string> names);    // the Load choice's options
+  void set_kinds(const StrVec& names);
+  void set_menus(const StrVec& names);      // the menu names that RESOLVE, as that field's hint
+  void set_layouts(const StrVec& names);    // the Load choice's options
   // What "New layout" starts its thresholds at. 0/0 (the default) means the screen states
   // none, and a designer types the size their screen needs — see the header.
   void set_default_min(int width, int height);
   // The minimal skeleton "New layout" starts from, exposed so a test can assert what it
   // is rather than what it renders as.
-  Layout skeleton(std::string name) const;
+  Layout skeleton(StrView name) const;
 
   const Layout& current() const { return current_; }   // committed + any live change
   const Layout& committed() const { return undo_.current(); }
   bool previewing() const { return preview_.has_value(); }
-  const std::string& selected() const { return sel_; }
-  void select(std::string_view id);
+  const RolltuiStr& selected() const { return sel_; }
+  void select(StrView id);
   void select_next(bool backwards = false);
   const Node* selected_node() const;
 
@@ -208,19 +207,19 @@ class LayoutEditor {
 
   // The seam drag: `id` is the child BEFORE the seam (its parent is a Row when
   // `horizontal`, else a Column); extents are cells from the child's start.
-  void begin_drag(std::string_view id);
+  void begin_drag(StrView id);
   void drag_to(int extent);         // live
   Outcome end_drag();               // commits
   bool dragging() const { return drag_.has_value(); }
 
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
   // open. The returning form is one copy over it, for a test that reads it.
-  void status_line(std::string& out) const;
-  std::string status_line() const;
+  void status_line(RolltuiStr& out) const;
+  RolltuiStr status_line() const;
   // What the selected node IS, in words: "selected: input  size 3  border single
   // input:prompt". The editor composes it because it is the one place that reads a
   // window's content — every other host resolves it through rolltui::Windows.
-  std::string selection_line() const;
+  RolltuiStr selection_line() const;
 
   // THE TREE, AS ROWS THE CALLER OWNS AND REFILLS. A layout is a tree and the editor was the
   // one place you could not see it: a list of fields told you what the selected node IS
@@ -234,20 +233,20 @@ class LayoutEditor {
   std::size_t tree_selected() const;
 
   // Tree helpers, exposed for the tests and the host's hit-testing.
-  static Node* find_node(Node& root, std::string_view id);
-  static const Node* find_node(const Node& root, std::string_view id);
-  static Node* parent_of(Node& root, std::string_view id, std::size_t* index = nullptr);
-  static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
+  static Node* find_node(Node& root, StrView id);
+  static const Node* find_node(const Node& root, StrView id);
+  static Node* parent_of(Node& root, StrView id, std::size_t* index = nullptr);
+  static StrVec ids_in_order(const Node& root);  // every node id, tree order
   // EVERY node the editor can select: the base tree, then each popup's tree. A popup's root IS
   // a node — it has an id, a content, a border, a title, a background — and previously
   // it was the one node nothing could reach, so a popup drew `text:<its own id>` for ever.
   // Rejected: repeating the per-node fields inside the Popups submenu — `rolltui.h` rule 5, if
   // two consumers write the same wrapper the API is wrong, not the consumers.
-  std::vector<std::string> all_ids() const;
-  Node* find_any(std::string_view id);
-  const Node* find_any(std::string_view id) const;
-  Layer* popup_of(std::string_view id);              // the popup whose tree holds it, else null
-  const Layer* popup_of(std::string_view id) const;
+  StrVec all_ids() const;
+  Node* find_any(StrView id);
+  const Node* find_any(StrView id) const;
+  Layer* popup_of(StrView id);              // the popup whose tree holds it, else null
+  const Layer* popup_of(StrView id) const;
 
   // The selected window's content split at the first ':' — WITHOUT requiring it to parse, so
   // a content typed by hand into a file can be shown and repaired here.
@@ -261,15 +260,15 @@ class LayoutEditor {
     Content content;    // the kind name and source as typed, always
     bool known = false; // …and whether either rung of THIS binary's registry has that kind
     bool window = false;
-    std::string kind_text, source;
+    RolltuiStr kind_text, source;
   };
   ContentParts content_parts() const;
 
  private:
   RolltuiContext* ctx_;        // BORROWED: the session this editor resolves kinds against
   ContentParts parts_of(const Node* n) const;  // Phase 25: resolves kinds against `ctx_`
-  std::string base_source() const;  // the source before the live preview began
-  std::string carried_source(std::string_view kind_name) const;  // …and whether that kind takes it
+  RolltuiStr base_source() const;  // the source before the live preview began
+  RolltuiStr carried_source(StrView kind_name) const;  // …and whether that kind takes it
   enum class Op { SplitRow, SplitColumn, SwapPrev, SwapNext, ToggleVisible, Delete, ToggleFocusable };
   bool apply_op(Op op);
   void rebuild_menu();
@@ -278,26 +277,26 @@ class LayoutEditor {
   void sync_hints();           // the kind and menu-file hints: what this binary can preview
   // Writes kind[:source] into the selected window. By NAME, because a kind's name is the only
   // thing that identifies it. A name in neither rung writes nothing and is reported.
-  bool set_content(const std::string& kind_name, const std::string& source);
+  bool set_content(StrView kind_name, StrView source);
   void begin_preview();
   void cancel_preview();
   Outcome commit_current();
   Node* sel_node();
-  std::string unique_id(const std::string& base) const;
+  RolltuiStr unique_id(StrView base) const;
   std::vector<MenuItem> action_items() const;
 
   RolltuiMenu* menu_ = rolltui_menu_new();
   Layout current_;
   UndoStack<Layout> undo_;
   std::optional<Layout> preview_;
-  std::string sel_;
-  std::vector<std::string> sources_;   // the host's offered kind[:source] contents
-  std::vector<std::string> kinds_;     // the kinds the target can build (library's by default)
-  std::vector<std::string> menus_;     // the menu files that resolve
-  std::vector<std::string> layouts_;
+  RolltuiStr sel_;
+  StrVec sources_;   // the host's offered kind[:source] contents
+  StrVec kinds_;     // the kinds the target can build (library's by default)
+  StrVec menus_;     // the menu files that resolve
+  StrVec layouts_;
   int default_min_w_ = 0, default_min_h_ = 0;  // the target app's, for a NEW layout only
-  std::optional<std::string> drag_;
-  std::string status_;
+  std::optional<RolltuiStr> drag_;
+  RolltuiStr status_;
 };
 
 }  // namespace rolltui::tools

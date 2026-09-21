@@ -21,11 +21,9 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_keys_editor.h"
 #include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <cstddef>
-#include <string>
-#include <string_view>
-#include <vector>
 
 #include "tool_actions.hpp"
 
@@ -40,7 +38,7 @@ class KeysEditor {
   struct Outcome {
     enum class Kind { None, Changed, Committed, SaveAs, WriteShipped, LoadPreset, ResetLoaded, Closed };
     Kind kind = Kind::None;
-    std::string value;  // SaveAs: the name; WriteShipped / LoadPreset: the preset chosen
+    RolltuiStr value;  // SaveAs: the name; WriteShipped / LoadPreset: the preset chosen
     bool operator==(const Outcome&) const = default;
   };
 
@@ -53,14 +51,14 @@ class KeysEditor {
   KeysEditor& operator=(const KeysEditor&) = delete;
 
   void load(const RolltuiBindings* b) { rolltui_keys_editor_load(e_, b); }
-  void set_presets(const std::vector<std::string>& names);
-  void set_shipped(const std::vector<std::string>& names, bool may_write);
+  void set_presets(const StrVec& names);
+  void set_shipped(const StrVec& names, bool may_write);
 
   // BORROWS of the model's own storage, valid until the next edit.
   const RolltuiBindings* current() const { return rolltui_keys_editor_current(e_); }
   const RolltuiBindings* committed() const { return rolltui_keys_editor_committed(e_); }
   bool capturing() const { return rolltui_keys_editor_capturing(e_) != 0; }
-  std::string_view capturing_action() const;
+  StrView capturing_action() const;
 
   RolltuiMenu* menu() { return rolltui_keys_editor_menu(e_); }
   const RolltuiMenu* menu() const { return rolltui_keys_editor_menu(const_cast<RolltuiKeysEditor*>(e_)); }
@@ -76,9 +74,9 @@ class KeysEditor {
   void replace(RolltuiBindings* b) { rolltui_keys_editor_replace(e_, b); }  // ADOPTS
 
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
-  // open. The returning form is one copy over it, for a test that reads it.
-  void status_line(std::string& out) const;
-  std::string status_line() const;
+  // open. The returning form is the same text in a fresh string, for a test that reads it.
+  void status_line(RolltuiStr& out) const;
+  RolltuiStr status_line() const;
 
  private:
   RolltuiKeysEditor* e_;

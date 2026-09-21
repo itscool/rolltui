@@ -176,7 +176,7 @@ int main() {
     LayoutEditor::parent_of(const_cast<Node&>(ed.current().base.root), "transcript", &idx);
     check(idx == 1 && ed.undo_depth() == 2, "swap with the next sibling moves it to index 1");
     act(ed, "tree", "swap with the next");
-    check(ed.status_line().find("no sibling") != std::string::npos && ed.undo_depth() == 2, "swapping past the end is refused with a reason and commits nothing");
+    check(str_of(ed.status_line()).find("no sibling") != std::string::npos && ed.undo_depth() == 2, "swapping past the end is refused with a reason and commits nothing");
     ed.select("transcript-2");
     act(ed, "visible");
     check(node_or_null(ed, "transcript-2") && !node_visible(ed, "transcript-2") && ed.undo_depth() == 3,
@@ -228,14 +228,14 @@ int main() {
     for (int i = 0; i < 2; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
     type(ed, "fil");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Changed && rolltui_menu_editing(ed.menu()) && ed.status_line().find("not a size yet") != std::string::npos,
+    check(o.kind == O::Changed && rolltui_menu_editing(ed.menu()) && str_of(ed.status_line()).find("not a size yet") != std::string::npos,
           "Enter on a text that is not yet a size is refused with the reason [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(!rolltui_menu_editing(ed.menu()) && LayoutEditor::find_node(ed.current().base.root, "input")->size == SplitSize::fixed(Dim::abs(5)), "Escape restores the committed size");
     o = handle(ed, key(ROLLTUI_KEY_DOWN, false, true));  // Alt+Down: input is in a column
     check(o.kind == O::Committed && LayoutEditor::find_node(ed.committed().base.root, "input")->size == SplitSize::fixed(Dim::abs(6)), "Alt+Down nudges the size to 6, a commit");
     o = handle(ed, key(ROLLTUI_KEY_RIGHT, false, true));
-    check(o.kind == O::Changed && ed.status_line().find("up/down") != std::string::npos, "Alt+Right on a column child says which way it sizes");
+    check(o.kind == O::Changed && str_of(ed.status_line()).find("up/down") != std::string::npos, "Alt+Right on a column child says which way it sizes");
     ed.select("status");
     o = handle(ed, key(ROLLTUI_KEY_LEFT, false, true));
     check(o.kind == O::Committed && LayoutEditor::find_node(ed.committed().base.root, "status")->size == SplitSize::fixed(Dim::abs(31)), "Alt+Left narrows the status window from 32 to 31");
@@ -354,7 +354,7 @@ int main() {
           "on a `menu` the Menu file field owns the source and the Source input is off \xE2\x80\x94 exactly one of the two, always");
     check(str_of(find(ed.menu(), "menu_file")->spec.hint) == "resolves here: main | extra",
           "…hinted with the menu files that RESOLVE, which is again what this binary knows and not what the target has");
-    check(ed.selection_line().find("selected: transcript") != std::string::npos, "the selection line names the node");
+    check(str_of(ed.selection_line()).find("selected: transcript") != std::string::npos, "the selection line names the node");
     act(ed, "menu file");
     for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
     type(ed, "extra");
@@ -371,7 +371,7 @@ int main() {
     check(o.kind == O::Committed && content_of(ed, "transcript") == "transcript:scratch", "Enter commits the typed source");
     act(ed, "source");
     type(ed, "/");
-    check(rolltui_menu_editing(ed.menu()) && editing_text_of(ed) == "scratch" && ed.status_line().find("refused") != std::string::npos,
+    check(rolltui_menu_editing(ed.menu()) && editing_text_of(ed) == "scratch" && str_of(ed.status_line()).find("refused") != std::string::npos,
           "a '/' is refused in a Name source at the keystroke, the text kept [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     // A `file:` source is a path, so the same key is accepted there.
@@ -387,7 +387,7 @@ int main() {
     act(ed, "source");
     for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(rolltui_menu_editing(ed.menu()) && ed.status_line().find("a value is needed") != std::string::npos,
+    check(rolltui_menu_editing(ed.menu()) && str_of(ed.status_line()).find("a value is needed") != std::string::npos,
           "an empty source for a kind that requires one is refused with the reason [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     // Put it back where the rest of the test expects it.
@@ -419,18 +419,18 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "input.zoom");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Changed && ed.current().actions.size() == before + 1 && ed.status_line().find("the library's and cannot be declared") != std::string::npos,
+    check(o.kind == O::Changed && ed.current().actions.size() == before + 1 && str_of(ed.status_line()).find("the library's and cannot be declared") != std::string::npos,
           "a library scope is refused with the loader's own words [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_END));
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "zoom");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Changed && ed.status_line().find("<scope>.<verb>") != std::string::npos, "a name with no scope is refused [" + ed.status_line() + "]");
+    check(o.kind == O::Changed && str_of(ed.status_line()).find("<scope>.<verb>") != std::string::npos, "a name with no scope is refused [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_END));
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "app.zoom");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Changed && ed.status_line().find("already declared") != std::string::npos, "a duplicate is refused [" + ed.status_line() + "]");
+    check(o.kind == O::Changed && str_of(ed.status_line()).find("already declared") != std::string::npos, "a duplicate is refused [" + ed.status_line() + "]");
     // The description, and the removal.
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     act(ed, "this screen", "actions this screen");
@@ -442,7 +442,7 @@ int main() {
     check(o.kind == O::Committed && ed.current().actions.back().description == "zoom the transcript", "the description commits");
     handle(ed, key(ROLLTUI_KEY_END));    // remove this action
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && ed.current().actions.size() == before && ed.status_line().find("kept and inert") != std::string::npos,
+    check(o.kind == O::Committed && ed.current().actions.size() == before && str_of(ed.status_line()).find("kept and inert") != std::string::npos,
           "remove drops the declaration and says what happens to a chord for it [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
@@ -464,7 +464,7 @@ int main() {
     act(ed, "this screen", "focused window");
     handle(ed, key(ROLLTUI_KEY_HOME));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && ed.committed().base.focus.empty() && ed.status_line().find("first focusable") != std::string::npos,
+    check(o.kind == O::Committed && ed.committed().base.focus.empty() && str_of(ed.status_line()).find("first focusable") != std::string::npos,
           "the focus choice's first option is \"(none)\", and it is a real answer, not an empty one [" + ed.status_line() + "]");
     act(ed, "this screen", "focused window");
     handle(ed, key(ROLLTUI_KEY_END));
@@ -569,14 +569,14 @@ int main() {
     o = handle(te, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && content_of(te, "transcript") == "sundial:session",
           "a kind in neither rung is WRITTEN, source and all [" + content_of(te, "transcript") + "]");
-    check(te.status_line().find("not a kind this tool can build") != std::string::npos &&
-              te.status_line().find("previews as a placeholder") != std::string::npos,
+    check(str_of(te.status_line()).find("not a kind this tool can build") != std::string::npos &&
+              str_of(te.status_line()).find("previews as a placeholder") != std::string::npos,
           "…and what is said is about this TOOL, not about the screen [" + te.status_line() + "]");
     check(enabled_of(te, "source") && find(te.menu(), "source") &&
               str_of(find(te.menu(), "source")->spec.hint) == "what 'sundial' is given in the app this screen is for",
           "…its source field stays usable, hinted at the app that owns the answer [" +
               (find(te.menu(), "source") ? str_of(find(te.menu(), "source")->spec.hint) : std::string("(none)")) + "]");
-    check(te.selection_line().find("not previewable here") != std::string::npos,
+    check(str_of(te.selection_line()).find("not previewable here") != std::string::npos,
           "…and the selection line says the same thing in the same direction [" + te.selection_line() + "]");
     {
       bool clean2 = false;
@@ -619,9 +619,9 @@ int main() {
 
     // THE SAME ORDER TAB WALKS. The selected row is the row that moves, and if these two
     // walks ever disagreed the highlight would point at a node the operations do not touch.
-    const std::vector<std::string> ids = ed.all_ids();
+    const StrVec ids = ed.all_ids();
     check(ed.tree_selected() < rows.n, "the selection is a row of the tree (" + std::to_string(ed.tree_selected()) + ")");
-    const std::string first_sel = ed.selected();
+    const std::string first_sel = str_of(ed.selected());
     check(labels[ed.tree_selected()].find(first_sel) != std::string::npos,
           "…and it is the row for the selected node [" + labels[ed.tree_selected()] + " vs " + first_sel + "]");
     const std::size_t before = ed.tree_selected();
@@ -629,7 +629,7 @@ int main() {
     ed.tree_rows(rows);
     check(ed.tree_selected() != before && ed.selected() != first_sel,
           "Tab moves the highlight, because it is the same walk");
-    check(view_of(rows.v[ed.tree_selected()].label).find(ed.selected()) != std::string::npos,
+    check(view_of(rows.v[ed.tree_selected()].label).find(view_of(ed.selected())) != std::string::npos,
           "…and it lands on the row for the node Tab selected");
 
     // A POPUP'S ROOT IS A NODE THE EDITOR CAN SELECT, so it is a row — under a heading,

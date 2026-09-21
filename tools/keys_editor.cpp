@@ -1,6 +1,6 @@
 // rolltui/tools/keys_editor.cpp — see keys_editor.hpp. Everything here forwards to
 // `rolltui/c/rolltui_keys_editor.h`; the only real work is turning the model's borrows into the
-// std:: types a C++ host composes with.
+// rolltui types a C++ host composes with.
 #include "keys_editor.hpp"
 
 #include "rolltui/c/rolltui_str.h"
@@ -20,24 +20,24 @@ static_assert(static_cast<int>(KeysEditor::Outcome::Kind::ResetLoaded) == ROLLTU
 static_assert(static_cast<int>(KeysEditor::Outcome::Kind::Closed) == ROLLTUI_KEYS_EDIT_CLOSED);
 
 // A `RolltuiStrList` lives for the length of one call: the model COPIES what it is handed.
-void KeysEditor::set_presets(const std::vector<std::string>& names) {
+void KeysEditor::set_presets(const StrVec& names) {
   RolltuiStrList l{};
-  for (const std::string& n : names) rolltui_str_list_add(&l, n.data(), n.size());
+  for (const RolltuiStr& n : names) rolltui_str_list_add(&l, n.data(), n.size());
   rolltui_keys_editor_set_presets(e_, &l);
   rolltui_str_list_release(&l);
 }
 
-void KeysEditor::set_shipped(const std::vector<std::string>& names, bool may_write) {
+void KeysEditor::set_shipped(const StrVec& names, bool may_write) {
   RolltuiStrList l{};
-  for (const std::string& n : names) rolltui_str_list_add(&l, n.data(), n.size());
+  for (const RolltuiStr& n : names) rolltui_str_list_add(&l, n.data(), n.size());
   rolltui_keys_editor_set_shipped(e_, &l, may_write ? 1 : 0);
   rolltui_str_list_release(&l);
 }
 
-std::string_view KeysEditor::capturing_action() const {
+StrView KeysEditor::capturing_action() const {
   std::size_t len = 0;
   const char* p = rolltui_keys_editor_capturing_action(e_, &len);
-  return std::string_view(p ? p : "", len);
+  return StrView(p, len);
 }
 
 KeysEditor::Outcome KeysEditor::handle(const RolltuiEvent* e, const RolltuiBindings* nav) {
@@ -45,20 +45,18 @@ KeysEditor::Outcome KeysEditor::handle(const RolltuiEvent* e, const RolltuiBindi
   rolltui_keys_editor_handle(e_, e, nav, &raw);
   Outcome out;
   out.kind = static_cast<Outcome::Kind>(raw.kind);
-  out.value.assign(raw.value.p ? raw.value.p : "", raw.value.n);
+  out.value = std::move(raw.value);
   rolltui_keys_editor_outcome_release(&raw);
   return out;
 }
 
-void KeysEditor::status_line(std::string& out) const {
-  RolltuiStr s{};
-  rolltui_keys_editor_status_line(e_, &s);
-  out.assign(s.p ? s.p : "", s.n);
-  rolltui_str_free(&s);
+void KeysEditor::status_line(RolltuiStr& out) const {
+  out.clear();  // the C function APPENDS
+  rolltui_keys_editor_status_line(e_, &out);
 }
 
-std::string KeysEditor::status_line() const {
-  std::string s;
+RolltuiStr KeysEditor::status_line() const {
+  RolltuiStr s;
   status_line(s);
   return s;
 }

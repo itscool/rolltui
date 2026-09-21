@@ -20,13 +20,11 @@
 #include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_theme_editor.h"
+#include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <array>
 #include <cstddef>
 #include <optional>
-#include <string>
-#include <string_view>
-#include <vector>
 
 #include "tool_actions.hpp"
 
@@ -44,7 +42,7 @@ using Color = RolltuiStyleColor;
 // built from the model's accessors and handed back through `replace`.
 struct ThemeEdit {
   std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> dark{}, light{};
-  std::string dark_name, light_name;
+  RolltuiStr dark_name, light_name;
   RolltuiJsonValue* dark_meta = nullptr;   // OWNED; nullptr when the variant claims none
   RolltuiJsonValue* light_meta = nullptr;  // OWNED; ditto
 
@@ -52,10 +50,10 @@ struct ThemeEdit {
   // ADOPTS dark_meta/light_meta — pass a clone when the caller's own copy must survive the
   // call (rolltui_json_clone), or a freshly-owned one.
   ThemeEdit(std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> d, std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> l,
-            std::string dn, std::string ln, RolltuiJsonValue* dm = nullptr, RolltuiJsonValue* lm = nullptr)
+            RolltuiStr dn, RolltuiStr ln, RolltuiJsonValue* dm = nullptr, RolltuiJsonValue* lm = nullptr)
       : dark(d), light(l), dark_name(std::move(dn)), light_name(std::move(ln)), dark_meta(dm), light_meta(lm) {}
   ThemeEdit(const ThemeEdit& o)
-      : dark(o.dark), light(o.light), dark_name(o.dark_name), light_name(o.light_name),
+      : dark(o.dark), light(o.light), dark_name(rolltui::own(o.dark_name)), light_name(rolltui::own(o.light_name)),
         dark_meta(rolltui_json_clone(o.dark_meta)), light_meta(rolltui_json_clone(o.light_meta)) {}
   ThemeEdit(ThemeEdit&& o) noexcept
       : dark(o.dark), light(o.light), dark_name(std::move(o.dark_name)), light_name(std::move(o.light_name)),
@@ -95,8 +93,8 @@ struct ThemeEdit {
 
 struct PaletteEntry {
   Color color;
-  std::string id;     // the colour's own spelling
-  std::string label;  // the id, prefixed by the `defs` name for that colour where there is one
+  RolltuiStr id;     // the colour's own spelling
+  RolltuiStr label;  // the id, prefixed by the `defs` name for that colour where there is one
 };
 
 class ThemeEditor {
@@ -104,7 +102,7 @@ class ThemeEditor {
   struct Outcome {
     enum class Kind { None, Changed, Committed, SaveAs, WriteShipped, LoadPreset, ResetLoaded, ResetBuiltin, Check, Closed };
     Kind kind = Kind::None;
-    std::string value;  // SaveAs: the name; WriteShipped: the shipped name; LoadPreset: the preset name
+    RolltuiStr value;  // SaveAs: the name; WriteShipped: the shipped name; LoadPreset: the preset name
     bool operator==(const Outcome&) const = default;
   };
 
@@ -137,8 +135,8 @@ class ThemeEditor {
   bool load(const RolltuiJsonValue* colours, RolltuiThemeReport* report) {
     return rolltui_theme_editor_load(e_, colours, report) != 0;
   }
-  void set_presets(const std::vector<std::string>& names);
-  void set_shipped(const std::vector<std::string>& names, bool may_write);
+  void set_presets(const StrVec& names);
+  void set_shipped(const StrVec& names, bool may_write);
   void set_mode(unsigned char m) { rolltui_theme_editor_set_mode(e_, m); }
   unsigned char mode() const { return rolltui_theme_editor_mode(e_); }
 
@@ -149,7 +147,7 @@ class ThemeEditor {
   bool previewing() const { return rolltui_theme_editor_previewing(e_) != 0; }
   // The committed variants as one file object. OWNED — free it with `rolltui_json_free`, or
   // hand it straight to a preset store, which adopts it.
-  RolltuiJsonValue* colours_json(std::string_view name) const {
+  RolltuiJsonValue* colours_json(StrView name) const {
     return rolltui_theme_editor_colours_json(e_, name.data(), name.size());
   }
 
@@ -180,10 +178,10 @@ class ThemeEditor {
   }
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
   // open. The returning form is one copy over it, for a test that reads it.
-  void status_line(std::string& out) const;
-  std::string status_line() const;
-  std::string badges_line() const;   // "badges: dark readable cvd-safe" (computed, never declared)
-  std::string report() const;        // the full contrast / colour-vision report
+  void status_line(RolltuiStr& out) const;
+  RolltuiStr status_line() const;
+  RolltuiStr badges_line() const;   // "badges: dark readable cvd-safe" (computed, never declared)
+  RolltuiStr report() const;        // the full contrast / colour-vision report
 
   // The palette offered to every colour choice, and the auto-fix proposals for the variant
   // being edited. Both are the model's own storage, read one entry at a time rather than

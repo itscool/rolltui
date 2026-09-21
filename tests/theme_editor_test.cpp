@@ -180,7 +180,7 @@ int main() {
     }
     check(!(previewed == original) && ed.current()[md_heading].fg == previewed && ed.previewing() && o.kind == ThemeEditor::Outcome::Kind::Changed,
           "moving the selection previews that colour on the role before anything is committed");
-    check(ed.highlighted_color() == previewed && ed.status_line().find("previewing") == 0, "the highlighted colour and the status say so");
+    check(ed.highlighted_color() == previewed && str_of(ed.status_line()).find("previewing") == 0, "the highlighted colour and the status say so");
     check(ed.committed().dark[md_heading].fg == original && ed.undo_depth() == 0, "…and nothing is committed yet");
     o = handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(!ed.previewing() && ed.current()[md_heading].fg == original && rolltui_menu_level(ed.menu())->id == "role.md_heading",
@@ -232,11 +232,11 @@ int main() {
     // Prefix validity, one key at a time: o, r, a refused (no colour starts so), n
     // accepted (a prefix of "none"), g and e refused ("ng", "ne" begin no colour) — the
     // text is "n".
-    check(rolltui_menu_editing(ed.menu()) && editing_text_of(ed) == "n" && ed.status_line().find("refused: not the start of a colour") != std::string::npos,
-          "keys that cannot begin a colour are refused at the keystroke with the reason [" + editing_text_of(ed) + " | " + ed.status_line() + "]");
+    check(rolltui_menu_editing(ed.menu()) && editing_text_of(ed) == "n" && str_of(ed.status_line()).find("refused: not the start of a colour") != std::string::npos,
+          "keys that cannot begin a colour are refused at the keystroke with the reason [" + editing_text_of(ed) + " | " + str_of(ed.status_line()) + "]");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Changed && rolltui_menu_editing(ed.menu()) && ed.current()[md_heading].fg == Color::rgb(0x12, 0x34, 0x56) &&
-              ed.status_line().find("not a colour yet") != std::string::npos,
+              str_of(ed.status_line()).find("not a colour yet") != std::string::npos,
           "Enter on a text that is not yet a colour is refused with the reason; the field keeps its committed value");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(!rolltui_menu_editing(ed.menu()) && ed.committed().dark[md_heading].fg == Color::rgb(0x12, 0x34, 0x56), "Escape leaves the committed colour");
@@ -314,9 +314,9 @@ int main() {
     e2.load(broken_shipped, &r);
     rolltui_theme_report_release(&r);
     rolltui_json_free(broken_shipped);
-    check(e2.fix_count() == 0 && e2.badges_line().find("readable") != std::string::npos && e2.badges_line().find("cvd-safe") != std::string::npos,
-          "the shipped default has nothing to fix and its badges read dark + readable + cvd-safe [" + e2.badges_line() + "]");
-    check(e2.report().find("badges: dark") == 0, "report() is the analysis text");
+    check(e2.fix_count() == 0 && str_of(e2.badges_line()).find("readable") != std::string::npos && str_of(e2.badges_line()).find("cvd-safe") != std::string::npos,
+          "the shipped default has nothing to fix and its badges read dark + readable + cvd-safe [" + str_of(e2.badges_line()) + "]");
+    check(str_of(e2.report()).find("badges: dark") == 0, "report() is the analysis text");
     ThemeEdit bad = e2.committed();
     const unsigned char md_link = role("md_link"), diff_removed = role("diff_removed"), diff_added = role("diff_added");
     bad.dark[md_link].fg = Color::rgb(0x30, 0x34, 0x3a);
@@ -350,10 +350,10 @@ int main() {
     handle(e2, key(ROLLTUI_KEY_DOWN));
     handle(e2, key(ROLLTUI_KEY_DOWN));  // generate
     o = handle(e2, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.committed().dark_name == "gen-analogous-7-0.00" && e2.committed().light_name == "gen-analogous-7-0.00",
-          "Generate replaces both variants with the seeded theme (dark and light grounds from one seed) [" + e2.committed().dark_name + "]");
-    check(e2.status_line().find("generated gen-analogous-7") != std::string::npos && e2.badges_line().find("readable") != std::string::npos,
-          "…the status names it and the generated variant is readable [" + e2.badges_line() + "]");
+    check(o.kind == ThemeEditor::Outcome::Kind::Committed && str_of(e2.committed().dark_name) == "gen-analogous-7-0.00" && str_of(e2.committed().light_name) == "gen-analogous-7-0.00",
+          "Generate replaces both variants with the seeded theme (dark and light grounds from one seed) [" + str_of(e2.committed().dark_name) + "]");
+    check(str_of(e2.status_line()).find("generated gen-analogous-7") != std::string::npos && str_of(e2.badges_line()).find("readable") != std::string::npos,
+          "…the status names it and the generated variant is readable [" + str_of(e2.badges_line()) + "]");
     check(e2.fix_count() == 0, "…with nothing left to fix at chaos 0");
     // A generated theme's provenance and claimed badges are "meta" (Theme.cpp's own
     // shape); ThemeEdit carries it now (dark_meta/light_meta) specifically so a save does

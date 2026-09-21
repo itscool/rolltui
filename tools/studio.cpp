@@ -186,12 +186,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <optional>
-#include <sstream>
-#include <string>
-#include <string_view>
 #include <vector>
 
 #include <sys/stat.h>
@@ -230,6 +226,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widgets.h"
+#include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include "keys_editor.hpp"
 #include "layout_editor.hpp"
@@ -243,39 +240,43 @@ using rolltui::tools::MenuEditor;
 using rolltui::tools::MenuItem;
 using rolltui::tools::ThemeEditor;
 using rolltui::tools::builtin_layout;
+using rolltui::StrVec;
+using rolltui::StrView;
 
 namespace {
 
 constexpr std::size_t kRoleCount = ROLLTUI_ROLE_COUNT;
 
-std::string read_file(const std::string& path, bool& ok) {
-  std::ifstream in(path, std::ios::binary);
-  ok = static_cast<bool>(in);
-  std::stringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
+RolltuiStr read_file(const RolltuiStr& path, bool& ok) {
+  RolltuiStr out;
+  FILE* f = std::fopen(path.c_str(), "rb");
+  ok = f != nullptr;
+  if (!f) return out;
+  char buf[4096];
+  for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) out.append(buf, n);
+  std::fclose(f);
+  return out;
 }
 
-long mtime_of(const std::string& path) {
+long mtime_of(const RolltuiStr& path) {
   struct stat st{};
   if (stat(path.c_str(), &st) != 0) return -1;
   return static_cast<long>(st.st_mtime);
 }
 
-std::string color_to_string(RolltuiStyleColor c) {
+RolltuiStr color_to_string(RolltuiStyleColor c) {
   char buf[ROLLTUI_COLOR_STRING_MAX];
   const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
-  return std::string(buf, n);
+  return rolltui::own(StrView(buf, n));
 }
-// A BORROW of the library's literal, which is what the C hands back; it was copied into a
-// A std::string per call here would run on the status line and the rows source every frame.
-std::string_view depth_name(unsigned char d) {
+// A BORROW of the library's literal, which is what the C hands back: a copy per call would run on the status line
+// and the rows source every frame.
+StrView depth_name(unsigned char d) {
   std::size_t n = 0;
   const char* p = rolltui_color_depth_name(d, &n);
-  return std::string_view(p, n);
+  return StrView(p, n);
 }
-// A number appended in place — std::to_string's temporary, without the temporary.
-std::optional<unsigned char> mode_from_setting(std::string_view s) {
+std::optional<unsigned char> mode_from_setting(StrView s) {
   const int m = rolltui_theme_mode_from_name(s.data(), s.size());
   return m < 0 ? std::nullopt : std::optional<unsigned char>(static_cast<unsigned char>(m));
 }
@@ -310,12 +311,10 @@ struct ThemePresetReport : RolltuiThemePresetReport {
   ~ThemePresetReport() { rolltui_theme_preset_report_release(this); }
   // the JUDGEMENT is the library's — roll had written the identical six.
   bool clean() const { return rolltui_theme_preset_report_clean(this) != 0; }
-  std::string summary() const {
-    RolltuiStr out{};
+  RolltuiStr summary() const {
+    RolltuiStr out;
     rolltui_theme_preset_report_summary(this, &out);
-    std::string s = str_of(out);
-    rolltui_str_free(&out);
-    return s;
+    return out;
   }
 };
 struct LayoutPresetReport : RolltuiLayoutPresetReport {
@@ -323,12 +322,10 @@ struct LayoutPresetReport : RolltuiLayoutPresetReport {
   LayoutPresetReport(const LayoutPresetReport&) = delete;
   ~LayoutPresetReport() { rolltui_layout_preset_report_release(this); }
   bool clean() const { return rolltui_layout_preset_report_clean(this) != 0; }
-  std::string summary() const {
-    RolltuiStr out{};
+  RolltuiStr summary() const {
+    RolltuiStr out;
     rolltui_layout_preset_report_summary(this, &out);
-    std::string s = str_of(out);
-    rolltui_str_free(&out);
-    return s;
+    return out;
   }
 };
 struct BindingsPresetReport : RolltuiBindingsPresetReport {
@@ -336,19 +333,17 @@ struct BindingsPresetReport : RolltuiBindingsPresetReport {
   BindingsPresetReport(const BindingsPresetReport&) = delete;
   ~BindingsPresetReport() { rolltui_bindings_preset_report_release(this); }
   bool clean() const { return rolltui_bindings_preset_report_clean(this) != 0; }
-  std::string summary() const {
-    RolltuiStr out{};
+  RolltuiStr summary() const {
+    RolltuiStr out;
     rolltui_bindings_preset_report_summary(this, &out);
-    std::string s = str_of(out);
-    rolltui_str_free(&out);
-    return s;
+    return out;
   }
 };
 
 struct PresetStoreOptions {
-  std::string dir;
+  RolltuiStr dir;
   bool may_write_shipped = false;
-  std::string shipped_dir;
+  RolltuiStr shipped_dir;
 };
 
 class PresetStoreBase {
@@ -357,24 +352,22 @@ class PresetStoreBase {
   PresetStoreBase(const PresetStoreBase&) = delete;
   ~PresetStoreBase() { rolltui_preset_store_free(s_); }
 
-  std::string origin() const {
+  RolltuiStr origin() const {
     std::size_t n = 0;
     const char* p = rolltui_preset_store_origin(s_, &n);
-    return std::string(p, n);
+    return rolltui::own(StrView(p, n));
   }
   bool modified() const { return rolltui_preset_store_modified(s_) != 0; }
-  std::string label() const {
-    RolltuiStr out{};
+  RolltuiStr label() const {
+    RolltuiStr out;
     rolltui_preset_store_label(s_, &out);
-    std::string v = str_of(out);
-    rolltui_str_free(&out);
-    return v;
+    return out;
   }
   std::uint64_t version() const { return rolltui_preset_store_version(s_); }
   // A frame's form: REPLACED into a buffer the caller keeps. `label()` above is an event's.
   void label(RolltuiStr& out) const { rolltui_preset_store_label(s_, &out); }
   void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
-  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+  int save_as(StrView name, bool overwrite, RolltuiStr& error) {
     return rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
   }
   const PresetStoreOptions& options() const { return opt_; }
@@ -414,14 +407,14 @@ inline RolltuiContext* studio_ctx() {
 }
 
 class ThemeStore : public PresetStoreBase {
-  static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
+  static RolltuiPresetStore* make(StrView dir, bool may_write_shipped, StrView shipped_dir) {
     return rolltui_preset_store_new(rolltui_preset_domain_theme(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
-  ThemeStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
+  ThemeStore(StrView dir, bool may_write_shipped = false, StrView shipped_dir = StrView())
+      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {rolltui::own(dir), may_write_shipped, rolltui::own(shipped_dir)}) {}
 
   void start(ThemePresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   ThemeValueHandle working() const { return ThemeValueHandle(s_, rolltui_preset_store_working(s_)); }
@@ -436,41 +429,41 @@ class ThemeStore : public PresetStoreBase {
   // Light or dark is a SETTING and belongs in the working copy beside the colours, not in a
   // pseudo-theme named after a variant. Same shape as `set_colours`: take the working value,
   // change the one field, hand it back.
-  void set_mode(std::string_view m, bool persist = true) {
+  void set_mode(StrView m, bool persist = true) {
     ThemeValueHandle v = working();
     RolltuiThemePresetValue* raw = v.v;
     v.v = nullptr;
     rolltui_str_set(&raw->mode, m.data(), m.size());
     rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
   }
-  ThemeValueHandle get(std::string_view name, ThemePresetReport& rep) const {
+  ThemeValueHandle get(StrView name, ThemePresetReport& rep) const {
     return ThemeValueHandle(s_, rolltui_preset_store_get(s_, name.data(), name.size(), &rep));
   }
-  bool load(std::string_view name, ThemePresetReport& rep, bool persist = true) {
+  bool load(StrView name, ThemePresetReport& rep, bool persist = true) {
     return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
-  static bool is_shipped(std::string_view name) {
+  static bool is_shipped(StrView name) {
     return rolltui_preset_is_shipped(rolltui_preset_domain_theme(studio_ctx()), name.data(), name.size()) != 0;
   }
-  static std::vector<std::string> shipped_names() {
+  static StrVec shipped_names() {
     RolltuiStrList names;
     rolltui_preset_shipped_names(rolltui_preset_domain_theme(studio_ctx()), &names);
-    std::vector<std::string> out;
-    for (const RolltuiStr& n : names) out.push_back(str_of(n));
+    StrVec out;
+    for (const RolltuiStr& n : names) out.add(StrView(n));
     return out;
   }
 };
 
 class LayoutStore : public PresetStoreBase {
-  static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
+  static RolltuiPresetStore* make(StrView dir, bool may_write_shipped, StrView shipped_dir) {
     return rolltui_preset_store_new(rolltui_preset_domain_layout(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
-  LayoutStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
+  LayoutStore(StrView dir, bool may_write_shipped = false, StrView shipped_dir = StrView())
+      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {rolltui::own(dir), may_write_shipped, rolltui::own(shipped_dir)}) {}
 
   void start(LayoutPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   RolltuiLayout working() const {
@@ -484,11 +477,11 @@ class LayoutStore : public PresetStoreBase {
     rolltui_layout_copy(v, &l);
     rolltui_preset_store_set_working(s_, v, persist ? 1 : 0);
   }
-  bool load(std::string_view name, LayoutPresetReport& rep, bool persist = true) {
+  bool load(StrView name, LayoutPresetReport& rep, bool persist = true) {
     return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
-  static bool is_shipped(std::string_view name) {
+  static bool is_shipped(StrView name) {
     return rolltui_preset_is_shipped(rolltui_preset_domain_layout(studio_ctx()), name.data(), name.size()) != 0;
   }
 };
@@ -505,64 +498,66 @@ struct BindingsHandle {
 };
 
 class BindingsStore : public PresetStoreBase {
-  static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
+  static RolltuiPresetStore* make(StrView dir, bool may_write_shipped, StrView shipped_dir) {
     return rolltui_preset_store_new(rolltui_preset_domain_bindings(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
-  BindingsStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
+  BindingsStore(StrView dir, bool may_write_shipped = false, StrView shipped_dir = StrView())
+      : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {rolltui::own(dir), may_write_shipped, rolltui::own(shipped_dir)}) {}
 
   void start(BindingsPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   BindingsHandle working() const { return BindingsHandle(static_cast<RolltuiBindings*>(rolltui_preset_store_working(s_))); }
   void set_working(RolltuiBindings* b, bool persist = true) { rolltui_preset_store_set_working(s_, b, persist ? 1 : 0); }
-  std::optional<BindingsHandle> get(std::string_view name, BindingsPresetReport& rep) const {
+  std::optional<BindingsHandle> get(StrView name, BindingsPresetReport& rep) const {
     void* v = rolltui_preset_store_get(s_, name.data(), name.size(), &rep);
     if (!v) return std::nullopt;
     return BindingsHandle(static_cast<RolltuiBindings*>(v));
   }
-  bool load(std::string_view name, BindingsPresetReport& rep, bool persist = true) {
+  bool load(StrView name, BindingsPresetReport& rep, bool persist = true) {
     return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
-  static std::vector<std::string> shipped_names() {
+  static StrVec shipped_names() {
     RolltuiStrList names;
     rolltui_preset_shipped_names(rolltui_preset_domain_bindings(studio_ctx()), &names);
-    std::vector<std::string> out;
-    for (const RolltuiStr& n : names) out.push_back(str_of(n));
+    StrVec out;
+    for (const RolltuiStr& n : names) out.add(StrView(n));
     return out;
   }
 };
 
 unsigned long long g_load_seq = 0;  // bumped per read: see the version note below
 
-RolltuiDocument parse_fixture(const std::string& text) {
+RolltuiDocument parse_fixture(StrView text) {
   const unsigned long long load_seq = ++g_load_seq;
   RolltuiDocument doc;
-  std::string kind = "assistant", summary;
+  RolltuiStr kind = "assistant", summary;
   unsigned char state = ROLLTUI_EFFECT_STATE_NONE;  // m6: what the NEXT entry is doing, if anything
   double fraction = 0;
-  std::string buf;
+  RolltuiStr buf;
   int n = 0;
   auto flush = [&]() {
     // Trim leading/trailing blank lines of the entry.
-    std::size_t a = buf.find_first_not_of("\n");
-    std::size_t b = buf.find_last_not_of("\n");
-    std::string body = (a == std::string::npos) ? "" : buf.substr(a, b - a + 1);
+    const StrView all = buf;
+    std::size_t a = 0, b = all.size();
+    while (a < b && all[a] == '\n') ++a;
+    while (b > a && all[b - 1] == '\n') --b;
+    const StrView body = all.substr(a, b - a);
     if (body.empty()) { buf.clear(); return; }
     RolltuiDocEntry* e = rolltui_document_add(&doc);
-    set_str(e->id, "e" + std::to_string(n++));
+    e->id = rolltui::format("e%d", n++);
     // THE VERSION MOVES PER LOAD, and it has to. An id is a stable identity across FRAMES, and
     // this parser reuses `e0`, `e1`, … for every document it reads — so a second document arrives
     // under the first one's keys, and the transcript's parse cache, which is keyed by id and
     // validated by version, serves the previous document's text. That is why reloading a changed
     // file, or previewing a different one, showed the old content.
     e->version = load_seq;
-    set_str(e->text, body);
+    rolltui::assign(e->text, body);
     if (kind == "user") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_TEXT); e->prefix = "> "; e->prefix_role = to_role(ROLLTUI_ROLE_PROMPT); }
     else if (kind == "note") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_NOTE); }
-    else if (kind == "tool") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_TEXT_MUTED); e->foldable = 1; set_str(e->summary, summary); e->folded = 1; }
+    else if (kind == "tool") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_TEXT_MUTED); e->foldable = 1; e->summary.assign(summary); e->folded = 1; }
     else { e->markdown = 1; e->role = to_role(ROLLTUI_ROLE_TEXT); }
     // A marked entry. The fixture says WHICH STATE and nothing else.
     e->state = to_effect_state(state);
@@ -571,36 +566,41 @@ RolltuiDocument parse_fixture(const std::string& text) {
     fraction = 0;
     buf.clear();
   };
-  std::istringstream in(text);
-  std::string line;
-  while (std::getline(in, line)) {
+  for (std::size_t pos = 0; pos < text.size();) {  // a line per '\n'; the last one needs none
+    const std::size_t nl = text.find('\n', pos);
+    const StrView line = text.substr(pos, nl == StrView::npos ? StrView::npos : nl - pos);
+    pos = nl == StrView::npos ? text.size() : nl + 1;
     if (line == "<!-- user -->" || line == "<!-- assistant -->" || line == "<!-- note -->") {
       flush();
-      kind = line.substr(5, line.size() - 9);
+      kind = rolltui::own(line.substr(5, line.size() - 9));
       continue;
     }
-    if (line.rfind("<!-- state:", 0) == 0 && line.size() >= 15 && line.compare(line.size() - 3, 3, "-->") == 0) {
+    if (line.starts_with("<!-- state:") && line.size() >= 15 && line.ends_with("-->")) {
       flush();
       kind = "assistant";
-      std::string spec = line.substr(11, line.size() - 14);
-      const std::size_t a = spec.find_first_not_of(' ');
-      spec = (a == std::string::npos) ? "" : spec.substr(a);
+      StrView spec = line.substr(11, line.size() - 14);
+      std::size_t a = 0;
+      while (a < spec.size() && spec[a] == ' ') ++a;
+      spec = spec.drop_front(a);
       const std::size_t sp = spec.find(' ');
-      const std::string name = spec.substr(0, sp);
+      const StrView name = spec.substr(0, sp);
       const int st = rolltui_effect_state_from_name(name.data(), name.size());
       state = st < 0 ? ROLLTUI_EFFECT_STATE_NONE : static_cast<unsigned char>(st);
-      fraction = sp == std::string::npos ? 0 : std::strtod(spec.c_str() + sp + 1, nullptr);
+      fraction = sp == StrView::npos ? 0 : std::strtod(rolltui::own(spec.drop_front(sp + 1)).c_str(), nullptr);
       continue;
     }
-    if (line.rfind("<!-- tool:", 0) == 0 && line.size() >= 14 && line.compare(line.size() - 3, 3, "-->") == 0) {
+    if (line.starts_with("<!-- tool:") && line.size() >= 14 && line.ends_with("-->")) {
       flush();
       kind = "tool";
-      summary = line.substr(10, line.size() - 13);
-      std::size_t a = summary.find_first_not_of(' '), b = summary.find_last_not_of(' ');
-      summary = (a == std::string::npos) ? "" : summary.substr(a, b - a + 1);
+      StrView sum = line.substr(10, line.size() - 13);
+      std::size_t a = 0, b = sum.size();
+      while (a < b && sum[a] == ' ') ++a;
+      while (b > a && sum[b - 1] == ' ') --b;
+      summary = rolltui::own(sum.substr(a, b - a));
       continue;
     }
-    buf += line + "\n";
+    buf += line;
+    buf += '\n';
   }
   flush();
   return doc;
@@ -616,7 +616,7 @@ RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows* w, const char* cont
 
 struct App {
   RolltuiContext* ctx = studio_ctx();  // BORROWED: the binary's one session (see studio_ctx)
-  std::string fixture_path, theme_arg, layout_arg;
+  RolltuiStr fixture_path, theme_arg, layout_arg;
   std::optional<unsigned char> mode_flag;   // --mode; else the working copy's mode
   unsigned char mode = ROLLTUI_MODE_DARK;     // the variant in use this frame
   unsigned char detected_mode = ROLLTUI_MODE_DARK;  // OSC 11's answer (interactive), dark otherwise
@@ -634,15 +634,15 @@ struct App {
   std::unique_ptr<BindingsStore> bstore;  // the Bindings working copy (milestone 17)
   RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));  // what this frame runs on
   std::uint64_t bstore_seen = 0;
-  std::string bindings_arg;
+  RolltuiStr bindings_arg;
   bool persist = true;                  // false under --frame: the working copy is never written
   std::uint64_t store_seen = 0;
   RolltuiStyle resolved_styles[ROLLTUI_ROLE_COUNT]{};  // the working copy's colours at `mode`
-  std::string resolved_name;
+  RolltuiStr resolved_name;
   // Per-frame text, held and REFILLED rather than rebuilt: the status line, the editors'
   // "preset:" line, the rows' layout cell and the two store labels, so a warm frame allocates
   // nothing for them.
-  std::string status_line, editor_line, layout_row, editor_status;
+  RolltuiStr status_line, editor_line, layout_row, editor_status;
   // CALLER-FILLED, one per run: the layout editor's tree view, refilled every frame the panel
   // is drawn so the rows keep their buffers.
   RolltuiRows tree_rows_{};
@@ -650,10 +650,10 @@ struct App {
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
   RolltuiEffectMap* effects_map = nullptr;             // OWNED: the resolved theme's effects
   std::uint64_t lstore_seen = 0;
-  std::string theme_note;
+  RolltuiStr theme_note;
   long theme_mtime = -1;
   RolltuiLayout layout{};
-  std::string layout_note;
+  RolltuiStr layout_note;
   long layout_mtime = -1;
   bool stacked_fallback = false;
   RolltuiLayout stacked_layout_ = builtin_layout(studio_ctx(), "stacked");  // cached: the shipped fallback screen
@@ -667,15 +667,16 @@ struct App {
   MenuEditor meditor{ctx};  // Phase 27 m2: the fourth file type
   bool editor_open = false;
   bool editor_left = false;  // which side the layout editor's panel is on
-  std::string pending_save;             // a save-as awaiting its overwrite confirmation
-  std::string confirm_text;
+  RolltuiStr pending_save;              // a save-as awaiting its overwrite confirmation
+  RolltuiStr confirm_arg;               // what the pending confirmation acts on: `std::function` cannot hold a move-only capture
+  RolltuiStr confirm_text;
   std::function<void()> confirm_action;
-  std::string report_text_;  // the Check popup's text
+  RolltuiStr report_text_;   // the Check popup's text
   int report_top = 0;        // the Check report is a registered kind: the studio scrolls it
   int report_lines = 0;      // its wrapped length, from the last draw
-  std::string hint;
-  std::string note;  // the status line's last word about a file dialog, until the next key
-  std::string window_note;   // a window that cannot draw (an unbound source, a bad kind)
+  RolltuiStr hint;
+  RolltuiStr note;  // the status line's last word about a file dialog, until the next key
+  RolltuiStr window_note;   // a window that cannot draw (an unbound source, a bad kind)
   bool show_timing = false;  // the frame-time row/field (interactive only)
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   // Every window's widget comes from its content: the studio binds the fixture document,
@@ -685,11 +686,11 @@ struct App {
   RolltuiTranscript* transcript() { return rolltui_windows_transcript(windows, "session", 7); }
   RolltuiInput* editor() { return rolltui_windows_input(windows, "prompt", 6); }
   RolltuiMenu* menu() { return rolltui_windows_menu(windows, "main", 4); }  // menus/main.json (Phase 10 m3)
-  void set_menu_value(std::string_view id, std::string_view v) {
+  void set_menu_value(StrView id, StrView v) {
     rolltui_menu_set_value(menu(), id.data(), id.size(), v.data(), v.size());
   }
   int submitted = 0;        // entries the input added to the document
-  std::string copied;       // the last copy (the studio has no clipboard)
+  RolltuiStr copied;        // the last copy (the studio has no clipboard)
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   // The clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
@@ -700,7 +701,7 @@ struct App {
   long last_frame_us = 0;
   // What the last frame's marks came to: an unknown kind is said, not swallowed. Read by
   // the STATUS LINE before it is overwritten (one frame stale, on purpose — see render_into).
-  std::vector<std::string> effects_unknown_kinds;
+  StrVec effects_unknown_kinds;
   std::size_t shipped_theme_index = 0;
 
   // App-lifetime working memory, one of each, released in the destructor (CLAUDE.md's
@@ -750,7 +751,7 @@ struct App {
   }
 
   const RolltuiStyle& style(unsigned char role) const { return *rolltui_theme_style(theme_styles, kRoleCount, role); }
-  int put_text(RolltuiFrame* f, int x, int y, std::string_view s, RolltuiStyle sty, int max_cells) {
+  int put_text(RolltuiFrame* f, int x, int y, StrView s, RolltuiStyle sty, int max_cells) {
     return rolltui_frame_put_text(f, draw_scratch, x, y, s.data(), s.size(), sty, max_cells, ambiguous ? 1 : 0, 0);
   }
   void fill(RolltuiFrame* f, RolltuiRect r, RolltuiStyle sty) { rolltui_frame_fill(f, draw_scratch, r, sty, nullptr, 0); }
@@ -758,10 +759,10 @@ struct App {
 
   // The action of `scope` this chord serves, or "" — a BORROW valid until the table next
   // changes, which every call site below reads before it can.
-  std::string_view action_for(const RolltuiChord& k, std::string_view scope) {
+  StrView action_for(const RolltuiChord& k, StrView scope) {
     std::size_t n = 0;
     const char* p = rolltui_bindings_action_for(bindings, &k, scope.data(), scope.size(), &n);
-    return p ? std::string_view(p, n) : std::string_view();
+    return p ? StrView(p, n) : StrView();
   }
 
   // THE LIBRARY'S OWN menu roles, read back rather than kept as a second copy (see the
@@ -808,11 +809,11 @@ struct App {
         nullptr);
     rolltui_windows_bind_submit(
         windows, "save_name", 9,
-        [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_preset_file(std::string(text, len)); },
+        [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_preset_file(StrView(text, len)); },
         this, nullptr, /*Keep=*/1);
     rolltui_windows_bind_submit(
         windows, "prompt", 6,
-        [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->append_prompt(std::string(text, len)); },
+        [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->append_prompt(StrView(text, len)); },
         this, nullptr, /*SendAndClear=*/0);
     // The find bar's Enter is "next match" — the universal find-bar convention. sync_find()
     // first, because the matches must exist before stepping through them.
@@ -879,7 +880,7 @@ struct App {
   // variants differ — the same pair form a role's colours use. Read rather than recomputed: the
   // loader already verifies the declaration against the colours, so a stale one is a reported
   // problem elsewhere and not this menu's to re-derive.
-  static std::string declared_badges(const RolltuiJsonValue* colours, int for_mode) {
+  static RolltuiStr declared_badges(const RolltuiJsonValue* colours, int for_mode) {
     const RolltuiJsonValue* meta = colours ? rolltui_json_get(colours, "meta", 4) : nullptr;
     const RolltuiJsonValue* b = meta ? rolltui_json_get(meta, "badges", 6) : nullptr;
     if (!b) return {};
@@ -887,11 +888,12 @@ struct App {
       const char* k = for_mode == ROLLTUI_MODE_LIGHT ? "light" : "dark";
       b = rolltui_json_get(b, k, std::strlen(k));
     }
-    std::string out;
+    RolltuiStr out;
     for (std::size_t i = 0; b && i < rolltui_json_array_size(b); ++i) {
       std::size_t n = 0;
       const char* w = rolltui_json_as_string(rolltui_json_array_at(b, i), "", 0, &n);
-      out.append(w, n).push_back(' ');
+      out.append(w, n);
+      out += ' ';
     }
     return out;
   }
@@ -907,14 +909,14 @@ struct App {
     if (store) {
       store->list(tl);
       for (const RolltuiPresetInfo& p : tl) {
-        const std::string name = std::string(str_of(p.name));
-        std::string note;
+        const RolltuiStr& name = p.name;
+        RolltuiStr note;
         {
           ThemePresetReport rep;
           const ThemeValueHandle v = store->get(name, rep);
           if (v) {
-            const std::string b = declared_badges(v->colours, mode);
-            const auto says = [&](const char* w) { return b.find(w) != std::string::npos; };
+            const RolltuiStr b = declared_badges(v->colours, mode);
+            const auto says = [&](const char* w) { return StrView(b).contains(w); };
             // `mono` FIRST: a monochrome theme carries no colour on purpose and separates by
             // attribute instead, so reading its missing `readable` as a fault would call a
             // design decision a defect.
@@ -924,20 +926,25 @@ struct App {
             else if (says("cvd-safe")) note = "colour-vision safe";
           }
         }
-        if (!p.shipped) note = note.empty() ? "yours" : note + " · yours";
+        if (!p.shipped) {
+          if (note.empty()) note = "yours";
+          else note += " · yours";
+        }
         // The note rides in the SHORTCUT column, right-aligned and muted, so the option's label is
         // its name alone — which is what the choice row shows as its value once one is chosen.
         themes.push_back(RolltuiMenuItem::action(name.c_str(), name.c_str(), note.c_str()));
       }
     }
-    if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(std::string(str_of(p.name)).c_str(), std::string(str_of(p.name)).c_str(), p.shipped ? "" : "yours")); }
+    if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(p.name.c_str(), p.name.c_str(), p.shipped ? "" : "yours")); }
     rolltui_menu_set_options(menu(), "theme", 5, &themes);
     rolltui_menu_set_options(menu(), "layout", 6, &layouts);
-    set_menu_value("theme", store ? store->label() : "");
-    set_menu_value("layout", lstore ? lstore->label() : str_of(layout.name));
+    if (store) set_menu_value("theme", store->label());
+    else set_menu_value("theme", "");
+    if (lstore) set_menu_value("layout", lstore->label());
+    else set_menu_value("layout", layout.name);
     set_menu_value("depth", depth_name(depth));
     { ThemeValueHandle w = store ? store->working() : ThemeValueHandle(nullptr, nullptr);
-      set_menu_value("mode", w ? std::string(str_of(w->mode)) : std::string("auto")); }
+      set_menu_value("mode", w ? StrView(w->mode) : StrView("auto")); }
     rolltui_menu_set_checked(menu(), "ambiguous", 9, ambiguous);
   }
   void open_menu(bool palette) {
@@ -947,10 +954,10 @@ struct App {
     rolltui_menu_set_palette(menu(), palette ? 1 : 0);
     rolltui_window_stack_push_popup(stack, &effective_layout(), "menu", 4);
   }
-  void close_popup(const std::string& id) {
+  void close_popup(StrView id) {
     while (rolltui_window_stack_depth(stack) > 1) {
       const RolltuiLayer* top = rolltui_window_stack_layer(stack, rolltui_window_stack_depth(stack) - 1);
-      if (view_of(top->id) == id) break;
+      if (StrView(top->id) == id) break;
       rolltui_window_stack_pop(stack);
     }
     if (rolltui_window_stack_depth(stack) > 1) rolltui_window_stack_pop(stack);
@@ -961,10 +968,10 @@ struct App {
       case ROLLTUI_MENU_EVENT_NONE: return true;
       case ROLLTUI_MENU_EVENT_CLOSED: close_popup("menu"); return true;
       case ROLLTUI_MENU_EVENT_CHOOSE:
-        if (ev.id == "theme") { theme_arg.clear(); ThemePresetReport rep; if (!store->load(str_of(ev.value), rep, persist)) hint = str_of(rep.error); else hint = rep.summary(); }
-        else if (ev.id == "layout") { layout_arg.clear(); LayoutPresetReport rep; if (!lstore->load(str_of(ev.value), rep, persist)) hint = str_of(rep.error); else hint = rep.summary(); }
+        if (ev.id == "theme") { theme_arg.clear(); ThemePresetReport rep; if (!store->load(ev.value, rep, persist)) hint.assign(rep.error); else hint = rep.summary(); }
+        else if (ev.id == "layout") { layout_arg.clear(); LayoutPresetReport rep; if (!lstore->load(ev.value, rep, persist)) hint.assign(rep.error); else hint = rep.summary(); }
         else if (ev.id == "depth") depth = rolltui_detect_color_depth(nullptr, nullptr, ev.value.c_str());
-        else if (ev.id == "mode") { mode_flag.reset(); if (store) store->set_mode(str_of(ev.value), persist); }
+        else if (ev.id == "mode") { mode_flag.reset(); if (store) store->set_mode(ev.value, persist); }
         return true;
       case ROLLTUI_MENU_EVENT_TOGGLE:
         if (ev.id == "ambiguous") ambiguous = ev.checked != 0;
@@ -989,14 +996,14 @@ struct App {
     if (theme_arg.empty()) return true;
     ThemePresetReport rep;
     theme_mtime = mtime_of(theme_arg);
-    if (!store->load(theme_arg, rep, /*persist=*/false)) { theme_note = str_of(rep.error); return false; }
+    if (!store->load(theme_arg, rep, /*persist=*/false)) { theme_note.assign(rep.error); return false; }
     theme_note = rep.summary();
-    if (rep.colours.missing_roles_n != 0) theme_note = std::to_string(rep.colours.missing_roles_n) + " roles missing (inherit text)";
+    if (rep.colours.missing_roles_n != 0) theme_note = rolltui::format("%zu roles missing (inherit text)", static_cast<std::size_t>(rep.colours.missing_roles_n));
     return true;
   }
   void maybe_reload_theme() {
     if (theme_arg.empty() || ThemeStore::is_shipped(theme_arg)) return;
-    if (theme_arg.find('/') == std::string::npos && theme_arg.find(".json") == std::string::npos) return;
+    if (!StrView(theme_arg).contains('/') && !StrView(theme_arg).contains(".json")) return;
     long m = mtime_of(theme_arg);
     if (m != theme_mtime) load_theme_arg();
   }
@@ -1004,11 +1011,11 @@ struct App {
     if (!layout_arg.empty()) {
       LayoutPresetReport rep;
       layout_mtime = mtime_of(layout_arg);
-      if (!lstore->load(layout_arg, rep, /*persist=*/false)) layout_note = str_of(rep.error);
+      if (!lstore->load(layout_arg, rep, /*persist=*/false)) layout_note.assign(rep.error);
       else {
         layout_note.clear();
-        if (rep.layout.unknown_keys_n != 0) layout_note += "unknown: " + str_of(rep.layout.unknown_keys[0]) + "; ";
-        if (rep.layout.bad_values_n != 0) layout_note += "bad: " + str_of(rep.layout.bad_values[0]) + "; ";
+        if (rep.layout.unknown_keys_n != 0) rolltui::appendf(layout_note, "unknown: %s; ", rep.layout.unknown_keys[0].c_str());
+        if (rep.layout.bad_values_n != 0) rolltui::appendf(layout_note, "bad: %s; ", rep.layout.bad_values[0].c_str());
       }
     }
     sync_look();
@@ -1017,7 +1024,7 @@ struct App {
   }
   void maybe_reload_layout() {
     if (layout_arg.empty() || LayoutStore::is_shipped(layout_arg)) return;
-    if (layout_arg.find('/') == std::string::npos && layout_arg.find(".json") == std::string::npos) return;
+    if (!StrView(layout_arg).contains('/') && !StrView(layout_arg).contains(".json")) return;
     long m = mtime_of(layout_arg);
     if (m != layout_mtime) load_layout_arg();
   }
@@ -1027,7 +1034,7 @@ struct App {
     if (store && store->version() != store_seen) {
       store_seen = store->version();
       ThemeValueHandle working = store->working();
-      mode = mode_flag ? *mode_flag : mode_from_setting(view_of(working->mode)).value_or(detected_mode);
+      mode = mode_flag ? *mode_flag : mode_from_setting(working->mode).value_or(detected_mode);
       RolltuiThemeReport rep{};
       RolltuiStyle new_styles[ROLLTUI_ROLE_COUNT]{};
       RolltuiStr new_name{};
@@ -1037,11 +1044,11 @@ struct App {
         rolltui_context_set_scrollbar_glyphs(ctx, &g); }
       if (new_effects) {
         std::copy(std::begin(new_styles), std::end(new_styles), resolved_styles);
-        resolved_name = str_of(new_name);
+        resolved_name.assign(new_name);
         rolltui_effect_map_free(effects_map);
         effects_map = new_effects;
       } else {
-        theme_note = "colours unusable: " + str_of(rep.error);
+        theme_note = RolltuiStr("colours unusable: ") + rep.error;
         RolltuiEffectMap* fallback = rolltui_theme_builtin_fill("default-dark", 12, resolved_styles, ROLLTUI_ROLE_COUNT);
         resolved_name = "default-dark";
         rolltui_effect_map_free(effects_map);
@@ -1076,8 +1083,8 @@ struct App {
   bool load_bindings_arg() {
     if (bindings_arg.empty()) return true;
     BindingsPresetReport rep;
-    if (!bstore->load(bindings_arg, rep, /*persist=*/false)) { hint = str_of(rep.error); return false; }
-    if (!rep.clean()) hint = "bindings: " + rep.summary();
+    if (!bstore->load(bindings_arg, rep, /*persist=*/false)) { hint.assign(rep.error); return false; }
+    if (!rep.clean()) hint = RolltuiStr("bindings: ") + rep.summary();
     return true;
   }
   // ---- the theme editor (milestone 14) ----
@@ -1154,46 +1161,50 @@ struct App {
   // domain's own serialiser, so the file is what the store would have written by name — to a
   // folder and a name a person chose. With no editor open there is nothing to write, and the
   // status line says so rather than guessing.
-  bool preset_text(std::string& out, std::string& what) {
-    auto put = [](void* c, const char* s, std::size_t n) { static_cast<std::string*>(c)->append(s, n); };
-    auto from = [&](RolltuiPresetDomain* d, RolltuiPresetStore* s, std::string name) {
+  bool preset_text(RolltuiStr& out, RolltuiStr& what) {
+    auto put = [](void* c, const char* s, std::size_t n) { static_cast<RolltuiStr*>(c)->append(s, n); };
+    auto from = [&](RolltuiPresetDomain* d, RolltuiPresetStore* s, StrView label) {
       if (!d || !s) return false;
-      if (const std::size_t sp = name.find(" ("); sp != std::string::npos) name.erase(sp);
+      StrView name = label;
+      if (const std::size_t sp = name.find(" ("); sp != StrView::npos) name = name.first(sp);
       d->to_json(d, rolltui_preset_store_working(s), name.data(), name.size(), put, &out);
       return true;
     };
     switch (editor_mode) {
-      case EditorMode::Theme: what = "theme"; return from(rolltui_preset_domain_theme(ctx), store ? store->handle() : nullptr, store ? store->label() : "");
-      case EditorMode::Layout: what = "layout"; return from(rolltui_preset_domain_layout(ctx), lstore ? lstore->handle() : nullptr, lstore ? lstore->label() : "");
-      case EditorMode::Keys: what = "key bindings"; return from(rolltui_preset_domain_bindings(ctx), bstore ? bstore->handle() : nullptr, bstore ? bstore->label() : "");
+      case EditorMode::Theme: what = "theme"; return from(rolltui_preset_domain_theme(ctx), store ? store->handle() : nullptr, store ? StrView(store->label()) : StrView());
+      case EditorMode::Layout: what = "layout"; return from(rolltui_preset_domain_layout(ctx), lstore ? lstore->handle() : nullptr, lstore ? StrView(lstore->label()) : StrView());
+      case EditorMode::Keys: what = "key bindings"; return from(rolltui_preset_domain_bindings(ctx), bstore ? bstore->handle() : nullptr, bstore ? StrView(bstore->label()) : StrView());
       case EditorMode::Menu: what = "menu"; out = meditor.to_json(); return true;
       case EditorMode::None: return false;
     }
     return false;
   }
   void open_save_dialog() {
-    std::string text, what;
+    RolltuiStr text, what;
     if (!preset_text(text, what)) { note = "open an editor first: a file save writes the preset being edited"; return; }
     if (rolltui_window_stack_has_popup(stack, "save", 4)) return;
-    const std::string at = fixture_path.empty() ? std::string(".") : fixture_path.substr(0, fixture_path.find_last_of('/') + 1);
+    const std::size_t slash = StrView(fixture_path).rfind('/');
+    const StrView at = fixture_path.empty() ? StrView(".") : StrView(fixture_path).first(slash == StrView::npos ? 0 : slash + 1);
     rolltui_windows_set_picker_dir(windows, "filepicker:save", 15, at.data(), at.size());
     RolltuiLayer popup = save_popup();
     rolltui_window_stack_push(stack, &popup);
-    note = "save the " + what + ": a name, Enter";
+    note = RolltuiStr("save the ") + what + ": a name, Enter";
   }
-  void save_preset_file(const std::string& name) {
-    std::string text, what;
+  void save_preset_file(StrView name) {
+    RolltuiStr text, what;
     if (name.empty()) { note = "a name, then Enter"; return; }
     if (!preset_text(text, what)) { note = "nothing being edited to save"; close_popup("save"); return; }
-    RolltuiStr dir{};
+    RolltuiStr dir;
     if (!rolltui_windows_picker_dir(windows, "filepicker:save", 15, &dir)) { note = "no folder chosen"; return; }
-    const std::string folder(dir.p ? dir.p : "", dir.n);
-    rolltui_str_free(&dir);
-    const std::string path = (folder == "/" ? "" : folder) + "/" + name;
-    std::ofstream out(path, std::ios::binary);
-    out << text;
-    note = out ? "wrote the " + what + " to " + path : "could not write " + path;
-    if (out) close_popup("save");
+    RolltuiStr path = rolltui::own(dir == "/" ? StrView() : StrView(dir));
+    path += "/";
+    path += name;
+    FILE* out = std::fopen(path.c_str(), "wb");
+    const bool wrote = out && std::fwrite(text.data(), 1, text.size(), out) == text.size();
+    if (out) std::fclose(out);
+    if (wrote) note = RolltuiStr("wrote the ") + what + " to " + path;
+    else note = RolltuiStr("could not write ") + path;
+    if (wrote) close_popup("save");
   }
 
   static RolltuiLayer confirm_popup() {
@@ -1224,11 +1235,11 @@ struct App {
     RolltuiThemeReport rep{};
     { ThemeValueHandle wc = store->working(); teditor.load(wc->colours, &rep); }
     rolltui_theme_report_release(&rep);
-    std::vector<std::string> names, shipped;
+    StrVec names;
     RolltuiPresetList pl;
     store->list(pl);
-    for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));
-    for (const std::string& n : ThemeStore::shipped_names()) shipped.push_back(n);
+    for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name));
+    const StrVec shipped = ThemeStore::shipped_names();
     teditor.set_presets(names);
     teditor.set_shipped(shipped, store->options().may_write_shipped);
     teditor.set_mode(mode == ROLLTUI_MODE_DARK ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT);
@@ -1248,11 +1259,11 @@ struct App {
     // The LIVE table, not the store's working copy: an action is editable here only if
     // something declared it. What this hands over is what the studio is actually running.
     keditor.load(bindings);
-    std::vector<std::string> names, shipped;
+    StrVec names;
     RolltuiPresetList pl;
     bstore->list(pl);
-    for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));
-    for (const std::string& n : BindingsStore::shipped_names()) shipped.push_back(n);
+    for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name));
+    const StrVec shipped = BindingsStore::shipped_names();
     keditor.set_presets(names);
     keditor.set_shipped(shipped, bstore->options().may_write_shipped);
     editor_open = true;
@@ -1269,13 +1280,13 @@ struct App {
     if (editor_mode == EditorMode::Menu) { close_editor(); return; }
     close_editor();
     meditor.set_menus(menu_names());
-    std::vector<std::string> actions;
+    StrVec actions;
     for (std::size_t i = 0; i < rolltui_bindings_row_count(bindings); ++i) {
       std::size_t n = 0;
       const char* p = rolltui_bindings_row_at(bindings, i, &n);
-      actions.emplace_back(p, n);
+      actions.add(StrView(p, n));
     }
-    meditor.set_actions(std::move(actions));
+    meditor.set_actions(actions);
     editor_open = true;
     editor_mode = EditorMode::Menu;
     { RolltuiLayer popup = editor_popup("menu editor"); rolltui_window_stack_push(stack, &popup); }
@@ -1294,32 +1305,34 @@ struct App {
         if (o.value.empty()) { hint = "a menu file needs a name"; break; }
         std::size_t dir_len = 0;
         const char* dir_p = rolltui_windows_dir(windows, &dir_len);
-        const std::string dir(dir_p ? dir_p : "", dir_len);
+        const RolltuiStr dir = rolltui::own(StrView(dir_p, dir_len));
         if (dir.empty()) { hint = "no preset directory to write a menu into"; break; }
         std::error_code ec;
-        std::filesystem::create_directories(dir + "/menus", ec);
-        const std::string path = dir + "/menus/" + o.value + ".json";
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        if (!out) { hint = "cannot write " + path; break; }
-        out << meditor.to_json() << "\n";
-        out.close();
-        hint = "saved menu file " + path;
+        std::filesystem::create_directories((dir + "/menus").c_str(), ec);
+        const RolltuiStr path = dir + "/menus/" + o.value + ".json";
+        FILE* out = std::fopen(path.c_str(), "wb");
+        if (!out) { hint = RolltuiStr("cannot write ") + path; break; }
+        RolltuiStr json = meditor.to_json();
+        json += '\n';
+        std::fwrite(json.data(), 1, json.size(), out);
+        std::fclose(out);
+        hint = RolltuiStr("saved menu file ") + path;
         meditor.set_menus(menu_names());  // it resolves now, so the Load list and the hints say so
         break;
       }
       case K::LoadMenu: {
-        const std::string text = menu_json(o.value);
-        if (text.empty()) { hint = "no menu file '" + o.value + "'"; break; }
+        const RolltuiStr text = menu_json(o.value);
+        if (text.empty()) { hint = RolltuiStr("no menu file '") + o.value + "'"; break; }
         const char* json = text.data();
         const std::size_t json_len = text.size();
         MenuItem root;
         RolltuiMenuLoadReport rep{};
         if (rolltui_menu_parse_json(json, json_len, &root, &rep)) {
           meditor.load(root);
-          hint = rolltui_menu_load_report_clean(&rep) ? "loaded menu " + o.value
-                                                      : "loaded '" + o.value + "' with problems";
+          if (rolltui_menu_load_report_clean(&rep)) hint = RolltuiStr("loaded menu ") + o.value;
+          else hint = RolltuiStr("loaded '") + o.value + "' with problems";
         } else {
-          hint = "cannot read menu '" + o.value + "'";
+          hint = RolltuiStr("cannot read menu '") + o.value + "'";
         }
         rolltui_menu_load_report_release(&rep);
         break;
@@ -1347,7 +1360,7 @@ struct App {
     if (m.h > 0) draw_raw_menu(meditor.menu(), f, rn.focused != 0);
     int y = r.y + m.h;
     const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
-    if (const std::string line = meditor.selection_line(); !line.empty() && y < r.y + r.h)
+    if (const RolltuiStr line = meditor.selection_line(); !line.empty() && y < r.y + r.h)
       put_text(f, r.x, y++, line, label, r.w);
     if (y < r.y + r.h) { meditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
@@ -1362,28 +1375,38 @@ struct App {
       case K::SaveAs: {
         RolltuiStr err;
         const int r = bstore->save_as(o.value, pending_save == o.value, err);
-        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "bindings preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
-        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved bindings preset '" + o.value + "'" : str_of(err); }
-        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; RolltuiPresetList pl; bstore->list(pl); for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name)); keditor.set_presets(names); }
+        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save.assign(o.value); hint = RolltuiStr("bindings preset '") + o.value + "' exists; Enter the same name again to overwrite"; }
+        else {
+          pending_save.clear();
+          if (r == ROLLTUI_SAVE_SAVED) hint = RolltuiStr("saved bindings preset '") + o.value + "'";
+          else hint = std::move(err);
+        }
+        if (r == ROLLTUI_SAVE_SAVED) { StrVec names; RolltuiPresetList pl; bstore->list(pl); for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name)); keditor.set_presets(names); }
         break;
       }
       case K::WriteShipped:
-        ask("Write the SHIPPED bindings preset '" + o.value + "' into " + bstore->options().shipped_dir + "? (y/n)", [this, name = o.value] {
+        confirm_arg.assign(o.value);
+        ask(RolltuiStr("Write the SHIPPED bindings preset '") + o.value + "' into " + bstore->options().shipped_dir + "? (y/n)", [this] {
           RolltuiStr err;
-          hint = bstore->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped bindings preset '" + name + "' (rebuild to embed it)" : str_of(err);
+          if (bstore->save_as(confirm_arg, true, err) == ROLLTUI_SAVE_SAVED) hint = RolltuiStr("wrote shipped bindings preset '") + confirm_arg + "' (rebuild to embed it)";
+          else hint = std::move(err);
         });
         break;
       case K::LoadPreset: {
         BindingsPresetReport rep;
-        if (!bstore->load(o.value, rep, persist)) hint = str_of(rep.error);
-        else { keditor.load(bstore->working().handle()); hint = rep.clean() ? "loaded bindings '" + o.value + "'" : "loaded '" + o.value + "' with problems: " + rep.summary(); }
+        if (!bstore->load(o.value, rep, persist)) hint.assign(rep.error);
+        else {
+          keditor.load(bstore->working().handle());
+          if (rep.clean()) hint = RolltuiStr("loaded bindings '") + o.value + "'";
+          else hint = RolltuiStr("loaded '") + o.value + "' with problems: " + rep.summary();
+        }
         break;
       }
       case K::ResetLoaded:
-        ask("Reset every binding to the preset '" + bstore->origin() + "'? (y/n)", [this] {
+        ask(RolltuiStr("Reset every binding to the preset '") + bstore->origin() + "'? (y/n)", [this] {
           BindingsPresetReport rep;
           if (std::optional<BindingsHandle> b = bstore->get(bstore->origin(), rep)) { keditor.replace(rolltui_bindings_clone(b->handle())); keys_outcome({K::Committed, {}}); hint = "reset (undoable)"; }
-          else hint = str_of(rep.error);
+          else hint.assign(rep.error);
         });
         break;
       case K::Closed:
@@ -1407,7 +1430,7 @@ struct App {
     if (y < r.y + r.h) {
       editor_line.assign("preset: ");
       bstore->label(keys_label_str);
-      editor_line += view_of(keys_label_str);
+      editor_line += keys_label_str;
       editor_line += " \xC2\xB7 Enter on an action, then press the chord";
       put_text(f, r.x, y++, editor_line, label, r.w);
     }
@@ -1418,10 +1441,10 @@ struct App {
     if (editor_mode == EditorMode::Layout) { close_editor(); return; }
     close_editor();
     leditor.load(lstore->working());
-    std::vector<std::string> names;
+    StrVec names;
     RolltuiPresetList pl;
     lstore->list(pl);
-    for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));  // shipped first, then the user's
+    for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name));  // shipped first, then the user's
     leditor.set_layouts(names);
     // what this list is has changed, and the change is the milestone. It used to be
     // the set of contents the author was ALLOWED to name — the target app's under `--app`, the
@@ -1429,14 +1452,14 @@ struct App {
     // a field that accepts anything: a designer names what the screen needs, and a name this
     // tool cannot build previews as a labelled placeholder instead of being refused.
     leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
-    std::vector<std::string> kinds;
+    StrVec kinds;
     for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
       std::size_t n = 0;
       const char* p = rolltui_widget_kind_name(ctx, i, &n);
-      kinds.emplace_back(p, n);
+      kinds.add(StrView(p, n));
     }
-    for (const char* own : {"editor", "confirm", "report"}) kinds.emplace_back(own);
-    leditor.set_kinds(std::move(kinds));
+    for (const char* mine : {"editor", "confirm", "report"}) kinds.add(StrView(mine));
+    leditor.set_kinds(kinds);
     // The menu files that RESOLVE right now — the preset directory the target app and this
     // tool share, this binary's own embedded menus, and the library's shipped ones. A name
     // outside all three is still typeable, because the target may embed a menu of its own.
@@ -1466,7 +1489,7 @@ struct App {
     RolltuiRect sel{};
     bool found = false;
     for (const RolltuiResolvedNode& rn : nodes)
-      if (view_of(rn.node->id) == leditor.selected()) { sel = rn.outer; found = true; break; }
+      if (rn.node->id == leditor.selected()) { sel = rn.outer; found = true; break; }
     if (!found) return;
     if (!sel.intersect(editor_rect(editor_left)).empty()) {
       if (sel.intersect(editor_rect(!editor_left)).empty()) {
@@ -1480,44 +1503,44 @@ struct App {
   // Every menu name a `menu:` window could resolve right now — the union of the preset
   // directory's menus/*.json, the host's own embedded ones, and the library's shipped ones,
   // deduplicated and sorted.
-  std::vector<std::string> menu_names() const {
-    std::vector<std::string> out;
-    auto add = [&out](std::string name) {
-      if (std::find(out.begin(), out.end(), name) == out.end()) out.push_back(std::move(name));
+  StrVec menu_names() const {
+    StrVec out;
+    auto add = [&out](StrView name) {
+      if (!out.contains(name)) out.add(name);
     };
     std::size_t dir_len = 0;
     const char* dir_p = rolltui_windows_dir(windows, &dir_len);
-    if (const std::string_view d(dir_p, dir_len); !d.empty()) {
+    if (const StrView d(dir_p, dir_len); !d.empty()) {
       std::error_code ec;
-      for (const auto& e : std::filesystem::directory_iterator(std::string(d) + "/menus", ec))
+      for (const auto& e : std::filesystem::directory_iterator((rolltui::own(d) + "/menus").c_str(), ec))
         if (e.path().extension() == ".json") add(e.path().stem().string());
     }
     for (std::size_t i = 0; i < rolltui_windows_host_menu_count(windows); ++i) {
       std::size_t n = 0;
       const char* p = rolltui_windows_host_menu_name_at(windows, i, &n);
-      add(std::string(p, n));
+      add(StrView(p, n));
     }
     // the library's own shipped menus (menus/*.json under presets/): the domain the
     // preset store's own directory listing does not otherwise reach.
-    for (std::size_t i = 0; i < rolltui_kMenuCount; ++i) add(std::string(rolltui_kMenus[i].name));
-    std::sort(out.begin(), out.end());
+    for (std::size_t i = 0; i < rolltui_kMenuCount; ++i) add(rolltui_kMenus[i].name);
+    std::sort(out.begin(), out.end(), [](const RolltuiStr& a, const RolltuiStr& b) { return StrView(a) < StrView(b); });
     return out;
   }
   // One menu file's TEXT, through the same three rungs `menu:<name>` itself resolves through
   // and in the same order (rolltui.h): the preset directory, this binary's embedded menus, the
   // library's shipped ones. `menu_names()` beside this lists exactly these three.
-  std::string menu_json(const std::string& name) const {
+  RolltuiStr menu_json(StrView name) const {
     std::size_t dir_len = 0;
     const char* dir_p = rolltui_windows_dir(windows, &dir_len);
-    if (const std::string_view d(dir_p ? dir_p : "", dir_len); !d.empty()) {
+    if (const StrView d(dir_p, dir_len); !d.empty()) {
       bool ok = false;
-      const std::string text = read_file(std::string(d) + "/menus/" + name + ".json", ok);
+      RolltuiStr text = read_file(rolltui::own(d) + "/menus/" + name + ".json", ok);
       if (ok) return text;
     }
     std::size_t n = 0;
-    if (const char* p = rolltui_windows_host_menu(windows, name.data(), name.size(), &n); p) return std::string(p, n);
+    if (const char* p = rolltui_windows_host_menu(windows, name.data(), name.size(), &n); p) return rolltui::own(StrView(p, n));
     for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
-      if (name == rolltui_kMenus[i].name) return std::string(rolltui_kMenus[i].text);
+      if (name == rolltui_kMenus[i].name) return rolltui::own(rolltui_kMenus[i].text);
     return {};
   }
   void layout_outcome(const LayoutEditor::Outcome& o) {
@@ -1535,33 +1558,33 @@ struct App {
         // the path and writing the file directly leaves the store never learning it happened.
         if (o.value.empty()) { hint = "a layout file needs a name"; break; }
         RolltuiLayout l = (leditor.committed()).clone();
-        set_str(l.name, o.value);
+        l.name.assign(o.value);
         lstore->set_working(l, persist);
         RolltuiStr err;
         const int r = lstore->save_as(o.value, pending_save == o.value, err);
-        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "layout '" + o.value + "' exists; Enter the same name again to overwrite"; }
-        else if (r != ROLLTUI_SAVE_SAVED) { pending_save.clear(); hint = str_of(err); }
+        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save.assign(o.value); hint = RolltuiStr("layout '") + o.value + "' exists; Enter the same name again to overwrite"; }
+        else if (r != ROLLTUI_SAVE_SAVED) { pending_save.clear(); hint = std::move(err); }
         else {
           pending_save.clear();
           RolltuiStr path;
           rolltui_preset_store_preset_path(lstore->handle(), o.value.data(), o.value.size(), &path);
-          hint = "saved layout file " + str_of(path);
-          std::vector<std::string> names;
+          hint = RolltuiStr("saved layout file ") + path;
+          StrVec names;
           RolltuiPresetList pl;
           lstore->list(pl);
-          for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));
+          for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name));
           leditor.set_layouts(names);
         }
         break;
       }
       case K::LoadLayout: {
         LayoutPresetReport rep;
-        if (!lstore->load(o.value, rep, persist)) hint = str_of(rep.error);
-        else { leditor.replace(lstore->working()); hint = "loaded layout " + lstore->label(); }
+        if (!lstore->load(o.value, rep, persist)) hint.assign(rep.error);
+        else { leditor.replace(lstore->working()); hint = RolltuiStr("loaded layout ") + lstore->label(); }
         break;
       }
       case K::ResetLoaded:
-        ask("Reset the layout to the working copy's '" + lstore->label() + "'? (y/n)", [this] {
+        ask(RolltuiStr("Reset the layout to the working copy's '") + lstore->label() + "'? (y/n)", [this] {
           leditor.replace(lstore->working());
           hint = "reset (undoable)";
         });
@@ -1573,18 +1596,18 @@ struct App {
   }
   // The window under a pointer in the base layer, and the seam a press may be on: the
   // right/bottom edge cell of a child that has a following sibling in its Row/Column.
-  std::optional<std::string> window_at(int x, int y) {
-    std::optional<std::string> best;
+  std::optional<RolltuiStr> window_at(int x, int y) {
+    std::optional<RolltuiStr> best;
     std::vector<RolltuiResolvedNode> nodes;
     rolltui_resolve_tree(&rolltui_window_stack_base(stack)->root, layout_area(), layout_area(), 0, collect_resolved, &nodes);
     for (const RolltuiResolvedNode& rn : nodes)
-      if (rn.node->is_window() && rn.outer.contains(x, y)) best = str_of(rn.node->id);
+      if (rn.node->is_window() && rn.outer.contains(x, y)) best = rolltui::own(rn.node->id);
     return best;
   }
   // A seam: the two edge cells where two visible siblings meet (each owns one). The node that takes the new
   // size is the FIXED-size one when the other fills (dragging the fill would leave a
   // gap the fixed sibling never closes); otherwise the one before the seam.
-  struct Seam { std::string id; bool after; bool horizontal; };
+  struct Seam { RolltuiStr id; bool after; bool horizontal; };
   std::optional<Seam> seam_at(int x, int y) {
     std::vector<RolltuiResolvedNode> nodes;
     rolltui_resolve_tree(&rolltui_window_stack_base(stack)->root, layout_area(), layout_area(), 0, collect_resolved, &nodes);
@@ -1602,7 +1625,7 @@ struct App {
                                      : (y == edge || y == edge + 1) && x >= c.outer.x && x < c.outer.x + c.outer.w;
           if (!on) continue;
           const bool size_after = child.size.fill && !next.size.fill;
-          return Seam{str_of((size_after ? next.id : child.id)), size_after, horizontal};
+          return Seam{rolltui::own(size_after ? next.id : child.id), size_after, horizontal};
         }
       }
     }
@@ -1613,7 +1636,7 @@ struct App {
   // ring rather than redrawing it: a highlight's whole difference from the border it
   // highlights is its COLOUR, so tinting is both the smaller act and the correct one.
   void draw_selection(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
-    if (editor_mode != EditorMode::Layout || rn.layer != 0 || !(view_of(rn.node->id) == leditor.selected())) return;
+    if (editor_mode != EditorMode::Layout || rn.layer != 0 || !(rn.node->id == leditor.selected())) return;
     if (rn.node->border == rolltui::Border::None) {
       tint(f, rn.outer.intersect(layout_area()), style(ROLLTUI_ROLE_SELECTION));
       return;
@@ -1625,8 +1648,8 @@ struct App {
                                     RolltuiRect{o.x, o.y, 1, o.h}, RolltuiRect{o.x + o.w - 1, o.y, 1, o.h}})
       tint(f, edge.intersect(layout_area()), hl);
   }
-  void ask(std::string text, std::function<void()> action) {
-    confirm_text = std::move(text);
+  void ask(StrView text, std::function<void()> action) {
+    confirm_text = rolltui::own(text);
     confirm_action = std::move(action);
     RolltuiLayer popup = confirm_popup();
     rolltui_window_stack_push(stack, &popup);
@@ -1641,25 +1664,31 @@ struct App {
       case K::SaveAs: {
         RolltuiStr err;
         const int r = store->save_as(o.value, pending_save == o.value, err);
-        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
-        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved preset '" + o.value + "'" : str_of(err); }
-        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; RolltuiPresetList pl; store->list(pl); for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name)); teditor.set_presets(names); }
+        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save.assign(o.value); hint = RolltuiStr("preset '") + o.value + "' exists; Enter the same name again to overwrite"; }
+        else {
+          pending_save.clear();
+          if (r == ROLLTUI_SAVE_SAVED) hint = RolltuiStr("saved preset '") + o.value + "'";
+          else hint = std::move(err);
+        }
+        if (r == ROLLTUI_SAVE_SAVED) { StrVec names; RolltuiPresetList pl; store->list(pl); for (const RolltuiPresetInfo& p : pl) names.add(StrView(p.name)); teditor.set_presets(names); }
         break;
       }
       case K::WriteShipped:
-        ask("Write the SHIPPED preset '" + o.value + "' into " + store->options().shipped_dir + "? (y/n)", [this, name = o.value] {
+        confirm_arg.assign(o.value);
+        ask(RolltuiStr("Write the SHIPPED preset '") + o.value + "' into " + store->options().shipped_dir + "? (y/n)", [this] {
           RolltuiStr err;
-          hint = store->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped preset '" + name + "' (rebuild to embed it)" : str_of(err);
+          if (store->save_as(confirm_arg, true, err) == ROLLTUI_SAVE_SAVED) hint = RolltuiStr("wrote shipped preset '") + confirm_arg + "' (rebuild to embed it)";
+          else hint = std::move(err);
         });
         break;
       case K::LoadPreset: {
         ThemePresetReport rep;
-        if (!store->load(o.value, rep, persist)) hint = str_of(rep.error);
-        else { RolltuiThemeReport tr{}; ThemeValueHandle wc = store->working(); teditor.load(wc->colours, &tr); rolltui_theme_report_release(&tr); hint = "loaded '" + o.value + "'"; }
+        if (!store->load(o.value, rep, persist)) hint.assign(rep.error);
+        else { RolltuiThemeReport tr{}; ThemeValueHandle wc = store->working(); teditor.load(wc->colours, &tr); rolltui_theme_report_release(&tr); hint = RolltuiStr("loaded '") + o.value + "'"; }
         break;
       }
       case K::ResetLoaded:
-        ask("Reset every role to the preset '" + store->origin() + "'? (y/n)", [this] {
+        ask(RolltuiStr("Reset every role to the preset '") + store->origin() + "'? (y/n)", [this] {
           ThemePresetReport rep;
           if (ThemeValueHandle p = store->get(store->origin(), rep)) {
             RolltuiThemeReport tr{};
@@ -1668,10 +1697,10 @@ struct App {
             RolltuiEffectMap* deff = rolltui_theme_load(p->colours, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), dstyles, &dname, &tr);
             RolltuiEffectMap* leff = rolltui_theme_load(p->colours, ROLLTUI_MODE_LIGHT, rolltui_theme_default_vocab(), lstyles, &lname, &tr);
             if (deff && leff) {
-              teditor.replace({std::to_array(dstyles), std::to_array(lstyles), str_of(dname), str_of(lname)}, deff);
+              teditor.replace({std::to_array(dstyles), std::to_array(lstyles), std::move(dname), std::move(lname)}, deff);
               rolltui_effect_map_free(leff);
               editor_outcome({K::Committed, {}});
-              hint = "reset to '" + store->origin() + "' (undoable)";
+              hint = RolltuiStr("reset to '") + store->origin() + "' (undoable)";
             } else {
               rolltui_effect_map_free(deff);
               rolltui_effect_map_free(leff);
@@ -1679,7 +1708,7 @@ struct App {
             rolltui_str_free(&dname);
             rolltui_str_free(&lname);
             rolltui_theme_report_release(&tr);
-          } else hint = str_of(rep.error);
+          } else hint.assign(rep.error);
         });
         break;
       case K::ResetBuiltin:
@@ -1757,7 +1786,7 @@ struct App {
     // The selected node IN WORDS, which the tree above does not repeat: its size, its border,
     // whether it is hidden, and — the one thing nothing else says — whether this binary can
     // preview its content at all.
-    if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
+    if (const RolltuiStr line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
       put_text(f, r.x, y++, line, label, r.w);
     // SHORT ENOUGH TO FINISH. A hint cut off mid-instruction is worse than a shorter one that
     // ends: "drag an edge r" teaches nobody anything and looks like a defect. The panel is
@@ -1822,7 +1851,7 @@ struct App {
       const RolltuiWrapGrapheme* gs = nullptr; std::size_t gn = 0;
       int width = 0, indent = 0, hard = 0;
       rolltui_wrap_line(wrap_scratch, i, &text_p, &text_n, &gs, &gn, &width, &indent, &hard);
-      put_text(f, r.x + indent, y++, std::string_view(text_p, text_n), style(ROLLTUI_ROLE_WARNING), std::max(r.w - indent, 0));
+      put_text(f, r.x + indent, y++, StrView(text_p, text_n), style(ROLLTUI_ROLE_WARNING), std::max(r.w - indent, 0));
     }
     if (y < r.y + r.h) put_text(f, r.x, y, "y = yes    n / Esc = no", style(ROLLTUI_ROLE_PROMPT), r.w);
   }
@@ -1869,7 +1898,7 @@ struct App {
       std::vector<RolltuiToolAction> out;
       auto add = [&out](std::span<const RolltuiToolAction> ts) { for (const RolltuiToolAction& a : ts) out.push_back(a); };
       for (const RolltuiToolAction& a : rolltui::tools::editor_actions())
-        if (menu_editor_mounted() || std::string_view(a.name) != "editor.menu") out.push_back(a);
+        if (menu_editor_mounted() || StrView(a.name) != "editor.menu") out.push_back(a);
       add(rolltui::tools::studio_actions());
       return out;
     }();
@@ -1906,7 +1935,7 @@ struct App {
       return true;
     }
     bool ok;
-    std::string text = read_file(fixture_path, ok);
+    const RolltuiStr text = read_file(fixture_path, ok);
     if (!ok) return false;
     doc = parse_fixture(text);
     return true;
@@ -1929,7 +1958,7 @@ struct App {
   void take_picked_file() {
     RolltuiStr got{};
     if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
-      const std::string path(got.p, got.n);
+      const RolltuiStr& path = got;
       // THE FILE SAYS WHAT IT IS. A theme, a layout and a bindings file each parse as exactly one
       // domain and as nothing else, so offering a second chord for "add" rather than "preview"
       // would ask a person to classify a file the library can classify itself. Each store refuses
@@ -1944,19 +1973,20 @@ struct App {
         RolltuiStr err{};
         const int r = rolltui_preset_store_add(t.store, path.data(), path.size(), nullptr, 0, &err);
         if (r == ROLLTUI_SAVE_SAVED) {
-          hint = std::string("added the ") + t.what + " " + path;
+          hint = RolltuiStr("added the ") + t.what + " " + path;
           handled = true;
         } else if (r == ROLLTUI_SAVE_EXISTS_ASK || r == ROLLTUI_SAVE_REFUSED_SHIPPED) {
           // It IS this domain's — the name is what stopped it, and saying so is the point.
-          hint = std::string("that ") + t.what + " name is taken: " + str_of(err);
+          hint = RolltuiStr("that ") + t.what + " name is taken: " + err;
           handled = true;
         }
         rolltui_str_free(&err);
       }
       // Not a preset of any kind, so it is content to look at.
       if (!handled) {
-        fixture_path = path;
-        hint = load_fixture() ? "previewing " + path : "cannot read " + path;
+        fixture_path.assign(path);
+        if (load_fixture()) hint = RolltuiStr("previewing ") + path;
+        else hint = RolltuiStr("cannot read ") + path;
       }
       refresh_menu();  // an added preset joins the chooser without waiting for anything else
       while (rolltui_window_stack_depth(stack) > 1) rolltui_window_stack_pop(stack);
@@ -2029,14 +2059,14 @@ struct App {
   // When a fallback is in force the DRAWN layout is not the chosen one, so the chosen one's
   // modified flag describes something that is not on screen and is left unsaid.
   // Fills a caller-held string, so a warm frame allocates nothing here.
-  void layout_status(std::string& out) {
+  void layout_status(RolltuiStr& out) {
     if (stacked_fallback) {
-      out.assign(view_of(effective_layout().name));
+      out.assign(effective_layout().name);
       out += " (fallback)";
       return;
     }
-    if (lstore) { lstore->label(layout_label_str); out.assign(view_of(layout_label_str)); }
-    else out.assign(view_of(effective_layout().name));
+    if (lstore) { lstore->label(layout_label_str); out.assign(layout_label_str); }
+    else out.assign(effective_layout().name);
   }
 
   // ---- the sources the studio binds ----
@@ -2050,7 +2080,7 @@ struct App {
   //
   // The chord is the BINDINGS' to say, never this file's: an action nobody bound shows no chord
   // at all rather than a key that does nothing.
-  void label_with_chord(const char* text, const char* action, std::string& into) {
+  void label_with_chord(const char* text, const char* action, RolltuiStr& into) {
     into.assign(text);
     const std::size_t n = rolltui_bindings_chord_count(bindings, action, std::strlen(action));
     if (n == 0) return;
@@ -2062,7 +2092,7 @@ struct App {
     into.append(buf, bn);
   }
 
-  std::string theme_key_label, keys_key_label, layout_key_label;
+  RolltuiStr theme_key_label, keys_key_label, layout_key_label;
 
   void status_rows(RolltuiRows& out) {
     // Formatted on the stack or refilled into held strings; the rows copy once into their own
@@ -2095,11 +2125,11 @@ struct App {
 
   // `input:prompt`: a submitted line becomes a user entry at the end of the document,
   // so the studio exercises a growing transcript too.
-  void append_prompt(const std::string& text) {
+  void append_prompt(StrView text) {
     if (text.empty()) return;
     RolltuiDocEntry* e = rolltui_document_add(&doc);
-    set_str(e->id, "input" + std::to_string(submitted++));
-    set_str(e->text, text);
+    e->id = rolltui::format("input%d", submitted++);
+    rolltui::assign(e->text, text);
     e->markdown = 0;
     e->prefix = "> ";
     e->prefix_role = to_role(ROLLTUI_ROLE_PROMPT);
@@ -2113,7 +2143,7 @@ struct App {
 
   // Wrapped text from line `top`, with the transcript's "▼ N more" marker when there is
   // more below. Returns the total wrapped line count (what `top` must be clamped to).
-  int draw_scrolled_text(const RolltuiResolvedNode& rn, RolltuiFrame* f, std::string_view text, int top) {
+  int draw_scrolled_text(const RolltuiResolvedNode& rn, RolltuiFrame* f, StrView text, int top) {
     const RolltuiRect r = content_rect(rn);
     RolltuiWrapOptions wo{};
     wo.ambiguous_wide = ambiguous ? 1 : 0;
@@ -2126,14 +2156,14 @@ struct App {
       const RolltuiWrapGrapheme* gs = nullptr; std::size_t gn = 0;
       int width = 0, indent = 0, hard = 0;
       rolltui_wrap_line(wrap_scratch, i, &text_p, &text_n, &gs, &gn, &width, &indent, &hard);
-      put_text(f, r.x + indent, y++, std::string_view(text_p, text_n), style(ROLLTUI_ROLE_TEXT), std::max(r.w - indent, 0));
+      put_text(f, r.x + indent, y++, StrView(text_p, text_n), style(ROLLTUI_ROLE_TEXT), std::max(r.w - indent, 0));
     }
     const int below = total - std::max(top, 0) - r.h;
     char marker[ROLLTUI_MARKER_MAX];
     const std::size_t marker_len = rolltui_scroll_marker_text(below > 0 ? static_cast<std::size_t>(below) : 0, r.w, ambiguous ? 1 : 0, marker, sizeof marker);
     if (marker_len != 0) {
       const int mw = rolltui_u_display_width(u_scratch, marker, marker_len, ambiguous ? 1 : 0);
-      put_text(f, r.x + std::max(r.w - mw, 0), r.y + r.h - 1, std::string_view(marker, marker_len), style(ROLLTUI_ROLE_SCROLL_MARKER), mw);
+      put_text(f, r.x + std::max(r.w - mw, 0), r.y + r.h - 1, StrView(marker, marker_len), style(ROLLTUI_ROLE_SCROLL_MARKER), mw);
     }
     return total;
   }
@@ -2160,13 +2190,13 @@ struct App {
       // numbers formatted on the stack: a warm frame allocates nothing for it. Rebuilding it
       // with `+` costs a dozen temporaries a frame, and reading the Theme store's label by
       // value costs a deep compare with them.
-      std::string& status = status_line;
+      RolltuiStr& status = status_line;
       status.clear();
       status += ' ';
       // A FILE DIALOG'S LAST WORD FIRST: the line is cut from the right, and "wrote the theme
       // to …" is what a person just asked for.
       if (!note.empty()) { status += note; status += "  "; }
-      if (store) { store->label(theme_label_str); status += view_of(theme_label_str); } else status += resolved_name;
+      if (store) { store->label(theme_label_str); status += theme_label_str; } else status += resolved_name;
       status += editor_mode == EditorMode::Theme    ? " [theme editor]"
               : editor_mode == EditorMode::Layout ? " [layout editor]"
               : editor_mode == EditorMode::Keys   ? " [keys editor]"
@@ -2176,34 +2206,20 @@ struct App {
       layout_status(layout_row);
       status += layout_row;
       status += "  ";
-      append_count(status, w);
-      status += 'x';
-      append_count(status, h);
-      status += "  line ";
-      append_count(status, total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1);
-      status += '/';
-      append_count(status, total);
+      rolltui::appendf(status, "%dx%d", w, h);
+      rolltui::appendf(status, "  line %zu/%zu", static_cast<std::size_t>(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1), static_cast<std::size_t>(total));
       if (anchor.follow) status += "  follow";
       status += "  ";
       status += depth_name(depth);
       status += "  focus:";
-      if (focused) status += view_of(focused->id); else status += '-';
-      if (with_timing) { status += "  "; append_count(status, last_frame_us); status += " us"; }
+      if (focused) status += focused->id; else status += '-';
+      if (with_timing) rolltui::appendf(status, "  %ld us", last_frame_us);
       // The match count and position: the widget owns finding, a host owns saying so.
-      if (query_len != 0) {
-        status += "  find ";
-        append_count(status, rolltui_transcript_current_match_number(transcript()));
-        status += '/';
-        append_count(status, rolltui_transcript_match_count(transcript()));
-      }
-      if (copied_any) { status += "  copied "; append_count(status, copied.size()); status += 'B'; }
-      if (stacked_fallback) {
-        status += "  [stacked: below ";
-        append_count(status, layout.min_width);
-        status += 'x';
-        append_count(status, layout.min_height);
-        status += ']';
-      }
+      if (query_len != 0)
+        rolltui::appendf(status, "  find %zu/%zu", static_cast<std::size_t>(rolltui_transcript_current_match_number(transcript())),
+                         static_cast<std::size_t>(rolltui_transcript_match_count(transcript())));
+      if (copied_any) rolltui::appendf(status, "  copied %zuB", copied.size());
+      if (stacked_fallback) rolltui::appendf(status, "  [stacked: below %dx%d]", layout.min_width, layout.min_height);
       if (!theme_note.empty()) { status += "  ["; status += theme_note; status += ']'; }
       if (!layout_note.empty()) { status += "  ["; status += layout_note; status += ']'; }
       if (!window_note.empty()) { status += "  ["; status += window_note; status += ']'; }
@@ -2216,15 +2232,15 @@ struct App {
       // The hints come from the live table too.
       auto hk = [&](const char* action) {
         const std::size_t n = rolltui_bindings_chord_count(bindings, action, std::strlen(action));
-        if (n == 0) return std::string("-");
+        if (n == 0) return RolltuiStr("-");
         RolltuiChord c{};
         rolltui_bindings_chord_at(bindings, action, std::strlen(action), 0, &c);
         char buf[ROLLTUI_CHORD_STRING_MAX];
         const std::size_t bn = rolltui_chord_display(&c, buf, sizeof buf);
-        return std::string(buf, bn);
+        return rolltui::own(StrView(buf, bn));
       };
-      std::string help = "^C quit  " + hk("app.help") + " help  " + hk("app.menu") + " menu  " + hk("app.palette") + " palette  " + hk("editor.theme") + " theme  " +
-                         hk("editor.layout") + " layout  " + hk("editor.keys") + " keys ";
+      const RolltuiStr help = RolltuiStr("^C quit  ") + hk("app.help") + " help  " + hk("app.menu") + " menu  " + hk("app.palette") + " palette  " + hk("editor.theme") + " theme  " +
+                              hk("editor.layout") + " layout  " + hk("editor.keys") + " keys ";
       const int hw = rolltui_u_display_width(u_scratch, help.data(), help.size(), ambiguous ? 1 : 0);
       const int sw = rolltui_u_display_width(u_scratch, status.data(), status.size(), ambiguous ? 1 : 0);
       if (hw + sw + 2 <= w) put_text(f, w - hw, h - 1, help, style(ROLLTUI_ROLE_TEXT_MUTED), hw);
@@ -2235,7 +2251,7 @@ struct App {
     RolltuiEffectReport rep{};
     effects_unknown_kinds.clear();
     rolltui_effects_apply(ctx, f, effect_scratch, theme_styles, nullptr, effects_map, effect_ms, ambiguous ? 1 : 0, &rep,
-        [](void* ctx, const char* kind, std::size_t len) { static_cast<App*>(ctx)->effects_unknown_kinds.emplace_back(kind, len); },
+        [](void* ctx, const char* kind, std::size_t len) { static_cast<App*>(ctx)->effects_unknown_kinds.add(StrView(kind, len)); },
         this);
     last_frame_us = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
   }
@@ -2253,10 +2269,10 @@ struct App {
         keys_outcome(keditor.handle(&ev, bindings));
         return true;
       }
-      const std::string_view st = action_for(k, "studio"), app_a = action_for(k, "app"), ed = action_for(k, "editor");
+      const StrView st = action_for(k, "studio"), app_a = action_for(k, "app"), ed = action_for(k, "editor");
       if (st == "studio.quit") return false;
       if (st == "studio.cycle_theme") {
-        std::vector<std::string> names = ThemeStore::shipped_names();
+        const StrVec names = ThemeStore::shipped_names();
         shipped_theme_index = (shipped_theme_index + 1) % names.size();
         ThemePresetReport rep;
         theme_arg.clear();
@@ -2299,7 +2315,7 @@ struct App {
     if (ev.kind == ROLLTUI_EVENT_KEY && editor_open) {
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       if (focused && focused->id == "editor") {
-        const std::string_view sa = action_for(ev.key, "stack");
+        const StrView sa = action_for(ev.key, "stack");
         if (sa == "stack.close_popup" || sa == "stack.focus_next" || sa == "stack.focus_prev") {
           hint.clear();
           // The theme editor is the one that ignores a focus move; the tree editors read it.
@@ -2335,14 +2351,14 @@ struct App {
       }();
       if (!in_editor_popup) {
         if (m.kind == RolltuiMouseEvent::Kind::Press && m.button == 1) {
-          if (std::optional<Seam> seam = seam_at(m.x, m.y)) { drag_seam = seam; leditor.begin_drag(seam->id); return true; }
-          if (std::optional<std::string> win = window_at(m.x, m.y)) { leditor.select(*win); return true; }
+          if (std::optional<Seam> seam = seam_at(m.x, m.y)) { drag_seam = std::move(seam); leditor.begin_drag(drag_seam->id); return true; }
+          if (std::optional<RolltuiStr> win = window_at(m.x, m.y)) { leditor.select(*win); return true; }
         }
         if (m.kind == RolltuiMouseEvent::Kind::Drag && leditor.dragging() && drag_seam) {
           std::vector<RolltuiResolvedNode> nodes2;
           rolltui_resolve_tree(&leditor.current().base.root, layout_area(), layout_area(), 0, collect_resolved, &nodes2);
           for (const RolltuiResolvedNode& rn : nodes2)
-            if (view_of(rn.node->id) == leditor.selected()) {
+            if (rn.node->id == leditor.selected()) {
               // The pointer is the seam's new place: the sized node runs from its start
               // to the pointer (before the seam) or from the pointer to its end (after).
               const int extent = drag_seam->horizontal ? (drag_seam->after ? rn.outer.x + rn.outer.w - m.x : m.x - rn.outer.x + 1)
@@ -2357,8 +2373,7 @@ struct App {
     }
     RolltuiStr window{};
     const unsigned char route_kind = rolltui_window_stack_route(stack, &ev, layout_area(), bindings, rolltui_stack_default_actions(), &window);
-    const std::string target = str_of(window);
-    rolltui_str_free(&window);
+    const StrView target = window;  // the route's answer, freed with `window` when this returns
     if (route_kind == ROLLTUI_ROUTE_CLOSED_POPUP && target == "editor") { editor_open = false; editor_mode = EditorMode::None; store_seen = 0; bstore_seen = 0; sync_look(); return true; }
     if (route_kind == ROLLTUI_ROUTE_CLOSED_POPUP && target == "confirm") { confirm_action = nullptr; return true; }
     if (route_kind != ROLLTUI_ROUTE_DELIVER) return true;
@@ -2381,7 +2396,7 @@ struct App {
       unsigned char problem = 0; RolltuiStr why{};
       if (rolltui_content_parse(ctx, content_p, content_len, &row, &is_host, &cname, &cname_len, &csource,
                                 &csource_len, &problem, &why)) {
-        const std::string_view kind(cname, cname_len); // the kind's NAME is its identity
+        const StrView kind(cname, cname_len); // the kind's NAME is its identity
         if (is_host) { rolltui_windows_handle(windows, target.data(), target.size(), &ev); rolltui_str_free(&why); return true; }
         if (kind == "transcript") {
           rolltui_str_free(&why);
@@ -2391,7 +2406,7 @@ struct App {
           return input_event("prompt", ev);
         }
         if (kind == "input") {
-          const std::string source(csource, csource_len);
+          const RolltuiStr source = rolltui::own(StrView(csource, csource_len));
           rolltui_str_free(&why);
           return input_event(source, ev);
         }
@@ -2403,7 +2418,7 @@ struct App {
   }
   // An event for the input: the editor first; what it Ignores is the transcript's.
   // Returns false to quit (Ctrl-D on an empty buffer).
-  bool input_event(std::string_view target, const RolltuiEvent& ev) {
+  bool input_event(StrView target, const RolltuiEvent& ev) {
     RolltuiInput* ed = rolltui_windows_input(windows, target.data(), target.size());
     switch (rolltui_input_kind_process_event(ed, windows, target.data(), target.size(), &ev)) {  // Submit has already reached append_prompt
       case ROLLTUI_INPUT_SUBMIT: return true;
@@ -2413,7 +2428,7 @@ struct App {
     }
     // What the input Ignored is offered to the transcript (its own scope of the table).
     if (ev.kind == ROLLTUI_EVENT_KEY) {
-      const std::string_view a = action_for(ev.key, "transcript");
+      const StrView a = action_for(ev.key, "transcript");
       if (a == "transcript.page_up") rolltui_transcript_scroll_page(transcript(), -1);
       else if (a == "transcript.page_down") rolltui_transcript_scroll_page(transcript(), 1);
       else if (a == "transcript.top") rolltui_transcript_scroll_to_top(transcript());
@@ -2514,7 +2529,7 @@ RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_
 // to report — the gap report is where a MISSING kind gets said, in the app that lacks it.
 struct PlaceholderCtx {
   App* app;              // BORROWED: outlives every widget in its own table
-  std::string label;     // "[content]", built once at construction
+  RolltuiStr label;      // "[content]", built once at construction
 };
 void placeholder_destroy(void* ctx) { delete static_cast<PlaceholderCtx*>(ctx); }
 void placeholder_layout(void*, const RolltuiResolvedNode*) {}
@@ -2531,15 +2546,15 @@ constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
     /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
-  PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), "[" + std::string(content, len) + "]"};
+  PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), RolltuiStr("[") + StrView(content, len) + "]"};
   return RolltuiWidget{&kPlaceholderPlugin, pc};
 }
 
-bool parse_size(const std::string& s, int& w, int& h) {
-  std::size_t x = s.find('x');
-  if (x == std::string::npos) return false;
-  w = std::atoi(s.substr(0, x).c_str());
-  h = std::atoi(s.substr(x + 1).c_str());
+bool parse_size(const RolltuiStr& s, int& w, int& h) {
+  const std::size_t x = StrView(s).find('x');
+  if (x == StrView::npos) return false;
+  w = std::atoi(s.c_str());
+  h = std::atoi(s.c_str() + x + 1);
   return w > 0 && h > 0;
 }
 
@@ -2589,15 +2604,15 @@ int usage() {
   return 2;
 }
 
-std::string default_presets_dir() {
-  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
-  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+RolltuiStr default_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return RolltuiStr(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return RolltuiStr(x) + "/roll/rolltui";
   const char* home = std::getenv("HOME");
-  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+  return RolltuiStr(home && *home ? home : ".") + "/.config/roll/rolltui";
 }
 
-std::string style_dump(std::string_view role, const RolltuiStyle& s) {
-  std::string out = std::string(role) + " fg=" + color_to_string(s.fg) + " bg=" + color_to_string(s.bg);
+RolltuiStr style_dump(StrView role, const RolltuiStyle& s) {
+  RolltuiStr out = rolltui::own(role) + " fg=" + color_to_string(s.fg) + " bg=" + color_to_string(s.bg);
   if (s.bold) out += " bold";
   if (s.italic) out += " italic";
   if (s.underline) out += " underline";
@@ -2627,7 +2642,7 @@ void apply_terminal_facts(App& app, RolltuiRun* run) {
 // the preset STORE — `--theme`, `--check` — has no `default-dark` to find there, so the alias is
 // resolved here instead, one level up, to the same (preset, mode) pair. `mode` is set only when
 // non-null: `--check` reports both variants of whatever it is given and has no single mode to pin.
-std::string resolve_builtin_theme_alias(const std::string& name, std::optional<unsigned char>* mode) {
+RolltuiStr resolve_builtin_theme_alias(StrView name, std::optional<unsigned char>* mode) {
   if (name == "default-dark") {
     if (mode) *mode = ROLLTUI_MODE_DARK;
     return "default";
@@ -2636,7 +2651,7 @@ std::string resolve_builtin_theme_alias(const std::string& name, std::optional<u
     if (mode) *mode = ROLLTUI_MODE_LIGHT;
     return "default";
   }
-  return name;
+  return rolltui::own(name);
 }
 
 }  // namespace
@@ -2644,14 +2659,14 @@ std::string resolve_builtin_theme_alias(const std::string& name, std::optional<u
 int main(int argc, char** argv) {
   App app;
   app.depth = rolltui_detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
-  std::string frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
+  RolltuiStr frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
   std::uint64_t tick_ms = 0;   // milestone 6: the elapsed time --frame renders at
   bool dump_tick = false;
-  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
+  RolltuiStr presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
-    std::string a = argv[i];
-    auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
+    const StrView a = argv[i];
+    auto next = [&]() -> RolltuiStr { return (i + 1 < argc) ? RolltuiStr(argv[++i]) : RolltuiStr(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `rolltui-studio-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
@@ -2692,14 +2707,14 @@ int main(int argc, char** argv) {
     else if (a == "--bindings") app.bindings_arg = next();
     else if (a == "--mode") app.mode_flag = (next() == "light") ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK;
     else if (a == "--depth") {
-      std::string d = next();
+      const RolltuiStr d = next();
       app.depth = rolltui_detect_color_depth(nullptr, nullptr, d.c_str());
     }
     else if (a == "--code-fold") {  // "FOLD,CAP" — the two thresholds, so a golden can
-      const std::string v = next();  // exercise them on a small fixture rather than on
-      const std::size_t comma = v.find(',');  // a hundred-line one
-      app.code_fold_over = std::atoi(v.substr(0, comma).c_str());
-      app.code_cap = comma == std::string::npos ? 0 : std::atoi(v.substr(comma + 1).c_str());
+      const RolltuiStr v = next();  // exercise them on a small fixture rather than on
+      const std::size_t comma = StrView(v).find(',');  // a hundred-line one
+      app.code_fold_over = std::atoi(v.c_str());
+      app.code_cap = comma == StrView::npos ? 0 : std::atoi(v.c_str() + comma + 1);
     }
     else if (a == "--frame") frame_spec = next();
     else if (a == "--frame-sgr") { frame_spec = next(); frame_sgr = true; }
@@ -2707,8 +2722,8 @@ int main(int argc, char** argv) {
     else if (a == "--tick") tick_ms = std::strtoull(next().c_str(), nullptr, 10);
     else if (a == "--dump-tick") dump_tick = true;
 #endif
-    else if (a.rfind("--", 0) == 0) return usage();
-    else app.fixture_path = a;
+    else if (a.starts_with("--")) return usage();
+    else app.fixture_path = rolltui::own(a);
   }
   // ---- milestone 15: the CLI checks and the generator need no fixture ----
   if (!generate_arg.empty()) {
@@ -2753,8 +2768,8 @@ int main(int argc, char** argv) {
     rolltui_json_free(c);
     RolltuiStr dump{};
     rolltui_json_dump(root, 2, &dump);
-    const std::string text = std::string(dump.p ? dump.p : "", dump.n) + "\n";
-    std::fwrite(text.data(), 1, text.size(), stdout);
+    dump += '\n';
+    std::fwrite(dump.data(), 1, dump.size(), stdout);
     rolltui_str_free(&dump);
     rolltui_json_free(root);
     rolltui_json_free(dmeta);
@@ -2815,7 +2830,7 @@ int main(int argc, char** argv) {
       }
       RolltuiStrArray failed{};
       rolltui_check_claims(meta, &badges, &failed);
-      for (std::size_t i = 0; i < failed.n; ++i) { std::printf("CLAIM FAILED: %s\n", str_of(failed.v[i]).c_str()); rc = 1; }
+      for (std::size_t i = 0; i < failed.n; ++i) { std::printf("CLAIM FAILED: %s\n", failed.v[i].c_str()); rc = 1; }
       const bool claimed_any = rolltui_json_is_array(rolltui_json_get(meta, "badges", 6)) != 0;
       if (!claimed_any) std::printf("(no badges claimed)\n");
       else if (failed.n == 0) std::printf("every claimed badge holds\n");
@@ -2825,7 +2840,7 @@ int main(int argc, char** argv) {
       // A colours object without pairs is the same at both modes: one report is enough.
       RolltuiStr colour_dump{};
       rolltui_json_dump(p->colours, 0, &colour_dump);
-      const bool has_dark_pair = std::string(colour_dump.p ? colour_dump.p : "", colour_dump.n).find("\"dark\"") != std::string::npos;
+      const bool has_dark_pair = StrView(colour_dump).contains("\"dark\"");
       rolltui_str_free(&colour_dump);
       if (!has_dark_pair) break;
     }
@@ -2846,18 +2861,18 @@ int main(int argc, char** argv) {
   {
     ThemePresetReport start_rep;
     app.store->start(start_rep);
-    if (!start_rep.error.empty()) app.theme_note = str_of(start_rep.error);
+    if (!start_rep.error.empty()) app.theme_note.assign(start_rep.error);
     LayoutPresetReport lstart_rep;
     app.lstore->start(lstart_rep);
-    if (!lstart_rep.error.empty()) app.layout_note = str_of(lstart_rep.error);
+    if (!lstart_rep.error.empty()) app.layout_note.assign(lstart_rep.error);
     // What the loader DID that the file did not ask for (today: a file declaring no actions
     // gets the shipped default's) is a note, not a problem — said once, on stderr, so it
     // never moves a golden frame.
     for (std::size_t i = 0; i < lstart_rep.layout.notes_n; ++i)
-      std::fprintf(stderr, "rolltui: %s\n", str_of(lstart_rep.layout.notes[i]).c_str());
+      std::fprintf(stderr, "rolltui: %s\n", lstart_rep.layout.notes[i].c_str());
     BindingsPresetReport bstart_rep;
     app.bstore->start(bstart_rep);
-    if (!bstart_rep.error.empty()) app.hint = str_of(bstart_rep.error);
+    if (!bstart_rep.error.empty()) app.hint.assign(bstart_rep.error);
   }
   app.load_theme_arg();
   app.load_bindings_arg();
@@ -2865,9 +2880,8 @@ int main(int argc, char** argv) {
     // Where the picker opens: beside the document being previewed, which is where a person
     // looking for another one is almost always looking. Set once — setting it per frame would
     // throw away wherever they had navigated to.
-    const std::string at = app.fixture_path.empty()
-                               ? std::string(".")
-                               : app.fixture_path.substr(0, app.fixture_path.find_last_of('/') + 1);
+    const std::size_t slash = StrView(app.fixture_path).rfind('/');
+    const StrView at = app.fixture_path.empty() ? StrView(".") : StrView(app.fixture_path).first(slash == StrView::npos ? 0 : slash + 1);
     rolltui_windows_set_picker_dir(app.windows, "filepicker", 10, at.data(), at.empty() ? 0 : at.size());
   }
   app.refresh_menu();
@@ -2902,7 +2916,7 @@ int main(int argc, char** argv) {
       // What this frame ASKS FOR, which is the whole of "the tick runs only while
       // something is marked": no marks (or nothing that moves) prints "none".
       const int tick = rolltui_effects_tick_ms(app.ctx, f, app.effects_map);
-      std::printf("--- tick ---\n%s\n", tick > 0 ? std::to_string(tick).c_str() : "none");
+      std::printf("--- tick ---\n%s\n", tick > 0 ? rolltui::to_str(tick).c_str() : "none");
     }
     if (!dump_role.empty()) {
       const int r = rolltui_role_from_name(dump_role.data(), dump_role.size());
@@ -2918,7 +2932,7 @@ int main(int argc, char** argv) {
   // after a resize or a stale fact. What is here is what only the studio knows.
   struct Session {
     App* app;
-    std::string keys_spec;
+    StrView keys_spec;  // main's own, which outlives the loop
     bool ticking = false;
   } session{&app, keys_spec};
   RolltuiRunApp hooks;

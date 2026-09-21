@@ -67,11 +67,10 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_widget_menu_tree.h" /* INTERNAL: this editor opts in — it walks and MUTATES a tree */
+#include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
-#include <string>
-#include <string_view>
 #include <vector>
 
 #include "tool_actions.hpp"
@@ -90,7 +89,7 @@ class MenuEditor {
   struct Outcome {
     enum class Kind { None, Changed, Committed, SaveAs, LoadMenu, ResetLoaded, Closed };
     Kind kind = Kind::None;
-    std::string value;  // SaveAs: the file name; LoadMenu: the name
+    RolltuiStr value;  // SaveAs: the file name; LoadMenu: the name
     bool operator==(const Outcome&) const = default;
   };
 
@@ -103,8 +102,8 @@ class MenuEditor {
   MenuEditor& operator=(const MenuEditor&) = delete;
 
   void load(const MenuItem& root);                  // the baseline; undo restarts; selection: the root
-  void set_menus(std::vector<std::string> names);   // the Load choice's options
-  void set_actions(std::vector<std::string> names); // the action field's HINT — never a bound list
+  void set_menus(const StrVec& names);    // the Load choice's options
+  void set_actions(const StrVec& names);  // the action field's HINT — never a bound list
 
   const MenuItem& current() const { return current_; }
   const MenuItem& committed() const { return undo_.current(); }
@@ -114,7 +113,7 @@ class MenuEditor {
   const MenuItem* selected_item() const;
   // The minimal skeleton "New menu" starts from, exposed so a test can assert what it IS
   // rather than what it renders as — layout_editor.hpp's `skeleton()`, same reason.
-  MenuItem skeleton(std::string name) const;
+  MenuItem skeleton(const RolltuiStr& name) const;
 
   RolltuiMenu* menu() { return menu_; }
   const RolltuiMenu* menu() const { return menu_; }
@@ -128,15 +127,15 @@ class MenuEditor {
 
   // The file's TEXT, through the library's own writer — so what this editor saves and what
   // the library loads are the same bytes by construction, never two spellings of a format.
-  std::string to_json() const;
+  RolltuiStr to_json() const;
 
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
   // open. The returning form is one copy over it, for a test that reads it.
-  void status_line(std::string& out) const;
-  std::string status_line() const;
+  void status_line(RolltuiStr& out) const;
+  RolltuiStr status_line() const;
   // What the selected item IS, in words: "selected: depth  choice  3 options". The editor
   // composes it because it is the one place that reads an item's shape.
-  std::string selection_line() const;
+  RolltuiStr selection_line() const;
 
   // Tree helpers, exposed for the tests and the host.
   static MenuItem* at_path(MenuItem& root, const MenuPath& p);
@@ -150,18 +149,18 @@ class MenuEditor {
   void sync_fields();     // which fields this item's kind offers, and their values
   MenuItem* sel_item();
   Outcome commit_current();
-  bool add_item(bool as_child, const std::string& id);
+  bool add_item(bool as_child, StrView id);
   bool move_item(int delta);
   bool remove_item();
-  std::string unique_id(const MenuItem& parent, const std::string& base) const;
+  RolltuiStr unique_id(const MenuItem& parent, StrView base) const;
 
   RolltuiMenu* menu_ = rolltui_menu_new();
   MenuItem current_;
   UndoStack<MenuItem> undo_;
   MenuPath sel_;
-  std::vector<std::string> menus_;
-  std::vector<std::string> actions_;
-  std::string status_;
+  StrVec menus_;
+  StrVec actions_;
+  RolltuiStr status_;
 };
 
 }  // namespace rolltui::tools

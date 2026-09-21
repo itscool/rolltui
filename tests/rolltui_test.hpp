@@ -61,9 +61,11 @@ inline RolltuiContext* test_context() {
 inline std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
 inline std::string_view view_of(const RolltuiStr& s) { return std::string_view(s.p ? s.p : "", s.n); }
 inline void set_str(RolltuiStr& s, std::string_view v) { rolltui_str_set(&s, v.data(), v.size()); }
-inline void set_note(RolltuiNote& n, std::string_view v) { n.set(v.data(), v.size()); }
-// The tree shapes the tools and tests compose in a std::vector of their own, then hand to a
-// rolltui item — the consumer's container, the library's items.
+#endif  /* ROLLTUI_STD_BRIDGE_DEFINED */
+// The tree shapes the tests compose in a std::vector of their own, then hand to a rolltui item — the consumer's container, the
+// library's items. The same three `tools/tool_str.hpp` defines, under the same guard, so a suite that includes both takes one.
+#ifndef ROLLTUI_TREE_BRIDGE_DEFINED
+#define ROLLTUI_TREE_BRIDGE_DEFINED
 inline RolltuiMenuItem submenu_of(const char* id, const char* label, std::vector<RolltuiMenuItem>&& children) {
   RolltuiMenuItem it = RolltuiMenuItem::submenu(id, label);
   for (RolltuiMenuItem& c : children) it.children.push_back(std::move(c));
@@ -80,7 +82,11 @@ inline std::vector<RolltuiMenuItem> clone_items(const std::vector<RolltuiMenuIte
   for (const RolltuiMenuItem& c : v) out.push_back(c.clone());
   return out;
 }
-#endif  /* ROLLTUI_STD_BRIDGE_DEFINED */
+#endif  /* ROLLTUI_TREE_BRIDGE_DEFINED */
+// A message a test builds from rolltui's own strings (`"[" + ed.status_line() + "]"` is a RolltuiStr) is a message all the same. The literal
+// overload is the exact match that keeps `check(ok, "words")` from being ambiguous between the three.
+inline void check(bool cond, const char* name) { testkit::check(cond, std::string(name)); }
+inline void check(bool cond, const RolltuiStr& name) { testkit::check(cond, std::string(name.data(), name.size())); }
 inline std::string_view kind_of(const RolltuiEffectSpec& s) { return std::string_view(s.kind, s.kind_len); }
 inline std::string_view frame_of(const RolltuiEffectSpec& s, std::size_t i) {
   return i < s.frame_count ? std::string_view(s.frames[i].bytes, s.frames[i].len) : std::string_view();
