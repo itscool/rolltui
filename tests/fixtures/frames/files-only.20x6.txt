@@ -1,6 +1,6 @@
   a screen ▼ 2 more
 ┌ the live key tabl┐
 │ input:           •
-│   Enter     ▼208 │
+│   Enter     ▼209 │
 └──────────────────┘
  default  kettle  20
