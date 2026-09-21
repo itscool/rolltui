@@ -852,7 +852,7 @@ int main() {
     const std::string on_txt = run(with(on_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     const std::string off_txt = run(with(off_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     check(has(on_txt, "Python \xC2\xB7 1 line") && has(off_txt, "text \xC2\xB7 1 line"), "the head of the preview names the language when it is coloured, and says `text` when it is not");
-    // the checkbox: under "Preview" in General; on when nothing was said, saved when toggled, read back on the next run
+    // the checkbox: in Look, after the dividers; on when nothing was said, saved when toggled, read back on the next run
     const std::string boxes = run(with(def_cfg) + " --frame 70x34 --keys \"F2\" 2>/dev/null", src);
     check(has(boxes, "[\xE2\x9C\x93] Colour source code in the preview"), "the settings show `Colour source code in the preview`, checked when the file says nothing");
     run(with(def_cfg) + " --frame 70x34 --keys \"F2 " + keys_down("syntax") + " Enter\" >/dev/null 2>&1", src);
