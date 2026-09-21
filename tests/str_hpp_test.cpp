@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -167,6 +168,21 @@ int main() {
     check(bad == 0, "path_base and path_dir split a path into its last component and everything before it");
   }
 
+  // ---- any string-like type is viewed in place ------------------------------------------------------------------------------------
+  {
+    const std::string held = "held in a std::string";
+    const StrView v = held;
+    check(v.size() == held.size() && v.data() == held.data() && v == "held in a std::string", "a std::string is viewed in place, not copied");
+    const std::string_view sv = std::string_view(held).substr(5);
+    const StrView w = sv;
+    check(w == "in a std::string" && w.data() == sv.data(), "a std::string_view is viewed in place");
+    const RolltuiStr built = RolltuiStr("a ") + held + " and " + sv;
+    check(built == "a held in a std::string and in a std::string", "a string-like type appends onto a RolltuiStr with +");
+    check(StrView(std::string()).empty(), "an empty std::string is the empty view");
+    check(std::is_convertible_v<const char*, StrView> && std::is_convertible_v<const RolltuiStr&, StrView> && !std::is_convertible_v<int, StrView>,
+          "a pointer and a RolltuiStr still convert, and something without data() and size() does not");
+  }
+
   // ---- StrVec: the growing list ---------------------------------------------------------------------------------------------------
   {
     const std::size_t before = live_bytes();
@@ -192,6 +208,22 @@ int main() {
       assigned.add("x");
       assigned = std::move(moved);
       check(assigned.size() == 1 && assigned[0] == "again", "move-assigning frees what the target held and takes the source's");
+      const StrVec listed = {"default", "vim-ish", ""};
+      check(listed.size() == 3 && listed[0] == "default" && listed[1] == "vim-ish" && listed[2].empty() && listed.contains("vim-ish"),
+            "a braced list of literals builds a list, each one copied in");
+      const StrVec none = {};
+      check(none.empty(), "an empty brace is the empty list");
+      StrVec copy;
+      copy.add("stale");
+      copy.assign(listed);
+      copy.assign(copy);
+      check(copy.size() == 3 && copy[0] == "default" && copy[1] == "vim-ish" && listed.size() == 3, "assign replaces a list's contents with copies, and assigning it to itself changes nothing");
+      RolltuiStr word;
+      word = "abcdef";
+      rolltui::assign(word, StrView(word).substr(2, 3));
+      check(word == "cde", "assign of a view into the same string copies before it replaces");
+      rolltui::assign(word, "x");
+      check(word == "x", "assign of a literal replaces the text");
     }
     check(live_bytes() == before, "the list freed every string and its array (" + std::to_string(live_bytes()) + " vs " + std::to_string(before) + ")");
   }

@@ -18,11 +18,14 @@
  */
 #include <cstdarg>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 #include "rolltui/rolltui.h"
 
@@ -36,6 +39,12 @@ class StrView {
   constexpr StrView(const char* s, std::size_t len) : p_(s), n_(len) {}
   StrView(const char* s) : p_(s), n_(s ? std::strlen(s) : 0) {}  // NOLINT(google-explicit-constructor)
   StrView(const RolltuiStr& s) : p_(s.p), n_(s.n) {}             // NOLINT(google-explicit-constructor)
+  // ANY OTHER STRING-LIKE TYPE, one with `data()` and `size()` (a `std::string` a host still holds, a `std::string_view`), is viewed in
+  // place, so a function that reads text takes a StrView and needs no overload for each. Nothing here names those types.
+  template <class S, class = std::enable_if_t<!std::is_same_v<S, StrView> && !std::is_same_v<S, RolltuiStr> && !std::is_pointer_v<S> &&
+                                              std::is_convertible_v<decltype(std::declval<const S&>().data()), const char*> &&
+                                              std::is_convertible_v<decltype(std::declval<const S&>().size()), std::size_t>>>
+  StrView(const S& s) : p_(s.data()), n_(s.size()) {}  // NOLINT(google-explicit-constructor)
 
   // NULL is the empty string everywhere in this library, so `data()` never returns NULL.
   const char* data() const { return p_ ? p_ : ""; }
@@ -116,6 +125,16 @@ inline RolltuiStr own(StrView v) {
 }
 
 inline void append(RolltuiStr& s, StrView v) { s.append(v.data(), v.size()); }
+// Replaces a string's text with a view's. A view INTO the same string is copied first, so `assign(s, StrView(s).substr(1))` is safe.
+inline void assign(RolltuiStr& s, StrView v) {
+  const auto at = reinterpret_cast<std::uintptr_t>(v.data()), from = reinterpret_cast<std::uintptr_t>(s.data());
+  if (at >= from && at <= from + s.size()) {
+    RolltuiStr copy = own(v);
+    s = static_cast<RolltuiStr&&>(copy);
+    return;
+  }
+  s.assign(v.data(), v.size());
+}
 
 }  // namespace rolltui
 
@@ -220,6 +239,9 @@ class StrVec {
   StrVec(const StrVec&) = delete;
   StrVec& operator=(const StrVec&) = delete;
   StrVec(StrVec&& o) noexcept : v_(o.v_), n_(o.n_), cap_(o.cap_) { o.v_ = nullptr; o.n_ = o.cap_ = 0; }
+  StrVec(std::initializer_list<StrView> il) {  // `{"a", "b"}`: each is copied in
+    for (const StrView& s : il) add(s);
+  }
   StrVec& operator=(StrVec&& o) noexcept {
     if (this != &o) {
       release();
@@ -242,6 +264,12 @@ class StrVec {
   template <class S, class = std::enable_if_t<std::is_same_v<S, RolltuiStr>>>
   RolltuiStr& add(S&& s) {
     return adopt(static_cast<RolltuiStr&&>(s));
+  }
+  // This list's contents replaced by copies of another's: the one spelling of a copy, as `RolltuiStr::assign` is for the string.
+  void assign(const StrVec& o) {
+    if (this == &o) return;
+    clear();
+    for (const RolltuiStr& s : o) add(StrView(s));
   }
   // Every string freed, the array kept for the next fill: the reuse pattern the string has for its own buffer.
   void clear() {
