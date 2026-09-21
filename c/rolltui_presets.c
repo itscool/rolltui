@@ -2020,66 +2020,6 @@ static int bindings_key_is_outer(const char* k, size_t klen) {
          (klen == 6 && memcmp(k, "preset", 6) == 0);
 }
 
-/* THE NAVIGATION BASELINE. Home, End, PageUp and PageDown reach every list, menu and transcript through the chords a
- * person's keyboard actually sends — the keys themselves and what a remapping daemon sends in their place (Ctrl-A,
- * Ctrl-E, Alt-PageUp, Alt-PageDown) — and that is the LIBRARY's promise, not the content of any one file. A saved table
- * is a snapshot, so one written before a chord was added would never get it and a scope would quietly stop answering a key
- * the others answer. Whenever a table is read, the navigation rows the shipped default carries are therefore topped up:
- * each chord it ships for them is added unless that chord is already bound to something in that scope, so a person's own
- * rebinding wins and nothing is ever taken from them. */
-static const char* const kNavigationActions[] = {"input.line_start", "input.line_end",     "transcript.page_up", "transcript.page_down",
-                                                 "transcript.top",   "transcript.bottom",  "menu.page_up",       "menu.page_down",
-                                                 "menu.first",       "menu.last",          "picker.first",       "picker.last",
-                                                 "picker.page_up",   "picker.page_down"};
-
-static int bindings_has_chord(const RolltuiBindings* b, const char* action, size_t alen, const RolltuiChord* want) {
-  char a[64], c[64];
-  size_t i;
-  const size_t an = rolltui_chord_display(want, a, sizeof a);
-  for (i = 0; i < rolltui_bindings_chord_count(b, action, alen); ++i) {
-    RolltuiChord have;
-    size_t cn;
-    if (!rolltui_bindings_chord_at(b, action, alen, i, &have)) continue;
-    cn = rolltui_chord_display(&have, c, sizeof c);
-    if (cn == an && memcmp(a, c, an) == 0) return 1;
-  }
-  return 0;
-}
-
-static void bindings_ensure_navigation(RolltuiBindings* b) {
-  RolltuiJsonValue* root = NULL;
-  const RolltuiJsonValue* rows;
-  RolltuiStr err = {0};
-  size_t p, i, j;
-  for (p = 0; p < rolltui_kBindingsPresetCount; ++p)
-    if (strcmp(rolltui_kBindingsPresets[p].name, "default") == 0) {
-      root = rolltui_json_parse(rolltui_kBindingsPresets[p].text, strlen(rolltui_kBindingsPresets[p].text), &err);
-      break;
-    }
-  rolltui_str_free(&err);
-  if (!root) return;
-  rows = rolltui_json_get(root, K("bindings"));
-  for (i = 0; i < sizeof kNavigationActions / sizeof kNavigationActions[0]; ++i) {
-    const char* action = kNavigationActions[i];
-    const size_t alen = strlen(action);
-    const char* dot = strchr(action, '.');
-    const RolltuiJsonValue* chords = rolltui_json_get(rows, action, alen);
-    const size_t scope_len = (size_t)(dot - action);
-    if (!chords || !rolltui_bindings_has(b, action, alen)) continue;
-    for (j = 0; j < rolltui_json_array_size(chords); ++j) {
-      size_t cn = 0, an = 0;
-      const char* ct = rolltui_json_as_string(rolltui_json_array_at(chords, j), "", 0, &cn);
-      RolltuiChord chord;
-      if (!cn || !rolltui_chord_parse(ct, cn, &chord)) continue;
-      if (!rolltui_key_deliverable(&chord, ROLLTUI_PROTOCOL_LEGACY)) continue; /* the baseline is what every terminal can send */
-      if (bindings_has_chord(b, action, alen, &chord)) continue;
-      if (rolltui_bindings_action_for(b, &chord, action, scope_len, &an)) continue; /* taken, in this scope, by another row */
-      rolltui_bindings_bind(b, action, alen, &chord, NULL, NULL);
-    }
-  }
-  rolltui_json_free(root);
-}
-
 static void* bindings_domain_parse(const RolltuiPresetDomain* d, const char* text, size_t len, void* rep) {
   RolltuiBindingsPresetReport* r = (RolltuiBindingsPresetReport*)rep;
   RolltuiJsonValue* root;
@@ -2120,7 +2060,6 @@ static void* bindings_domain_parse(const RolltuiPresetDomain* d, const char* tex
     }
   }
   rolltui_json_free(root);
-  bindings_ensure_navigation(b);
   return b;
 }
 

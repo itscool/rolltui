@@ -14,8 +14,8 @@
 │ Nothing in the host binary knows▼ 54 more  ││                                │
 └────────────────────────────────────────────┘└────────────────────────────────┘
 ┌ the live key table ──────────────────────────────────────────────────────────┐
-│   Alt-C                   copy the selection again                           │
-│   Escape                  clear the selection                                │
+│   Alt-C            copy the selection again                                  │
+│   Escape           clear the selection                                       │
 │ app:                                                                         │
 │   Ctrl-J      put the kettle on                                              •
 │   Ctrl-T      find in the transcript                                         │

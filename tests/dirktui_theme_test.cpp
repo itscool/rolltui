@@ -25,7 +25,6 @@
 #include <string>
 #include <vector>
 
-#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
 using namespace testkit;
@@ -79,9 +78,7 @@ void run_keys(const fs::path& cfg, const fs::path& tree, const std::vector<std::
   };
   pump(1300);
   for (const std::string& k : keys) {
-    const char* seq = k == "F2" ? "\x1bOQ" : k == "Down" ? "\x1b[B" : k == "Up" ? "\x1b[A" : k == "Enter" ? "\r" : k == "Esc" ? "\x1b"
-                    : k == "End" ? "\x1b[F" : k == "Home" ? "\x1b[H" : k == "PageDown" ? "\x1b[6~" : k == "PageUp" ? "\x1b[5~"
-                    : k == "CtrlA" ? "\x01" : k == "CtrlE" ? "\x05" : k == "AltPageDown" ? "\x1b[6;3~" : k == "AltPageUp" ? "\x1b[5;3~" : "";
+    const char* seq = k == "F2" ? "\x1bOQ" : k == "Down" ? "\x1b[B" : k == "Up" ? "\x1b[A" : k == "Enter" ? "\r" : k == "Esc" ? "\x1b" : "";
     if (*seq) { const ssize_t w = ::write(master, seq, std::strlen(seq)); (void)w; }
     pump(280);
   }
@@ -174,46 +171,6 @@ int main() {
   file = slurp(working);
   check(!has(file, "\"mode\"") && has(file, "\"depth\": \"256\""), "choosing auto again removes the key: it is the default, and is never written [" + file + "]");
 
-
-  // ---- THE KEYS A REMAPPED KEYBOARD SENDS STILL MOVE A MENU, OVER A SAVED TABLE THAT PREDATES THEM ---------------------------
-  // The person's keyboard sends Ctrl-A, Ctrl-E, Alt-PageUp and Alt-PageDown for Home, End, PageUp and PageDown. Their saved key
-  // table was written before the shipped one bound those in the menu scope, and a saved table keeps its own rows forever, so
-  // every menu went silent to them while the columns (whose chords come from the app's own file) kept answering. The library now
-  // tops the navigation rows up whenever it reads a table. The settings menu opens on "Show dotfiles", a toggle, so Enter there
-  // WRITES `"hidden": false`; a chord that moves the cursor away first puts Enter on a dropdown, which writes nothing.
-  {
-    auto stale_run = [&](const char* name, const std::vector<std::string>& keys) {
-      const fs::path c = root / name;
-      fs::create_directories(c / "rolltui" / "dirktui");
-      std::ofstream(c / "rolltui" / "dirktui" / "settings.json") << "{ \"motion\": false }";
-      RolltuiStr err{};
-      const std::string shipped = slurp(fs::path(ROLLTUI_EXAMPLES_DIR) / ".." / "presets" / "bindings" / "default.json");
-      RolltuiJsonValue* doc = rolltui_json_parse(shipped.data(), shipped.size(), &err);
-      rolltui_str_free(&err);
-      RolltuiJsonValue* rows = const_cast<RolltuiJsonValue*>(rolltui_json_get(doc, "bindings", 8));
-      for (const auto& [action, chord] : std::vector<std::pair<const char*, const char*>>{
-               {"menu.first", "home"}, {"menu.last", "end"}, {"menu.page_up", "pageup"}, {"menu.page_down", "pagedown"}}) {
-        RolltuiJsonValue* arr = rolltui_json_array();
-        rolltui_json_array_push(arr, rolltui_json_string(chord, std::strlen(chord)));
-        rolltui_json_set(rows, action, std::strlen(action), arr);
-      }
-      rolltui_json_set(doc, "preset", 6, rolltui_json_string("default", 7));
-      RolltuiStr out{};
-      rolltui_json_dump(doc, 2, &out);
-      std::ofstream(c / "rolltui" / "bindings.working.json") << std::string(out.p ? out.p : "", out.n);
-      rolltui_str_free(&out);
-      rolltui_json_free(doc);
-      run_keys(c, tree, keys);
-      return slurp(c / "rolltui" / "dirktui" / "settings.json");
-    };
-    check(has(stale_run("nav-control", {"F2", "Enter"}), "\"hidden\": false"),
-          "the control: with the cursor left on the first row, Enter toggles the dotfiles setting and writes it");
-    check(!has(stale_run("nav-end", {"F2", "End", "Enter"}), "\"hidden\": false"), "End (the key itself) moves the cursor off the first row, so Enter there writes no toggle");
-    check(!has(stale_run("nav-ctrl-e", {"F2", "CtrlE", "Enter"}), "\"hidden\": false"),
-          "over a saved table that predates the remapper's chords, Ctrl-E still moves the menu's cursor to the last row");
-    check(!has(stale_run("nav-alt-pagedown", {"F2", "AltPageDown", "Enter"}), "\"hidden\": false"),
-          "…and Alt-PageDown still pages the menu down");
-  }
   fs::remove_all(root);
   return report("dirktui_theme_test");
 }
