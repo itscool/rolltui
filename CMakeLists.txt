@@ -436,6 +436,7 @@ add_rolltui_test(rolltui-syntax-langs-test tests/syntax_langs_test.cpp)
 add_rolltui_test(rolltui-menu-levels-test tests/menu_levels_test.cpp)
 add_rolltui_test(rolltui-preview-syntax-test tests/preview_syntax_test.cpp)
 add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
+add_rolltui_test(rolltui-str-hpp-test tests/str_hpp_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
 # (table), and Terminal on a real pty with a forked child killed by SIGTERM.
