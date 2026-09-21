@@ -1,0 +1,50 @@
+{
+  "name": "Swift",
+  "aliases": ["swift"],
+  "extensions": ["swift"],
+  "filenames": ["Package.swift"],
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "///", "class": "doc" } },
+      { "match": "/\\*\\*(?!/)", "class": "doc", "push": "block_doc" },
+      { "match": "/\\*", "class": "comment", "push": "block" },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "^\\s*#(?:if|elseif|else|endif|available|selector|keyPath|warning|error|sourceLocation|file|line|function)\\b[^\\n]*", "class": "preproc" },
+      { "match": "#*\"\"\"", "class": "string", "push": "multi" },
+      { "region": { "begin": "(#+)\"", "end": "\"\\1", "class": "string", "single_line": true } },
+      { "match": "\"", "class": "string", "push": "str" },
+      { "match": "@[A-Za-z_]\\w*", "class": "attribute" },
+      { "match": "\\b(func)\\s+([A-Za-z_]\\w*|`[^`]+`)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "\\b(class|struct|enum|protocol|extension|actor|typealias|associatedtype)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["actor", "any", "as", "associatedtype", "async", "await", "break", "case", "catch", "class", "continue", "convenience", "default", "defer", "deinit", "didSet", "do", "dynamic", "else", "enum",
+                  "extension", "fallthrough", "fileprivate", "final", "for", "func", "get", "guard", "if", "import", "in", "indirect", "infix", "init", "inout", "internal", "is", "lazy", "let", "mutating",
+                  "nonisolated", "nonmutating", "open", "operator", "optional", "override", "postfix", "precedencegroup", "prefix", "private", "protocol", "public", "repeat", "required", "rethrows", "return",
+                  "set", "some", "static", "struct", "subscript", "switch", "throw", "throws", "try", "typealias", "unowned", "var", "weak", "where", "while", "willSet"], "class": "keyword" },
+      { "words": ["self", "Self", "super"], "class": "variable" },
+      { "words": ["true", "false", "nil"], "class": "constant" },
+      { "words": ["Int", "Int8", "Int16", "Int32", "Int64", "UInt", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Bool", "String", "Character", "Void", "Any", "AnyObject", "Array", "Dictionary", "Set", "Optional", "Result"], "class": "type" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f_]+(?:\\.[0-9A-Fa-f_]+)?(?:[pP][+-]?\\d+)?|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d+)?)\\b", "class": "number" },
+      { "match": "\\$\\d+|\\$[A-Za-z_]\\w*", "class": "variable" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ],
+    "str": { "class": "string", "rules": [
+      { "match": "\\\\\\(", "class": "punct", "push": "interp" },
+      { "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|.)", "class": "escape" },
+      { "match": "\"|$", "pop": true }
+    ] },
+    "multi": { "class": "string", "rules": [
+      { "match": "\\\\\\(", "class": "punct", "push": "interp" },
+      { "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|.)", "class": "escape" },
+      { "match": "\"\"\"#*", "pop": true }
+    ] },
+    "interp": [
+      { "match": "\\(", "class": "punct", "push": "interp" },
+      { "match": "\\)", "class": "punct", "pop": true },
+      { "include": "main" }
+    ],
+    "block": { "class": "comment", "rules": [ { "match": "/\\*", "push": "block" }, { "match": "\\*/", "pop": true } ] },
+    "block_doc": { "class": "doc", "rules": [ { "match": "/\\*", "class": "comment", "push": "block" }, { "match": "\\*/", "pop": true } ] }
+  }
+}

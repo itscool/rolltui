@@ -1,0 +1,25 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+  Does a thing.
+#>
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory=$true)][string]$Name,
+  [int]$Count = 0x10
+)
+function Get-Thing {
+  param([string]$Path)
+  $items = Get-ChildItem -Path $Path -Recurse | Where-Object { $_.Length -gt 1KB -and $_.Name -like '*.txt' }
+  foreach ($i in $items) { Write-Host "Found $($i.Name) at ${Path}\`n" -ForegroundColor Green }
+  $h = @{ a = 1; 'b c' = $null }
+  [System.IO.File]::ReadAllText($Path).Split("`n")
+  return $true
+}
+$text = @"
+Hello $Name
+"@
+$raw = @'
+no $interp
+'@
+if ($Count -eq 3 -or !$x) { throw "bad ""quote""" }

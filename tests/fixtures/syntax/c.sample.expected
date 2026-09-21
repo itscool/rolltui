@@ -1,0 +1,26 @@
+{preproc|#include} {string|<stdio.h>}
+{preproc|#include} {string|"local.h"}
+{preproc|#define} {function|MAX}(a, b) ((a) > (b) ? (a) : (b))
+{preproc|#if} {keyword|defined}({constant|DEBUG}) && !{keyword|defined}({constant|NDEBUG})
+{comment|/* block comment}
+{comment| * continues here */}
+{doc|/** Doc comment for main.}
+{doc| * }{attribute|@param}{doc| argc the count}
+{doc| */}
+{keyword|typedef} {keyword|struct} {type|Node} {
+    {type|int} value;
+    {keyword|struct} {type|Node} *next;   {comment|// trailing comment}
+} Node;
+
+{keyword|static} {keyword|const} {type|char} *names[] = { {string|"alpha"}, {string|"be}{escape|\"}{string|ta}{escape|\n}{string|"}, {string|'x'}, {string|'}{escape|\0}{string|'}, {string|"%d}{escape|\x41}{string|"} };
+
+{type|int} {function|main}({type|int} argc, {type|char} **argv) {
+    {type|size_t} n = {number|0x1F} + {number|42UL} + {number|3.14f} + {number|1e-5} + {number|0b101};
+    {keyword|for} ({type|int} i = {number|0}; i < argc; ++i) {
+        {keyword|if} (argv[i] == {constant|NULL}) {keyword|continue};
+        {function|printf}({string|"arg %d: %s}{escape|\n}{string|"}, i, argv[i]);
+        n += {function|strlen}(argv[i]);
+    }
+    {keyword|return} n > {constant|MAX_SIZE} ? {constant|EXIT_FAILURE} : {number|0};
+}
+{preproc|#endif}

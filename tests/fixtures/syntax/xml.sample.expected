@@ -1,0 +1,11 @@
+{preproc|<?xml} {property|version}={string|"1.0"} {property|encoding}={string|"UTF-8"}{preproc|?>}
+{preproc|<!DOCTYPE note SYSTEM }{string|"Note.dtd"}{preproc|>}
+{comment|<!-- a comment -->}
+{punct|<}{tag|project} {property|xmlns}={string|"http://maven.apache.org/POM/4.0.0"} {property|xmlns:xsi}={string|"http://www.w3.org/2001/XMLSchema-instance"}{punct|>}
+  {punct|<}{tag|name} {property|attr}={string|'single'} {property|data-x}={string|"a }{escape|&amp;}{string| b"}{punct|>}Text {escape|&lt;}here{escape|&gt;} {escape|&#169;}{punct|</}{tag|name}{punct|>}
+  {punct|<}{tag|empty}{punct|/>}
+  {string|<![CDATA[ raw <text> & stuff ]]>}
+  {punct|<}{tag|ns:item} {property|id}={string|"7"}
+           {property|class}={string|"multi}
+{string|line"}{punct|>}x{punct|</}{tag|ns:item}{punct|>}
+{punct|</}{tag|project}{punct|>}

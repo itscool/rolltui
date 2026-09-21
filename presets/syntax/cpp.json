@@ -1,0 +1,20 @@
+{
+  "name": "C++",
+  "aliases": ["cpp", "c++", "cc", "cxx", "hpp", "h", "hh", "hxx"],
+  "extensions": ["cpp", "cc", "cxx", "c++", "hpp", "hh", "hxx", "h++", "h", "ipp", "tpp", "inl", "ixx", "cppm", "ino"],
+  "not_after": [".", "->"],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "(?:u8|[uUL])?R\"([A-Za-z0-9_]{0,16})\\(", "end": "\\)\\1\"", "class": "string" } },
+      { "match": "\\[\\[[^\\]\\n]*\\]\\]", "class": "attribute" },
+      { "match": "\\b(class|struct|union|enum(?:\\s+(?:class|struct))?|namespace|concept)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["and", "and_eq", "bitand", "bitor", "catch", "co_await", "co_return", "co_yield", "compl", "consteval", "constinit", "const_cast", "decltype", "delete", "dynamic_cast", "explicit", "export", "final",
+                  "friend", "import", "module", "mutable", "new", "noexcept", "not", "not_eq", "operator", "or", "or_eq", "override", "private", "protected", "public", "reinterpret_cast", "requires", "static_cast",
+                  "template", "this", "throw", "try", "typeid", "typename", "using", "virtual", "xor", "xor_eq", "class", "namespace", "concept"], "class": "keyword" },
+      { "words": ["wchar_t", "char8_t", "char16_t", "char32_t", "string", "string_view", "wstring", "vector", "map", "unordered_map", "set", "unordered_set", "list", "deque", "array", "pair", "tuple", "optional", "variant",
+                  "unique_ptr", "shared_ptr", "weak_ptr", "function", "span", "atomic", "mutex", "thread", "size_t", "ptrdiff_t", "nullptr_t", "auto"], "class": "type" },
+      { "include": "lang:C" },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ]
+  }
+}

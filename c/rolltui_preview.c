@@ -15,11 +15,22 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_unicode.h"
 
 #define SNIFF_BYTES 8192
 #define TAB_COLUMNS 4
 #define ELLIPSIS "\xE2\x80\xA6"
+
+/* Where, in a sanitized row, one class of text gives way to another. */
+typedef struct Seg {
+  size_t at;
+  unsigned char cls;
+} Seg;
+typedef struct SegList {
+  Seg* v;
+  size_t n, cap;
+} SegList;
 
 struct RolltuiPreview {
   RolltuiStr path;
@@ -44,6 +55,14 @@ struct RolltuiPreview {
   RolltuiUnicodeScratch* u; /* OWNED */
   RolltuiDrawScratch* ds;   /* OWNED */
   RolltuiStr s1;            /* scratch a row is built in */
+  SegList segs;             /* scratch: where the classes change in `s1` */
+  /* COLOUR. The languages are LENT (by whoever owns them: the picker, a test) and never freed here. A text file whose
+   * language is known has its whole body run through it once, at load, and `hl` holds a line of runs for every line of it. */
+  RolltuiSyntax* syn;       /* BORROWED: NULL colours nothing */
+  RolltuiHighlight* hl;     /* OWNED, REUSED between files */
+  int hl_lang;              /* the language the file is in, or -1 */
+  int hl_ok;                /* `hl` holds exactly a line for every line of the body */
+  RolltuiSyntaxMd* md_syn;  /* OWNED: what colours a Markdown code block, made when the languages are first lent */
   /* WATCHING: the file as it was when read, and when, so `rolltui_preview_refresh` can tell that it moved. */
   RolltuiFileSig sig;
   long long sig_read_secs;
@@ -53,6 +72,7 @@ RolltuiPreview* rolltui_preview_new(void) {
   RolltuiPreview* pv = (RolltuiPreview*)rolltui_mem_alloc(sizeof *pv);
   memset(pv, 0, sizeof *pv);
   pv->fd = -1;
+  pv->hl_lang = -1;
   pv->hex_per_row = 16;
   pv->u = rolltui_u_scratch_new();
   pv->ds = rolltui_draw_scratch_new();
@@ -70,6 +90,8 @@ static void release_content(RolltuiPreview* pv) {
   pv->rows_vis = 0;
   pv->md_width = 0;
   pv->diagram = 0;
+  pv->hl_ok = 0;
+  pv->hl_lang = -1;
   rolltui_str_clear(&pv->message);
   rolltui_str_clear(&pv->body);
 }
@@ -81,6 +103,9 @@ void rolltui_preview_free(RolltuiPreview* pv) {
   rolltui_str_free(&pv->message);
   rolltui_str_free(&pv->body);
   rolltui_str_free(&pv->s1);
+  rolltui_mem_free(pv->segs.v);
+  rolltui_highlight_free(pv->hl);
+  rolltui_syntax_md_free(pv->md_syn);
   rolltui_mem_free(pv->line_off);
   rolltui_md_doc_free(pv->md_doc);
   rolltui_md_lines_free(pv->md_lines);
@@ -278,6 +303,27 @@ static void index_lines(RolltuiPreview* pv) {
   }
 }
 
+/* COLOUR: when the languages are lent and the file is in one, the whole body is run through it now, once. A file whose
+ * language cannot be told, or whose runs do not line up with the lines drawn from it, is drawn plain: a wrong picture is
+ * worse than a plain one. */
+static void highlight_text(RolltuiPreview* pv) {
+  const char* b = pv->body.p ? pv->body.p : "";
+  const char* nl;
+  size_t first_n;
+  int lang;
+  pv->hl_ok = 0;
+  pv->hl_lang = -1;
+  if (!pv->syn || pv->kind != ROLLTUI_PREVIEW_TEXT || pv->line_n == 0) return;
+  nl = (const char*)memchr(b, '\n', pv->body.n < 256 ? pv->body.n : 256);
+  first_n = nl ? (size_t)(nl - b) : (pv->body.n < 256 ? pv->body.n : 256);
+  lang = rolltui_syntax_find_file(pv->syn, pv->path.p ? pv->path.p : "", pv->path.n, b, first_n);
+  if (lang < 0) return;
+  if (!pv->hl) pv->hl = rolltui_highlight_new();
+  if (rolltui_highlight_run(pv->hl, pv->syn, lang, b, pv->body.n) != (long)pv->line_n) return;
+  pv->hl_lang = lang;
+  pv->hl_ok = 1;
+}
+
 static void fail(RolltuiPreview* pv, const char* why) {
   pv->kind = ROLLTUI_PREVIEW_UNREADABLE;
   rolltui_str_set(&pv->message, why, strlen(why));
@@ -387,7 +433,19 @@ static void load(RolltuiPreview* pv) {
   }
   pv->kind = has_markdown_extension(&pv->path) || has_diagram_extension(&pv->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
   if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) parse_markdown(pv);
-  else index_lines(pv);
+  else {
+    index_lines(pv);
+    highlight_text(pv);
+  }
+}
+
+void rolltui_preview_set_syntax(RolltuiPreview* pv, RolltuiSyntax* syn) {
+  if (!pv || pv->syn == syn) return;
+  pv->syn = syn;
+  rolltui_syntax_md_free(pv->md_syn);
+  pv->md_syn = syn ? rolltui_syntax_md_new(syn, rolltui_md_roles()->code_block) : NULL;
+  if (pv->kind == ROLLTUI_PREVIEW_TEXT) highlight_text(pv);
+  else if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) pv->md_width = 0; /* laid out again at the next draw, its code coloured or not */
 }
 
 void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) {
@@ -408,21 +466,37 @@ void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) 
 
 /* `s`, made safe to draw, into `out`: a tab becomes the spaces to the next stop, a control character its
  * visible picture (`␛`), a byte that is not UTF-8 a `�`. Stops once `cells` are filled and reports whether
- * there was more. */
-static int sanitize(const char* s, size_t n, int cells, int aw, RolltuiStr* out) {
-  size_t i = 0;
+ * there was more. With `runs`, also notes in `segs` where the class of the text changes (as offsets into `out`), so a
+ * coloured line can be drawn a class at a time after it has been made safe as a whole. */
+static int sanitize(const char* s, size_t n, int cells, int aw, RolltuiStr* out, const RolltuiSyntaxRun* runs, size_t nruns, SegList* segs) {
+  size_t i = 0, r = 0;
   int col = 0;
+  int cur = -1;
   rolltui_str_clear(out);
+  if (segs) segs->n = 0;
   while (i < n) {
     RolltuiDecodedChar d;
     char enc[4];
     size_t en;
     RolltuiCodepoint cp;
+    const size_t at = i;
     int w;
     if (col > cells) return 1;
     rolltui_u_decode_one(s, n, i, &d);
     i += d.length ? d.length : 1;
     cp = d.valid ? d.cp : 0xFFFD;
+    if (segs) {
+      int cls = 0;
+      while (r < nruns && runs[r].end <= at) ++r;
+      if (r < nruns && runs[r].begin <= at) cls = runs[r].cls;
+      if (cls != cur) {
+        segs->v = (Seg*)rolltui_grow(segs->v, &segs->cap, segs->n + 1, sizeof *segs->v);
+        segs->v[segs->n].at = out->n;
+        segs->v[segs->n].cls = (unsigned char)cls;
+        ++segs->n;
+        cur = cls;
+      }
+    }
     if (cp == '\t') {
       const int stop = TAB_COLUMNS - (col % TAB_COLUMNS);
       int k;
@@ -447,7 +521,7 @@ static void put_row(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, const cha
                     RolltuiStyle dim, int cells, int aw) {
   int more, w;
   if (cells <= 0) return;
-  more = sanitize(s, n, cells, aw, &pv->s1);
+  more = sanitize(s, n, cells, aw, &pv->s1, NULL, 0, NULL);
   w = rolltui_u_display_width(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, aw);
   if (!more && w <= cells) {
     rolltui_frame_put_text(f, pv->ds, x, y, pv->s1.p ? pv->s1.p : "", pv->s1.n, st, cells, aw, 0);
@@ -459,6 +533,32 @@ static void put_row(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, const cha
     rolltui_frame_put_text(f, pv->ds, x, y, pv->s1.p ? pv->s1.p : "", keep, st, took, aw, 0);
     rolltui_frame_put_text(f, pv->ds, x + took, y, ELLIPSIS, 3, dim, 1, 0, 0);
   }
+}
+
+/* One line of CODE at (x, y): the runs of it that are a keyword, a string, a comment... each in its class's style (`cs`, one
+ * per class), the rest as `cs[0]`. Made safe as a whole and cut at `cells` with an ellipsis exactly as `put_row` cuts a
+ * plain line, so a coloured line is the width a plain one would be, and drawn a class at a time. */
+static void put_row_code(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, const char* s, size_t n, const RolltuiSyntaxRun* runs,
+                         size_t nruns, const RolltuiStyle* cs, RolltuiStyle dim, int cells, int aw) {
+  int more, w, took = 0, col = 0, limit = cells;
+  size_t keep, k;
+  if (cells <= 0) return;
+  more = sanitize(s, n, cells, aw, &pv->s1, runs, nruns, &pv->segs);
+  w = rolltui_u_display_width(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, aw);
+  keep = pv->s1.n;
+  if (more || w > cells) {
+    keep = rolltui_u_fit(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, cells - 1, aw, &took);
+    limit = took;
+  }
+  for (k = 0; k < pv->segs.n; ++k) {
+    const size_t from = pv->segs.v[k].at;
+    size_t to = k + 1 < pv->segs.n ? pv->segs.v[k + 1].at : pv->s1.n;
+    if (from >= keep) break;
+    if (to > keep) to = keep;
+    if (to <= from) continue;
+    col += rolltui_frame_put_text(f, pv->ds, x + col, y, pv->s1.p + from, to - from, cs[pv->segs.v[k].cls], limit - col, aw, 0);
+  }
+  if (more || w > cells) rolltui_frame_put_text(f, pv->ds, x + took, y, ELLIPSIS, 3, dim, 1, 0, 0);
 }
 
 /* ---- hex ----------------------------------------------------------------------------------- */
@@ -609,6 +709,11 @@ static void render_md(RolltuiPreview* pv, int width, int aw) {
   ro.tab_width = TAB_COLUMNS;
   ro.base = ROLLTUI_ROLE_TEXT;
   ro.roles = *rolltui_md_roles();
+  if (pv->md_syn) { /* a fenced block that names a language the set knows is coloured; one that does not is drawn as it always was */
+    ro.highlight = rolltui_syntax_md_highlight;
+    ro.highlight_ctx = pv->md_syn;
+    ro.highlight_on_block = 1; /* coloured code stays on its block's shading */
+  }
   rolltui_md_render(pv->md_lines, pv->md_doc, &ro);
   pv->md_width = width;
   pv->md_aw = aw;
@@ -616,6 +721,10 @@ static void render_md(RolltuiPreview* pv, int width, int aw) {
 
 /* The document, laid out at this width and drawn line by line in the theme's markdown roles. A span whose role
  * states no background stands on the ground under it, as the text of every window now does. */
+static int same_colour(const RolltuiStyleColor* a, const RolltuiStyleColor* b) {
+  return a->kind == b->kind && a->index == b->index && a->r == b->r && a->g == b->g && a->b == b->b;
+}
+
 static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, const RolltuiStyle* styles,
                           RolltuiStyleColor ground, int aw, int pinned) {
   int row;
@@ -649,7 +758,16 @@ static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body,
     for (k = 0; k < line->span_n && x < body.x + body.w; ++k) {
       const RolltuiMdSpan* sp = &line->span_p[k];
       RolltuiStyle st = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, sp->role);
+      /* CODE IN A CODE BLOCK is coloured by one role and shaded by the block's: a role whose ground is only the window's (a
+       * theme gives every role one) stands on what is under the span, and a role with a ground of its own (a diff's removed
+       * line) keeps it. */
+      if (sp->bg_role != ROLLTUI_MD_NO_ROLE && (st.bg.kind == 0 || same_colour(&st.bg, &ground))) {
+        const RolltuiStyleColor under = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, sp->bg_role)->bg;
+        if (under.kind != 0) st.bg = under;
+      }
       if (st.bg.kind == 0) st.bg = ground;
+      if (sp->attrs & ROLLTUI_MD_ATTR_BOLD) st.bold = 1;
+      if (sp->attrs & ROLLTUI_MD_ATTR_ITALIC) st.italic = 1;
       x += rolltui_frame_put_text(f, pv->ds, x, body.y + row, sp->text_p, sp->text_n, st, body.x + body.w - x, aw, 0);
     }
   }
@@ -667,6 +785,7 @@ static const char* base_name(const RolltuiStr* path, size_t* n) {
 void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, const RolltuiStyle* styles,
                           int ambiguous_wide, int focused) {
   RolltuiStyle text, dim, head, err;
+  RolltuiStyle cs[ROLLTUI_SYN_COUNT];
   RolltuiStyleColor ground;
   RolltuiRect body;
   size_t name_n = 0;
@@ -682,6 +801,16 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
                  : *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_LABEL);
   if (!focused) head.bg = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_PANEL_BACKGROUND)->bg;
   text.bg = dim.bg = err.bg = ground;
+  if (pv->hl_ok) {
+    int c;
+    for (c = 0; c < ROLLTUI_SYN_COUNT; ++c) {
+      const unsigned char flags = rolltui_syntax_flags((unsigned char)c);
+      cs[c] = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, rolltui_syntax_role((unsigned char)c, ROLLTUI_ROLE_TEXT));
+      cs[c].bg = ground;
+      if (flags & ROLLTUI_SYN_BOLD) cs[c].bold = 1; /* on top of what the theme's role says: a keyword's weight, a comment's slant */
+      if (flags & ROLLTUI_SYN_ITALIC) cs[c].italic = 1;
+    }
+  }
 
   /* THE HEAD ROW: the file's name, and on the right what the preview made of it. */
   {
@@ -695,9 +824,11 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       if (pv->truncated) {
         char shown[24];
         human_size((long long)pv->body.n, shown, sizeof shown);
-        snprintf(info, sizeof info, "text \xC2\xB7 first %s of %s", shown, sz);
+        const char* kind = pv->hl_ok ? rolltui_syntax_language_name(pv->syn, pv->hl_lang) : NULL;
+        snprintf(info, sizeof info, "%s \xC2\xB7 first %s of %s", kind ? kind : "text", shown, sz);
       } else {
-        snprintf(info, sizeof info, "text \xC2\xB7 %zu %s \xC2\xB7 %s", pv->line_n, pv->line_n == 1 ? "line" : "lines", sz);
+        const char* kind = pv->hl_ok ? rolltui_syntax_language_name(pv->syn, pv->hl_lang) : NULL; /* the language, when it is coloured as one */
+        snprintf(info, sizeof info, "%s \xC2\xB7 %zu %s \xC2\xB7 %s", kind ? kind : "text", pv->line_n, pv->line_n == 1 ? "line" : "lines", sz);
       }
       break;
     }
@@ -767,7 +898,13 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
         to = li + 1 < pv->line_n ? pv->line_off[li + 1] - 1 : pv->body.n;
         if (to > from && pv->body.p[to - 1] == '\n') --to;
         if (to > from && pv->body.p[to - 1] == '\r') --to;
-        put_row(pv, f, body.x, body.y + row, pv->body.p + from, to - from, text, dim, body.w, ambiguous_wide);
+        if (pv->hl_ok) {
+          const RolltuiSyntaxRun* runs = NULL;
+          const size_t nr = rolltui_highlight_line(pv->hl, li, &runs);
+          put_row_code(pv, f, body.x, body.y + row, pv->body.p + from, to - from, runs, nr, cs, dim, body.w, ambiguous_wide);
+        } else {
+          put_row(pv, f, body.x, body.y + row, pv->body.p + from, to - from, text, dim, body.w, ambiguous_wide);
+        }
       }
       break;
     }

@@ -1,0 +1,26 @@
+{
+  "name": "Lua",
+  "aliases": ["lua"],
+  "extensions": ["lua", "rockspec"],
+  "filenames": [".luacheckrc", ".luarc.json"],
+  "first_line": "^#!.*\\blua(?:jit)?[0-9.]*\\b",
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "--\\[(=*)\\[", "end": "\\]\\1\\]", "class": "comment" } },
+      { "region": { "begin": "--", "class": "comment" } },
+      { "region": { "begin": "\\[(=*)\\[", "end": "\\]\\1\\]", "class": "string" } },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\}|\\d{1,3}|z\\s*|.)", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\}|\\d{1,3}|z\\s*|.)", "single_line": true } },
+      { "match": "^#!.*$", "class": "comment" },
+      { "match": "<(?:const|close)>", "class": "attribute" },
+      { "match": "\\b(function)\\s+([A-Za-z_][\\w.:]*)", "captures": { "1": "keyword", "2": "function" } },
+      { "words": ["and", "break", "do", "else", "elseif", "end", "for", "function", "goto", "if", "in", "local", "not", "or", "repeat", "return", "then", "until", "while"], "class": "keyword" },
+      { "words": ["true", "false", "nil"], "class": "constant" },
+      { "words": ["self", "_G", "_ENV", "_VERSION"], "class": "variable" },
+      { "words": ["string", "table", "math", "io", "os", "coroutine", "debug", "utf8", "package", "require"], "class": "type" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f]*(?:\\.[0-9A-Fa-f]*)?(?:[pP][+-]?\\d+)?|\\d+(?:\\.\\d*)?(?:[eE][+-]?\\d+)?)\\b", "class": "number" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=[(\"'{]|\\[=*\\[)", "captures": { "1": "function" } }
+    ]
+  }
+}

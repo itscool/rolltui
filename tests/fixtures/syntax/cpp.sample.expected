@@ -1,0 +1,26 @@
+{preproc|#include} {string|<vector>}
+{preproc|#include} {string|<string>}
+{preproc|#define} {constant|ROLL_VERSION} {number|3}
+{preproc|#define} {function|SQUARE}(x) ((x) * (x))
+{keyword|namespace} {type|roll}::ui {
+{keyword|template} <{keyword|typename} {type|T}, std::{type|size_t} {type|N}>
+{keyword|class} {type|Widget} : {keyword|public} {type|Base} {
+ {keyword|public}:
+  {keyword|explicit} {function|Widget}(std::{type|string} name) : {function|name_}(std::{function|move}(name)) {}
+  {attribute|[[nodiscard]]} {keyword|virtual} {type|auto} {function|draw}({type|int} w, {type|int} h) {keyword|const} {keyword|noexcept} -> {type|bool} {keyword|override};
+  {keyword|static} {keyword|constexpr} {type|int} kMax = {number|0x7F'FF};
+ {keyword|private}:
+  std::{type|vector}<std::{type|unique_ptr}<{type|T}>> items_;
+  {keyword|const} {type|char}* raw = {string|R"delim(a "quoted" \n line}
+{string|second line)delim"};
+};
+{keyword|enum class} {type|Mode} { kOff, kOn };
+}  {comment|// namespace roll::ui}
+
+{type|auto} f = [&]({type|auto}&& x) { {keyword|return} x->{function|size}() + {keyword|this}->count; };
+{type|int} {function|main}() {
+  {type|Widget}<{type|int}, {number|4}> {function|w}({string|"hi"});
+  {keyword|if} (w.{function|draw}({number|1}, {number|2}) && {constant|nullptr} != w) {keyword|throw} std::{function|runtime_error}({string|"bad"});
+  {type|auto} s = std::{type|string}({string|"x"}) + {string|'c'};
+  {keyword|return} {number|0};
+}

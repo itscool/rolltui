@@ -1,0 +1,17 @@
+{comment|#!/usr/bin/env bash}
+{comment|# a comment}
+{function|set} -euo pipefail
+{variable|NAME}={string|"world }{variable|$USER}{string|"}  {comment| # trailing}
+{function|export} {variable|PATH}={string|"}{variable|$HOME}{string|/bin:}{variable|${PATH:-/usr/bin}}{string|"} {variable|COUNT}+={number|1}
+{function|greet}() { {function|local} {variable|who}={string|"}{variable|$1}{string|"}; {function|echo} {string|"Hello, }{variable|${who}}{string|! }{punct|$(}date +%F{punct|)}{string| }{punct|`}uname{punct|`}{string|"} >&{number|2}; }
+{keyword|function} {function|build} { {keyword|for} f {keyword|in} *.c; {keyword|do} cc -o {string|"}{variable|${f%.c}}{string|"} {string|"}{variable|$f}{string|"} || {function|exit} {number|1}; {keyword|done}; }
+{keyword|if} [[ -n {string|"}{variable|$NAME}{string|"} && {variable|$#} -gt {number|2} ]]; {keyword|then}
+  cat {string|<<EOF2 | sed 's/x/y/'}
+{string|Dear }{variable|$NAME}{string|, total is $((1 + 2 * 3)).}
+{string|  EOF2 is not the end}
+{string|EOF2}
+{keyword|elif} [ -f /etc/test ]; {keyword|then} git remote set-url origin --type=x
+{keyword|fi}
+{variable|result}={punct|$(}grep -c {string|"a b"} file.txt | awk {string|'{print $1}'}{punct|)}
+{function|echo} {string|'single $notvar'} {string|$'tab}{escape|\t}{string|here'} {operator|<<<} word
+{function|exit} {number|0}

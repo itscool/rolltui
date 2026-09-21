@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# a comment
+set -euo pipefail
+NAME="world $USER"   # trailing
+export PATH="$HOME/bin:${PATH:-/usr/bin}" COUNT+=1
+greet() { local who="$1"; echo "Hello, ${who}! $(date +%F) `uname`" >&2; }
+function build { for f in *.c; do cc -o "${f%.c}" "$f" || exit 1; done; }
+if [[ -n "$NAME" && $# -gt 2 ]]; then
+  cat <<EOF2 | sed 's/x/y/'
+Dear $NAME, total is $((1 + 2 * 3)).
+  EOF2 is not the end
+EOF2
+elif [ -f /etc/test ]; then git remote set-url origin --type=x
+fi
+result=$(grep -c "a b" file.txt | awk '{print $1}')
+echo 'single $notvar' $'tab\there' <<< word
+exit 0

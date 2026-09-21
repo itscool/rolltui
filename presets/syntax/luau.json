@@ -1,0 +1,28 @@
+{
+  "name": "Luau",
+  "aliases": ["luau"],
+  "extensions": ["luau"],
+  "first_line": "^--!(?:strict|nonstrict|nocheck|native|optimize)",
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "match": "^--!\\s*[a-z]+.*$", "class": "preproc" },
+      { "match": "`", "class": "string", "push": "interp_string" },
+      { "match": "@[A-Za-z_]\\w*|@\\[[^\\]\\n]*\\]", "class": "attribute" },
+      { "match": "^\\s*((?:export\\s+)?type)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["continue", "export", "typeof", "type"], "class": "keyword" },
+      { "words": ["string", "number", "boolean", "any", "unknown", "never", "thread", "buffer", "vector", "Vector3", "CFrame", "Instance", "Color3", "UDim2"], "class": "type" },
+      { "include": "lang:Lua" }
+    ],
+    "interp_string": { "class": "string", "rules": [
+      { "match": "\\\\(?:x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\}|z\\s*|.)", "class": "escape" },
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "`|$", "pop": true }
+    ] },
+    "interp": [
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "include": "main" }
+    ]
+  }
+}

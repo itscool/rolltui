@@ -868,6 +868,17 @@ static void emit_span(State* st, const char* text, size_t n, unsigned char role,
   rolltui_md_lines_span(st->lines, text, n, role, st->ambiguous, srcs, src_n, href, href_n);
 }
 
+/* A grapheme of highlighted code: `emitted` is what the highlighter gave the sink, a role and perhaps a bold and an italic bit.
+ * Drawn in that role and shaded by the block's, since a role is a foreground AND a background and the highlighter's has no
+ * business being the block's ground. */
+static void emit_code_span(State* st, const char* text, size_t n, unsigned char emitted, const uint32_t* srcs, size_t src_n) {
+  const unsigned char block = st->opt->roles.code_block;
+  const unsigned char role = (unsigned char)(emitted & ROLLTUI_MD_ROLE_MASK);
+  const unsigned char attrs = (unsigned char)(((emitted & ROLLTUI_MD_ROLE_BOLD) ? ROLLTUI_MD_ATTR_BOLD : 0) | ((emitted & ROLLTUI_MD_ROLE_ITALIC) ? ROLLTUI_MD_ATTR_ITALIC : 0));
+  rolltui_md_lines_span_on(st->lines, text, n, role, st->opt->highlight_on_block && role != block ? block : ROLLTUI_MD_NO_ROLE, attrs, st->ambiguous, srcs,
+                           src_n, NULL, 0);
+}
+
 static void text_append(State* st, const char* s, size_t n) { rolltui_md_lines_text_append(st->out, s, n); }
 static size_t text_size(State* st) { return rolltui_md_lines_text_size(st->out); }
 static void end_logical_line(State* st, const Ctx* ctx) { text_append(st, ctx->terminator, strlen(ctx->terminator)); }
@@ -1447,8 +1458,7 @@ static void render_code(State* st, const char* code, size_t code_n, const char* 
       } else {
         for (g = 0; g < gn; ++g) {
           const uint32_t one = (uint32_t)(base + gs[g].source_offset);
-          emit_span(st, ltext + gs[g].offset, gs[g].length, highlight_role_at(w, gs[g].source_offset, st->opt->roles.code_block), &one, 1,
-                    NULL, 0);
+          emit_code_span(st, ltext + gs[g].offset, gs[g].length, highlight_role_at(w, gs[g].source_offset, st->opt->roles.code_block), &one, 1);
         }
       }
       pad = inner - lw;

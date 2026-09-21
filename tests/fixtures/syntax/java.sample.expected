@@ -1,0 +1,30 @@
+{keyword|package} com.example.app;
+
+{keyword|import} java.util.{type|List};
+{keyword|import} {keyword|static} java.lang.{type|Math}.*;
+
+{doc|/**}
+{doc| * A widget. See }{tag|{@link}{doc| Other}.}
+{doc| * }{attribute|@param}{doc| }{tag|<T>}{doc| the type}
+{doc| * }{attribute|@author}{doc| me}
+{doc| */}
+{attribute|@SuppressWarnings}({string|"unchecked"})
+{keyword|public} {keyword|final} {keyword|class} {type|Widget}<{type|T} {keyword|extends} {type|Comparable}<{type|T}>> {keyword|extends} {type|Base} {keyword|implements} {type|Runnable} {
+    {keyword|private} {keyword|static} {keyword|final} {type|int} {constant|MAX_SIZE} = {number|0x1F_FF};
+    {keyword|private} {keyword|final} {type|List}<{type|String}> names = {keyword|new} {type|ArrayList}<>();
+    {type|char} c = {string|'}{escape|\n}{string|'}, d = {string|'}{escape|\u0041}{string|'};
+    {type|String} block = {string|"""}
+{string|        Hello "text" }{escape|\t}{string| block}
+{string|        """};
+
+    {attribute|@Override}
+    {keyword|public} {type|void} {function|run}() {keyword|throws} {type|IOException} {
+        {keyword|for} ({type|int} i = {number|0}; i < {number|10L}; i++) {
+            {keyword|if} (names.{function|isEmpty}() || {keyword|this}.count > {number|3.5e2f}) {keyword|continue}; {comment|// skip}
+            {type|System}.out.{function|println}({string|"Value: "} + i + {string|"}{escape|\n}{string|"});
+        }
+        {keyword|var} w = {keyword|new} {type|Widget}<{type|Integer}>();
+        {keyword|record} {type|Point}({type|int} x, {type|int} y) {}
+        {keyword|return} {constant|null};
+    }
+}

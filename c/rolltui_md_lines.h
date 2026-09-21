@@ -66,6 +66,13 @@ extern "C" {
  *
  * EVERY POINTER HERE IS A BORROW into the store that produced it (see the window above).
  * The lengths are separate because none of it is NUL-terminated: the pools are packed. */
+/* The sentinel a role field uses for "none": a table cell with no override, a span that stands on no other role's ground.
+ * Not a Role and never drawn: 255 cannot collide with an enum that has fifty-odd values. */
+#define ROLLTUI_MD_NO_ROLE 0xFFu
+/* What a span asks for on top of its role's style. */
+#define ROLLTUI_MD_ATTR_BOLD 1u
+#define ROLLTUI_MD_ATTR_ITALIC 2u
+
 typedef struct RolltuiMdSpan {
   const char* text_p; /* the bytes to draw, in order */
   size_t text_n;
@@ -78,7 +85,11 @@ typedef struct RolltuiMdSpan {
   size_t src_n;
   int width; /* cells */
   unsigned char role;
-
+  /* ROLLTUI_MD_NO_ROLE, or the role whose BACKGROUND this span stands on IF ITS OWN ROLE STATES NONE. A role carries a
+   * foreground and a background together, so code coloured by a role that has only a foreground (a keyword's) and shaded by
+   * another (the code block's) needs both named; a role with a background of its own (a diff's removed line) keeps it. */
+  unsigned char bg_role;
+  unsigned char attrs; /* ROLLTUI_MD_ATTR_*: bold and italic, added to the role's own style */
 } RolltuiMdSpan;
 
 /* One drawn line: a contiguous run of the store's spans. */
@@ -108,6 +119,10 @@ void rolltui_md_lines_open(RolltuiMdLines* L);
 void rolltui_md_lines_span(RolltuiMdLines* L, const char* text, size_t text_n, unsigned char role,
                            int ambiguous_wide, const uint32_t* sources, size_t src_n, const char* href,
                            size_t href_n);
+/* The same, for a span that stands on ANOTHER ROLE'S ground (`bg_role`, or ROLLTUI_MD_NO_ROLE: its own) and asks for bold
+ * or italic (`attrs`) on top of its role. Spans merge only when their grounds and attributes match as well. */
+void rolltui_md_lines_span_on(RolltuiMdLines* L, const char* text, size_t text_n, unsigned char role, unsigned char bg_role,
+                              unsigned char attrs, int ambiguous_wide, const uint32_t* sources, size_t src_n, const char* href, size_t href_n);
 /* Appends span `index` of THIS store to the open line, sharing its pool range: no byte is
  * copied and nothing is merged. This is how a line is put behind a prefix. */
 void rolltui_md_lines_span_ref(RolltuiMdLines* L, size_t index);

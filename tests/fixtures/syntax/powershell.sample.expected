@@ -1,0 +1,25 @@
+{comment|#Requires -Version 5.1}
+{comment|<#}
+{attribute|.SYNOPSIS}
+{comment|  Does a thing.}
+{comment|#>}
+{attribute|[CmdletBinding()]}
+{keyword|param}(
+  {attribute|[Parameter(Mandatory=$true)]}{type|[string]}{variable|$Name},
+  {type|[int]}{variable|$Count} = {number|0x10}
+)
+{keyword|function} {function|Get-Thing} {
+  {keyword|param}({type|[string]}{variable|$Path})
+  {variable|$items} = {function|Get-ChildItem} {property|-Path} {variable|$Path} {property|-Recurse} | {function|Where-Object} { {variable|$_}.Length {keyword|-gt} {number|1KB} {keyword|-and} {variable|$_}.Name {keyword|-like} {string|'*.txt'} }
+  {keyword|foreach} ({variable|$i} {keyword|in} {variable|$items}) { {function|Write-Host} {string|"Found }{punct|$(}{variable|$i}.Name{punct|)}{string| at }{variable|${Path}}{string|\}{escape|`n}{string|"} {property|-ForegroundColor} Green }
+  {variable|$h} = @{ a = {number|1}; {string|'b c'} = {constant|$null} }
+  {type|[System.IO.File]}::{function|ReadAllText}({variable|$Path}).{function|Split}({string|"}{escape|`n}{string|"})
+  {keyword|return} {constant|$true}
+}
+{variable|$text} = {string|@"}
+{string|Hello }{variable|$Name}
+{string|"@}
+{variable|$raw} = {string|@'}
+{string|no $interp}
+{string|'@}
+{keyword|if} ({variable|$Count} {keyword|-eq} {number|3} {keyword|-or} !{variable|$x}) { {keyword|throw} {string|"bad }{escape|""}{string|quote}{escape|""}{string|"} }

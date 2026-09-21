@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+'use strict';
+import { readFile } from "fs/promises";
+/** Fetch a thing.
+ * @param {string} url the url
+ */
+export async function fetchThing(url, { retries = 3 } = {}) {
+  const re = /^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/i;
+  const half = total / 2 / count;   // not a regex
+  const msg = `Got ${items.length} items from ${ok ? `"${url}"` : 'none'} \u00e9 ${ {a: 1}.a }`;
+  for (const [k, v] of Object.entries(map)) {
+    if (!re.test(k) || v === undefined) continue;
+    await sleep(0x1F + 1_000 + 3.14e2 + 10n);
+  }
+  return new Promise((resolve) => setTimeout(resolve, MAX_DELAY));
+}
+class Widget extends Base {
+  static #count = 0;
+  get name() { return this._name; }
+  @observable size = "it's \"fine\"";
+}

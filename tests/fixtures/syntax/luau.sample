@@ -1,0 +1,10 @@
+--!strict
+type Point = { x: number, y: number }
+export type Handler<T> = (T) -> ()
+local function greet(name: string, n: number?): string
+	local msg = `Hello {name}, you are {n or 0 + 1} years \{ old`
+	for i = 1, 10 do if i % 2 == 0 then continue end end
+	return msg
+end
+@native
+local function fast(v: Vector3) return v * 2 end

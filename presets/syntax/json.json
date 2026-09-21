@@ -1,0 +1,18 @@
+{
+  "name": "JSON",
+  "aliases": ["json", "jsonc", "json5", "jsonl", "geojson"],
+  "extensions": ["json", "jsonc", "json5", "jsonl", "ndjson", "geojson", "webmanifest", "map", "har", "ipynb", "sarif", "avsc", "mcmeta", "code-workspace", "lock"],
+  "filenames": [".babelrc", ".eslintrc", ".prettierrc", ".swcrc", ".jshintrc", ".stylelintrc", ".watchmanconfig", ".lintstagedrc"],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "\"(?:[^\"\\\\\\n]|\\\\.)*\"(?=\\s*:)", "class": "property" },
+      { "match": "[A-Za-z_$][\\w$]*(?=\\s*:)", "class": "property" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\(?:u[0-9A-Fa-f]{4}|.)", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\(?:u[0-9A-Fa-f]{4}|.)", "single_line": true } },
+      { "words": ["true", "false", "null", "NaN", "Infinity"], "class": "constant" },
+      { "match": "[-+]?\\b(?:0[xX][0-9A-Fa-f]+|\\d+(?:\\.\\d*)?(?:[eE][+-]?\\d+)?)\\b", "class": "number" }
+    ]
+  }
+}

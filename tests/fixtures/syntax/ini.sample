@@ -1,0 +1,14 @@
+; comment
+# another
+[core]
+name = value
+path=/usr/local/bin ; inline comment
+quoted = "a \"b\" ${HOME}"
+apos = it's fine
+flag = true
+port: 8080
+ratio = 0.75
+[remote "origin"]
+	url = git@github.com:user/repo.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+export API_KEY=abc123

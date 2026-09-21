@@ -1,0 +1,25 @@
+{
+  "name": "INI",
+  "aliases": ["ini", "cfg", "conf", "properties", "editorconfig", "gitconfig", "dotenv", "env"],
+  "extensions": ["ini", "cfg", "conf", "properties", "editorconfig", "gitconfig", "gitmodules", "desktop", "service", "socket", "timer", "mount", "target", "inf", "reg", "env"],
+  "filenames": [".editorconfig", ".gitconfig", ".gitmodules", ".npmrc", ".pylintrc", ".flake8", ".pypirc", ".coveragerc", "setup.cfg", ".env", ".env.example", ".env.local", ".env.development", ".env.production", ".env.test", ".wgetrc", ".curlrc"],
+  "ignore_case": true,
+  "contexts": {
+    "main": [
+      { "match": "^\\s*[;#].*$", "class": "comment" },
+      { "match": "^\\s*\\[[^\\]\\n]*\\]", "class": "section" },
+      { "match": "^\\s*(export\\s+)?([^\\s=:;#\\[][^=:\\n]*?)\\s*([=:])", "captures": { "1": "keyword", "2": "property", "3": "operator" }, "push": "value" }
+    ],
+    "value": [
+      { "match": "$", "pop": true },
+      { "match": "\\s[;#].*$", "class": "comment" },
+      { "match": "\"", "class": "string", "push": "dq" },
+      { "match": "(?:^|\\s)'", "class": "string", "push": "sq" },
+      { "match": "\\$\\{[^}\\n]*\\}|\\$\\([^)\\n]*\\)|%\\([^)\\n]*\\)[sd]|\\$[A-Za-z_]\\w*", "class": "variable" },
+      { "words": ["true", "false", "yes", "no", "on", "off", "null", "none"], "class": "constant" },
+      { "match": "[-+]?\\b\\d+(?:\\.\\d+)?\\b", "class": "number" }
+    ],
+    "dq": { "class": "string", "rules": [ { "match": "\\\\.", "class": "escape" }, { "match": "\\$\\{[^}\\n]*\\}", "class": "variable" }, { "match": "\"|$", "pop": true } ] },
+    "sq": { "class": "string", "rules": [ { "match": "'|$", "pop": true } ] }
+  }
+}

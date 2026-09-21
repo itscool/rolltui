@@ -1,0 +1,49 @@
+{
+  "name": "JavaScript",
+  "aliases": ["js", "javascript", "jsx", "mjs", "cjs", "node"],
+  "extensions": ["js", "jsx", "mjs", "cjs", "es6", "jsm"],
+  "first_line": "^#!.*\\b(?:node|deno|bun)\\b",
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "/\\*\\*(?!/)", "end": "\\*/", "class": "doc", "rules": [ { "match": "@\\w+", "class": "attribute" } ] } },
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "^#!.*$", "class": "comment" },
+      { "match": "\"", "class": "string", "push": "dq_string" },
+      { "match": "'", "class": "string", "push": "sq_string" },
+      { "match": "`", "class": "string", "push": "template" },
+      { "match": "(?:^|[=(,:;!&|?{}\\[+*%<>~^-])\\s*(/(?![/*])(?:[^/\\\\\\n\\[]|\\\\.|\\[(?:[^\\]\\\\\\n]|\\\\.)*\\])+/[dgimsuvy]*)", "captures": { "1": "string" } },
+      { "match": "\\b(function\\s*\\*?)\\s*([A-Za-z_$][\\w$]*)\\s*(?=\\()", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "\\b(class|extends|new)\\s+([A-Za-z_$][\\w$]*)", "captures": { "1": "keyword", "2": "type" } },
+      { "match": "@[A-Za-z_$][\\w$.]*", "class": "attribute" },
+      { "words": ["async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "finally", "for", "from", "function", "get", "if", "import",
+                  "in", "instanceof", "let", "new", "of", "return", "set", "static", "switch", "throw", "try", "typeof", "var", "void", "while", "with", "yield", "as", "enum", "implements", "interface", "package",
+                  "private", "protected", "public"], "class": "keyword" },
+      { "words": ["this", "super", "arguments", "globalThis", "window", "document", "console", "module", "exports", "require", "process"], "class": "variable" },
+      { "words": ["true", "false", "null", "undefined", "NaN", "Infinity"], "class": "constant" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.[\\d_]*)?(?:[eE][+-]?\\d+)?)n?\\b", "class": "number" },
+      { "match": "\\b[A-Z][A-Z0-9]*_[A-Z0-9_]*\\b", "class": "constant" },
+      { "match": "\\b([A-Za-z_$][\\w$]*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Za-z0-9_$]*\\b", "class": "type" }
+    ],
+    "dq_string": { "class": "string", "rules": [
+      { "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|.)", "class": "escape" },
+      { "match": "\"|$", "pop": true }
+    ] },
+    "sq_string": { "class": "string", "rules": [
+      { "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|.)", "class": "escape" },
+      { "match": "'|$", "pop": true }
+    ] },
+    "template": { "class": "string", "rules": [
+      { "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|.)", "class": "escape" },
+      { "match": "\\$\\{", "class": "punct", "push": "interp" },
+      { "match": "`", "pop": true }
+    ] },
+    "interp": [
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "include": "main" }
+    ]
+  }
+}

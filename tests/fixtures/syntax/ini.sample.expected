@@ -1,0 +1,14 @@
+{comment|; comment}
+{comment|# another}
+{section|[core]}
+{property|name} {operator|=} value
+{property|path}{operator|=}/usr/local/bin{comment| ; inline comment}
+{property|quoted} {operator|=} {string|"a }{escape|\"}{string|b}{escape|\"}{string| }{variable|${HOME}}{string|"}
+{property|apos} {operator|=} it's fine
+{property|flag} {operator|=} {constant|true}
+{property|port}{operator|:} {number|8080}
+{property|ratio} {operator|=} {number|0.75}
+{section|[remote "origin"]}
+	{property|url} {operator|=} git@github.com:user/repo.git
+	{property|fetch} {operator|=} +refs/heads/*:refs/remotes/origin/*
+{keyword|export }{property|API_KEY}{operator|=}abc123

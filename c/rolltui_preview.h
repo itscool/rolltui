@@ -28,6 +28,7 @@
  * by value, text out is a caller's `RolltuiStr` or a BORROW.
  */
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_syntax.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +52,11 @@ void rolltui_preview_free(RolltuiPreview* pv); /* a no-op on NULL */
  * replaces everything and scrolls to the top; an empty path clears it (kind NONE). */
 void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len);
 int rolltui_preview_kind(const RolltuiPreview* pv);
+/* COLOUR. Lends the preview a set of languages (`rolltui_syntax_new_standard`), which the caller keeps and frees AFTER the
+ * preview. A text file that the set knows — by its name, its extension or its first line — is drawn with its keywords,
+ * strings, comments and so on in the theme's colours, and the head says which language; a Markdown document's fenced code
+ * is coloured the same way. NULL (the state of a new preview) draws everything plain. A file already shown is drawn again. */
+void rolltui_preview_set_syntax(RolltuiPreview* pv, RolltuiSyntax* syn);
 /* The reason an UNREADABLE file could not be shown; empty otherwise. A BORROW. */
 const char* rolltui_preview_message(const RolltuiPreview* pv, size_t* len);
 

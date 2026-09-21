@@ -1,0 +1,22 @@
+{preproc|<!DOCTYPE html>}
+{punct|<}{tag|html}{property| lang}{operator|=}{string|"en"}{punct|>}
+{punct|<}{tag|head}{punct|>}
+  {punct|<}{tag|meta}{property| charset}{operator|=}{string|"utf-8"}{punct|>}
+  {punct|<}{tag|title}{punct|>}Test {escape|&amp;} page{punct|</}{tag|title}{punct|>}
+  {punct|<}{tag|style}{punct|>}
+    {tag|body} {punct|{} {property|color}: {number|#333}; {property|margin}: {number|0} {punct|}}
+    {type|.a-b} {punct|{} {property|font-size}: {number|12px} {punct|}}
+  {punct|</}{tag|style}{punct|>}
+  {punct|<}{tag|script}{property| src}{operator|=}{string|"app.js"}{property| defer}{punct|></}{tag|script}{punct|>}
+  {punct|<}{tag|script}{punct|>}
+    {keyword|const} x = {string|`t }{punct|${}{number|1} + {number|2}{punct|}}{string|`}; {comment|// note}
+    {keyword|function }{function|f}(a) { {keyword|return} a ? {string|"yes"} : {string|'no'}; }
+  {punct|</}{tag|script}{punct|>}
+{punct|</}{tag|head}{punct|>}
+{punct|<}{tag|body}{property| class}{operator|=}{string|"home page"}{property| data-id}{operator|=}{string|42}{property| hidden}{punct|>}
+  {comment|<!-- comment -->}
+  {punct|<}{tag|p}{property| id}{operator|=}{string|'x'}{punct|>}Hello {punct|<}{tag|b}{punct|>}world{punct|</}{tag|b}{punct|>}{escape|&nbsp;&#169;}{punct|</}{tag|p}{punct|>}
+  {punct|<}{tag|img}{property| src}{operator|=}{string|"a.png"}{property| alt}{operator|=}{string|"A"}{property| }{punct|/>}
+  {punct|<}{tag|a}{property| href}{operator|=}{string|"/x?a=1&b=2"}{property| onclick}{operator|=}{string|"go()"}{punct|>}link{punct|</}{tag|a}{punct|>}
+{punct|</}{tag|body}{punct|>}
+{punct|</}{tag|html}{punct|>}

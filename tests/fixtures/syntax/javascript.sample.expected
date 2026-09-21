@@ -1,0 +1,21 @@
+{comment|#!/usr/bin/env node}
+{string|'use strict'};
+{keyword|import} { readFile } {keyword|from} {string|"fs/promises"};
+{doc|/** Fetch a thing.}
+{doc| * }{attribute|@param}{doc| {string} url the url}
+{doc| */}
+{keyword|export} {keyword|async} {keyword|function }{function|fetchThing}(url, { retries = {number|3} } = {}) {
+  {keyword|const} re = {string|/^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/i};
+  {keyword|const} half = total / {number|2} / count;   {comment|// not a regex}
+  {keyword|const} msg = {string|`Got }{punct|${}items.length{punct|}}{string| items from }{punct|${}ok ? {string|`"}{punct|${}url{punct|}}{string|"`} : {string|'none'}{punct|}}{string| }{escape|\u00e9}{string| }{punct|${} {punct|{}a: {number|1}{punct|}}.a {punct|}}{string|`};
+  {keyword|for} ({keyword|const} [k, v] {keyword|of} {type|Object}.{function|entries}(map)) {
+    {keyword|if} (!re.{function|test}(k) || v === {constant|undefined}) {keyword|continue};
+    {keyword|await} {function|sleep}({number|0x1F} + {number|1_000} + {number|3.14e2} + {number|10n});
+  }
+  {keyword|return} {keyword|new} {type|Promise}((resolve) => {function|setTimeout}(resolve, {constant|MAX_DELAY}));
+}
+{keyword|class} {type|Widget} {keyword|extends} {type|Base} {
+  {keyword|static} #count = {number|0};
+  {keyword|get} {function|name}() { {keyword|return} {variable|this}._name; }
+  {attribute|@observable} size = {string|"it's }{escape|\"}{string|fine}{escape|\"}{string|"};
+}

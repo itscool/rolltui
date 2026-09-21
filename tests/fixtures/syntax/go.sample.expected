@@ -1,0 +1,33 @@
+{comment|// Package main does things.}
+{keyword|package} main
+
+{keyword|import} (
+	{string|"fmt"}
+	str {string|"strings"}
+)
+
+{preproc|//go:generate stringer -type=Color}
+{keyword|type} {type|Color} {type|int}
+
+{keyword|const} (
+	{type|Red} {type|Color} = {constant|iota}
+	{type|Green}
+)
+
+{keyword|type} {type|Server} {keyword|struct} {
+	{type|Addr} {type|string} {string|`json:"addr"`}
+	conns {keyword|map}[{type|string}]{keyword|chan} {type|int}
+}
+
+{keyword|func} (s *Server) {function|Handle}(w http.{type|ResponseWriter}, r *http.{type|Request}) {type|error} {
+	msg := {string|`raw \n string`}
+	c := {string|'x'}
+	n := {number|0x1F} + {number|1_000} + {number|3.14e2} + {number|2i}
+	{keyword|if} err := s.{function|do}(); err != {constant|nil} {
+		{keyword|return} fmt.{function|Errorf}({string|"bad %d: %w}{escape|\n}{string|"}, n, err)
+	}
+	{keyword|go} {keyword|func}() { {keyword|defer} {function|close}(ch) }()
+	{keyword|return} {constant|nil}
+}
+
+{keyword|func} {function|main}() { s := {function|make}([]{type|int}, {number|0}, {number|10}); s = {function|append}(s, {number|1}); fmt.{function|Println}({function|len}(s), {constant|nil}, {constant|true}) }

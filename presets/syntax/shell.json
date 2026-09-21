@@ -1,0 +1,56 @@
+{
+  "name": "Shell",
+  "aliases": ["sh", "bash", "zsh", "shell", "shellscript", "ksh", "dash"],
+  "extensions": ["sh", "bash", "zsh", "ksh", "command", "bats", "ebuild"],
+  "filenames": [".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".bash_aliases", ".profile", ".zshrc", ".zshenv", ".zprofile", ".zlogin", ".zlogout", ".envrc", "PKGBUILD", "APKBUILD"],
+  "first_line": "^#!.*\\b(?:sh|bash|zsh|dash|ksh|ash)\\b",
+  "word_chars": "-",
+  "not_after": [".", "/"],
+  "contexts": {
+    "main": [
+      { "match": "(?:^|\\s)#.*$", "class": "comment" },
+      { "match": "<<<", "class": "operator" },
+      { "region": { "begin": "<<-?\\s*['\"]?([A-Za-z_]\\w*)['\"]?", "end": "^\\s*\\1$", "class": "string",
+                    "rules": [ { "match": "\\$(?:\\{[^}\\n]*\\}|[A-Za-z_]\\w*)", "class": "variable" } ] } },
+      { "match": "\\$\\(\\(", "class": "punct", "push": "arith" },
+      { "match": "\\$\\(", "class": "punct", "push": "cmd" },
+      { "match": "`", "class": "punct", "push": "backtick" },
+      { "match": "\\$'", "class": "string", "push": "ansi" },
+      { "match": "\"", "class": "string", "push": "dq" },
+      { "region": { "begin": "'", "end": "'", "class": "string" } },
+      { "match": "\\$(?:\\{[^}\\n]*\\}|[A-Za-z_]\\w*|[0-9@*#?$!-])", "class": "variable" },
+      { "match": "\\b(function)\\s+([A-Za-z_][\\w:.-]*)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "^\\s*([A-Za-z_][\\w:.-]*)\\s*\\(\\)", "captures": { "1": "function" } },
+      { "match": "\\b([A-Za-z_]\\w*)(?=\\+?=[^=])", "captures": { "1": "variable" } },
+      { "words": ["if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "select", "function", "time", "coproc"], "class": "keyword" },
+      { "words": ["true", "false"], "class": "constant" },
+      { "words": ["alias", "bg", "bind", "builtin", "cd", "command", "declare", "dirs", "disown", "echo", "enable", "eval", "exec", "exit", "export", "fg", "getopts", "hash", "help", "history", "jobs", "kill", "let",
+                  "local", "logout", "mapfile", "popd", "printf", "pushd", "pwd", "read", "readarray", "readonly", "return", "set", "shift", "shopt", "source", "suspend", "test", "trap", "type", "typeset", "ulimit",
+                  "umask", "unalias", "unset", "wait", "sudo"], "class": "function" },
+      { "match": "\\b\\d+\\b", "class": "number" }
+    ],
+    "dq": { "class": "string", "rules": [
+      { "match": "\\\\.", "class": "escape" },
+      { "match": "\\$\\(\\(", "class": "punct", "push": "arith" },
+      { "match": "\\$\\(", "class": "punct", "push": "cmd" },
+      { "match": "`", "class": "punct", "push": "backtick" },
+      { "match": "\\$(?:\\{[^}\\n]*\\}|[A-Za-z_]\\w*|[0-9@*#?$!-])", "class": "variable" },
+      { "match": "\"", "pop": true }
+    ] },
+    "ansi": { "class": "string", "rules": [ { "match": "\\\\(?:x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|.)", "class": "escape" }, { "match": "'", "pop": true } ] },
+    "cmd": [
+      { "match": "\\(", "class": "punct", "push": "cmd" },
+      { "match": "\\)", "class": "punct", "pop": true },
+      { "include": "main" }
+    ],
+    "backtick": [
+      { "match": "`", "class": "punct", "pop": true },
+      { "include": "main" }
+    ],
+    "arith": [
+      { "match": "\\)\\)", "class": "punct", "pop": true },
+      { "match": "\\$(?:\\{[^}\\n]*\\}|[A-Za-z_]\\w*|[0-9@*#?$!-])", "class": "variable" },
+      { "match": "\\b\\d+\\b", "class": "number" }
+    ]
+  }
+}

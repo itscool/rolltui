@@ -1,0 +1,18 @@
+{function|cmake_minimum_required}({constant|VERSION} {number|3.20})
+{function|project}(rolltui {constant|VERSION} {number|1.2.3} {constant|LANGUAGES} {constant|C} {constant|CXX})
+{comment|# comment}
+{comment|#[[ block}
+{comment|comment ]]}
+{function|option}({constant|BUILD_TESTS} {string|"Build tests"} {constant|ON})
+{function|set}({constant|CMAKE_CXX_STANDARD} {number|20})
+{function|set}({constant|SOURCES} src/a.c {string|"src/b c.c"} {punct|${}{variable|EXTRA_SOURCES}{punct|}} {punct|$ENV{}{variable|HOME}{punct|}}/x)
+{function|add_library}(rolltui {constant|STATIC} {punct|${}{variable|SOURCES}{punct|}})
+{function|target_compile_definitions}(rolltui {constant|PRIVATE} {punct|$<$<}{attribute|CONFIG:Debug}{punct|>}{attribute|:DEBUG=1}{punct|>} {constant|VERSION}={string|"}{punct|${}{variable|PROJECT_VERSION}{punct|}}{escape|\n}{string|"})
+{keyword|if}({keyword|NOT} {constant|WIN32} {keyword|AND} {constant|BUILD_TESTS} {keyword|STREQUAL} {string|"ON"} {keyword|OR} {keyword|DEFINED} {constant|ENV}{{constant|CI}})
+  {function|message}({constant|STATUS} {string|"tests on: }{punct|${}{variable|BUILD_TESTS}{punct|}}{string|"})
+{keyword|elseif}({constant|APPLE})
+  {function|set}({constant|X} {string|[=[raw ]] text]=]})
+{keyword|endif}()
+{keyword|function}(add_thing {constant|NAME})
+  {function|add_executable}({punct|${}{variable|NAME}{punct|}} main.c)
+{keyword|endfunction}()

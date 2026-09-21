@@ -1,0 +1,11 @@
+{keyword|@import} url({string|"x.css"});
+{comment|/* comment */}
+{attribute|:root} {punct|{} {variable|--main-color}: {number|#06c}; {variable|--gap}: {number|1.5rem}; {punct|}}
+{tag|body}, {type|.card} > {tag|p}{attribute|:hover::before}, {tag|a}{attribute|[href^="http"]} {punct|{}
+  {property|margin}: {number|0} auto;
+  {property|color}: {number|#fff};
+  {property|background}: {function|rgba}({number|0}, {number|0}, {number|0}, {number|.5}) {function|url}({string|'bg.png'}) no-repeat;
+  {property|font}: {number|12px}/{number|1.5} {string|"Helvetica Neue"}, sans-serif {keyword|!important};
+  {property|width}: {function|calc}({number|100%} - {function|var}({variable|--gap}));
+{punct|}}
+{keyword|@media} (min-width: {number|600px}) {punct|{} #main .item-1 {punct|{} {property|padding}: {number|4px}; {punct|}} {punct|}}

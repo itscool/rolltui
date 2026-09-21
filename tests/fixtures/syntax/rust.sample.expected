@@ -1,0 +1,26 @@
+{doc|//! Crate docs}
+{keyword|use} std::collections::{type|HashMap};
+
+{doc|/// A widget.}
+{attribute|#[derive(Debug, Clone)]}
+{keyword|pub} {keyword|struct} {type|Widget}<{attribute|'a}, {type|T}: {type|Display}> {
+    name: &{attribute|'a} {type|str},
+    items: {type|Vec}<{type|T}>,
+}
+
+{keyword|impl}<{attribute|'a}, {type|T}> {type|Widget}<{attribute|'a}, {type|T}> {keyword|where} {type|T}: {type|Display} {
+    {keyword|pub} {keyword|const} {type|MAX}: {type|usize} = {number|0x1F_FF};
+    {keyword|pub} {keyword|fn} {function|new}(name: &{attribute|'a} {type|str}) -> {variable|Self} { {variable|Self} { name, items: {type|Vec}::{function|new}() } }
+    {keyword|fn} {function|run}(&{keyword|mut} {variable|self}) -> {type|Result}<(), {type|Box}<{keyword|dyn} {type|Error}>> {
+        {comment|/* block /* nested */ still comment */}
+        {keyword|let} c = {string|'x'}; {keyword|let} nl = {string|'\n'}; {keyword|let} r = {number|1}..={number|10u32};
+        {keyword|let} raw = {string|r#"a "quoted" \ string"#};
+        {keyword|let} s = {string|"line}{escape|\t}{string|with }{escape|\"}{string|escapes}{escape|\"}{string| }{escape|\u{1F600}}{string|"};
+        {function|println}!({string|"{} {:?}"}, {variable|self}.name, {number|3.14f64});
+        {keyword|for} (i, item) {keyword|in} {variable|self}.items.{function|iter}().{function|enumerate}() {
+            {keyword|match} item { {constant|Some}(v) {keyword|if} *v > {number|3} => {keyword|break}, _ => {keyword|continue} }
+        }
+        {constant|Ok}(())
+    }
+}
+{keyword|fn} {function|main}() { {keyword|let} x: {type|i32} = {number|5}; {keyword|let} v = {function|vec}![{number|1}, {number|2}, {number|3}]; {keyword|loop} { {keyword|break}; } }

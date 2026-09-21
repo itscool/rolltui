@@ -1,0 +1,18 @@
+@{function|echo} {constant|off}
+{comment|REM Build script}
+{comment|:: another comment}
+{function|setlocal} EnableDelayedExpansion
+{function|set} {string|"OUT=}{variable|%~dp0}{string|build"}
+{keyword|if} {keyword|not} {keyword|exist} {string|"}{variable|%OUT%}{string|"} {function|mkdir} {string|"}{variable|%OUT%}{string|"}
+{keyword|for} /f {string|"tokens=*"} {variable|%%i} {keyword|in} ('{function|dir} /b') {keyword|do} (
+  {function|echo} Found {variable|%%i} {variable|!errorlevel!} {number|100}%%
+)
+{keyword|call} {function|:helper} arg1 {variable|%1} {variable|%*}
+{keyword|if} {variable|%ERRORLEVEL%} {keyword|neq} {number|0} {keyword|goto} {function|:fail}
+{function|echo} Done {escape|^&} {keyword|exit}
+{keyword|goto} {function|:eof}
+{section|:helper}
+  {function|echo} helper {variable|%~1}
+  {keyword|exit} /b {number|0}
+{section|:fail}
+  {keyword|exit} /b {number|1}

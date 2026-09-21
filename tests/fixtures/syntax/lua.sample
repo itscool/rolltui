@@ -1,0 +1,14 @@
+#!/usr/bin/env lua
+--- Module doc
+local M = {}
+local x <const> = 0x1F + 3.5e2 + 1.
+--[[ block
+comment ]]
+--[==[ level two ]] still ]==]
+local s = "a \"quoted\"\n\x41" .. 'single' .. [[long
+string]] .. [==[with ]] inside]==]
+function M.add(a, b) return a + b end
+function M:method(...) local t = { key = "v", [1] = nil } for i, v in ipairs(t) do print(i, v) end end
+local ok = pcall(require, "mod") and not false or self.value ~= nil
+goto done
+::done::

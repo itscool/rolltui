@@ -118,10 +118,8 @@ typedef struct RolltuiMdRoles {
  * in the library, borrowed by pointer, never copied a second time. */
 const RolltuiMdRoles* rolltui_md_roles(void);
 
-/* The sentinel a table cell's "no override" uses. Not a Role and never emitted: 255 cannot
- * collide with an enum that has fifty-odd values, and saying so here is cheaper than
- * teaching this file what `Role::count_` happens to be today. */
-#define ROLLTUI_MD_NO_ROLE 0xFFu
+/* ROLLTUI_MD_NO_ROLE (the sentinel a table cell's "no override" uses, and a span's "no other ground") is defined beside the
+ * span it is written in, in rolltui_md_lines.h. */
 
 /* A host's per-block fold/cap override. */
 typedef struct RolltuiMdFoldState {
@@ -147,6 +145,10 @@ typedef struct RolltuiMdRenderOptions {
    * and every code line renders through the exact pre-seam path. */
   RolltuiMdHighlightFn highlight ROLLTUI_DEFAULT(NULL);
   void* highlight_ctx ROLLTUI_DEFAULT(NULL);
+  /* Off (the default): a highlighted span is drawn on its role's own ground, as it always was. On: a span whose role's ground
+   * is only the window's stands on the CODE BLOCK's, so coloured code sits in its box without a hole in the shading. A
+   * highlighter that colours with roles of a look of their own (the studio's diff) leaves this off. */
+  unsigned char highlight_on_block ROLLTUI_DEFAULT(0);
 
   int fold_over_lines ROLLTUI_DEFAULT(0); /* 0: no block ever arrives folded */
   int cap_lines ROLLTUI_DEFAULT(0);       /* 0: an unfolded block is never capped */

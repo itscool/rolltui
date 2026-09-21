@@ -15,6 +15,7 @@
 #include "rolltui/c/rolltui_preview.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_widgets.h"
 
@@ -67,6 +68,7 @@ struct RolltuiPicker {
   /* THE FILE PREVIEW: the module that draws what a file holds, the path it was last pointed at (so a frame that
    * moved nothing reads nothing), whether the keys are in it, and where it was drawn (for the pointer). */
   RolltuiPreview* pv; /* OWNED, made when the first file is previewed */
+  RolltuiSyntax* syn; /* OWNED, made when a file is first previewed with colour on; the preview BORROWS it, so it is freed after the preview */
   RolltuiStr pv_path;
   int pv_focus;
   int pv_zoom;         /* the preview has the whole picker: the columns are not drawn */
@@ -663,9 +665,18 @@ static int preview_target(RolltuiPicker* p, RolltuiStr* out) {
 /* POINTS THE PREVIEW AT WHAT THE CURSOR IS ON, and lets go of it when the cursor is on anything else. Reads
  * nothing on a frame that moved nothing: the path is compared first. Moving to another file also hands the keys
  * back to the list — they were in the file that is no longer there. */
+static void sync_syntax(RolltuiPicker* p) {
+  if (p->opt.no_syntax) {
+    rolltui_preview_set_syntax(p->pv, NULL);
+    return;
+  }
+  if (!p->syn) p->syn = rolltui_syntax_new_standard(NULL); /* the languages are parsed once, when the first file is looked at */
+  rolltui_preview_set_syntax(p->pv, p->syn);
+}
 static void sync_preview(RolltuiPicker* p) {
   if (preview_target(p, &p->s3)) {
     if (!p->pv) p->pv = rolltui_preview_new();
+    sync_syntax(p);
     if (!rolltui_str_eq(&p->pv_path, p->s3.p, p->s3.n)) {
       rolltui_str_set(&p->pv_path, p->s3.p, p->s3.n);
       rolltui_preview_set_path(p->pv, p->s3.p, p->s3.n);
@@ -708,6 +719,7 @@ void rolltui_picker_free(RolltuiPicker* p) {
   rolltui_str_free(&p->root);
   rolltui_str_free(&p->event_path);
   rolltui_preview_free(p->pv);
+  rolltui_syntax_free(p->syn);
   rolltui_str_free(&p->pv_path);
   rolltui_str_free(&p->s1);
   rolltui_str_free(&p->s2);

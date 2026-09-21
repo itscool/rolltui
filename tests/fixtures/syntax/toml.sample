@@ -1,0 +1,26 @@
+# Cargo manifest
+[package]
+name = "rolltui"
+version = "0.1.5"
+edition = '2021'
+authors = ["Scott <s@x.com>", "B"]
+desc = """multi
+line é text"""
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = "1"
+[[bin]]
+name = "a"
+path = "src/main.rs"
+[profile.release]
+opt-level = 3
+lto = true
+date = 1979-05-27T07:32:00Z
+hex = 0xDEAD_BEEF
+matrix = [
+  [1, 2],   # row
+  [3, 4],
+]
+"quoted.key" = 'lit\n'
+a.b.c = inf

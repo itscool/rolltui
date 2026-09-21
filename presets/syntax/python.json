@@ -1,0 +1,51 @@
+{
+  "name": "Python",
+  "aliases": ["python", "py", "python3", "py3", "sage"],
+  "extensions": ["py", "pyw", "pyi", "pyx", "pxd", "gyp", "gypi", "sage", "star", "bzl"],
+  "filenames": ["SConstruct", "SConscript", "BUILD.bazel", "WORKSPACE", "Snakefile", "wscript"],
+  "first_line": "^#!.*\\bpython[0-9.]*\\b",
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "match": "#.*$", "class": "comment" },
+      { "match": "^\\s*[rRuU]?\"\"\"", "class": "doc", "push": "doc_dq3" },
+      { "match": "^\\s*[rRuU]?'''", "class": "doc", "push": "doc_sq3" },
+      { "match": "\\b(?:[fF][rR]?|[rR][fF])\"\"\"", "class": "string", "push": "f_dq3" },
+      { "match": "\\b(?:[fF][rR]?|[rR][fF])'''", "class": "string", "push": "f_sq3" },
+      { "match": "\\b(?:[fF][rR]?|[rR][fF])\"", "class": "string", "push": "f_dq" },
+      { "match": "\\b(?:[fF][rR]?|[rR][fF])'", "class": "string", "push": "f_sq" },
+      { "match": "(?:\\b(?:[rRuUbB]|[rR][bB]|[bB][rR]))?\"\"\"", "class": "string", "push": "dq3" },
+      { "match": "(?:\\b(?:[rRuUbB]|[rR][bB]|[bB][rR]))?'''", "class": "string", "push": "sq3" },
+      { "match": "(?:\\b(?:[rRuUbB]|[rR][bB]|[bB][rR]))?\"", "class": "string", "push": "dq" },
+      { "match": "(?:\\b(?:[rRuUbB]|[rR][bB]|[bB][rR]))?'", "class": "string", "push": "sq" },
+      { "match": "^\\s*@[A-Za-z_][\\w.]*", "class": "attribute" },
+      { "match": "\\b(def)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "\\b(class)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda",
+                  "match", "nonlocal", "not", "or", "pass", "raise", "return", "try", "type", "while", "with", "yield"], "class": "keyword" },
+      { "words": ["True", "False", "None", "Ellipsis", "NotImplemented", "__debug__"], "class": "constant" },
+      { "words": ["self", "cls"], "class": "variable" },
+      { "words": ["int", "str", "float", "bool", "list", "dict", "set", "frozenset", "tuple", "bytes", "bytearray", "object", "complex", "range", "memoryview", "slice", "property", "staticmethod", "classmethod", "super"], "class": "type" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.[\\d_]*)?(?:[eE][+-]?\\d+)?[jJ]?)\\b", "class": "number" },
+      { "match": "\\b__[A-Za-z0-9_]+__\\b", "class": "constant" },
+      { "match": "\\b[A-Z][A-Z0-9]*_[A-Z0-9_]*\\b", "class": "constant" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ],
+    "dq": { "class": "string", "rules": [ { "match": "\\\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|N\\{[^}]*\\}|[0-7]{1,3}|.)", "class": "escape" }, { "match": "\"|$", "pop": true } ] },
+    "sq": { "class": "string", "rules": [ { "match": "\\\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|N\\{[^}]*\\}|[0-7]{1,3}|.)", "class": "escape" }, { "match": "'|$", "pop": true } ] },
+    "dq3": { "class": "string", "rules": [ { "match": "\\\\.", "class": "escape" }, { "match": "\"\"\"", "pop": true } ] },
+    "sq3": { "class": "string", "rules": [ { "match": "\\\\.", "class": "escape" }, { "match": "'''", "pop": true } ] },
+    "doc_dq3": { "class": "doc", "rules": [ { "match": "\"\"\"", "pop": true } ] },
+    "doc_sq3": { "class": "doc", "rules": [ { "match": "'''", "pop": true } ] },
+    "f_dq": { "class": "string", "rules": [ { "match": "\\{\\{|\\}\\}", "class": "string" }, { "match": "\\\\.", "class": "escape" }, { "match": "\\{", "class": "punct", "push": "interp" }, { "match": "\"|$", "pop": true } ] },
+    "f_sq": { "class": "string", "rules": [ { "match": "\\{\\{|\\}\\}", "class": "string" }, { "match": "\\\\.", "class": "escape" }, { "match": "\\{", "class": "punct", "push": "interp" }, { "match": "'|$", "pop": true } ] },
+    "f_dq3": { "class": "string", "rules": [ { "match": "\\{\\{|\\}\\}", "class": "string" }, { "match": "\\\\.", "class": "escape" }, { "match": "\\{", "class": "punct", "push": "interp" }, { "match": "\"\"\"", "pop": true } ] },
+    "f_sq3": { "class": "string", "rules": [ { "match": "\\{\\{|\\}\\}", "class": "string" }, { "match": "\\\\.", "class": "escape" }, { "match": "\\{", "class": "punct", "push": "interp" }, { "match": "'''", "pop": true } ] },
+    "interp": [
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "include": "main" }
+    ]
+  }
+}

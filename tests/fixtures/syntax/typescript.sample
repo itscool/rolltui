@@ -1,0 +1,12 @@
+import type { Foo } from "./foo";
+export type Handler<T = unknown> = (event: T) => void | Promise<void>;
+interface Options extends Base { readonly retries?: number; name: string }
+declare module "x" {}
+enum Color { Red, Green }
+abstract class Shape<T extends object> implements Drawable {
+  private readonly id: number = 0;
+  constructor(public name: string, protected size?: number) { super(); }
+  area(this: Shape<T>): number { return this.size! * 2 as number; }
+}
+const x = <const>["a"];
+function isFoo(v: unknown): v is Foo { return typeof v === "object"; }

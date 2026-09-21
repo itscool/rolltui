@@ -1,0 +1,48 @@
+{
+  "name": "HTML",
+  "aliases": ["html", "htm", "xhtml", "markup"],
+  "extensions": ["html", "htm", "xhtml", "shtml", "hta"],
+  "first_line": "^\\s*<!doctype html|^\\s*<html\\b",
+  "ignore_case": true,
+  "contexts": {
+    "main": [
+      { "region": { "begin": "<!--", "end": "-->", "class": "comment" } },
+      { "match": "<!doctype[^>]*>", "class": "preproc" },
+      { "match": "(<)(script)\\b", "captures": { "1": "punct", "2": "tag" }, "push": "script_tag" },
+      { "match": "(<)(style)\\b", "captures": { "1": "punct", "2": "tag" }, "push": "style_tag" },
+      { "match": "(</?)([A-Za-z][\\w:.-]*)", "captures": { "1": "punct", "2": "tag" }, "push": "tag" },
+      { "match": "&(?:#\\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);", "class": "escape" }
+    ],
+    "tag": { "class": "property", "rules": [
+      { "match": "/?>", "class": "punct", "pop": true },
+      { "match": "(=)\\s*([^\\s\"'=<>`]+)", "captures": { "1": "operator", "2": "string" } },
+      { "match": "=", "class": "operator" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string" } },
+      { "region": { "begin": "'", "end": "'", "class": "string" } }
+    ] },
+    "script_tag": { "class": "property", "rules": [
+      { "match": ">", "class": "punct", "set": "script_body" },
+      { "match": "/>", "class": "punct", "pop": true },
+      { "match": "(=)\\s*([^\\s\"'=<>`]+)", "captures": { "1": "operator", "2": "string" } },
+      { "match": "=", "class": "operator" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string" } },
+      { "region": { "begin": "'", "end": "'", "class": "string" } }
+    ] },
+    "style_tag": { "class": "property", "rules": [
+      { "match": ">", "class": "punct", "set": "style_body" },
+      { "match": "/>", "class": "punct", "pop": true },
+      { "match": "(=)\\s*([^\\s\"'=<>`]+)", "captures": { "1": "operator", "2": "string" } },
+      { "match": "=", "class": "operator" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string" } },
+      { "region": { "begin": "'", "end": "'", "class": "string" } }
+    ] },
+    "script_body": [
+      { "match": "(?=</script\\b)", "pop": true },
+      { "include": "lang:JavaScript" }
+    ],
+    "style_body": [
+      { "match": "(?=</style\\b)", "pop": true },
+      { "include": "lang:CSS" }
+    ]
+  }
+}

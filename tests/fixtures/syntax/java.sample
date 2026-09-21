@@ -1,0 +1,30 @@
+package com.example.app;
+
+import java.util.List;
+import static java.lang.Math.*;
+
+/**
+ * A widget. See {@link Other}.
+ * @param <T> the type
+ * @author me
+ */
+@SuppressWarnings("unchecked")
+public final class Widget<T extends Comparable<T>> extends Base implements Runnable {
+    private static final int MAX_SIZE = 0x1F_FF;
+    private final List<String> names = new ArrayList<>();
+    char c = '\n', d = '\u0041';
+    String block = """
+        Hello "text" \t block
+        """;
+
+    @Override
+    public void run() throws IOException {
+        for (int i = 0; i < 10L; i++) {
+            if (names.isEmpty() || this.count > 3.5e2f) continue; // skip
+            System.out.println("Value: " + i + "\n");
+        }
+        var w = new Widget<Integer>();
+        record Point(int x, int y) {}
+        return null;
+    }
+}

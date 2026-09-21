@@ -229,6 +229,7 @@ struct Options {
                           // rather than leave the cursor with no marker at all.
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
   bool preview = false;  // a file's contents in the right half: off until a person asks (it reads the file under the cursor)
+  bool syntax = true;    // source in the preview drawn in colour, when it is in a language the library knows; off draws every file plain
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
   // WHAT ENTER ON A FILE DOES. A folder is always entered. A file is a leaf: an EXECUTABLE goes
@@ -678,6 +679,7 @@ struct App {
     o.highlight = opt.highlight ? 1 : 0;
     o.dividers = opt.dividers ? 1 : 0;
     o.preview = opt.preview ? ROLLTUI_PREVIEW_RIGHT : ROLLTUI_PREVIEW_OFF;
+    o.no_syntax = opt.syntax ? 0 : 1;
     o.show_size = show_code(opt.show_size);
     o.show_modified = show_code(opt.show_modified);
     o.take_folders = 1;  // a directory picker: Enter on a folder CHOOSES it, and Right enters it
@@ -740,6 +742,7 @@ struct App {
         if (!opt.sparkle && !opt.highlight) opt.highlight = true;  // never both off, even from a hand-edited file
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = std::string(pv, pn) == "right"; }
+        opt.syntax = rolltui_json_as_bool(rolltui_json_get(root, "syntax", 6), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
         opt.reversed = rolltui_json_as_bool(rolltui_json_get(root, "reversed", 8), 0) != 0;
@@ -777,6 +780,7 @@ struct App {
     out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false")
         << ", \"highlight\": " << (opt.highlight ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
         << ", \"preview\": \"" << (opt.preview ? "right" : "off") << "\""
+        << ", \"syntax\": " << (opt.syntax ? "true" : "false")
         << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
         << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
@@ -807,6 +811,7 @@ struct App {
     rolltui_menu_set_checked(m, "sparkle", 7, opt.sparkle ? 1 : 0);
     rolltui_menu_set_checked(m, "highlight", 9, opt.highlight ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
+    rolltui_menu_set_checked(m, "syntax", 6, opt.syntax ? 1 : 0);
     rolltui_menu_set_value(m, "preview", 7, opt.preview ? "right" : "off", opt.preview ? 5 : 3);
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
     rolltui_menu_set_value(m, "show_modified", 13, show_name(opt.show_modified), std::strlen(show_name(opt.show_modified)));
@@ -1666,7 +1671,11 @@ struct App {
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "sparkle") set_sparkle(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "highlight") set_highlight(ev.checked != 0);
-      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "dividers") {
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "syntax") {
+        opt.syntax = ev.checked != 0;
+        hint = opt.syntax ? "source colour in the preview on" : "source colour in the preview off";
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "dividers") {
         opt.dividers = ev.checked != 0;
         hint = opt.dividers ? "column dividers on" : "column dividers off";
         save_settings();
@@ -1877,6 +1886,10 @@ int usage() {
                "       dirktui check-terminal              asks this terminal again what it is (colours, light or\n"
                "                                           dark, glyph width), replaces what was remembered, and\n"
                "                                           says what it found and where each answer came from\n"
+               "       dirktui languages [FILE.json ...]   what source files are coloured as: the shipped languages, your own\n"
+               "                                           in <config>/rolltui/syntax/, and why one of yours did\n"
+               "                                           not load; FILE.json checks a language you are writing;\n"
+               "                                           exit 1 when any did not\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
                "                                           fish: dirktui init fish | source\n"
@@ -2212,6 +2225,19 @@ RolltuiTerminal* open_probe_terminal(int* tty_out) {
   return t;
 }
 
+// `dirktui languages`: the library's own account of the languages source files are coloured as, and of any file of a person's
+// that did not load. A language with a mistake in it is skipped on the screen without a word; this is where it is said.
+int languages_command(int argc, char** argv) {
+  std::vector<const char*> files;
+  for (int i = 2; i < argc; ++i) files.push_back(argv[i]);
+  RolltuiStr out{};
+  const std::size_t bad = rolltui_syntax_check(files.data(), files.size(), &out);
+  std::printf("dirktui languages — what a source file is coloured as\n\n%.*s", static_cast<int>(out.n), out.p ? out.p : "");
+  rolltui_str_free(&out);
+  std::printf("\nA language is a JSON file: see \"Source colour\" in the README for what goes in one.\n");
+  return bad ? 1 : 0;
+}
+
 // `dirktui check-terminal`: asks the terminal again NOW, ignoring what was remembered, remembers the new
 // answers, and says what it found and where each answer came from. It is what to run when the
 // colours look wrong — the report names the terminal, how many colours it will be drawn to and why.
@@ -2407,6 +2433,7 @@ int main(int argc, char** argv) {
   }
   if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
   if (argc >= 2 && std::string(argv[1]) == "check-terminal") return check_terminal_command();
+  if (argc >= 2 && std::string(argv[1]) == "languages") return languages_command(argc, argv);
   if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
   if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
   std::string start;

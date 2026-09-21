@@ -1,0 +1,15 @@
+{
+  "name": "TypeScript",
+  "aliases": ["ts", "typescript", "tsx", "mts", "cts"],
+  "extensions": ["ts", "tsx", "mts", "cts"],
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "match": "^\\s*((?:export\\s+)?(?:declare\\s+)?type)\\s+([A-Za-z_$][\\w$]*)", "captures": { "1": "keyword", "2": "type" } },
+      { "match": "\\b(interface|namespace|abstract\\s+class|enum)\\s+([A-Za-z_$][\\w$]*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["abstract", "asserts", "declare", "implements", "infer", "interface", "is", "keyof", "namespace", "override", "readonly", "satisfies", "unique"], "class": "keyword" },
+      { "words": ["string", "number", "boolean", "any", "unknown", "never", "object", "symbol", "bigint"], "class": "type" },
+      { "include": "lang:JavaScript" }
+    ]
+  }
+}

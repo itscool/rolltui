@@ -1,0 +1,27 @@
+{
+  "name": "Go",
+  "aliases": ["go", "golang"],
+  "extensions": ["go"],
+  "filenames": ["go.mod", "go.work"],
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "match": "//go:[a-z]+.*$|//line .*$|//export .*$", "class": "preproc" },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "region": { "begin": "`", "end": "`", "class": "string" } },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3}|.)", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3}|.)", "single_line": true } },
+      { "match": "\\b(func)\\s*(\\([^)]*\\)\\s*)?([A-Za-z_]\\w*)", "captures": { "1": "keyword", "3": "function" } },
+      { "match": "\\b(type)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range", "return", "select",
+                  "struct", "switch", "type", "var"], "class": "keyword" },
+      { "words": ["bool", "byte", "complex64", "complex128", "error", "float32", "float64", "int", "int8", "int16", "int32", "int64", "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "any", "comparable"], "class": "type" },
+      { "words": ["true", "false", "nil", "iota"], "class": "constant" },
+      { "words": ["append", "cap", "clear", "close", "complex", "copy", "delete", "imag", "len", "make", "max", "min", "new", "panic", "print", "println", "real", "recover"], "class": "function" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.[\\d_]*)?(?:[eE][+-]?\\d+)?i?)\\b", "class": "number" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ]
+  }
+}

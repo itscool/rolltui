@@ -1,0 +1,27 @@
+{comment|#!/usr/bin/env python3}
+{doc|"""Module docstring with "quotes"."""}
+{keyword|import} os, sys
+{keyword|from} typing {keyword|import} {type|Optional}
+
+{attribute|@dataclass}(frozen={constant|True})
+{keyword|class} {type|Point}({type|Base}):
+{doc|    """A point."""}
+    x: {type|int} = {number|0}
+    {constant|MAX_ITEMS} = {number|0x1F}
+
+    {keyword|def} {function|__init__}({variable|self}, name: {type|str}, *args, **kw) -> {constant|None}:
+        {variable|self}.name = {string|f"Hello }{punct|{}name!r:>{number|10}{punct|}}{string| {{literal}} }{punct|{}kw[{string|'k'}]{punct|}}{string| }{escape|\n}{string|"}
+        raw = {string|r'}{escape|\d}{string|+}{escape|\s}{string|'} + {string|b"bytes"} + {string|rb'}{escape|\x00}{string|'}
+        total = {function|sum}(x * {number|2} {keyword|for} x {keyword|in} {type|range}({number|10}) {keyword|if} x % {number|2} == {number|0})  {comment|# comment}
+        {keyword|if} name {keyword|is} {keyword|not} {constant|None} {keyword|and} {keyword|not} ({number|1_000} + {number|3.14e-2j}):
+            {function|print}({string|f'''multi}
+{string|            }{punct|{}name{punct|}}{string| line'''})
+        {keyword|return} {constant|None}
+
+{keyword|async} {keyword|def} {function|main}():
+    {keyword|async} {keyword|with} lock:
+        {keyword|await} asyncio.{function|sleep}({number|1})
+    text = {string|"""not a}
+{string|    docstring"""}
+    {keyword|match} cmd:
+        {keyword|case} {string|"go"}: {keyword|pass}

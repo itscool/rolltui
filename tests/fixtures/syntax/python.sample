@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Module docstring with "quotes"."""
+import os, sys
+from typing import Optional
+
+@dataclass(frozen=True)
+class Point(Base):
+    """A point."""
+    x: int = 0
+    MAX_ITEMS = 0x1F
+
+    def __init__(self, name: str, *args, **kw) -> None:
+        self.name = f"Hello {name!r:>10} {{literal}} {kw['k']} \n"
+        raw = r'\d+\s' + b"bytes" + rb'\x00'
+        total = sum(x * 2 for x in range(10) if x % 2 == 0)  # comment
+        if name is not None and not (1_000 + 3.14e-2j):
+            print(f'''multi
+            {name} line''')
+        return None
+
+async def main():
+    async with lock:
+        await asyncio.sleep(1)
+    text = """not a
+    docstring"""
+    match cmd:
+        case "go": pass

@@ -149,6 +149,9 @@ ROLLTUI_API(rolltui_swap_invalidate, PUBLIC)
 ROLLTUI_API(rolltui_swap_new, PUBLIC)
 ROLLTUI_API(rolltui_swap_present, PUBLIC)
 
+/* ---- rolltui_syntax.c — source languages; the checker is PUBLIC, the engine INTERNAL ---------- */
+ROLLTUI_API(rolltui_syntax_check, PUBLIC)  /* dirktui languages: how a person finds out a language file of their own did not load */
+
 /* ---- rolltui_run.c — the loop around the swap and the terminal; default PUBLIC ------------- */
 ROLLTUI_API(rolltui_run, PUBLIC)  /* dirktui and paint: the loop every terminal app wrote for itself, written once */
 ROLLTUI_API(rolltui_run_stop, PUBLIC)  /* the callbacks' half: an app that no longer owns the loop stops it by name */

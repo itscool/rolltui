@@ -1,0 +1,7 @@
+{comment|# attrs}
+{string|*} {property|text}{operator|=}{constant|auto} {property|eol}{operator|=}{constant|lf}
+{string|*.png} {property|binary} {operator|-}{property|diff}
+{string|*.sh} {property|text} {property|eol}{operator|=}{constant|lf} {property|linguist-language}{operator|=}{constant|Shell}
+{string|"path with space/*.txt"} {operator|-}{property|text} {operator|!}{property|filter}
+{keyword|[attr]}{function|vendor} {property|linguist-vendored} {operator|-}{property|diff}
+{string|third_party/**} {property|vendor}

@@ -1,0 +1,33 @@
+{
+  "name": "Rust",
+  "aliases": ["rust", "rs"],
+  "extensions": ["rs"],
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "//[/!](?!/)", "class": "doc" } },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "/\\*[*!](?![*/])", "class": "doc", "push": "block_doc" },
+      { "match": "/\\*", "class": "comment", "push": "block" },
+      { "region": { "begin": "b?r(#*)\"", "end": "\"\\1", "class": "string" } },
+      { "region": { "begin": "b?\"", "end": "\"", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f_]+\\}|.)" } },
+      { "match": "b?'(?:\\\\(?:x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f_]+\\}|.)|[^'\\\\])'", "class": "string" },
+      { "match": "'[A-Za-z_]\\w*\\b", "class": "attribute" },
+      { "match": "#!?\\[[^\\]\\n]*\\]", "class": "attribute" },
+      { "match": "\\b(fn)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "\\b(struct|enum|union|trait|type|mod|impl)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+                  "static", "struct", "super", "trait", "type", "union", "unsafe", "use", "where", "while", "yield", "abstract", "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof", "unsized", "virtual"], "class": "keyword" },
+      { "words": ["self", "Self"], "class": "variable" },
+      { "words": ["true", "false", "None", "Some", "Ok", "Err"], "class": "constant" },
+      { "words": ["bool", "char", "str", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64", "String", "Vec", "Option", "Result", "Box", "Rc", "Arc", "HashMap", "HashSet", "BTreeMap"], "class": "type" },
+      { "match": "\\b(?:0x[0-9A-Fa-f_]+|0o[0-7_]+|0b[01_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?[\\d_]+)?)(?:[iu](?:8|16|32|64|128|size)|f32|f64)?\\b", "class": "number" },
+      { "match": "\\b([A-Za-z_]\\w*)!(?=\\s*[(\\[{])", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Z0-9]*_[A-Z0-9_]*\\b", "class": "constant" },
+      { "match": "\\b([a-z_]\\w*)\\s*(?=\\(|::<)", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ],
+    "block": { "class": "comment", "rules": [ { "match": "/\\*", "push": "block" }, { "match": "\\*/", "pop": true } ] },
+    "block_doc": { "class": "doc", "rules": [ { "match": "/\\*", "class": "comment", "push": "block" }, { "match": "\\*/", "pop": true } ] }
+  }
+}

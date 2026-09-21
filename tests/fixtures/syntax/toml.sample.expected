@@ -1,0 +1,26 @@
+{comment|# Cargo manifest}
+{section|[package]}
+{property|name} {operator|=} {string|"rolltui"}
+{property|version} {operator|=} {string|"0.1.5"}
+{property|edition} {operator|=} {string|'2021'}
+{property|authors} {operator|=} {punct|[}{string|"Scott <s@x.com>"}, {string|"B"}{punct|]}
+{property|desc} {operator|=} {string|"""multi}
+{string|line é text"""}
+
+{section|[dependencies]}
+{property|serde} {operator|=} {punct|{} {property|version} {operator|=} {string|"1.0"}, {property|features} {operator|=} {punct|[}{string|"derive"}{punct|]} {punct|}}
+{property|tokio} {operator|=} {string|"1"}
+{section|[[bin]]}
+{property|name} {operator|=} {string|"a"}
+{property|path} {operator|=} {string|"src/main.rs"}
+{section|[profile.release]}
+{property|opt-level} {operator|=} {number|3}
+{property|lto} {operator|=} {constant|true}
+{property|date} {operator|=} {number|1979-05-27T07:32:00Z}
+{property|hex} {operator|=} {number|0xDEAD_BEEF}
+{property|matrix} {operator|=} {punct|[}
+  {punct|[}{number|1}, {number|2}{punct|]},   {comment|# row}
+  {punct|[}{number|3}, {number|4}{punct|]},
+{punct|]}
+{property|"quoted.key"} {operator|=} {string|'lit\n'}
+{property|a.b.c} {operator|=} {constant|inf}

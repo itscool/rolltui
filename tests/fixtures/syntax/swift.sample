@@ -1,0 +1,23 @@
+import Foundation
+/// A thing.
+@available(iOS 15, *)
+public final class Thing: NSObject, Codable {
+    public static let shared = Thing()
+    private(set) var count: Int = 0x1F
+    let title: String? = "Hello \(name), you are \(age + 1) years \("old") \n"
+    let raw = #"raw \(not interpolated)"#
+    let multi = """
+        line \(count)
+        """
+
+    /* block /* nested */ comment */
+    func run<T: Equatable>(_ items: [T], completion: @escaping (Result<Int, Error>) -> Void) async throws {
+        guard let first = items.first else { return }
+        for (i, item) in items.enumerated() where i > 2 { print(item) }
+        #if DEBUG
+        let x = $0 + 3.14e2
+        #endif
+        switch self.state { case .idle: break; default: fatalError("no") }
+    }
+}
+enum State { case idle, running(Int) }

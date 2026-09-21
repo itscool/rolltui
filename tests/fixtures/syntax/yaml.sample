@@ -1,0 +1,35 @@
+%YAML 1.2
+---
+# comment
+name: my-app
+version: 1.2.3
+count: 42
+ratio: 3.14
+enabled: true
+nothing: ~
+desc: Don't panic, it's "fine" # trailing comment
+quoted: "a \"b\"\n"
+single: 'it''s'
+anchor: &base
+  key: value
+ref: *base
+tag: !!str 123
+custom: !Ref Something
+list:
+  - one
+  - "two"
+  - name: item3
+    value: 10
+  - - nested
+    - [a, b, 3]
+flow: {a: 1, b: [x, y], c: "s"}
+script: |
+  echo "it's $HOME"
+  key: not a key
+folded: >-
+  text here
+url: http://example.com:8080/path#frag
+time: 12:30:45
+"quoted key": value
+? complex
+...

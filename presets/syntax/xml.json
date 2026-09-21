@@ -1,0 +1,34 @@
+{
+  "name": "XML",
+  "aliases": ["xml", "xsl", "xslt", "xsd", "svg", "plist", "rss", "atom", "csproj", "xaml"],
+  "extensions": ["xml", "xsl", "xslt", "xsd", "svg", "plist", "rss", "atom", "wsdl", "xaml", "csproj", "vbproj", "fsproj", "props", "targets", "resx", "kml", "gpx", "config", "nuspec", "storyboard", "xib", "pom", "dtd", "xliff", "manifest"],
+  "filenames": ["pom.xml", "AndroidManifest.xml"],
+  "first_line": "^<\\?xml",
+  "contexts": {
+    "main": [
+      { "region": { "begin": "<!--", "end": "-->", "class": "comment" } },
+      { "region": { "begin": "<!\\[CDATA\\[", "end": "\\]\\]>", "class": "string" } },
+      { "match": "<\\?[A-Za-z_][\\w.-]*", "class": "preproc", "push": "pi" },
+      { "match": "<![A-Za-z]+", "class": "preproc", "push": "decl" },
+      { "match": "(</?)([A-Za-z_][\\w:.-]*)", "captures": { "1": "punct", "2": "tag" }, "push": "tag" },
+      { "match": "&(?:#\\d+|#[xX][0-9A-Fa-f]+|[A-Za-z_][\\w.-]*);", "class": "escape" }
+    ],
+    "tag": [
+      { "match": "/?>", "class": "punct", "pop": true },
+      { "match": "[A-Za-z_:@][\\w:.-]*(?=\\s*=)", "class": "property" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "rules": [ { "match": "&(?:#\\d+|#[xX][0-9A-Fa-f]+|[A-Za-z_][\\w.-]*);", "class": "escape" } ] } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "rules": [ { "match": "&(?:#\\d+|#[xX][0-9A-Fa-f]+|[A-Za-z_][\\w.-]*);", "class": "escape" } ] } }
+    ],
+    "pi": [
+      { "match": "\\?>", "class": "preproc", "pop": true },
+      { "match": "[A-Za-z_:][\\w:.-]*(?=\\s*=)", "class": "property" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string" } },
+      { "region": { "begin": "'", "end": "'", "class": "string" } }
+    ],
+    "decl": { "class": "preproc", "rules": [
+      { "match": ">", "class": "preproc", "pop": true },
+      { "region": { "begin": "\"", "end": "\"", "class": "string" } },
+      { "region": { "begin": "'", "end": "'", "class": "string" } }
+    ] }
+  }
+}

@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.20)
+project(rolltui VERSION 1.2.3 LANGUAGES C CXX)
+# comment
+#[[ block
+comment ]]
+option(BUILD_TESTS "Build tests" ON)
+set(CMAKE_CXX_STANDARD 20)
+set(SOURCES src/a.c "src/b c.c" ${EXTRA_SOURCES} $ENV{HOME}/x)
+add_library(rolltui STATIC ${SOURCES})
+target_compile_definitions(rolltui PRIVATE $<$<CONFIG:Debug>:DEBUG=1> VERSION="${PROJECT_VERSION}\n")
+if(NOT WIN32 AND BUILD_TESTS STREQUAL "ON" OR DEFINED ENV{CI})
+  message(STATUS "tests on: ${BUILD_TESTS}")
+elseif(APPLE)
+  set(X [=[raw ]] text]=])
+endif()
+function(add_thing NAME)
+  add_executable(${NAME} main.c)
+endfunction()

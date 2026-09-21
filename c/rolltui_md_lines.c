@@ -18,6 +18,8 @@ typedef struct SpanRec {
   size_t src_off, src_n;
   int width;
   unsigned char role;
+  unsigned char bg_role;
+  unsigned char attrs;
   unsigned char owns; /* 1: this span's pool ranges are its own and may be merged into or
                        * trimmed. 0: a `span_ref`, sharing another span's ranges. */
 } SpanRec;
@@ -185,6 +187,11 @@ static int is_tail(const RolltuiMdLines* L, const SpanRec* s) {
 void rolltui_md_lines_span(RolltuiMdLines* L, const char* text, size_t text_n, unsigned char role,
                            int ambiguous_wide, const uint32_t* sources, size_t src_n, const char* href,
                            size_t href_n) {
+  rolltui_md_lines_span_on(L, text, text_n, role, ROLLTUI_MD_NO_ROLE, 0, ambiguous_wide, sources, src_n, href, href_n);
+}
+
+void rolltui_md_lines_span_on(RolltuiMdLines* L, const char* text, size_t text_n, unsigned char role, unsigned char bg_role,
+                              unsigned char attrs, int ambiguous_wide, const uint32_t* sources, size_t src_n, const char* href, size_t href_n) {
   size_t clusters = 0, i;
   int w = 0;
   int have;
@@ -198,7 +205,7 @@ void rolltui_md_lines_span(RolltuiMdLines* L, const char* text, size_t text_n, u
   have = sources != NULL && src_n == clusters;
 
   prev = L->rec_n > L->open_first ? &L->rec[L->rec_n - 1] : NULL;
-  if (prev && prev->role == role && prev->href_n == href_n &&
+  if (prev && prev->role == role && prev->bg_role == bg_role && prev->attrs == attrs && prev->href_n == href_n &&
       (href_n == 0 || memcmp(L->bytes + prev->href_off, href, href_n) == 0) && is_tail(L, prev)) {
     L->bytes = (char*)rolltui_grow(L->bytes, &L->bytes_cap, L->bytes_n + text_n, 1);
     memcpy(L->bytes + L->bytes_n, text, text_n);
@@ -239,6 +246,8 @@ void rolltui_md_lines_span(RolltuiMdLines* L, const char* text, size_t text_n, u
     s->src_n = clusters;
     s->width = w;
     s->role = role;
+    s->bg_role = bg_role;
+    s->attrs = attrs;
     s->owns = 1;
   }
   L->open_width += w;
@@ -323,6 +332,8 @@ void rolltui_md_lines_finish(RolltuiMdLines* L) {
     s->src_n = r->src_n;
     s->width = r->width;
     s->role = r->role;
+    s->bg_role = r->bg_role;
+    s->attrs = r->attrs;
   }
   for (i = 0; i < L->lrec_n; ++i) {
     const LineRec* r = &L->lrec[i];

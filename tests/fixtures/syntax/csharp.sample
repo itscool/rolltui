@@ -1,0 +1,30 @@
+using System;
+using System.Collections.Generic;
+#region Helpers
+namespace Demo.App;
+
+/// <summary>Represents a <see cref="Thing"/>.</summary>
+[Serializable]
+public sealed class Thing : IDisposable
+{
+    private readonly Dictionary<string, int> _map = new();
+    public const int MaxCount = 0xFF_FF;
+    public string Name { get; init; } = "n";
+
+    [HttpGet("/items")]
+    public async Task<List<Item>> GetItemsAsync(int count = 10)
+    {
+        var path = @"C:\temp\""quoted""";
+        var msg = $"Hello {Name}, you have {count:N2} items {{literal}} \n";
+        var raw = """
+            some "raw" text
+            """;
+        var nested = $"a {(count > 1 ? $"x{count}" : "none")} b";
+        foreach (var item in await Query(count)) { Console.WriteLine(item); }
+        if (count is > 3 and < 9 || Name == null) throw new ArgumentException(nameof(count));
+        char c = '\'';
+        decimal price = 12.5m;
+        return default;
+    }
+}
+#endregion

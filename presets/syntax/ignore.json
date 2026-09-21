@@ -1,0 +1,16 @@
+{
+  "name": "Ignore",
+  "aliases": ["ignore", "gitignore", "dockerignore", "npmignore"],
+  "extensions": ["gitignore", "dockerignore", "npmignore", "eslintignore", "prettierignore", "stylelintignore", "hgignore", "vscodeignore", "gcloudignore", "helmignore", "ignore"],
+  "filenames": [".gitignore", ".dockerignore", ".npmignore", ".eslintignore", ".prettierignore", ".stylelintignore", ".hgignore", ".ignore", ".slugignore", ".vscodeignore", ".cfignore", ".helmignore", ".gcloudignore",
+                ".terraformignore", ".bzrignore", ".cvsignore", ".containerignore", ".rgignore", ".fdignore", ".p4ignore", ".gitkeep", "exclude"],
+  "contexts": {
+    "main": [
+      { "match": "^\\s*#.*$", "class": "comment" },
+      { "match": "^\\s*!", "class": "keyword" },
+      { "match": "\\\\.", "class": "escape" },
+      { "match": "\\*\\*|\\*|\\?|\\[[^\\]\\n]*\\]", "class": "constant" },
+      { "match": "/", "class": "punct" }
+    ]
+  }
+}

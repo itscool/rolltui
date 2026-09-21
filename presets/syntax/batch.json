@@ -1,0 +1,26 @@
+{
+  "name": "Batch",
+  "aliases": ["bat", "batch", "cmd", "dos", "winbatch"],
+  "extensions": ["bat", "cmd"],
+  "ignore_case": true,
+  "word_chars": "-",
+  "not_after": ["/", ".", "\\"],
+  "contexts": {
+    "main": [
+      { "match": "^\\s*@?\\s*rem(?:\\s.*|$)", "class": "comment" },
+      { "match": "^\\s*::.*$", "class": "comment" },
+      { "match": "^\\s*:[A-Za-z_.$-][\\w.$-]*", "class": "section" },
+      { "match": "\\b(call|goto)\\s+(:?[A-Za-z_.$-][\\w.$-]*)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "%(?:~[a-z]*)?\\d|%\\*|%[A-Za-z_][^%\\s\"]*%|%%~?[A-Za-z]|![A-Za-z_][^!\\s\"]*!", "class": "variable" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "single_line": true,
+                    "rules": [ { "match": "%(?:~[a-z]*)?\\d|%\\*|%[A-Za-z_][^%\\s\"]*%|![A-Za-z_][^!\\s\"]*!", "class": "variable" } ] } },
+      { "match": "\\^.", "class": "escape" },
+      { "words": ["if", "else", "for", "in", "do", "goto", "call", "exit", "not", "exist", "defined", "errorlevel", "cmdextversion", "equ", "neq", "lss", "leq", "gtr", "geq"], "class": "keyword" },
+      { "words": ["assoc", "attrib", "cd", "chdir", "cls", "color", "copy", "date", "del", "dir", "echo", "endlocal", "erase", "find", "findstr", "md", "mkdir", "mklink", "more", "move", "path", "pause", "popd",
+                  "prompt", "pushd", "rd", "ren", "rename", "rmdir", "robocopy", "set", "setlocal", "shift", "sort", "start", "taskkill", "tasklist", "time", "timeout", "title", "type", "ver", "verify", "vol",
+                  "xcopy", "where", "reg", "net", "sc", "powershell"], "class": "function" },
+      { "words": ["on", "off", "nul", "con", "prn", "aux"], "class": "constant" },
+      { "match": "\\b\\d+\\b", "class": "number" }
+    ]
+  }
+}

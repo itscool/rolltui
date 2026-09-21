@@ -1,0 +1,43 @@
+{
+  "name": "PowerShell",
+  "aliases": ["powershell", "ps1", "pwsh", "posh", "ps"],
+  "extensions": ["ps1", "psm1", "psd1", "pssc", "psrc", "ps1xml"],
+  "first_line": "^#!.*\\bpwsh\\b",
+  "ignore_case": true,
+  "word_chars": "-",
+  "not_after": [".", "$", ":"],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "<#", "end": "#>", "class": "comment", "rules": [ { "match": "\\.[A-Z]+\\b", "class": "attribute" } ] } },
+      { "region": { "begin": "#", "class": "comment" } },
+      { "region": { "begin": "@\"\\s*$", "end": "^\"@", "class": "string", "rules": [ { "match": "\\$(?:\\{[^}\\n]*\\}|[A-Za-z_][\\w:]*)", "class": "variable" } ] } },
+      { "region": { "begin": "@'\\s*$", "end": "^'@", "class": "string" } },
+      { "match": "\"", "class": "string", "push": "dq" },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "''" } },
+      { "match": "\\$(?:true|false|null)\\b", "class": "constant" },
+      { "match": "\\$(?:\\{[^}\\n]*\\}|(?:global:|script:|local:|private:|env:)?[A-Za-z_?^$][\\w]*)|@[A-Za-z_]\\w*", "class": "variable" },
+      { "match": "\\[\\s*[A-Za-z_][\\w.]*\\s*\\([^\\]\\n]*\\]", "class": "attribute" },
+      { "match": "\\[[A-Za-z_][\\w.,\\[\\]]*\\]", "class": "type" },
+      { "match": "(?:^|[\\s(!])(-(?:[ic]?(?:eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split)|is|isnot|as|and|or|not|xor|band|bor|bxor|bnot|shl|shr|join|f))\\b", "captures": { "1": "keyword" } },
+      { "match": "(?:^|[\\s(])(-[A-Za-z][\\w]*)", "captures": { "1": "property" } },
+      { "match": "\\b(function|filter|workflow)\\s+([A-Za-z_][\\w:-]*)", "captures": { "1": "keyword", "2": "function" } },
+      { "match": "\\b(class|enum)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "match": "\\b(?:Get|Set|New|Remove|Add|Clear|Copy|Move|Rename|Invoke|Start|Stop|Restart|Test|Write|Read|Out|Select|Where|Sort|Group|Measure|Format|Import|Export|Enter|Exit|Join|Split|Find|Show|Hide|Wait|Register|Unregister|Update|Install|Uninstall|Enable|Disable|Send|Receive|Resolve|Push|Pop|ConvertTo|ConvertFrom|Convert|Compare|Debug|Trace|Use|Grant|Revoke|Save|Lock|Unlock|Open|Close|Mount|Dismount|Publish|Request|Confirm|Approve|Deny|Block|Unblock|Backup|Restore|Complete|Initialize|Limit|Merge|Optimize|Protect|Repair|Reset|Submit|Suspend|Resume|Switch|Sync|Undo|Watch|Connect|Disconnect|Edit|Expand|Compress|Build|Assert|Ping)-[A-Za-z][\\w]*", "class": "function" },
+      { "words": ["begin", "break", "catch", "class", "continue", "data", "do", "dynamicparam", "else", "elseif", "end", "enum", "exit", "filter", "finally", "for", "foreach", "from", "function", "hidden", "if", "in",
+                  "param", "process", "return", "static", "switch", "throw", "trap", "try", "until", "using", "var", "while", "workflow", "parallel", "sequence"], "class": "keyword" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?:[kmgtp]b)?[ld]?\\b", "class": "number" },
+      { "match": "(?:\\.|::)\\s*([A-Za-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } }
+    ],
+    "dq": { "class": "string", "rules": [
+      { "match": "`.|\"\"", "class": "escape" },
+      { "match": "\\$\\(", "class": "punct", "push": "sub" },
+      { "match": "\\$(?:\\{[^}\\n]*\\}|(?:global:|script:|local:|private:|env:)?[A-Za-z_?^$][\\w]*)", "class": "variable" },
+      { "match": "\"", "pop": true }
+    ] },
+    "sub": [
+      { "match": "\\(", "class": "punct", "push": "sub" },
+      { "match": "\\)", "class": "punct", "pop": true },
+      { "include": "main" }
+    ]
+  }
+}

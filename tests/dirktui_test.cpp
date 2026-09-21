@@ -279,8 +279,8 @@ int main() {
     check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
               has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
           "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
-    // dotfiles, sort, keys, theme, mode, motion, sparkle, highlight, dividers, preview, sizes, modified, leave, land, relative, executables, then Text: its dropdown
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+    // dotfiles, sort, keys, theme, mode, colours, motion, sparkle, highlight, dividers, preview, syntax, sizes, modified, leave, land, relative, executables, then Text: its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
     check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
           "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
@@ -389,15 +389,17 @@ int main() {
       check(has(inside, "General"), "…and a click inside it leaves it open");
       // ONE LEVEL AT A TIME: with a dropdown open in the settings, Escape — or a click outside the
       // popup — closes the dropdown and leaves the settings; the next one closes the settings.
-      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down";  // seventeen: the file preview joined Look after the dividers, on top of colours, highlight, sparkle and the executables choice "Enter on a file"
+      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down";  // eighteen: the file preview and its source-colour switch joined Look after the dividers, on top of colours, highlight, sparkle and the executables choice "Enter on a file"
       const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
-      check(has(dd, "Neovim") && has(dd, "General"), "the control: Enter on an open-with choice opens its dropdown over the settings");
+      // (the settings are recognised by their own top border, not by the section title `General`: with this many rows the popup has scrolled to keep the cursor on screen, and the first title is above the top)
+      const std::string popup = "\xE2\x95\xAD settings ";
+      check(has(dd, "Neovim") && has(dd, popup), "the control: Enter on an open-with choice opens its dropdown over the settings");
       const std::string dd_esc = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Escape\" 2>/dev/null", crc);
-      check(!has(dd_esc, "Neovim") && has(dd_esc, "General"), "Escape closes the dropdown only: the settings stay");
+      check(!has(dd_esc, "Neovim") && has(dd_esc, popup), "Escape closes the dropdown only: the settings stay");
       const std::string dd_click = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Click 1,1\" 2>/dev/null", crc);
-      check(!has(dd_click, "Neovim") && has(dd_click, "General"), "…a click outside the popup likewise closes the dropdown only");
+      check(!has(dd_click, "Neovim") && has(dd_click, popup), "…a click outside the popup likewise closes the dropdown only");
       const std::string dd_esc2 = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Escape Escape\" 2>/dev/null", crc);
-      check(!has(dd_esc2, "General") && has(dd_esc2, "find:"), "…and the next Escape closes the settings");
+      check(!has(dd_esc2, popup) && has(dd_esc2, "find:"), "…and the next Escape closes the settings");
       // THE STATUS LINE'S STATES ARE CLICKABLE: `sort: name <` cycles the sort, `+dotfiles` toggles.
       const std::string plain = run(home_env + bin + " '" + here + "' --frame 100x20 2>/dev/null", crc);
       auto cell_of = [](const std::string& fr, const char* word) {
@@ -799,6 +801,54 @@ int main() {
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"dirk.nosuch\": { \"kind\": \"blink\" } } }\n");
     const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 2>&1 >/dev/null", crc);
     check(has(unknown, "effects file") && has(unknown, "dirk.nosuch"), "…and a state the app never registered is named as unknown");
+  }
+
+  // ---- SOURCE COLOUR IN THE PREVIEW: on by default, a setting of its own, saved ----
+  // A code file previewed is drawn in the theme's colours for what it is (the library owns that; the app only says whether), the
+  // head names its language, and the checkbox after "Preview a file" turns it off: the same file is then plain text again.
+  {
+    const std::string keys = " --keys \"Down Right Down Down Down\"";  // beta/tool.py: alpha, beta, into it, a-quite…, data.bin, page.html, tool.py
+    const std::string blue_print = "\x1b[0;38;2;132;183;249;48;2;20;22;26mprint";  // default-dark's function colour on the window's ground
+    int src = 0;
+    const fs::path on_cfg = scratch / "syntax-on-cfg", off_cfg = scratch / "syntax-off-cfg", def_cfg = scratch / "syntax-def-cfg";
+    write_file(on_cfg / "rolltui" / "dirktui" / "settings.json", "{ \"preview\": \"right\", \"motion\": false }");
+    write_file(off_cfg / "rolltui" / "dirktui" / "settings.json", "{ \"preview\": \"right\", \"motion\": false, \"syntax\": false }");
+    auto with = [&](const fs::path& cfg) { return "ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark"; };
+    const std::string on = run(with(on_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", src);
+    const std::string off = run(with(off_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", src);
+    check(has(on, blue_print) && !has(on, "print(1)"), "a Python file in the preview is drawn in colour: `print` in the function colour, so the line is not one run of text");
+    check(!has(off, blue_print) && has(off, "print(1)"), "with `\"syntax\": false` in the settings file it is drawn plain: the whole line in the text colour, in one run");
+    const std::string on_txt = run(with(on_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
+    const std::string off_txt = run(with(off_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
+    check(has(on_txt, "Python \xC2\xB7 1 line") && has(off_txt, "text \xC2\xB7 1 line"), "the head of the preview names the language when it is coloured, and says `text` when it is not");
+    // the checkbox: after "Preview a file" in Look; on when nothing was said, saved when toggled, read back on the next run
+    const std::string boxes = run(with(def_cfg) + " --frame 70x34 --keys \"F2\" 2>/dev/null", src);
+    check(has(boxes, "[\xE2\x9C\x93] Colour source code in the preview"), "the settings show `Colour source code in the preview`, checked when the file says nothing");
+    run(with(def_cfg) + " --frame 70x34 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", src);  // dotfiles, sort, keys, theme, mode, colours, motion, sparkle, highlight, dividers, preview, syntax
+    bool got = false;
+    const std::string saved = read_file((def_cfg / "rolltui" / "dirktui" / "settings.json").string(), got);
+    check(got && has(saved, "\"syntax\": false"), "toggling it writes the settings file [" + saved.substr(0, 90) + "]");
+    const std::string again = run(with(def_cfg) + " --frame 70x34 --keys \"F2\" 2>/dev/null", src);
+    check(has(again, "[ ] Colour source code in the preview"), "…and the box reads back unchecked on the next run");
+  }
+
+  // ---- `dirktui languages`: how a person finds out that a language file of their own did not load ----
+  {
+    const fs::path cfg = scratch / "lang-cfg";
+    const std::string env = "ROLL_CONFIG_DIR='" + cfg.string() + "' ";
+    write_file(cfg / "rolltui" / "syntax" / "mine.json", R"J({ "name": "Mine", "extensions": ["mine"], "contexts": { "main": [ { "words": ["hello"], "class": "keyword" } ] } })J");
+    int lrc = 0;
+    const std::string clean = run(env + bin + " languages 2>&1", lrc);
+    check(status_of(lrc) == 0 && has(clean, "shipped: 25 languages") && has(clean, "mine.json  Mine"), "`dirktui languages` lists the shipped languages and the ones of your own that loaded, and exits 0 [" + clean.substr(0, 80) + "]");
+    write_file(cfg / "rolltui" / "syntax" / "bad.json", R"J({ "name": "Bad", "contexts": { "main": [ { "match": "(oops", "class": "keyword" } ] } })J");
+    const std::string dirty = run(env + bin + " languages 2>&1", lrc);
+    check(status_of(lrc) == 1 && has(dirty, "bad.json  NOT LOADED: Bad: context main, rule 1") && has(dirty, "not closed") && has(dirty, "mine.json  Mine"),
+          "…a file with a mistake in it is named with the language, the rule and why, the others still load, and it exits 1");
+    write_file(cfg / "draft.json", "{ \"name\": \"Draft\", \"contexts\": { \"main\": [ { \"match\": \"\\d+\" } ] } }");
+    const std::string draft = run(env + bin + " languages '" + (cfg / "draft.json").string() + "' 2>&1", lrc);
+    check(status_of(lrc) == 1 && has(draft, "draft.json: NOT LOADED: not JSON: line 1: unknown escape") && has(draft, "written twice"), "a file named on the command line is checked too, and the usual mistake in a pattern says what to write instead");
+    const std::string help = run(bin + " --help 2>&1", lrc);
+    check(has(help, "dirktui languages"), "the usage lists the command");
   }
 
   // ---- THE SETTINGS MENU: a file, driven by the host, and a settings file the choices land in ----

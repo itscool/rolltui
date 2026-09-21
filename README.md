@@ -110,6 +110,64 @@ too wide as written is first drawn with its nodes a column closer, then with its
 its own) to a narrower and narrower width; nothing a label says is dropped, and a diagram that fits as written is
 never touched.
 
+## Source colour
+
+A file in the preview that is in a language the library knows is drawn with its keywords, strings, comments, numbers,
+functions and so on in the theme's colours, and the head of the preview names the language (`Python · 27 lines · 722 B`
+instead of `text · …`). A fenced block in a Markdown document is coloured by its tag (```` ```rust ````, ```` ```yaml ````).
+It is on unless `RolltuiPickerOptions.no_syntax` says otherwise (dirktui: Settings → Colour source code in the preview).
+
+**What ships:** C, C++, C#, Java, JavaScript, TypeScript, Python, Rust, Go, Swift, Lua, Luau, shell (sh, bash, zsh), Windows
+batch, PowerShell, CMake, HTML, CSS, XML, JSON, YAML, INI, TOML, the ignore files (`.gitignore` and its family:
+`.dockerignore`, `.npmignore`, …) and `.gitattributes`. A file is found by its whole name (`CMakeLists.txt`, `.bashrc`), then
+by its longest extension (`.d.ts` before `.ts`), then by its first line (a `#!` shebang, `<?xml`, `<!DOCTYPE html`).
+
+**How it looks is the theme's.** Every kind of text (keyword, type, function, string, escape, number, constant, comment,
+documentation, punctuation, preprocessor line, variable, attribute, tag, property, section) is drawn in a role the theme
+already has, so every theme colours code and no theme had to change. On top of the role a keyword asks for **bold** and a
+comment or annotation for *italic*, so a theme with no attributes of its own still has weight and slant in its code, and
+`mono`, which has no colour at all, tells the kinds apart by bold, italic, underline and dim alone.
+
+**Your own languages are files.** A language is a JSON file; the shipped ones are in `presets/syntax/` and are the best
+examples. Put yours in `<config>/rolltui/syntax/` (one with the name of a shipped language replaces it, and every language
+that includes it follows), and it is read when the browser starts:
+
+```json
+{
+  "name": "Mine", "aliases": ["mine"], "extensions": ["mine"], "filenames": ["Minefile"],
+  "first_line": "^#!.*\\bmine\\b", "ignore_case": false, "not_after": ["."], "word_chars": "-",
+  "contexts": {
+    "main": [
+      { "region": { "begin": "#", "class": "comment" } },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\.", "single_line": true } },
+      { "words": ["if", "then", "else"], "class": "keyword" },
+      { "match": "\\b\\d+\\b", "class": "number" },
+      { "match": "\\b([a-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "include": "lang:C/main" }
+    ]
+  }
+}
+```
+
+Rules are tried in order at each position, and the first that matches takes it. A rule is a `match` (a pattern, with
+`captures` to colour groups differently, and `push` / `pop` / `set` to move between contexts), a set of whole `words`, a
+`region` (begin to end, with an `escape` and nested `rules`; `\\1` in `end` is what `begin` captured, which is how a
+here-document and a Lua long bracket end), or an `include` of another context or another language. A context may be given a
+`class` of its own (`"block": { "class": "comment", "rules": [...] }`): text no rule takes is drawn in it. The patterns are a
+small, safe subset (classes, groups, `* + ? {n,m}`, lazy forms, `^ $ \\b`, look-ahead, back-references; **no** look-behind, and
+a pattern that would run away is stopped, not waited for). A backslash in a pattern is written twice in JSON.
+
+`dirktui languages` is how you find out a file of yours did not load (a language with a mistake in it is skipped without a
+word on the screen): it lists what is shipped and what of yours loaded, and for each file that did not, its language, the rule
+and the reason; `dirktui languages my.json` checks a file you are still writing, and it exits 1 when anything did not load.
+The library's own function for it is `rolltui_syntax_check`.
+
+**Limits, said plainly.** It is a highlighter, not a parser: it follows one line at a time from the state the last one left
+(a comment or string that spans lines, a here-document), so it is right for the code people write and can be wrong for the
+odd construct (a YAML block scalar's body is drawn as keys if it looks like keys). A line is coloured for its first 4000
+bytes and plain after, a file is read for colour up to the same 256 KB the preview reads, and coloured text is exactly the
+same characters in the same cells as plain text: colour changes a style, never a glyph.
+
 ## Ownership, in three shapes and no fourth
 
 Every pointer in this library is one of three things, and `rolltui-ownership-test` checks it:

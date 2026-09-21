@@ -1,0 +1,8 @@
+{comment|# build outputs}
+build{punct|/}
+{constant|*}.o
+{keyword|!}keep.o
+{punct|/}dist{punct|/}{constant|**}{punct|/}{constant|*}.min.js
+{constant|**}{punct|/}node_modules
+foo{escape|\ }bar
+{constant|[Tt]}emp{constant|?}{punct|/}

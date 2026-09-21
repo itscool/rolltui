@@ -1,0 +1,8 @@
+# build outputs
+build/
+*.o
+!keep.o
+/dist/**/*.min.js
+**/node_modules
+foo\ bar
+[Tt]emp?/

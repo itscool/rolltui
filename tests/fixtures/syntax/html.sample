@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Test &amp; page</title>
+  <style>
+    body { color: #333; margin: 0 }
+    .a-b { font-size: 12px }
+  </style>
+  <script src="app.js" defer></script>
+  <script>
+    const x = `t ${1 + 2}`; // note
+    function f(a) { return a ? "yes" : 'no'; }
+  </script>
+</head>
+<body class="home page" data-id=42 hidden>
+  <!-- comment -->
+  <p id='x'>Hello <b>world</b>&nbsp;&#169;</p>
+  <img src="a.png" alt="A" />
+  <a href="/x?a=1&b=2" onclick="go()">link</a>
+</body>
+</html>

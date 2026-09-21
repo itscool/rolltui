@@ -1,0 +1,39 @@
+{
+  "name": "TOML",
+  "aliases": ["toml"],
+  "extensions": ["toml"],
+  "filenames": ["Cargo.lock", "Pipfile", "poetry.lock", "uv.lock"],
+  "contexts": {
+    "main": [
+      { "match": "#.*$", "class": "comment" },
+      { "match": "^\\s*\\[\\[?[^\\]\\n]*\\]\\]?", "class": "section" },
+      { "match": "^\\s*((?:[A-Za-z0-9_-]+|\"[^\"\\n]*\"|'[^'\\n]*')(?:\\s*\\.\\s*(?:[A-Za-z0-9_-]+|\"[^\"\\n]*\"|'[^'\\n]*'))*)\\s*(=)", "captures": { "1": "property", "2": "operator" }, "push": "value" }
+    ],
+    "value": [
+      { "match": "$", "pop": true },
+      { "include": "scalar" },
+      { "match": "[\\[{]", "class": "punct", "push": "flow" }
+    ],
+    "flow": [
+      { "match": "[\\]}]", "class": "punct", "pop": true },
+      { "match": "[\\[{]", "class": "punct", "push": "flow" },
+      { "match": "#.*$", "class": "comment" },
+      { "match": "((?:[A-Za-z0-9_-]+|\"[^\"\\n]*\"|'[^'\\n]*')(?:\\s*\\.\\s*(?:[A-Za-z0-9_-]+|\"[^\"\\n]*\"|'[^'\\n]*'))*)\\s*(=)", "captures": { "1": "property", "2": "operator" } },
+      { "include": "scalar" }
+    ],
+    "scalar": [
+      { "match": "#.*$", "class": "comment" },
+      { "match": "\"\"\"", "class": "string", "push": "ml_basic" },
+      { "match": "'''", "class": "string", "push": "ml_literal" },
+      { "match": "\"", "class": "string", "push": "basic" },
+      { "match": "'", "class": "string", "push": "literal" },
+      { "match": "\\d{4}-\\d{2}-\\d{2}(?:[Tt ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})?)?|\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?", "class": "number" },
+      { "match": "[-+]?(?:0x[0-9A-Fa-f_]+|0o[0-7_]+|0b[01_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d+)?)\\b", "class": "number" },
+      { "words": ["true", "false", "inf", "nan"], "class": "constant" }
+    ],
+    "basic": { "class": "string", "rules": [ { "match": "\\\\(?:u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", "class": "escape" }, { "match": "\"|$", "pop": true } ] },
+    "literal": { "class": "string", "rules": [ { "match": "'|$", "pop": true } ] },
+    "ml_basic": { "class": "string", "rules": [ { "match": "\\\\(?:u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", "class": "escape" }, { "match": "\"\"\"", "pop": true } ] },
+    "ml_literal": { "class": "string", "rules": [ { "match": "'''", "pop": true } ] }
+  }
+}

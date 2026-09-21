@@ -1,0 +1,14 @@
+{comment|#!/usr/bin/env lua}
+{comment|--- Module doc}
+{keyword|local} M = {}
+{keyword|local} x {attribute|<const>} = {number|0x1F} + {number|3.5e2} + {number|1}.
+{comment|--[[ block}
+{comment|comment ]]}
+{comment|--[==[ level two ]] still ]==]}
+{keyword|local} s = {string|"a }{escape|\"}{string|quoted}{escape|\"\n\x41}{string|"} .. {string|'single'} .. {string|[[long}
+{string|string]]} .. {string|[==[with ]] inside]==]}
+{keyword|function} {function|M.add}(a, b) {keyword|return} a + b {keyword|end}
+{keyword|function} {function|M:method}(...) {keyword|local} t = { key = {string|"v"}, [{number|1}] = {constant|nil} } {keyword|for} i, v {keyword|in} {function|ipairs}(t) {keyword|do} {function|print}(i, v) {keyword|end} {keyword|end}
+{keyword|local} ok = {function|pcall}({type|require}, {string|"mod"}) {keyword|and} {keyword|not} {constant|false} {keyword|or} {variable|self}.value ~= {constant|nil}
+{keyword|goto} done
+::done::

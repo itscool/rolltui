@@ -1,0 +1,12 @@
+{keyword|import} type { {type|Foo} } {keyword|from} {string|"./foo"};
+{keyword|export type} {type|Handler}<{type|T} = {type|unknown}> = (event: {type|T}) => {keyword|void} | {type|Promise}<{keyword|void}>;
+{keyword|interface} {type|Options} {keyword|extends} {type|Base} { {keyword|readonly} retries?: {type|number}; name: {type|string} }
+{keyword|declare} {variable|module} {string|"x"} {}
+{keyword|enum} {type|Color} { {type|Red}, {type|Green} }
+{keyword|abstract class} {type|Shape}<{type|T} {keyword|extends} {type|object}> {keyword|implements} {type|Drawable} {
+  {keyword|private} {keyword|readonly} id: {type|number} = {number|0};
+  {function|constructor}({keyword|public} name: {type|string}, {keyword|protected} size?: {type|number}) { {variable|super}(); }
+  {function|area}({variable|this}: {type|Shape}<{type|T}>): {type|number} { {keyword|return} {variable|this}.size! * {number|2} {keyword|as} {type|number}; }
+}
+{keyword|const} x = <{keyword|const}>[{string|"a"}];
+{keyword|function }{function|isFoo}(v: {type|unknown}): v {keyword|is} {type|Foo} { {keyword|return} {keyword|typeof} v === {string|"object"}; }

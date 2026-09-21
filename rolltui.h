@@ -1143,7 +1143,15 @@ typedef struct RolltuiMdCodeLine {
   size_t n;
 } RolltuiMdCodeLine;
 
-/* Where a highlighter puts one span. Supplied by the renderer; valid for the call only. */
+/* Where a highlighter puts one span. Supplied by the renderer; valid for the call only.
+ *
+ * `role` is a Role. Its two high bits are FREE, and a highlighter may set them: ROLLTUI_MD_ROLE_BOLD and ROLLTUI_MD_ROLE_ITALIC
+ * draw the span in that role AND in bold / italic, on top of whatever the role's own style says, so a theme's colour and the
+ * weight of a keyword or the slant of a comment are two things a highlighter asks for, not one role per look. A byte without
+ * them (every highlighter written before they existed) draws as it always did. */
+#define ROLLTUI_MD_ROLE_MASK 0x3Fu
+#define ROLLTUI_MD_ROLE_BOLD 0x40u
+#define ROLLTUI_MD_ROLE_ITALIC 0x80u
 typedef void (*RolltuiMdSpanSink)(void* sink, size_t begin, size_t end, unsigned char role);
 
 /* THE SYNTAX-HIGHLIGHTING SEAM, as a function pointer.
@@ -3644,6 +3652,16 @@ int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t 
 RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
                                      RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report);
 
+/* ---- source languages ------------------------------------------------------------------------
+ * What colours a source file in a file preview is a set of LANGUAGES, each a JSON file: the ones the library ships, and any a
+ * person keeps in `<config>/rolltui/syntax/` (one with the name of a shipped language replaces it). A file with a mistake in it
+ * is skipped, and nothing says so on the screen — this is how its author finds out. It loads the shipped set, the person's own
+ * folder, and every file in `paths` (a language being written, not yet in the folder; `path_count` may be 0), and writes into
+ * `out` what it found: how many shipped, which of the person's own loaded (and which replaced a shipped one), and for each file
+ * that did not, its name and why: the language, the rule and the reason. Returns the number of files that did not load, so 0 is
+ * a clean bill and a script can gate on it. */
+size_t rolltui_syntax_check(const char* const* paths, size_t path_count, RolltuiStr* out);
+
 /* ---- layout_tree ---------------------------------------------------------------------------*/
 
 
@@ -4944,6 +4962,13 @@ typedef struct RolltuiPickerOptions {
    * preview kept at the same line or at the end it was following. A slow disk backs the interval off. Nothing runs
    * without a frame clock, so a golden frame is a still. */
   unsigned char no_watch ROLLTUI_DEFAULT(0);
+  /* SOURCE COLOUR, ON UNLESS SAID OTHERWISE (spelled as an opt out, so a zeroed struct means "colour"): a file in the
+   * preview that is in a language the library knows — by its name, its extension or its first line — is drawn with its keywords,
+   * strings, comments, numbers and so on in the theme's colours, and the head names the language; a Markdown document's
+   * fenced code is coloured the same way. The languages are JSON files: the shipped ones, and any a person keeps in
+   * `<config>/rolltui/syntax/` (one with the name of a shipped language replaces it). A file in no known language is drawn
+   * plain, as it always was. */
+  unsigned char no_syntax ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
 #define ROLLTUI_PREVIEW_OFF 0
 #define ROLLTUI_PREVIEW_RIGHT 1

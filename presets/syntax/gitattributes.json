@@ -1,0 +1,18 @@
+{
+  "name": "Git Attributes",
+  "aliases": ["gitattributes", "attributes"],
+  "extensions": ["gitattributes"],
+  "filenames": [".gitattributes", "attributes"],
+  "contexts": {
+    "main": [
+      { "match": "^\\s*#.*$", "class": "comment" },
+      { "match": "^\\s*(\\[attr\\])([\\w.-]+)", "captures": { "1": "keyword", "2": "function" }, "push": "attrs" },
+      { "match": "^\\s*(?:\"(?:[^\"\\\\\\n]|\\\\.)*\"|[^\\s#][^\\s]*)", "class": "string", "push": "attrs" }
+    ],
+    "attrs": [
+      { "match": "$", "pop": true },
+      { "match": "\\s#.*$", "class": "comment" },
+      { "match": "([-!]?)([A-Za-z_][\\w.-]*)(?:(=)(\\S*))?", "captures": { "1": "operator", "2": "property", "3": "operator", "4": "constant" } }
+    ]
+  }
+}

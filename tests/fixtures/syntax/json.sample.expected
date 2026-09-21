@@ -1,0 +1,9 @@
+{
+  {comment|// jsonc comment}
+  {property|"name"}: {string|"rolltui"},
+  {property|"version"}: {string|"1.2.3"},
+  {property|"nested"}: { {property|"a"}: [{number|1}, {number|-2.5}, {number|3e10}, {constant|true}, {constant|false}, {constant|null}], {property|"esc"}: {string|"line}{escape|\n}{string|break é }{escape|\"}{string|q}{escape|\"}{string|"} },
+  {comment|/* block */}
+  {property|"empty"}: {}, {property|unquoted}: {string|'single'},
+  {property|"url"}: {string|"http://example.com:80/x"}
+}

@@ -1,0 +1,38 @@
+{
+  "name": "CMake",
+  "aliases": ["cmake"],
+  "extensions": ["cmake"],
+  "filenames": ["CMakeLists.txt", "CMakeCache.txt"],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "#\\[(=*)\\[", "end": "\\]\\1\\]", "class": "comment" } },
+      { "region": { "begin": "#", "class": "comment" } },
+      { "region": { "begin": "\\[(=*)\\[", "end": "\\]\\1\\]", "class": "string" } },
+      { "match": "\"", "class": "string", "push": "dq" },
+      { "match": "\\$(?:ENV|CACHE)?\\{", "class": "punct", "push": "var" },
+      { "match": "\\$<", "class": "punct", "push": "genex" },
+      { "match": "\\\\.", "class": "escape" },
+      { "words": ["if", "elseif", "else", "endif", "foreach", "endforeach", "while", "endwhile", "function", "endfunction", "macro", "endmacro", "block", "endblock", "return", "break", "continue", "IF", "ELSEIF", "ELSE", "ENDIF", "FOREACH", "ENDFOREACH", "WHILE", "ENDWHILE", "FUNCTION", "ENDFUNCTION", "MACRO", "ENDMACRO", "BLOCK", "ENDBLOCK", "RETURN", "BREAK", "CONTINUE"], "class": "keyword" },
+      { "words": ["AND", "OR", "NOT", "STREQUAL", "STRLESS", "STRGREATER", "STRLESS_EQUAL", "STRGREATER_EQUAL", "EQUAL", "LESS", "GREATER", "LESS_EQUAL", "GREATER_EQUAL", "MATCHES", "DEFINED", "EXISTS", "IN_LIST", "IS_DIRECTORY", "IS_SYMLINK", "IS_ABSOLUTE", "IS_NEWER_THAN", "COMMAND", "TARGET", "POLICY", "TEST", "PATH_EQUAL", "VERSION_LESS", "VERSION_GREATER", "VERSION_EQUAL", "VERSION_LESS_EQUAL", "VERSION_GREATER_EQUAL"], "class": "keyword" },
+      { "words": ["ON", "OFF", "TRUE", "FALSE", "YES", "NO", "Y", "N", "NOTFOUND", "IGNORE"], "class": "constant" },
+      { "match": "\\b\\d+(?:\\.\\d+)*\\b", "class": "number" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Z0-9_]*\\b", "class": "constant" }
+    ],
+    "dq": { "class": "string", "rules": [
+      { "match": "\\\\.", "class": "escape" },
+      { "match": "\\$(?:ENV|CACHE)?\\{", "class": "punct", "push": "var" },
+      { "match": "\\$<", "class": "punct", "push": "genex" },
+      { "match": "\"", "pop": true }
+    ] },
+    "var": { "class": "variable", "rules": [
+      { "match": "\\$(?:ENV|CACHE)?\\{", "class": "punct", "push": "var" },
+      { "match": "\\}", "class": "punct", "pop": true }
+    ] },
+    "genex": { "class": "attribute", "rules": [
+      { "match": "\\$<", "class": "punct", "push": "genex" },
+      { "match": "\\$(?:ENV|CACHE)?\\{", "class": "punct", "push": "var" },
+      { "match": ">", "class": "punct", "pop": true }
+    ] }
+  }
+}

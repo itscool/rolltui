@@ -1,0 +1,23 @@
+{keyword|import} {type|Foundation}
+{doc|/// A thing.}
+{attribute|@available}(iOS {number|15}, *)
+{keyword|public} {keyword|final} {keyword|class} {type|Thing}: {type|NSObject}, {type|Codable} {
+    {keyword|public} {keyword|static} {keyword|let} shared = {function|Thing}()
+    {keyword|private}({keyword|set}) {keyword|var} count: {type|Int} = {number|0x1F}
+    {keyword|let} title: {type|String}? = {string|"Hello }{punct|\(}name{punct|)}{string|, you are }{punct|\(}age + {number|1}{punct|)}{string| years }{punct|\(}{string|"old"}{punct|)}{string| }{escape|\n}{string|"}
+    {keyword|let} raw = {string|#"raw \(not interpolated)"#}
+    {keyword|let} multi = {string|"""}
+{string|        line }{punct|\(}count{punct|)}
+{string|        """}
+
+    {comment|/* block /* nested */ comment */}
+    {keyword|func} {function|run}<{type|T}: {type|Equatable}>(_ items: [{type|T}], completion: {attribute|@escaping} ({type|Result}<{type|Int}, {type|Error}>) -> {type|Void}) {keyword|async} {keyword|throws} {
+        {keyword|guard} {keyword|let} first = items.first {keyword|else} { {keyword|return} }
+        {keyword|for} (i, item) {keyword|in} items.{function|enumerated}() {keyword|where} i > {number|2} { {function|print}(item) }
+{preproc|        #if DEBUG}
+        {keyword|let} x = {variable|$0} + {number|3.14e2}
+{preproc|        #endif}
+        {keyword|switch} {variable|self}.state { {keyword|case} .idle: {keyword|break}; {keyword|default}: {function|fatalError}({string|"no"}) }
+    }
+}
+{keyword|enum} {type|State} { {keyword|case} idle, {function|running}({type|Int}) }

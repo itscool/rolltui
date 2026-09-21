@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE note SYSTEM "Note.dtd">
+<!-- a comment -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <name attr='single' data-x="a &amp; b">Text &lt;here&gt; &#169;</name>
+  <empty/>
+  <![CDATA[ raw <text> & stuff ]]>
+  <ns:item id="7"
+           class="multi
+line">x</ns:item>
+</project>

@@ -1,0 +1,35 @@
+{preproc|%YAML 1.2}
+{section|---}
+{comment|# comment}
+{property|name}{operator|:} my-app
+{property|version}{operator|:} 1.2.3
+{property|count}{operator|:} {number|42}
+{property|ratio}{operator|:} {number|3.14}
+{property|enabled}{operator|:} {constant|true}
+{property|nothing}{operator|:} {constant|~}
+{property|desc}{operator|:} Don't panic, it's{string| "fine"}{comment| # trailing comment}
+{property|quoted}{operator|:}{string| "a }{escape|\"}{string|b}{escape|\"\n}{string|"}
+{property|single}{operator|:}{string| 'it}{escape|''}{string|s'}
+{property|anchor}{operator|:} {variable|&base}
+  {property|key}{operator|:} value
+{property|ref}{operator|:} {variable|*base}
+{property|tag}{operator|:} {attribute|!!str} {number|123}
+{property|custom}{operator|:} {attribute|!Ref} Something
+{property|list}{operator|:}
+{punct|  -} one
+{punct|  -}{string| "two"}
+  {punct|- }{property|name}{operator|:} item3
+    {property|value}{operator|:} {number|10}
+{punct|  - -} nested
+{punct|    -} {punct|[}a, b, {number|3}{punct|]}
+{property|flow}{operator|:} {punct|{}{property|a}{operator|:} {number|1}, {property|b}{operator|:} {punct|[}x, y{punct|]}, {property|c}{operator|:}{string| "s"}{punct|}}
+{property|script}{operator|:} {punct||}
+  echo "it's $HOME"
+  {property|key}{operator|:} not a key
+{property|folded}{operator|:} {punct|>-}
+  text here
+{property|url}{operator|:} http://example.com:8080/path#frag
+{property|time}{operator|:} 12:30:45
+{property|"quoted key"}{operator|:} value
+? complex
+{section|...}

@@ -1,0 +1,7 @@
+# attrs
+* text=auto eol=lf
+*.png binary -diff
+*.sh text eol=lf linguist-language=Shell
+"path with space/*.txt" -text !filter
+[attr]vendor linguist-vendored -diff
+third_party/** vendor

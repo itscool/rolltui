@@ -1,0 +1,35 @@
+{
+  "name": "CSS",
+  "aliases": ["css"],
+  "extensions": ["css", "pcss", "postcss"],
+  "word_chars": "-",
+  "contexts": {
+    "main": [
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "match": "\\{", "class": "punct", "push": "block" },
+      { "match": "@[A-Za-z-]+", "class": "keyword" },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\.", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\.", "single_line": true } },
+      { "match": "\\.[A-Za-z_-][\\w-]*", "class": "type" },
+      { "match": "#[A-Za-z_-][\\w-]*", "class": "constant" },
+      { "match": "::?[A-Za-z-]+", "class": "attribute" },
+      { "match": "\\[[^\\]\\n]*\\]", "class": "attribute" },
+      { "match": "\\b(?:html|body|a|abbr|address|article|aside|audio|b|blockquote|button|canvas|caption|code|dd|details|div|dl|dt|em|fieldset|figure|footer|form|h[1-6]|head|header|hr|i|iframe|img|input|label|legend|li|main|nav|ol|option|p|pre|section|select|small|span|strong|sub|summary|sup|svg|table|tbody|td|textarea|tfoot|th|thead|tr|u|ul|video)\\b", "class": "tag" },
+      { "match": "(?:\\d+\\.?\\d*|\\.\\d+)(?:%|[A-Za-z]{1,4})?", "class": "number" }
+    ],
+    "block": [
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "match": "\\{", "class": "punct", "push": "block" },
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\.", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\.", "single_line": true } },
+      { "match": "!\\s*important\\b", "class": "keyword" },
+      { "match": "--[\\w-]+", "class": "variable" },
+      { "match": "(?:[A-Za-z-]+)(?=\\s*:(?!:)[^;{}]*[;}])", "class": "property" },
+      { "match": "#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3,4})\\b", "class": "number" },
+      { "match": "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:%|[A-Za-z]{1,4})?", "class": "number" },
+      { "match": "\\b([A-Za-z-]+)(?=\\()", "captures": { "1": "function" } },
+      { "match": "@[A-Za-z-]+", "class": "keyword" }
+    ]
+  }
+}

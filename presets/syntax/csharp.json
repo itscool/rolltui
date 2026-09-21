@@ -1,0 +1,50 @@
+{
+  "name": "C#",
+  "aliases": ["csharp", "c#", "cs"],
+  "extensions": ["cs", "csx"],
+  "not_after": ["."],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "///", "class": "doc", "rules": [ { "match": "</?[A-Za-z][\\w:.-]*|/?>", "class": "tag" } ] } },
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "^\\s*#\\s*[a-z]+", "class": "preproc" },
+      { "region": { "begin": "\"\"\"", "end": "\"\"\"", "class": "string" } },
+      { "match": "(?:\\$@|@\\$)\"", "class": "string", "push": "verbatim_interp" },
+      { "match": "\\$\"", "class": "string", "push": "interp_string" },
+      { "region": { "begin": "@\"", "end": "\"", "class": "string", "escape": "\"\"" } },
+      { "region": { "begin": "\"", "end": "\"", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", "single_line": true } },
+      { "region": { "begin": "'", "end": "'", "class": "string", "escape": "\\\\(?:x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|.)", "single_line": true } },
+      { "match": "^\\s*\\[[A-Za-z_][^\\]\\n]*\\]", "class": "attribute" },
+      { "match": "\\b(class|struct|interface|enum|record|namespace|new)\\s+([A-Za-z_][\\w.]*)", "captures": { "1": "keyword", "2": "type" } },
+      { "words": ["abstract", "as", "async", "await", "base", "break", "case", "catch", "checked", "class", "const", "continue", "default", "delegate", "do", "else", "enum", "event", "explicit", "extern", "finally",
+                  "fixed", "for", "foreach", "get", "global", "goto", "if", "implicit", "in", "init", "interface", "internal", "is", "lock", "namespace", "new", "operator", "out", "override", "params", "partial",
+                  "private", "protected", "public", "readonly", "record", "ref", "required", "return", "sealed", "set", "sizeof", "stackalloc", "static", "struct", "switch", "this", "throw", "try", "typeof",
+                  "unchecked", "unsafe", "using", "var", "virtual", "volatile", "when", "where", "while", "yield", "nameof", "with", "file", "scoped", "add", "remove", "and", "or", "not"], "class": "keyword" },
+      { "words": ["bool", "byte", "char", "decimal", "double", "dynamic", "float", "int", "long", "nint", "nuint", "object", "sbyte", "short", "string", "uint", "ulong", "ushort", "void"], "class": "type" },
+      { "words": ["true", "false", "null"], "class": "constant" },
+      { "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|\\d[\\d_]*(?:\\.[\\d_]*)?(?:[eE][+-]?\\d+)?)[uUlLfFdDmM]*\\b", "class": "number" },
+      { "match": "\\.\\s*([A-Za-z_]\\w*)\\s*(?=\\(|<[\\w\\s,.<>?]*>\\s*\\()", "captures": { "1": "function" } },
+      { "match": "\\.\\s*[A-Za-z_]\\w*" },
+      { "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\(|<[\\w\\s,.<>?]*>\\s*\\()", "captures": { "1": "function" } },
+      { "match": "\\b[A-Z][A-Z0-9]*_[A-Z0-9_]*\\b", "class": "constant" },
+      { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "class": "type" }
+    ],
+    "interp_string": { "class": "string", "rules": [
+      { "match": "\\{\\{|\\}\\}", "class": "string" },
+      { "match": "\\\\(?:x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|.)", "class": "escape" },
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\"|$", "pop": true }
+    ] },
+    "verbatim_interp": { "class": "string", "rules": [
+      { "match": "\"\"|\\{\\{|\\}\\}", "class": "escape" },
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\"", "pop": true }
+    ] },
+    "interp": [
+      { "match": "\\{", "class": "punct", "push": "interp" },
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "include": "main" }
+    ]
+  }
+}

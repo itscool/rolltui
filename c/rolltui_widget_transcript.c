@@ -928,6 +928,14 @@ static void draw_cell(void* ctx, const RolltuiMdSpan* sp, size_t k, const char* 
   src = source_of(sp, k);
   selected = c->fully || (c->in_sel && src != ROLLTUI_MD_NO_SOURCE && src >= c->sb && src < c->se);
   st = c->styles[sp->role];
+  if (sp->bg_role != ROLLTUI_MD_NO_ROLE) { /* code, on its block's ground, unless its own role has a ground that is not just the window's */
+    const RolltuiStyleColor* ground = &c->styles[c->roles->background].bg;
+    const RolltuiStyleColor* under = &c->styles[sp->bg_role].bg;
+    const int plain = st.bg.kind == 0 || (st.bg.kind == ground->kind && st.bg.index == ground->index && st.bg.r == ground->r && st.bg.g == ground->g && st.bg.b == ground->b);
+    if (plain && under->kind != 0) st.bg = *under;
+  }
+  if (sp->attrs & ROLLTUI_MD_ATTR_BOLD) st.bold = 1;
+  if (sp->attrs & ROLLTUI_MD_ATTR_ITALIC) st.italic = 1;
   if (selected) st = overlay_style(st, c->sel_style);
   /* The selection WINS where they overlap: it is the user's most recent direct act.
    * Otherwise the current match beats the other matches. */

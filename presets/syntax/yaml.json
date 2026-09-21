@@ -1,0 +1,46 @@
+{
+  "name": "YAML",
+  "aliases": ["yaml", "yml"],
+  "extensions": ["yaml", "yml", "sublime-syntax", "yaml-tmlanguage"],
+  "filenames": [".clang-format", ".clang-tidy", ".clangd", ".yamllint", ".gemrc", "pnpm-lock.yaml"],
+  "first_line": "^%YAML|^---\\s*$",
+  "contexts": {
+    "main": [
+      { "match": "(?:^|\\s)#.*$", "class": "comment" },
+      { "match": "^(?:---|\\.\\.\\.)(?=\\s|$)", "class": "section" },
+      { "match": "^%[A-Za-z]+.*$", "class": "preproc" },
+      { "match": "^(\\s*)((?:-\\s+)*)(\"(?:[^\"\\\\\\n]|\\\\.)*\"|'(?:[^'\\n]|'')*'|[^\\s#'\"\\[\\]{},&*!|>%@`:?-][^:#\\n]*?)\\s*(:)(?=\\s|$)", "captures": { "2": "punct", "3": "property", "4": "operator" }, "push": "value" },
+      { "match": "(?:^\\s*|\\s)-(?=\\s|$)", "class": "punct", "push": "item" }
+    ],
+    "item": [
+      { "match": "(\"(?:[^\"\\\\\\n]|\\\\.)*\"|'(?:[^'\\n]|'')*'|[A-Za-z_][\\w. /-]*?)\\s*(:)(?=\\s|$)", "captures": { "1": "property", "2": "operator" }, "push": "value" },
+      { "match": "(?:^\\s*|\\s)-(?=\\s|$)", "class": "punct", "push": "item" },
+      { "include": "value" }
+    ],
+    "value": [
+      { "match": "$", "pop": true },
+      { "match": "\\s#.*$", "class": "comment" },
+      { "match": "(?:^|[\\s\\[{,])\"", "class": "string", "push": "dq" },
+      { "match": "(?:^|[\\s\\[{,])'", "class": "string", "push": "sq" },
+      { "match": "[|>][+-]?\\d*(?=\\s*(?:#.*)?$)", "class": "punct" },
+      { "match": "[&*][A-Za-z0-9_-]+", "class": "variable" },
+      { "match": "!(?:!|[\\w-]*!)?[\\w.:/%-]*", "class": "attribute" },
+      { "match": "[\\[{]", "class": "punct", "push": "flow" },
+      { "match": "(?:^|[\\s\\[{,])([-+]?(?:0x[0-9A-Fa-f_]+|0o[0-7_]+|(?:\\d[\\d_]*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|\\.inf|\\.nan))(?=\\s*(?:$|#|[,\\]}]))", "captures": { "1": "number" } },
+      { "match": "(?:^|[\\s\\[{,])(true|false|null|yes|no|on|off|True|False|Null|TRUE|FALSE|NULL|Yes|No|YES|NO|On|Off|ON|OFF|~)(?=\\s*(?:$|#|[,\\]}]))", "captures": { "1": "constant" } }
+    ],
+    "flow": [
+      { "match": "[\\]}]", "class": "punct", "pop": true },
+      { "match": "[\\[{]", "class": "punct", "push": "flow" },
+      { "match": "(\"(?:[^\"\\\\\\n]|\\\\.)*\"|'(?:[^'\\n]|'')*'|[A-Za-z_][\\w.-]*)\\s*(:)(?=\\s)", "captures": { "1": "property", "2": "operator" } },
+      { "match": "\\s#.*$", "class": "comment" },
+      { "match": "(?:^|[\\s\\[{,])\"", "class": "string", "push": "dq" },
+      { "match": "(?:^|[\\s\\[{,])'", "class": "string", "push": "sq" },
+      { "match": "[&*][A-Za-z0-9_-]+", "class": "variable" },
+      { "match": "(?:^|[\\s\\[{,])([-+]?(?:\\d[\\d_]*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)(?=\\s*(?:$|#|[,\\]}]))", "captures": { "1": "number" } },
+      { "match": "(?:^|[\\s\\[{,])(true|false|null|yes|no|True|False|~)(?=\\s*(?:$|#|[,\\]}]))", "captures": { "1": "constant" } }
+    ],
+    "dq": { "class": "string", "rules": [ { "match": "\\\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", "class": "escape" }, { "match": "\"|$", "pop": true } ] },
+    "sq": { "class": "string", "rules": [ { "match": "''", "class": "escape" }, { "match": "'|$", "pop": true } ] }
+  }
+}

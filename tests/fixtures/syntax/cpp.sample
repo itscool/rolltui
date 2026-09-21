@@ -1,0 +1,26 @@
+#include <vector>
+#include <string>
+#define ROLL_VERSION 3
+#define SQUARE(x) ((x) * (x))
+namespace roll::ui {
+template <typename T, std::size_t N>
+class Widget : public Base {
+ public:
+  explicit Widget(std::string name) : name_(std::move(name)) {}
+  [[nodiscard]] virtual auto draw(int w, int h) const noexcept -> bool override;
+  static constexpr int kMax = 0x7F'FF;
+ private:
+  std::vector<std::unique_ptr<T>> items_;
+  const char* raw = R"delim(a "quoted" \n line
+second line)delim";
+};
+enum class Mode { kOff, kOn };
+}  // namespace roll::ui
+
+auto f = [&](auto&& x) { return x->size() + this->count; };
+int main() {
+  Widget<int, 4> w("hi");
+  if (w.draw(1, 2) && nullptr != w) throw std::runtime_error("bad");
+  auto s = std::string("x") + 'c';
+  return 0;
+}

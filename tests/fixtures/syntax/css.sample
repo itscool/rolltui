@@ -1,0 +1,11 @@
+@import url("x.css");
+/* comment */
+:root { --main-color: #06c; --gap: 1.5rem; }
+body, .card > p:hover::before, a[href^="http"] {
+  margin: 0 auto;
+  color: #fff;
+  background: rgba(0, 0, 0, .5) url('bg.png') no-repeat;
+  font: 12px/1.5 "Helvetica Neue", sans-serif !important;
+  width: calc(100% - var(--gap));
+}
+@media (min-width: 600px) { #main .item-1 { padding: 4px; } }
