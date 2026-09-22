@@ -1709,6 +1709,91 @@ void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThe
   out->report = &kThemePresetReportFns;
 }
 
+/* ---- the theme store: USE, over the generic engine above ---------------------------------
+ * A RolltuiThemeStore IS a RolltuiPresetStore built against the process-wide Theme domain below — the distinct opaque name is what
+ * gives the three concrete stores incompatible pointer types at every call site, so a Bindings store can never be handed where a
+ * Theme store is expected. Nothing here duplicates the engine; every function is a thin, concretely-typed forward. */
+
+/* `c`'s OWN descriptor (`rolltui_preset_domain_theme`, unchanged, per-context): every registry, cache and descriptor this library
+ * keeps lives on the context and is released BY NAME at `rolltui_context_free` — nothing in `rolltui/c/` keeps process-wide state or
+ * registers a shutdown hook (`tests/globals.inc` asserts it; CONTEXT is the owner even for configuration nothing ever varies,
+ * because "configuration belongs to the thing it configures", not to a second, easily-desynced copy of it). */
+
+RolltuiThemeStore* rolltui_theme_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                           const char* shipped_dir, size_t shipped_dir_len) {
+  return (RolltuiThemeStore*)rolltui_preset_store_new(rolltui_preset_domain_theme(c), dir, dir_len, may_write_shipped,
+                                                       shipped_dir, shipped_dir_len);
+}
+void rolltui_theme_store_free(RolltuiThemeStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+void rolltui_theme_store_start(RolltuiThemeStore* s, RolltuiThemePresetReport* report) {
+  rolltui_preset_store_start((RolltuiPresetStore*)s, report);
+}
+
+/* A BORROW: `s->working` itself, never a clone — unlike `_get()` below, there is a live value to borrow FROM, valid until the next
+ * call that changes it. Under the same lock every other field-read here already takes (`_modified`/`_version`/`_origin`). */
+const RolltuiThemePresetValue* rolltui_theme_store_working(const RolltuiThemeStore* s) {
+  const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
+  void* v;
+  if (!ps) return NULL;
+  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  v = ps->working;
+  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  return (const RolltuiThemePresetValue*)v;
+}
+int rolltui_theme_store_modified(const RolltuiThemeStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
+void rolltui_theme_store_label(const RolltuiThemeStore* s, RolltuiStr* out) {
+  rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
+}
+unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s) {
+  return rolltui_preset_store_version((const RolltuiPresetStore*)s);
+}
+void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out) {
+  rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
+}
+RolltuiThemePresetValue* rolltui_theme_store_get(const RolltuiThemeStore* s, const char* name, size_t len,
+                                                 RolltuiThemePresetReport* report) {
+  return (RolltuiThemePresetValue*)rolltui_preset_store_get((const RolltuiPresetStore*)s, name, len, report);
+}
+int rolltui_theme_store_load(RolltuiThemeStore* s, const char* name, size_t len, RolltuiThemePresetReport* report,
+                             int persist) {
+  return rolltui_preset_store_load((RolltuiPresetStore*)s, name, len, report, persist);
+}
+
+/* Both route through the existing in-place `_edit` mechanics (one lock/touch/unlock, not a second one) rather than duplicating them. */
+static void theme_set_mode_cb(void* value, void* ctx) {
+  const RolltuiStr* m = (const RolltuiStr*)ctx;
+  rolltui_str_set(&((RolltuiThemePresetValue*)value)->mode, m->p, m->n);
+}
+static void theme_set_depth_cb(void* value, void* ctx) {
+  const RolltuiStr* d = (const RolltuiStr*)ctx;
+  rolltui_str_set(&((RolltuiThemePresetValue*)value)->depth, d->p, d->n);
+}
+void rolltui_theme_store_set_mode(RolltuiThemeStore* s, const char* mode, size_t len, int persist) {
+  RolltuiStr m = {0};
+  rolltui_str_set(&m, mode, len);
+  rolltui_preset_store_edit((RolltuiPresetStore*)s, theme_set_mode_cb, &m, persist);
+  rolltui_str_free(&m);
+}
+void rolltui_theme_store_set_depth(RolltuiThemeStore* s, const char* depth, size_t len, int persist) {
+  RolltuiStr d = {0};
+  rolltui_str_set(&d, depth, len);
+  rolltui_preset_store_edit((RolltuiPresetStore*)s, theme_set_depth_cb, &d, persist);
+  rolltui_str_free(&d);
+}
+void rolltui_theme_store_path(const RolltuiThemeStore* s, const char* name, size_t len, RolltuiStr* out) {
+  if (name && len) rolltui_preset_store_preset_path((const RolltuiPresetStore*)s, name, len, out);
+  else rolltui_preset_store_working_path((const RolltuiPresetStore*)s, out);
+}
+int rolltui_theme_is_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return rolltui_preset_is_shipped(rolltui_preset_domain_theme(c), name, len);
+}
+void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+  rolltui_preset_shipped_names(rolltui_preset_domain_theme(c), out);
+}
+const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return (const RolltuiThemePresetValue*)rolltui_preset_shipped(rolltui_preset_domain_theme(c), name, len);
+}
+
 /* ---- the Layout domain ------------------------------------------------------------------- */
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r) {
@@ -1918,6 +2003,61 @@ void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLa
   out->report = &kLayoutPresetReportFns;
 }
 
+/* ---- the layout store: USE, over the generic engine above ---------------------------------
+ * Same shape as the theme store's, minus the person's settings (a layout has none). `_new` keeps `c`: the session's own descriptor
+ * (`rolltui_preset_domain_layout`, unchanged, per-context) is what this domain genuinely needs, since `layout_actions` borrows a
+ * context's own cache — the one place the process-wide-static shortcut the theme and bindings stores take does not apply. */
+
+RolltuiLayoutStore* rolltui_layout_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                             const char* shipped_dir, size_t shipped_dir_len) {
+  return (RolltuiLayoutStore*)rolltui_preset_store_new(rolltui_preset_domain_layout(c), dir, dir_len,
+                                                        may_write_shipped, shipped_dir, shipped_dir_len);
+}
+void rolltui_layout_store_free(RolltuiLayoutStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+void rolltui_layout_store_start(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report) {
+  rolltui_preset_store_start((RolltuiPresetStore*)s, report);
+}
+const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s) {
+  const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
+  void* v;
+  if (!ps) return NULL;
+  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  v = ps->working;
+  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  return (const RolltuiLayout*)v;
+}
+int rolltui_layout_store_modified(const RolltuiLayoutStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
+void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out) {
+  rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
+}
+unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s) {
+  return rolltui_preset_store_version((const RolltuiPresetStore*)s);
+}
+void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out) {
+  rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
+}
+RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char* name, size_t len,
+                                       RolltuiLayoutPresetReport* report) {
+  return (RolltuiLayout*)rolltui_preset_store_get((const RolltuiPresetStore*)s, name, len, report);
+}
+int rolltui_layout_store_load(RolltuiLayoutStore* s, const char* name, size_t len, RolltuiLayoutPresetReport* report,
+                              int persist) {
+  return rolltui_preset_store_load((RolltuiPresetStore*)s, name, len, report, persist);
+}
+void rolltui_layout_store_path(const RolltuiLayoutStore* s, const char* name, size_t len, RolltuiStr* out) {
+  if (name && len) rolltui_preset_store_preset_path((const RolltuiPresetStore*)s, name, len, out);
+  else rolltui_preset_store_working_path((const RolltuiPresetStore*)s, out);
+}
+int rolltui_layout_is_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return rolltui_preset_is_shipped(rolltui_preset_domain_layout(c), name, len);
+}
+void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+  rolltui_preset_shipped_names(rolltui_preset_domain_layout(c), out);
+}
+const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return (const RolltuiLayout*)rolltui_preset_shipped(rolltui_preset_domain_layout(c), name, len);
+}
+
 /* ---- the Bindings domain ----------------------------------------------------------------- */
 
 void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r) {
@@ -2125,6 +2265,61 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
   out->destroy = bindings_domain_destroy;
   out->equal = bindings_domain_equal;
   out->report = &kBindingsPresetReportFns;
+}
+
+/* ---- the bindings store: USE, over the generic engine above -------------------------------
+ * Same shape as the theme store's, minus the person's settings (a bindings table has nothing beside its chords that is the
+ * person's own to carry). `c`'s own descriptor (`rolltui_preset_domain_bindings`, unchanged, per-context) — see the theme store's
+ * comment above for why this stays context-owned even though nothing today configures it differently per session. */
+
+RolltuiBindingsStore* rolltui_bindings_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                                 const char* shipped_dir, size_t shipped_dir_len) {
+  return (RolltuiBindingsStore*)rolltui_preset_store_new(rolltui_preset_domain_bindings(c), dir, dir_len, may_write_shipped,
+                                                          shipped_dir, shipped_dir_len);
+}
+void rolltui_bindings_store_free(RolltuiBindingsStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+void rolltui_bindings_store_start(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report) {
+  rolltui_preset_store_start((RolltuiPresetStore*)s, report);
+}
+const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore* s) {
+  const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
+  void* v;
+  if (!ps) return NULL;
+  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  v = ps->working;
+  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  return (const RolltuiBindings*)v;
+}
+int rolltui_bindings_store_modified(const RolltuiBindingsStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
+void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out) {
+  rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
+}
+unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s) {
+  return rolltui_preset_store_version((const RolltuiPresetStore*)s);
+}
+void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out) {
+  rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
+}
+RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const char* name, size_t len,
+                                            RolltuiBindingsPresetReport* report) {
+  return (RolltuiBindings*)rolltui_preset_store_get((const RolltuiPresetStore*)s, name, len, report);
+}
+int rolltui_bindings_store_load(RolltuiBindingsStore* s, const char* name, size_t len,
+                                RolltuiBindingsPresetReport* report, int persist) {
+  return rolltui_preset_store_load((RolltuiPresetStore*)s, name, len, report, persist);
+}
+void rolltui_bindings_store_path(const RolltuiBindingsStore* s, const char* name, size_t len, RolltuiStr* out) {
+  if (name && len) rolltui_preset_store_preset_path((const RolltuiPresetStore*)s, name, len, out);
+  else rolltui_preset_store_working_path((const RolltuiPresetStore*)s, out);
+}
+int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return rolltui_preset_is_shipped(rolltui_preset_domain_bindings(c), name, len);
+}
+void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+  rolltui_preset_shipped_names(rolltui_preset_domain_bindings(c), out);
+}
+const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len) {
+  return (const RolltuiBindings*)rolltui_preset_shipped(rolltui_preset_domain_bindings(c), name, len);
 }
 
 /* ---- the library's own three domains (the case is at the header) ------------------------- */

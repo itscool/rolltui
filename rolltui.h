@@ -3164,6 +3164,65 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
                                                const char* depth, size_t depth_len, const char* name,
                                                size_t name_len);
 
+/* ---- the theme store: USE — create it, read it, switch to a different existing preset -------
+ * The whole surface an ordinary host needs. Authoring a preset's own content — editing it, saving a new one, adding a file — is
+ * `rolltui_studio.h`'s, reached only by rolltui's own studio; nothing here needs it, because nothing but the studio ever does. */
+typedef struct RolltuiThemeStore RolltuiThemeStore;
+
+/* OWNED: `_new`/`_free`, `_free` a no-op on NULL. `dir` is where this person's own presets and working copy live; `shipped_dir`, when
+ * `may_write_shipped`, is where the studio may ALSO write a preset that ships with the library (`""` refuses that entirely — every
+ * host but the studio passes it). `c` reaches the session's own domain descriptor: every registry and cache this library keeps lives
+ * on a context and is released by name when it is freed, even here, where nothing today configures a theme differently per session —
+ * configuration belongs to the thing it configures, not to a second copy of it a host's own descriptor could silently desync from. */
+RolltuiThemeStore* rolltui_theme_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                           const char* shipped_dir, size_t shipped_dir_len);
+void rolltui_theme_store_free(RolltuiThemeStore* s);
+
+/* Loads the autosaved working copy, or "default" when there is none or it does not parse — `report` says which and is RESET by
+ * this call. Call once, right after `_new`. */
+void rolltui_theme_store_start(RolltuiThemeStore* s, RolltuiThemePresetReport* report);
+
+/* A BORROW of the store's own working value, valid until the next call that changes it (`_load`, `_set_mode`, `_set_depth`, or —
+ * `rolltui_studio.h` — `_edit`). Never yours to free. NULL only when `s` is NULL. */
+const RolltuiThemePresetValue* rolltui_theme_store_working(const RolltuiThemeStore* s);
+
+int rolltui_theme_store_modified(const RolltuiThemeStore* s);
+
+/* "<origin>", or "<origin> (modified)" once the working copy differs from what it was loaded from. REPLACES `*out`. */
+void rolltui_theme_store_label(const RolltuiThemeStore* s, RolltuiStr* out);
+
+unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s);
+
+/* The shipped ones first ("default" ahead of the rest), then this person's own that do not shadow a shipped name. REPLACES `*out`. */
+void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out);
+
+/* A named preset's value WITHOUT switching to it — reading a theme's badges before choosing it, say. OWNED: free the result with
+ * `rolltui_theme_preset_value_release`. NULL when no preset has that name (`report` says why). */
+RolltuiThemePresetValue* rolltui_theme_store_get(const RolltuiThemeStore* s, const char* name, size_t len,
+                                                 RolltuiThemePresetReport* report);
+
+/* Switches the working copy to a different EXISTING preset by name — picking a theme, not authoring one. Light-or-dark and colour
+ * depth are the person's and are carried over, not the preset's to change (`rolltui_theme_store_set_mode`/`_set_depth` are the only
+ * way to change them). Returns 1 on success; `report` says what happened either way and is RESET by this call. `persist` 0 fills the
+ * working copy without writing it, for a run that must not touch disk. */
+int rolltui_theme_store_load(RolltuiThemeStore* s, const char* name, size_t len, RolltuiThemePresetReport* report,
+                             int persist);
+
+/* Light-or-dark and colour depth: the person's own settings, carried beside a preset's colours rather than part of them (every preset
+ * keeps whichever the person already had). `mode`: "auto"|"dark"|"light"; `depth`: "auto"|"truecolor"|"256"|"16"|"mono". */
+void rolltui_theme_store_set_mode(RolltuiThemeStore* s, const char* mode, size_t len, int persist);
+void rolltui_theme_store_set_depth(RolltuiThemeStore* s, const char* depth, size_t len, int persist);
+
+/* The two paths this store's files live at. `name` NULL (or `len` 0): the working copy's path. Otherwise a named preset's —
+ * shipped or this person's own, whichever `_load` would follow. REPLACES `*out`. */
+void rolltui_theme_store_path(const RolltuiThemeStore* s, const char* name, size_t len, RolltuiStr* out);
+
+/* The shipped ones — no store needed, `c` alone: every store built against the same context clones from the same embedded table. */
+int rolltui_theme_is_shipped(RolltuiContext* c, const char* name, size_t len);
+void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+/* A BORROW, valid until `c` is freed. NULL when `name` is not shipped. */
+const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const char* name, size_t len);
+
 /* ---- the `theme` widget kind's one call -----------------------------------------------------
  * An app gets a theme editor by NAMING `theme` in a layout and binding a key to whatever holds it; this is the only code it writes.
  * The theme is the APP's: the style table a frame is drawn with is passed into `rolltui_windows_draw` by the host, so no widget can
@@ -3212,6 +3271,59 @@ void rolltui_layout_preset_report_summary(const RolltuiLayoutPresetReport* r, Ro
 int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
 
 void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
+
+/* ---- the layout store: USE — same shape as the theme store, minus the person's settings ------
+ * A layout has none: nothing about how it is shown is the person's the way light-or-dark and colour depth are a theme's, so there is
+ * no `_set_*` here. `_new` keeps `RolltuiContext*` for the same reason the theme store's does, and Layout has a second reason besides:
+ * its shipped `default` screen's own declared actions are borrowed from the session's cache (`rolltui_layout_shipped_default_actions`),
+ * which genuinely cannot outlive it. */
+typedef struct RolltuiLayoutStore RolltuiLayoutStore;
+
+RolltuiLayoutStore* rolltui_layout_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                             const char* shipped_dir, size_t shipped_dir_len);
+void rolltui_layout_store_free(RolltuiLayoutStore* s);
+void rolltui_layout_store_start(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report);
+/* A BORROW of the working value, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`). */
+const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s);
+int rolltui_layout_store_modified(const RolltuiLayoutStore* s);
+void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out);
+unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s);
+void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out);
+/* OWNED: free the result with `rolltui_layout_free`. */
+RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char* name, size_t len,
+                                       RolltuiLayoutPresetReport* report);
+int rolltui_layout_store_load(RolltuiLayoutStore* s, const char* name, size_t len, RolltuiLayoutPresetReport* report,
+                              int persist);
+void rolltui_layout_store_path(const RolltuiLayoutStore* s, const char* name, size_t len, RolltuiStr* out);
+/* The shipped ones. `c` reaches the session's own descriptor, same as `_new`. */
+int rolltui_layout_is_shipped(RolltuiContext* c, const char* name, size_t len);
+void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name, size_t len);
+
+/* ---- the bindings store: USE — same shape as the theme store, minus the person's settings ----
+ * No `_set_*` either: a bindings table has nothing beside its chords that is the person's own to carry — the file itself already is
+ * the person's. `_new` keeps `RolltuiContext*` for the same reason the theme store's does. */
+typedef struct RolltuiBindingsStore RolltuiBindingsStore;
+
+RolltuiBindingsStore* rolltui_bindings_store_new(RolltuiContext* c, const char* dir, size_t dir_len, int may_write_shipped,
+                                                 const char* shipped_dir, size_t shipped_dir_len);
+void rolltui_bindings_store_free(RolltuiBindingsStore* s);
+void rolltui_bindings_store_start(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report);
+/* A BORROW of the working table, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`). */
+const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore* s);
+int rolltui_bindings_store_modified(const RolltuiBindingsStore* s);
+void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out);
+unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s);
+void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out);
+/* OWNED: free the result with `rolltui_bindings_free`. */
+RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const char* name, size_t len,
+                                            RolltuiBindingsPresetReport* report);
+int rolltui_bindings_store_load(RolltuiBindingsStore* s, const char* name, size_t len,
+                                RolltuiBindingsPresetReport* report, int persist);
+void rolltui_bindings_store_path(const RolltuiBindingsStore* s, const char* name, size_t len, RolltuiStr* out);
+int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len);
+void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len);
 
 /* One per library domain, named and never spelled as an id (no call site picks between the three at runtime). A domain's name is its
  * `kind`: read `dom->kind`. */
