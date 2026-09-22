@@ -22,6 +22,7 @@
 #include "rolltui/rolltui.h"
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_presets.h"
 #include "rolltui/c/rolltui_str.h"
 
 /* ---- the table ------------------------------------------------------------------------- */
@@ -100,13 +101,17 @@ const RolltuiSetting* rolltui_settings_find(const char* key, size_t key_len) {
   return r ? &r->row : NULL;
 }
 
-RolltuiSettings* rolltui_settings_new(RolltuiPresetStore* theme, RolltuiPresetStore* layout,
-                                      RolltuiPresetStore* bindings) {
-  /* OWNED, LONG-LIVED: one handle a host keeps for the session, released by `_free`. */
+RolltuiSettings* rolltui_settings_new(RolltuiThemeStore* theme, RolltuiLayoutStore* layout,
+                                      RolltuiBindingsStore* bindings) {
+  /* OWNED, LONG-LIVED: one handle a host keeps for the session, released by `_free`. A
+   * `RolltuiThemeStore`/`RolltuiLayoutStore`/`RolltuiBindingsStore` IS a `RolltuiPresetStore`
+   * under its concrete name (`rolltui_presets.c`'s own boundary); this is the one other file
+   * that casts across it, for the same reason `rolltui_presets.c` itself does — the mechanics
+   * below are genuinely generic over the three, and nothing public should have to know that. */
   RolltuiSettings* s = (RolltuiSettings*)rolltui_mem_alloc(sizeof *s);
-  s->store[STORE_THEME] = theme;
-  s->store[STORE_LAYOUT] = layout;
-  s->store[STORE_BINDINGS] = bindings;
+  s->store[STORE_THEME] = (RolltuiPresetStore*)theme;
+  s->store[STORE_LAYOUT] = (RolltuiPresetStore*)layout;
+  s->store[STORE_BINDINGS] = (RolltuiPresetStore*)bindings;
   return s;
 }
 

@@ -39,6 +39,7 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/rolltui_studio.h"     /* the CREATE-AND-EDIT tier: _edit/_save_as/_add/_set_working */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -128,67 +129,20 @@ std::string default_bindings_json_c() {
   return "";
 }
 
-// ---- the store: common mechanics shared by all three domains --------------------------------
-class StoreBase {
- public:
-  explicit StoreBase(RolltuiPresetStore* s) : s_(s) {}
-  StoreBase(const StoreBase&) = delete;
-  ~StoreBase() { rolltui_preset_store_free(s_); }
-
-  std::string origin() const {
-    std::size_t n = 0;
-    const char* p = rolltui_preset_store_origin(s_, &n);
-    return std::string(p, n);
-  }
-  bool modified() const { return rolltui_preset_store_modified(s_) != 0; }
-  std::string label() const {
-    RolltuiStr out{};
-    rolltui_preset_store_label(s_, &out);
-    std::string v = str_of(out);
-    rolltui_str_free(&out);
-    return v;
-  }
-  std::uint64_t version() const { return rolltui_preset_store_version(s_); }
-  std::string last_error() const {
-    std::size_t n = 0;
-    const char* p = rolltui_preset_store_last_error(s_, &n);
-    return std::string(p, n);
-  }
-  std::string working_path() const {
-    RolltuiStr out;
-    rolltui_preset_store_working_path(s_, &out);
-    return str_of(out);
-  }
-  std::string preset_path(std::string_view name) const {
-    RolltuiStr out;
-    rolltui_preset_store_preset_path(s_, name.data(), name.size(), &out);
-    return str_of(out);
-  }
-  void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
-  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
-    return rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
-  }
-  std::string working_value(std::string_view key) const {
-    RolltuiStr out{};
-    rolltui_preset_working_value(s_, key.data(), key.size(), &out);
-    std::string v = str_of(out);
-    rolltui_str_free(&out);
-    return v;
-  }
-  RolltuiPresetStore* handle() const { return s_; }
-
- protected:
-  RolltuiPresetStore* s_;
-};
-
-// ---- the Theme store -------------------------------------------------------------------------
+// ---- the Theme store ---------------------------------------------------------------------------
+// No shared `StoreBase` any more: `RolltuiThemeStore`/`RolltuiLayoutStore`/`RolltuiBindingsStore`
+// are incompatible pointer types by design (rolltui.h), so each store below re-implements the
+// handful of mechanics `StoreBase` used to share. `_working()`'s ownership rule changed too: it is
+// a BORROW now, valid until the next call that changes it — no handle/free needed to read it.
 struct ThemeValueHandle {
-  const RolltuiPresetStore* s;
   RolltuiThemePresetValue* v;
-  ThemeValueHandle(const RolltuiPresetStore* store, void* p) : s(store), v(static_cast<RolltuiThemePresetValue*>(p)) {}
+  explicit ThemeValueHandle(RolltuiThemePresetValue* p) : v(p) {}
   ThemeValueHandle(const ThemeValueHandle&) = delete;
-  ThemeValueHandle(ThemeValueHandle&& o) noexcept : s(o.s), v(o.v) { o.v = nullptr; }
-  ~ThemeValueHandle() { rolltui_preset_store_value_free(s, v); }
+  ThemeValueHandle(ThemeValueHandle&& o) noexcept : v(o.v) { o.v = nullptr; }
+  ~ThemeValueHandle() {
+    rolltui_theme_preset_value_release(v);
+    rolltui_mem_free(v);
+  }
   const RolltuiThemePresetValue* operator->() const { return v; }
   const RolltuiThemePresetValue& operator*() const { return *v; }
   explicit operator bool() const { return v != nullptr; }
@@ -219,132 +173,201 @@ RolltuiJsonValue* with_text_fg(const RolltuiJsonValue* colours, const char* hex)
   return c;
 }
 
-class ThemeStore : public StoreBase {
-  static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain_theme(rolltui_test::test_context()), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
-  }
-
+class ThemeStore {
  public:
   explicit ThemeStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : StoreBase(make(dir, may_write_shipped, shipped_dir)) {}
+      : s_(rolltui_theme_store_new(rolltui_test::test_context(), dir.data(), dir.size(), may_write_shipped ? 1 : 0,
+                                   shipped_dir.data(), shipped_dir.size())) {}
+  ThemeStore(const ThemeStore&) = delete;
+  ~ThemeStore() { rolltui_theme_store_free(s_); }
 
-  void start(ThemePresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
-  ThemeValueHandle working() const { return ThemeValueHandle(s_, rolltui_preset_store_working(s_)); }
+  std::string origin() const {
+    std::size_t n = 0;
+    const char* p = rolltui_theme_store_origin(s_, &n);
+    return std::string(p, n);
+  }
+  bool modified() const { return rolltui_theme_store_modified(s_) != 0; }
+  std::string label() const {
+    RolltuiStr out{};
+    rolltui_theme_store_label(s_, &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  std::uint64_t version() const { return rolltui_theme_store_version(s_); }
+  std::string last_error() const {
+    std::size_t n = 0;
+    const char* p = rolltui_preset_store_last_error((const RolltuiPresetStore*)s_, &n);
+    return std::string(p, n);
+  }
+  std::string working_path() const {
+    RolltuiStr out;
+    rolltui_theme_store_path(s_, nullptr, 0, &out);
+    return str_of(out);
+  }
+  std::string preset_path(std::string_view name) const {
+    RolltuiStr out;
+    rolltui_theme_store_path(s_, name.data(), name.size(), &out);
+    return str_of(out);
+  }
+  void list(RolltuiPresetList& out) const { rolltui_theme_store_list(s_, &out); }
+  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+    return rolltui_theme_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
+  }
+  int add(std::string_view path, std::string_view as, RolltuiStr& error) {
+    return rolltui_theme_store_add(s_, path.data(), path.size(), as.data(), as.size(), &error);
+  }
+  std::string working_value(std::string_view key) const {
+    RolltuiStr out{};
+    rolltui_preset_working_value((const RolltuiPresetStore*)s_, key.data(), key.size(), &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  RolltuiThemeStore* handle() const { return s_; }
+
+  void start(ThemePresetReport& rep) { rolltui_theme_store_start(s_, &rep); }
+  const RolltuiThemePresetValue* working() const { return rolltui_theme_store_working(s_); }
+  static void set_colours_cb(RolltuiThemePresetValue* v, void* ctx) {
+    rolltui_json_free(v->colours);
+    v->colours = static_cast<RolltuiJsonValue*>(ctx);
+  }
   void set_colours(RolltuiJsonValue* colours, bool persist = true) {
-    ThemeValueHandle v = working();
-    RolltuiThemePresetValue* raw = v.v;
-    v.v = nullptr;
-    rolltui_json_free(raw->colours);
-    raw->colours = colours;
-    rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
+    rolltui_theme_store_edit(s_, set_colours_cb, colours, persist ? 1 : 0);
   }
   void set_mode(std::string_view mode, bool persist = true) {
-    ThemeValueHandle v = working();
-    RolltuiThemePresetValue* raw = v.v;
-    v.v = nullptr;
-    set_str(raw->mode, mode);
-    rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
+    rolltui_theme_store_set_mode(s_, mode.data(), mode.size(), persist ? 1 : 0);
   }
   void set_depth(std::string_view depth, bool persist = true) {
-    ThemeValueHandle v = working();
-    RolltuiThemePresetValue* raw = v.v;
-    v.v = nullptr;
-    set_str(raw->depth, depth);
-    rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
+    rolltui_theme_store_set_depth(s_, depth.data(), depth.size(), persist ? 1 : 0);
   }
   ThemeValueHandle get(std::string_view name, ThemePresetReport& rep) const {
-    return ThemeValueHandle(s_, rolltui_preset_store_get(s_, name.data(), name.size(), &rep));
+    return ThemeValueHandle(rolltui_theme_store_get(s_, name.data(), name.size(), &rep));
   }
   bool load(std::string_view name, ThemePresetReport& rep, bool persist = true) {
-    return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
+    return rolltui_theme_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain_theme(rolltui_test::test_context()), &names);
+    rolltui_theme_shipped_names(rolltui_test::test_context(), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
-  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain_theme(rolltui_test::test_context()), name.data(), name.size()) != 0; }
+  static bool is_shipped(std::string_view name) {
+    return rolltui_theme_is_shipped(rolltui_test::test_context(), name.data(), name.size()) != 0;
+  }
+  // The raw FILE TEXT of a shipped preset — no concrete equivalent exists (nothing needed one but
+  // this verbatim-embedding check), so this is still the old generic domain accessor.
   static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain_theme(rolltui_test::test_context());
-    for (std::size_t i = 0; i < d.shipped_count(); ++i) {
-      const char *n = nullptr, *t = nullptr;
-      std::size_t nl = 0, tl = 0;
-      d.shipped_at(i, &n, &nl, &t, &tl);
-      if (std::string_view(n, nl) == name) return std::string(t, tl);
-    }
-    return "";
+    std::size_t tl = 0;
+    const char* t =
+        rolltui_preset_shipped_text(rolltui_preset_domain_theme(rolltui_test::test_context()), name.data(), name.size(), &tl);
+    return t ? std::string(t, tl) : std::string();
   }
   // A BORROW of the domain's parsed cache, valid for the process's life. nullptr when `name`
   // is not shipped.
   static const RolltuiThemePresetValue* shipped(std::string_view name) {
-    return static_cast<const RolltuiThemePresetValue*>(
-        rolltui_preset_shipped(rolltui_preset_domain_theme(rolltui_test::test_context()), name.data(), name.size()));
+    return rolltui_theme_shipped(rolltui_test::test_context(), name.data(), name.size());
   }
+
+ private:
+  RolltuiThemeStore* s_;
 };
 
 // ---- the Layout store -------------------------------------------------------------------------
 // `RolltuiLayout` IS `rolltui::Layout` (rolltui_layout.h's own header comment): a plain C++
 // value type with real copy/move/destroy/`==` through its members' own (RolltuiStr,
-// RolltuiActionList, RolltuiLayer, RolltuiLayerList), so — unlike the Theme and Bindings
-// domains' opaque/JSON-backed values — this store can hand back a `RolltuiLayout` BY VALUE.
-class LayoutStore : public StoreBase {
-  static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain_layout(rolltui_test::test_context()), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
-  }
-
+// RolltuiActionList, RolltuiLayer, RolltuiLayerList). `working()` is a BORROW here now, the same
+// as the other two stores — the old by-value clone-on-read convenience is gone with `StoreBase`.
+class LayoutStore {
  public:
   explicit LayoutStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : StoreBase(make(dir, may_write_shipped, shipped_dir)) {}
+      : s_(rolltui_layout_store_new(rolltui_test::test_context(), dir.data(), dir.size(), may_write_shipped ? 1 : 0,
+                                    shipped_dir.data(), shipped_dir.size())) {}
+  LayoutStore(const LayoutStore&) = delete;
+  ~LayoutStore() { rolltui_layout_store_free(s_); }
 
-  void start(LayoutPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
-  RolltuiLayout working() const {
-    void* v = rolltui_preset_store_working(s_);
-    RolltuiLayout out = (*static_cast<RolltuiLayout*>(v)).clone();
-    rolltui_preset_store_value_free(s_, v);
-    return out;
+  std::string origin() const {
+    std::size_t n = 0;
+    const char* p = rolltui_layout_store_origin(s_, &n);
+    return std::string(p, n);
   }
+  bool modified() const { return rolltui_layout_store_modified(s_) != 0; }
+  std::string label() const {
+    RolltuiStr out{};
+    rolltui_layout_store_label(s_, &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  std::uint64_t version() const { return rolltui_layout_store_version(s_); }
+  std::string last_error() const {
+    std::size_t n = 0;
+    const char* p = rolltui_preset_store_last_error((const RolltuiPresetStore*)s_, &n);
+    return std::string(p, n);
+  }
+  std::string working_path() const {
+    RolltuiStr out;
+    rolltui_layout_store_path(s_, nullptr, 0, &out);
+    return str_of(out);
+  }
+  std::string preset_path(std::string_view name) const {
+    RolltuiStr out;
+    rolltui_layout_store_path(s_, name.data(), name.size(), &out);
+    return str_of(out);
+  }
+  void list(RolltuiPresetList& out) const { rolltui_layout_store_list(s_, &out); }
+  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+    return rolltui_layout_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
+  }
+  std::string working_value(std::string_view key) const {
+    RolltuiStr out{};
+    rolltui_preset_working_value((const RolltuiPresetStore*)s_, key.data(), key.size(), &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  RolltuiLayoutStore* handle() const { return s_; }
+
+  void start(LayoutPresetReport& rep) { rolltui_layout_store_start(s_, &rep); }
+  const RolltuiLayout* working() const { return rolltui_layout_store_working(s_); }
   void set_working(const RolltuiLayout& l, bool persist = true) {
     RolltuiLayout* v = new RolltuiLayout();
     rolltui_layout_copy(v, &l);
-    rolltui_preset_store_set_working(s_, v, persist ? 1 : 0);
+    rolltui_layout_store_set_working(s_, v, persist ? 1 : 0);
   }
   std::optional<RolltuiLayout> get(std::string_view name, LayoutPresetReport& rep) const {
-    void* v = rolltui_preset_store_get(s_, name.data(), name.size(), &rep);
+    RolltuiLayout* v = rolltui_layout_store_get(s_, name.data(), name.size(), &rep);
     if (!v) return std::nullopt;
-    RolltuiLayout out = (*static_cast<RolltuiLayout*>(v)).clone();
-    rolltui_preset_store_value_free(s_, v);
+    RolltuiLayout out = std::move(*v);
+    rolltui_layout_free(v);
     return out;
   }
   bool load(std::string_view name, LayoutPresetReport& rep, bool persist = true) {
-    return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
+    return rolltui_layout_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain_layout(rolltui_test::test_context()), &names);
+    rolltui_layout_shipped_names(rolltui_test::test_context(), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
   static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain_layout(rolltui_test::test_context());
-    for (std::size_t i = 0; i < d.shipped_count(); ++i) {
-      const char *n = nullptr, *t = nullptr;
-      std::size_t nl = 0, tl = 0;
-      d.shipped_at(i, &n, &nl, &t, &tl);
-      if (std::string_view(n, nl) == name) return std::string(t, tl);
-    }
-    return "";
+    std::size_t tl = 0;
+    const char* t =
+        rolltui_preset_shipped_text(rolltui_preset_domain_layout(rolltui_test::test_context()), name.data(), name.size(), &tl);
+    return t ? std::string(t, tl) : std::string();
   }
   static const RolltuiLayout* shipped(std::string_view name) {
-    return static_cast<const RolltuiLayout*>(
-        rolltui_preset_shipped(rolltui_preset_domain_layout(rolltui_test::test_context()), name.data(), name.size()));
+    return rolltui_layout_shipped(rolltui_test::test_context(), name.data(), name.size());
   }
+
+ private:
+  RolltuiLayoutStore* s_;
 };
 
 // `builtin_layout(name)`: a SEPARATE code path from the preset domain's `shipped()` above (the
@@ -382,59 +405,82 @@ const RolltuiLayout* builtin_layout_c(std::string_view name) {
 }
 
 // ---- the Bindings store -------------------------------------------------------------------------
-struct BindingsHandle {
-  RolltuiBindings* b;
-  explicit BindingsHandle(RolltuiBindings* p) : b(p) {}
-  BindingsHandle(const BindingsHandle& o) : b(rolltui_bindings_clone(o.b)) {}
-  BindingsHandle(BindingsHandle&& o) noexcept : b(o.b) { o.b = nullptr; }
-  BindingsHandle& operator=(BindingsHandle&& o) noexcept {
-    if (this != &o) {
-      rolltui_bindings_free(b);
-      b = o.b;
-      o.b = nullptr;
-    }
-    return *this;
-  }
-  ~BindingsHandle() { rolltui_bindings_free(b); }
-  RolltuiBindings* get() const { return b; }
-};
 bool bindings_eq(const RolltuiBindings* a, const RolltuiBindings* b) { return rolltui_bindings_equal(a, b) != 0; }
 // A const-ref parameter binds (and lifetime-extends) a `working()` temporary, so callers can
 // compare two by-value RolltuiLayouts without naming a local for each one.
 bool layout_eq(const RolltuiLayout& a, const RolltuiLayout& b) { return rolltui_layout_equal(&a, &b) != 0; }
 
-class BindingsStore : public StoreBase {
-  static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain_bindings(rolltui_test::test_context()), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
-  }
-
+class BindingsStore {
  public:
   explicit BindingsStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
-      : StoreBase(make(dir, may_write_shipped, shipped_dir)) {}
+      : s_(rolltui_bindings_store_new(rolltui_test::test_context(), dir.data(), dir.size(), may_write_shipped ? 1 : 0,
+                                      shipped_dir.data(), shipped_dir.size())) {}
+  BindingsStore(const BindingsStore&) = delete;
+  ~BindingsStore() { rolltui_bindings_store_free(s_); }
 
-  void start(BindingsPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
-  BindingsHandle working() const { return BindingsHandle(static_cast<RolltuiBindings*>(rolltui_preset_store_working(s_))); }
-  void set_working(BindingsHandle v, bool persist = true) {
-    RolltuiBindings* p = v.b;
-    v.b = nullptr;
-    rolltui_preset_store_set_working(s_, p, persist ? 1 : 0);
+  std::string origin() const {
+    std::size_t n = 0;
+    const char* p = rolltui_bindings_store_origin(s_, &n);
+    return std::string(p, n);
   }
+  bool modified() const { return rolltui_bindings_store_modified(s_) != 0; }
+  std::string label() const {
+    RolltuiStr out{};
+    rolltui_bindings_store_label(s_, &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  std::uint64_t version() const { return rolltui_bindings_store_version(s_); }
+  std::string last_error() const {
+    std::size_t n = 0;
+    const char* p = rolltui_preset_store_last_error((const RolltuiPresetStore*)s_, &n);
+    return std::string(p, n);
+  }
+  std::string working_path() const {
+    RolltuiStr out;
+    rolltui_bindings_store_path(s_, nullptr, 0, &out);
+    return str_of(out);
+  }
+  std::string preset_path(std::string_view name) const {
+    RolltuiStr out;
+    rolltui_bindings_store_path(s_, name.data(), name.size(), &out);
+    return str_of(out);
+  }
+  void list(RolltuiPresetList& out) const { rolltui_bindings_store_list(s_, &out); }
+  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+    return rolltui_bindings_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
+  }
+  std::string working_value(std::string_view key) const {
+    RolltuiStr out{};
+    rolltui_preset_working_value((const RolltuiPresetStore*)s_, key.data(), key.size(), &out);
+    std::string v = str_of(out);
+    rolltui_str_free(&out);
+    return v;
+  }
+  RolltuiBindingsStore* handle() const { return s_; }
+
+  void start(BindingsPresetReport& rep) { rolltui_bindings_store_start(s_, &rep); }
+  // A BORROW now: no `BindingsHandle` needed just to read it.
+  const RolltuiBindings* working() const { return rolltui_bindings_store_working(s_); }
+  // TAKES OWNERSHIP of `b`, same as the old wrapper's `set_working` did.
+  void set_working(RolltuiBindings* b, bool persist = true) { rolltui_bindings_store_set_working(s_, b, persist ? 1 : 0); }
   bool load(std::string_view name, BindingsPresetReport& rep, bool persist = true) {
-    return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
+    return rolltui_bindings_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
-  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain_bindings(rolltui_test::test_context()), name.data(), name.size()) != 0; }
-  static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain_bindings(rolltui_test::test_context());
-    for (std::size_t i = 0; i < d.shipped_count(); ++i) {
-      const char *n = nullptr, *t = nullptr;
-      std::size_t nl = 0, tl = 0;
-      d.shipped_at(i, &n, &nl, &t, &tl);
-      if (std::string_view(n, nl) == name) return std::string(t, tl);
-    }
-    return "";
+  static bool is_shipped(std::string_view name) {
+    return rolltui_bindings_is_shipped(rolltui_test::test_context(), name.data(), name.size()) != 0;
   }
+  static std::string shipped_json(std::string_view name) {
+    std::size_t tl = 0;
+    const char* t =
+        rolltui_preset_shipped_text(rolltui_preset_domain_bindings(rolltui_test::test_context()), name.data(), name.size(), &tl);
+    return t ? std::string(t, tl) : std::string();
+  }
+
+ private:
+  RolltuiBindingsStore* s_;
 };
 
 std::optional<RolltuiChord> parse_chord_c(std::string_view s) {
@@ -710,7 +756,7 @@ int main() {
           "a fresh directory starts from 'default' and says so [" + (rep.notes_n ? str_of(rep.notes[0]) : "") + "]");
     check(store.origin() == "default" && store.label() == "default" && !store.modified(), "label 'default', unmodified");
     check(!fs::exists(store.working_path()), "starting writes nothing");
-    check(theme_value_eq(store.working().v, ThemeStore::shipped("default")), "the working copy IS the shipped default (rule 1: the whole domain)");
+    check(theme_value_eq(store.working(), ThemeStore::shipped("default")), "the working copy IS the shipped default (rule 1: the whole domain)");
   }
   // ---- an edit autosaves and changes the label by comparison (rules 2, 4) ----
   // WHAT AN EDIT IS: the theme's COLOURS. Light or dark and colour depth are the PERSON'S, not part of what a theme is, so
@@ -768,7 +814,7 @@ int main() {
     ThemeStore again(dir, false, "");
     ThemePresetReport rep;
     again.start(rep);
-    check(rep.clean() && theme_value_eq(again.working().v, store.working().v) && again.label() == "default (modified)",
+    check(rep.clean() && theme_value_eq(again.working(), store.working()) && again.label() == "default (modified)",
           "a second store on the same directory loads the autosaved working copy with its label [" + rep.summary() + "]");
   }
   // ---- A THEME FILE FORCES NOTHING, AND A CHOSEN PRESET'S IMPROVEMENTS STILL ARRIVE ----
@@ -865,7 +911,7 @@ int main() {
           "load copies the preset back into the working copy: the colours the preset was saved with, not the edit made since");
     check(store.working()->depth == "16", "…and CHOOSING A PRESET KEEPS THE PERSON'S OWN depth: it is not the preset's to change");
     store.set_mode("light");
-    check(store.load("default", rep) && store.label() == "default" && theme_value_eq(store.working().v, ThemeStore::shipped("default")), "load 'default' restores the shipped preset whole");
+    check(store.load("default", rep) && store.label() == "default" && theme_value_eq(store.working(), ThemeStore::shipped("default")), "load 'default' restores the shipped preset whole");
     check(store.working()->mode == "light" && store.working()->depth == "16", "…and light and the depth are still the person's: no theme has ever forced them back to auto");
     store.set_mode("auto");
     store.set_depth("auto");
@@ -1156,7 +1202,7 @@ int main() {
     LayoutStore ls(ldir, false, "");
     LayoutPresetReport rep;
     ls.start(rep);
-    check(rep.clean() && ls.label() == "default" && layout_eq(ls.working(), *builtin_layout_c("default")),
+    check(rep.clean() && ls.label() == "default" && layout_eq(*ls.working(), *builtin_layout_c("default")),
           "a fresh directory starts from the shipped default layout (rule 5), label 'default'");
     // The shipped presets ARE the built-ins: one definition site, asserted anyway.
     std::vector<std::string> names = LayoutStore::shipped_names();
@@ -1178,14 +1224,14 @@ int main() {
     LayoutStore again(ldir, false, "");
     LayoutPresetReport rep2;
     again.start(rep2);
-    check(rep2.clean() && layout_eq(again.working(), wide) && again.label() == "default (modified)",
+    check(rep2.clean() && layout_eq(*again.working(), wide) && again.label() == "default (modified)",
           "a restart loads the autosaved working copy exactly, with its label [" + rep2.summary() + "]");
     // Rules 3 and 5.
     RolltuiStr err;
     check(ls.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped layout name is refused (rule 5)");
     check(ls.save_as("wide", false, err) == ROLLTUI_SAVE_SAVED && ls.label() == "wide" && fs::exists(ls.preset_path("wide")), "save-as 'wide' saves and becomes the origin");
-    check(ls.load("stacked", rep) && layout_eq(ls.working(), *builtin_layout_c("stacked")) && ls.label() == "stacked", "load copies a shipped layout back whole (rule 1)");
-    check(ls.load("wide", rep) && layout_eq(ls.working(), wide), "…and the user preset back");
+    check(ls.load("stacked", rep) && layout_eq(*ls.working(), *builtin_layout_c("stacked")) && ls.label() == "stacked", "load copies a shipped layout back whole (rule 1)");
+    check(ls.load("wide", rep) && layout_eq(*ls.working(), wide), "…and the user preset back");
     // A file dropped into <dir>/layouts is a preset, discovered by the
     // domain's own mechanics now.
     const RolltuiLayout* no_panel = builtin_layout_c("no-panel");
@@ -1208,7 +1254,7 @@ int main() {
     // A layout file's own problems are reported through the layout sub-report.
     write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"name":"odd","colour":"blue","root":{"content":"transcript:session","border":"triple"}})");
     check(ls.load("odd", rep) && !rep.clean() && rep.layout.unknown_keys_n == 1 && rep.layout.unknown_keys[0] == "colour" && rep.layout.bad_values_n == 1 &&
-              ls.working().base.root.border == rolltui::Border::None,
+              ls.working()->base.root.border == rolltui::Border::None,
           "a layout with an unknown key and a bad value loads, reports both, and keeps the default [" + rep.summary() + "]");
     check(ls.working_value("layout") == "odd" && ls.working_value("theme").empty(), "working_value on the Layout store is its origin, and nothing else's");
     rolltui_layout_release(&wide);
@@ -1219,29 +1265,31 @@ int main() {
     BindingsStore bs(bdir, false, "");
     BindingsPresetReport rep;
     bs.start(rep);
-    check(rep.clean() && bs.label() == "default" && bindings_eq(bs.working().get(), rolltui_bindings_default(rolltui_test::test_context())), "a fresh directory starts from the shipped default bindings (rule 5), label 'default'");
+    check(rep.clean() && bs.label() == "default" && bindings_eq(bs.working(), rolltui_bindings_default(rolltui_test::test_context())), "a fresh directory starts from the shipped default bindings (rule 5), label 'default'");
     check(BindingsStore::is_shipped("default") && BindingsStore::shipped_json("default") == default_bindings_json_c(),
           "the shipped 'default' is the embedded file, verbatim");
-    BindingsHandle vim = bs.working();
+    // `working()` is a BORROW now: clone it, mutate the clone, then hand ownership of the
+    // clone to `set_working` — the live working value is never mutated in place here.
+    RolltuiBindings* vim = rolltui_bindings_clone(bs.working());
     const RolltuiChord alt_b = *parse_chord_c("alt+b"), alt_f = *parse_chord_c("alt+f");
-    rolltui_bindings_bind(vim.get(), "input.word_left", 15, &alt_b, nullptr, nullptr);
-    rolltui_bindings_bind(vim.get(), "input.word_right", 16, &alt_f, nullptr, nullptr);
-    bs.set_working(std::move(vim));
-    check(bs.label() == "default (modified)" && fs::exists(bs.working_path()) && action_for_c(bs.working().get(), *parse_chord_c("alt+b"), "input") == "input.word_left",
+    rolltui_bindings_bind(vim, "input.word_left", 15, &alt_b, nullptr, nullptr);
+    rolltui_bindings_bind(vim, "input.word_right", 16, &alt_f, nullptr, nullptr);
+    bs.set_working(vim);
+    check(bs.label() == "default (modified)" && fs::exists(bs.working_path()) && action_for_c(bs.working(), *parse_chord_c("alt+b"), "input") == "input.word_left",
           "an edit autosaves bindings.working.json and the label reads 'default (modified)' (rules 2, 4)");
     BindingsStore again(bdir, false, "");
     BindingsPresetReport rep2;
     again.start(rep2);
-    check(rep2.clean() && bindings_eq(again.working().get(), bs.working().get()) && again.label() == "default (modified)", "a restart loads the autosaved working copy with its label [" + rep2.summary() + "]");
+    check(rep2.clean() && bindings_eq(again.working(), bs.working()) && again.label() == "default (modified)", "a restart loads the autosaved working copy with its label [" + rep2.summary() + "]");
     RolltuiStr err;
     check(bs.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over the shipped name is refused (rule 5)");
     check(bs.save_as("vim-ish", false, err) == ROLLTUI_SAVE_SAVED && bs.label() == "vim-ish" && fs::exists(bs.preset_path("vim-ish")), "save-as 'vim-ish' saves (rule 3) and becomes the origin");
-    check(bs.load("default", rep) && bindings_eq(bs.working().get(), rolltui_bindings_default(rolltui_test::test_context())) && bs.label() == "default", "load copies the shipped default back (rule 1: the whole domain)");
-    check(bs.load("vim-ish", rep) && action_for_c(bs.working().get(), *parse_chord_c("alt+f"), "input") == "input.word_right", "…and the user preset back");
+    check(bs.load("default", rep) && bindings_eq(bs.working(), rolltui_bindings_default(rolltui_test::test_context())) && bs.label() == "default", "load copies the shipped default back (rule 1: the whole domain)");
+    check(bs.load("vim-ish", rep) && action_for_c(bs.working(), *parse_chord_c("alt+f"), "input") == "input.word_right", "…and the user preset back");
     // A file that moves Enter is refused by name in the load report; the rest loads.
     write_file(fs::path(bdir) / "bindings" / "bad.json", R"({"name":"bad","bindings":{"input.submit":["ctrl+j"],"input.newline":["enter"],"input.left":["hyper+x"]}})");
     check(bs.load("bad", rep) && !rep.clean() && rep.bindings.bad_values_n == 2 && str_of(rep.bindings.bad_values[0]).find("input.newline: 'enter' is always input.submit") == 0 &&
-              rep.bindings.bad_chords_n == 1 && action_for_c(bs.working().get(), *parse_chord_c("enter"), "input") == "input.submit",
+              rep.bindings.bad_chords_n == 1 && action_for_c(bs.working(), *parse_chord_c("enter"), "input") == "input.submit",
           "a file binding Enter elsewhere loads with Enter refused by name and restored on submit [" + rep.summary() + "]");
     check(!bs.load("nothing", rep) && str_of(rep.error).find("no bindings preset 'nothing'") == 0, "an unknown bindings preset is a named error");
     const RolltuiSetting* bspec = rolltui_settings_find("bindings", 8);
@@ -1370,8 +1418,7 @@ int main() {
     ThemePresetReport rep;
     store.start(rep);
     RolltuiStr err{};
-    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), nullptr, 0, &err) ==
-              ROLLTUI_SAVE_SAVED,
+    check(store.add(gift, "", err) == ROLLTUI_SAVE_SAVED,
           "a theme file from OUTSIDE the preset directory is added");
     check(fs::exists(dir + "/themes/gift.json"),
           "…COPIED in, named by the file's own stem — not referenced, so the other file may go away");
@@ -1382,26 +1429,21 @@ int main() {
       for (const RolltuiPresetInfo& p : l) found = found || str_of(p.name) == "gift";
       check(found, "…and it is in the list beside the shipped ones");
     }
-    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), nullptr, 0, &err) ==
-              ROLLTUI_SAVE_EXISTS_ASK,
+    check(store.add(gift, "", err) == ROLLTUI_SAVE_EXISTS_ASK,
           "adding it AGAIN is refused, never overwritten");
-    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), "mine", 4, &err) ==
-              ROLLTUI_SAVE_SAVED,
+    check(store.add(gift, "mine", err) == ROLLTUI_SAVE_SAVED,
           "…and another name works, which is what makes the refusal useful rather than a dead end");
-    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), "default", 7, &err) ==
-              ROLLTUI_SAVE_REFUSED_SHIPPED,
+    check(store.add(gift, "default", err) == ROLLTUI_SAVE_REFUSED_SHIPPED,
           "a SHIPPED name is refused, so nothing added can shadow what the library ships");
     // NOT THIS DOMAIN'S. Written now and found broken at the next start is the failure; refused
     // now, by name, is the fix.
     const std::string wrong = (outside / "notatheme.json").string();
     { std::ofstream f(wrong); f << "{\"windows\": []}"; }
-    check(rolltui_preset_store_add(store.handle(), wrong.data(), wrong.size(), nullptr, 0, &err) ==
-              ROLLTUI_SAVE_BAD_NAME && err.n != 0,
+    check(store.add(wrong, "", err) == ROLLTUI_SAVE_BAD_NAME && err.n != 0,
           "a file that is not a theme is refused BEFORE it lands, with the reason [" +
               std::string(err.p ? err.p : "", err.n).substr(0, 36) + "]");
     const std::string missing = (outside / "nothing-here.json").string();
-    check(rolltui_preset_store_add(store.handle(), missing.data(), missing.size(), nullptr, 0, &err) ==
-              ROLLTUI_SAVE_WRITE_FAILED,
+    check(store.add(missing, "", err) == ROLLTUI_SAVE_WRITE_FAILED,
           "…and a file that is not there says so rather than adding an empty preset");
     rolltui_str_free(&err);
   }

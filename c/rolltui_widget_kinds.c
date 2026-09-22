@@ -2408,11 +2408,13 @@ RolltuiThemeEditor* rolltui_windows_theme_editor(RolltuiWindows* w, const char* 
   return tc ? tc->ed : NULL;
 }
 
-void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiThemeStore* store,
                                      int persist) {
   RolltuiThemeCtx* tc = theme_ctx_for(w, content, len);
   if (!tc) return;
-  tc->store = store;
+  /* The widget's own plumbing stays over the generic engine (every rolltui host's theme/keys editor widget runs through it,
+   * studio's own theme editor included) — the concrete type is the public boundary's, cast away the moment it crosses. */
+  tc->store = (RolltuiPresetStore*)store;
   tc->persist = persist;
   theme_ctx_sync_store(tc);
 }
@@ -2787,11 +2789,11 @@ static RolltuiKeysCtx* keys_ctx_for(RolltuiWindows* w, const char* content, size
   return (RolltuiKeysCtx*)widget->ctx;
 }
 
-void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len, RolltuiBindingsStore* store,
                                         int persist) {
   RolltuiKeysCtx* kc = keys_ctx_for(w, content, len);
   if (!kc) return;
-  kc->store = store;
+  kc->store = (RolltuiPresetStore*)store;
   kc->persist = persist;
   keys_ctx_refresh(kc);
   keys_ctx_sync_store(kc);

@@ -123,16 +123,15 @@ struct Screen {
   RolltuiWindowStack* stack = nullptr;
   RolltuiBindings* bindings = nullptr;
   RolltuiLayout* layout = nullptr;
-  RolltuiPresetStore* store = nullptr;
+  RolltuiThemeStore* store = nullptr;
 
   void open(const std::string& dir, bool hand_over_the_store) {
     ctx = rolltui_context_new();
     rolltui_context_set_library_defaults(ctx);
     rolltui_context_set_dir(ctx, dir.data(), dir.size());
-    store = rolltui_preset_store_new(rolltui_preset_domain_theme(ctx), dir.data(), dir.size(),
-                                     0, "", 0);
+    store = rolltui_theme_store_new(ctx, dir.data(), dir.size(), 0, "", 0);
     RolltuiThemePresetReport start{};
-    rolltui_preset_store_start(store, &start);
+    rolltui_theme_store_start(store, &start);
     rolltui_theme_preset_report_release(&start);
 
     RolltuiLayoutReport lrep{};
@@ -164,7 +163,7 @@ struct Screen {
     rolltui_window_stack_free(stack);
     rolltui_windows_free(windows);
     rolltui_layout_free(layout);
-    rolltui_preset_store_free(store);
+    rolltui_theme_store_free(store);
     rolltui_context_free(ctx);
   }
 };
@@ -182,13 +181,10 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   s.open(dir, hand_over_the_store);
 
   auto snapshot = [&](unsigned int& fg) {
-    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(s.store));
-    if (v) {
-      fg = text_fg(v->colours);
-      rolltui_preset_store_value_free(s.store, v);
-    }
+    const RolltuiThemePresetValue* v = rolltui_theme_store_working(s.store);
+    if (v) fg = text_fg(v->colours);
   };
-  out.version_before = rolltui_preset_store_version(s.store);
+  out.version_before = rolltui_theme_store_version(s.store);
   snapshot(out.text_fg_before);
 
   // Roles › the first role › fg › the next colour, committed.
@@ -201,7 +197,7 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   s.send(down);
   s.send(enter);
 
-  out.version_after = rolltui_preset_store_version(s.store);
+  out.version_after = rolltui_theme_store_version(s.store);
   snapshot(out.text_fg_after);
   return out;
 }
@@ -312,12 +308,11 @@ int main() {
     };
     auto preset_text_fg = [&](const char* name) {
       RolltuiThemePresetReport rep{};
-      RolltuiThemePresetValue* v =
-          static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_get(s.store, name, std::strlen(name), &rep));
+      RolltuiThemePresetValue* v = rolltui_theme_store_get(s.store, name, std::strlen(name), &rep);
       unsigned int fg = 0;
       if (v) {
         fg = text_fg(v->colours);
-        rolltui_preset_store_value_free(s.store, v);
+        rolltui_theme_preset_value_free(v);
       }
       rolltui_theme_preset_report_release(&rep);
       return fg;
@@ -341,13 +336,8 @@ int main() {
 
     // ---- 8. RESET GOES BACK TO THE PRESET, not to the edit it is meant to throw away --------
     auto working_text_fg = [&]() {
-      RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(s.store));
-      unsigned int fg = 0;
-      if (v) {
-        fg = text_fg(v->colours);
-        rolltui_preset_store_value_free(s.store, v);
-      }
-      return fg;
+      const RolltuiThemePresetValue* v = rolltui_theme_store_working(s.store);
+      return v ? text_fg(v->colours) : 0u;
     };
     const unsigned int edited = working_text_fg();
     check(edited != first, "the working copy is the edited theme, so a reset has something to undo");

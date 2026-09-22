@@ -2321,105 +2321,17 @@ extern const size_t rolltui_kBindingsPresetCount;
  * presets — the preset stores and domains
  * ======================================================================================== */
 
-/* The report, as five things the mechanics do to one. `report` is whatever the caller passed
- * in; this file never dereferences it. */
-typedef struct RolltuiPresetReportFns {
-  void (*reset)(void* report);
-  void (*set_error)(void* report, const char* s, size_t len);
-  /* The current error, so the store can wrap a path around it and set it back. */
-  void (*get_error)(const void* report, RolltuiPutFn put, void* ctx);
-  void (*add_note)(void* report, const char* s, size_t len);
-  /* Every note gets `prefix` in front of it — `parse_partial` says what it kept, and the
-   * store says which file it was. */
-  void (*prefix_notes)(void* report, const char* prefix, size_t len);
-  /* A report of THIS domain's type, made and unmade by the domain: OWNED, short-lived. It lets the mechanics parse into a report of their
-   * own instead of asking every caller for a second one. */
-  void* (*create)(void);
-  void (*destroy)(void* report);
-} RolltuiPresetReportFns;
-
-/* One domain: its four names, its embedded shipped table, and what can be done to a value. `cache` is OWNED by this descriptor and built
- * on first use (see `rolltui_preset_domain_release`). */
-typedef struct RolltuiPresetShippedCache RolltuiPresetShippedCache;
+/* THE GENERIC ENGINE BEHIND ALL THREE — `RolltuiPresetDomain`, `RolltuiPresetStore` and the
+ * `rolltui_preset_store_*`/`rolltui_preset_domain_*` family that drove them as one `void*`
+ * mechanism over a function-pointer descriptor — moved to `c/rolltui_presets.h` once nothing
+ * public still needed the generic shape: every real caller (dirktui, paint, the studio) always
+ * knew which of the three domains it meant, so `RolltuiThemeStore`/`RolltuiLayoutStore`/
+ * `RolltuiBindingsStore` below are what a host is offered, each backed by the same engine under
+ * a concrete name. The engine is unchanged and still internal to the library — only the public
+ * SHAPE of it is gone. */
 
 /* A pure predicate over a "mode"/"depth" string, with no context to capture. */
 typedef int (*RolltuiThemePresetValidFn)(const char* s, size_t len);
-
-typedef struct RolltuiPresetDomain {
-  const char* kind;         /* "theme" | "layout" | "bindings" — for messages */
-  size_t kind_len;
-  const char* working_file; /* "theme.working.json" */
-  size_t working_file_len;
-  const char* subdir;       /* "themes" */
-  size_t subdir_len;
-
-  size_t (*shipped_count)(void);
-  void (*shipped_at)(size_t i, const char** name, size_t* name_len, const char** text, size_t* text_len);
-
-  /* TEXT in, an OWNED value out (NULL on failure, with the report saying why). The JSON never crosses this boundary. */
-  void* (*parse)(const struct RolltuiPresetDomain* d, const char* text, size_t len, void* report);
-  /* A PARTIAL file (a colours-only theme file): fills part of `working`, notes why; NULL
-   * when the file is not partial, and `parse` is then used. */
-  void* (*parse_partial)(const struct RolltuiPresetDomain* d, const char* text, size_t len, const void* working,
-                         void* report);
-  void (*to_json)(const struct RolltuiPresetDomain* d, const void* value, const char* name, size_t name_len,
-                  RolltuiPutFn put, void* ctx);
-  /* …and the same, with the working copy's ORIGIN written into it as "preset". One call
-   * rather than a second serialiser, because that key is the store's and not the domain's. */
-  void (*to_json_with_origin)(const struct RolltuiPresetDomain* d, const void* value, const char* name,
-                              size_t name_len, RolltuiPutFn put, void* ctx);
-  /* …and back: the preset name a working-copy file says it came from, "default" when it says nothing. A callback for the same reason as
-   * its pair: the JSON never crosses. */
-  void (*origin_of)(const char* text, size_t len, RolltuiPutFn put, void* ctx);
-
-  void* (*clone)(const void* value);
-  void (*destroy)(void* value);
-  int (*equal)(const void* a, const void* b);
-
-  /* The ops for this domain's REPORT type: a BORROW of a library static, set by the domain's `_init`. A field, not a parameter at every
-   * `_new` / `_shipped`, because no caller pairs a domain with any table but its own. */
-  const RolltuiPresetReportFns* report;
-
-  /* ---- THE DOMAIN'S OWN CONFIGURATION -------------------------------------------------
-     * What each `*_preset_domain_init` was handed. It lives in the descriptor, not in file statics, so two descriptors of the same kind
-     * do not share one configuration and a borrowed table cannot outlive the session that owned it. Only the rows for a descriptor's
-     * own kind are read. */
-  const RolltuiThemeVocab* theme_vocab;          /* theme */
-  RolltuiThemePresetValidFn theme_mode_valid;    /* theme */
-  RolltuiThemePresetValidFn theme_depth_valid;   /* theme */
-  const RolltuiLayoutHooks* layout_hooks;        /* layout */
-  const RolltuiLayoutAction* layout_actions;     /* layout — BORROWED from a context's cache */
-  size_t layout_actions_n;                       /* layout */
-  RolltuiScopeFn bindings_is_library_scope;      /* bindings */
-  void* bindings_scope_ctx;                      /* bindings */
-  RolltuiReasonFn bindings_reason;               /* bindings */
-  void* bindings_reason_ctx;                     /* bindings */
-
-  RolltuiPresetShippedCache* cache;
-
-  /* ---- THE PERSON'S SETTINGS A VALUE CARRIES BESIDE ITS CONTENT ------------------------------------------------
-     * A theme's colours are the theme's; whether they are shown light or dark, and at what colour depth, are the PERSON'S (a theme
-     * value carries them only so one working file keeps the lot). The store asks the domain to keep the two apart; each hook is NULL
-     * for a domain with no such settings:
-     *   adopt_settings      `value`'s settings become `from`'s, or the defaults ("auto") when `from` is NULL. A preset never brings
-     *                       settings of its own, and choosing one keeps the person's;
-     *   settings_to_json    the settings as `,\n  "key": value` text (no braces) that a working file which only FOLLOWS its preset
-     *                       writes beside the pointer, so the choice is remembered without freezing the preset's colours;
-     *   settings_from_json  reads them back from that text.
-     * `equal` then compares CONTENT only: choosing light is not an edit, an unedited working copy follows its preset, and what a
-     * release improves in the preset reaches everyone who chose it. */
-  void (*adopt_settings)(void* value, const void* from);
-  void (*settings_to_json)(const void* value, RolltuiPutFn put, void* ctx);
-  void (*settings_from_json)(const struct RolltuiPresetDomain* d, void* value, const char* text, size_t len);
-} RolltuiPresetDomain;
-
-/* Releases the parsed cache; it rebuilds on next use, so shutdown is callable at any moment. */
-
-/* ---- the store ------------------------------------------------------------------------------ */
-
-/* OWNED, LONG-LIVED: one per `rolltui::PresetStore<D>`, which frees it. Every method takes the store's own lock and hands back copies,
- * so a host may edit from one thread and render from another. */
-typedef struct RolltuiPresetStore RolltuiPresetStore;
 
 /* ---- ONE PRESET IN A LISTING, and the shape every "N things out" uses ---------------------
  * A result the library already has goes into a buffer the CALLER owns and reuses (`RolltuiStr*` for text, a growing list like this
@@ -2857,8 +2769,8 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
  * apps in one process share one widget-kind registry).
  *
  * THE CONTRACT
- *   1. One thread at a time: the library locks nothing inside a context. The exception is `RolltuiPresetStore`, which carries its own
- *      mutex so a host may edit from one thread and render from another.
+ *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
+ *      which carries its own mutex so a host may edit from one thread and render from another.
  *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
  *      affinity, sharing nothing with another.
  *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at
@@ -3056,89 +2968,15 @@ int rolltui_preset_read_file(const char* path, size_t path_len, RolltuiPutFn put
 int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const char* bytes, size_t len,
                                      RolltuiStr* err);
 
-/* The shipped presets, parsed once per domain into a report the domain makes for itself. A shipped preset that does not load cleanly is
- * a programming error: it says so and aborts, and so does a domain with no preset named "default". Returns a BORROW valid until the domain
- * is released; NULL for a name that is not shipped. */
-const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const char* name, size_t len);
-
-int rolltui_preset_is_shipped(RolltuiPresetDomain* d, const char* name, size_t len);
-
-/* The shipped preset's FILE TEXT, verbatim: a BORROW of the embedded bytes, valid for the process's life; NULL (and `*out_len` 0) when
- * `name` is not shipped. A lookup by NAME, since `shipped_count` / `shipped_at` give only indexes. */
-const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name, size_t len, size_t* out_len);
-
-/* The shipped names, "default" FIRST and the rest in table order — the order a chooser
- * offers them in. REPLACES `*out`. */
-void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out);
-
-RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const char* dir, size_t dir_len,
-                                             int may_write_shipped, const char* shipped_dir, size_t shipped_dir_len);
-
-void rolltui_preset_store_free(RolltuiPresetStore* s);
-
-/* Startup: the autosaved working copy when present and loadable, else "default". `report` says what happened to the working file; the
- * origin preset it names is re-read into a report the domain makes for itself, not a second one the caller must supply. */
-void rolltui_preset_store_start(RolltuiPresetStore* s, void* report);
-
-/* A CLONE the caller owns and frees with `rolltui_preset_store_value_free`. */
-void* rolltui_preset_store_working(const RolltuiPresetStore* s);
-
-/* Frees a value `_working` or `_get` handed back, by the store's own domain's `destroy`, so a caller holding the store alone can release
- * what it gave (a handle is created and released in a pair, rule 1). NULL is a no-op. */
-void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v);
-
-/* BORROWS of the store's own bytes, valid until it next changes. */
-const char* rolltui_preset_store_origin(const RolltuiPresetStore* s, size_t* len);
-
-const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t* len);
-
-/* "(modified)" is BY COMPARISON, run when the store CHANGES and never when this is read: a read is one flag under the lock (running the
- * domain's deep `equal` on every call would put it on the draw path, twice a frame through `label`). */
-int rolltui_preset_store_modified(const RolltuiPresetStore* s);
-
-/* "<origin>", or "<origin> (modified)" once the working copy differs from what it was loaded from. THE LIBRARY OWNS THE WORD
- * "(modified)". REPLACES `*out`, reusing its buffer (it must not APPEND: a caller holding a buffer for its frame could not call it twice). */
-void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
-
-unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
-
-/* An in-place edit under the lock. */
-void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist);
-
-void rolltui_preset_list_release(RolltuiPresetList* l);
-
-/* REPLACES `*out` (its capacity, and each entry's string buffers, are reused). */
-void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out);
-
-/* A preset by name or path, as a value the caller OWNS and frees with
- * `rolltui_preset_store_value_free`; NULL with the report saying why. */
-void* rolltui_preset_store_get(const RolltuiPresetStore* s, const char* name, size_t len, void* report);
-
-/* …and the same, into the working copy. 0 when it could not be read. */
-int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t len, void* report, int persist);
-
 /* The SENTENCE for an outcome: a table beside the constants it is indexed by. BORROWS a static literal; `*len` may be NULL; an
- * out-of-range code reads back as "". WRITE_FAILED's own reason is still the caller's, through `err` below. */
+ * out-of-range code reads back as "". WRITE_FAILED's own reason is still the caller's, through the concrete stores' own `_save_as`/
+ * `_add` — `rolltui_studio.h` — which write it into their own `err` for every result but SAVED. */
 const char* rolltui_preset_save_result_text(int result, size_t* len);
 
-/* Save-as. REPLACES `*err` (may be NULL) with the outcome's SENTENCE for every result but SAVED (WRITE_FAILED's own reason, and
- * `rolltui_preset_save_result_text`'s fixed sentence for the other three), so a caller reads one string for any refusal. */
-/* Always autosaves the working copy afterwards, unlike `_load` / `_set_working` / `_edit`: a save-as is an explicit write and the working
- * copy records its new origin. There is no `persist` parameter: no caller wants 0. */
-int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
-
-/* ADD a preset from elsewhere (a theme someone sent you, a layout from another directory). ADDITIVE: nothing is closed and nothing is
- * replaced. The file is COPIED in rather than referenced, because a dangling reference is a preset that stops existing for a reason
- * nobody can see. Named by `as`, or by the file's own stem when `as` is empty. Returns the codes `save_as` does: `EXISTS_ASK` when the
- * name is taken (refused, never overwritten), `REFUSED_SHIPPED` for a shipped name, `BAD_NAME` for an unusable name OR a file that does
- * not parse as this domain, `WRITE_FAILED` when it could not be read or written. `err` carries the sentence either way. */
-int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t path_len, const char* as,
-                             size_t as_len, RolltuiStr* err);
-
-/* The two paths. Both REPLACE `*out` (rule 3(b)), like `rolltui_preset_store_label`. */
-void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiStr* out);
-
-void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiStr* out);
+/* REPLACES `*out` (its capacity, and each entry's string buffers, are reused) — the result type every `_list` below fills.
+ * Redeclared here: `RolltuiPresetList`'s own definition, in part 1, already forward-declares it for the inline C++ destructor to
+ * call, and a reader working with `_list` wants it beside the calls that fill what it releases. */
+void rolltui_preset_list_release(RolltuiPresetList* l);
 
 /* Frees everything and zeroes the struct: safe on an already-zeroed one and on repeated calls (the "reset, not just release" contract of
  * every report here). */
@@ -3193,11 +3031,15 @@ void rolltui_theme_store_label(const RolltuiThemeStore* s, RolltuiStr* out);
 
 unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s);
 
+/* A BORROW of the origin's name alone, no "(modified)" suffix — `_label` composes that for a status line; this is for a
+ * caller that needs the plain name, e.g. to compare against a listed preset. Valid until the next call that changes it. */
+const char* rolltui_theme_store_origin(const RolltuiThemeStore* s, size_t* len);
+
 /* The shipped ones first ("default" ahead of the rest), then this person's own that do not shadow a shipped name. REPLACES `*out`. */
 void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out);
 
 /* A named preset's value WITHOUT switching to it — reading a theme's badges before choosing it, say. OWNED: free the result with
- * `rolltui_theme_preset_value_release`. NULL when no preset has that name (`report` says why). */
+ * `rolltui_theme_preset_value_free`. NULL when no preset has that name (`report` says why). */
 RolltuiThemePresetValue* rolltui_theme_store_get(const RolltuiThemeStore* s, const char* name, size_t len,
                                                  RolltuiThemePresetReport* report);
 
@@ -3227,29 +3069,38 @@ const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const ch
  * An app gets a theme editor by NAMING `theme` in a layout and binding a key to whatever holds it; this is the only code it writes.
  * The theme is the APP's: the style table a frame is drawn with is passed into `rolltui_windows_draw` by the host, so no widget can
  * reach it. What the app hands over is the Theme preset store it already keeps: the editor loads its working copy, lists its presets
- * in the Load choice and writes every commit back, so an app that watches `rolltui_preset_store_version` picks a theme edit up the
+ * in the Load choice and writes every commit back, so an app that watches `rolltui_theme_store_version` picks a theme edit up the
  * way it picks up a loaded theme. An app with no store opens one.
  * `content` is the layout's own string for the window ("theme", or "theme:<anything>"); NULL or 0 means "theme". The widget is
  * CREATED if this screen has none yet, so a host may wire the store before its first draw. `persist` non-zero autosaves each commit
  * (what a session wants and a golden frame does not). The store is BORROWED and must outlive `w`. */
-void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+/* Forward: `rolltui_windows_set_bindings_store` just below names `RolltuiBindingsStore` before its own section, later in this
+ * file, defines it — the identical repeat every forward-referenced opaque type here takes. */
+typedef struct RolltuiBindingsStore RolltuiBindingsStore;
+
+void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiThemeStore* store,
                                      int persist);
 
 /* ---- the `keys` widget kind's one call ------------------------------------------------------
  * An app gets a keys editor by NAMING `keys` in a layout and binding a key to whatever holds it. What it edits needs no call: the
  * editor's baseline is the table the stack already routes keys through, and a screen's own `app.*` actions are in the tree because
  * the screen declared them. What an app must say is WHERE A COMMIT GOES: the Bindings preset store it already keeps. The editor lists
- * its presets in the Load choice and writes every commit back, so an app that watches `rolltui_preset_store_version` picks a
+ * its presets in the Load choice and writes every commit back, so an app that watches `rolltui_bindings_store_version` picks a
  * rebinding up the way it picks up a loaded preset. `content`, `persist` and the store's lifetime are as for
  * `rolltui_windows_set_theme_store`. */
 void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len,
-                                        RolltuiPresetStore* store, int persist);
+                                        RolltuiBindingsStore* store, int persist);
 
 /* Whether the editor's "Load keys" / "Save keys as" / "Write a SHIPPED preset" appear at all (on by default). An app with exactly one
  * binding table turns this off and keeps edit, undo/redo and "Reset to the loaded preset". `content` as above. */
 void rolltui_windows_set_keys_editor_show_presets(RolltuiWindows* w, const char* content, size_t len, int show);
 
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
+
+/* The full free for a value `_get()` handed back — `v` itself included, the way `rolltui_layout_free`/`rolltui_bindings_free`
+ * already do for their own domains. `_release` above only clears what `v` owns, for a caller holding the struct itself (by value
+ * or as a member); this is for a caller holding the heap pointer `_get()` returned. */
+void rolltui_theme_preset_value_free(RolltuiThemePresetValue* v);
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */
 
@@ -3288,6 +3139,9 @@ const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s);
 int rolltui_layout_store_modified(const RolltuiLayoutStore* s);
 void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out);
 unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s);
+
+/* A BORROW of the origin's name alone, same as the theme store's. */
+const char* rolltui_layout_store_origin(const RolltuiLayoutStore* s, size_t* len);
 void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out);
 /* OWNED: free the result with `rolltui_layout_free`. */
 RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char* name, size_t len,
@@ -3314,6 +3168,9 @@ const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore
 int rolltui_bindings_store_modified(const RolltuiBindingsStore* s);
 void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out);
 unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s);
+
+/* A BORROW of the origin's name alone, same as the theme store's. */
+const char* rolltui_bindings_store_origin(const RolltuiBindingsStore* s, size_t* len);
 void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out);
 /* OWNED: free the result with `rolltui_bindings_free`. */
 RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const char* name, size_t len,
@@ -3325,23 +3182,12 @@ int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len)
 void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out);
 const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len);
 
-/* One per library domain, named and never spelled as an id (no call site picks between the three at runtime). A domain's name is its
- * `kind`: read `dom->kind`. */
-RolltuiPresetDomain* rolltui_preset_domain_theme(RolltuiContext* c);
-
-RolltuiPresetDomain* rolltui_preset_domain_layout(RolltuiContext* c);
-
-RolltuiPresetDomain* rolltui_preset_domain_bindings(RolltuiContext* c);
-
-/* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not this domain's). The identity key (the
- * domain's `kind`: "theme" / "layout" / "bindings") answers with the origin; a Theme store also answers "theme_mode" and "color_depth".
- * It takes no domain tag beside the store: `kind` IS the name. */
-void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);
-
 /* ---- the settings handle --------------------------------------------------------------------
- * The three stores are BORROWED and must outlive the handle. */
-RolltuiSettings* rolltui_settings_new(RolltuiPresetStore* theme, RolltuiPresetStore* layout,
-                                      RolltuiPresetStore* bindings);
+ * The three stores are BORROWED and must outlive the handle. Any of the three may be NULL — a
+ * host that never opened one just has no working copy for that domain's keys, which is how the
+ * built-in rung is reached at all for it. */
+RolltuiSettings* rolltui_settings_new(RolltuiThemeStore* theme, RolltuiLayoutStore* layout,
+                                      RolltuiBindingsStore* bindings);
 
 void rolltui_settings_free(RolltuiSettings* s);
 

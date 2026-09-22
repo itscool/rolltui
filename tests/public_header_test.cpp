@@ -299,6 +299,49 @@ int main() {
     check(offenders.empty(), "no host, tool or unlisted test includes a rolltui/c/ header — the count is 0, not a ratchet" + joined);
   }
 
+  // ---- 3b. rolltui_studio.h IS THE SAME CLOSED DOOR, ONE HEADER OVER -------------------------
+  // The preset stores' CREATE-AND-EDIT surface (`_edit`/`_save_as`/`_add`) lives in
+  // rolltui_studio.h, not rolltui.h, because only rolltui-studio (and, through it, its editors)
+  // ever authors a preset — dirktui, paint and roll only ever read one or switch to a different
+  // existing one. Same mechanism as the internal `c/` headers above: the opt-in list is the
+  // authority, and the count outside it is 0, not a ratchet.
+  {
+    std::set<std::string> optin;
+    {
+      std::string list = ROLLTUI_INTERNAL_OPT_IN;
+      std::size_t at = 0;
+      while (at <= list.size()) {
+        const std::size_t comma = list.find(',', at);
+        optin.insert(list.substr(at, comma == std::string::npos ? std::string::npos : comma - at));
+        if (comma == std::string::npos) break;
+        at = comma + 1;
+      }
+    }
+    const std::string repo = std::string(ROLLTUI_SOURCE_DIR) + "/..";
+    std::vector<std::string> files;
+    list_files(repo + "/src", {".cpp", ".hpp"}, files);
+    list_files(repo + "/include", {".hpp"}, files);
+    list_files(repo + "/tests", {".cpp", ".hpp"}, files);
+    list_files(repo + "/tools", {".cpp", ".hpp"}, files);
+    list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tools", {".cpp", ".hpp"}, files);
+    list_files(std::string(ROLLTUI_SOURCE_DIR) + "/examples", {".cpp", ".hpp"}, files);
+    list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tests", {".cpp", ".hpp", ".c"}, files);
+    std::vector<std::string> offenders;
+    int opted = 0;
+    for (const std::string& f : files) {
+      if (strip_all_comments(read(f)).find("#include \"rolltui/rolltui_studio.h\"") == std::string::npos) continue;
+      const std::string base = f.substr(f.find_last_of('/') + 1);
+      const bool listed_dir = f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tests/") != std::string::npos ||
+                              f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tools/") != std::string::npos;
+      if (listed_dir && optin.count(base)) { ++opted; continue; }
+      offenders.push_back(f.substr(f.find("/tui/") == std::string::npos ? 0 : f.find("/tui/") + 5));
+    }
+    std::string joined;
+    for (const std::string& o : offenders) joined += "\n      " + o;
+    check(opted >= 1, "the include scanner sees at least one opted-in file reaching rolltui_studio.h (" + std::to_string(opted) + ")");
+    check(offenders.empty(), "no host, tool or unlisted test includes rolltui_studio.h — the count is 0, not a ratchet" + joined);
+  }
+
   // ---- 4. the THREE TEXT-OUT SHAPES, and (a) carries a checkable promise --------------
   // rule 3 says a fixed-buffer function is used only where the maximum is KNOWN and NAMED, and
   // the cap has to be in the DEFINITION so a caller can size the buffer.
@@ -503,8 +546,8 @@ int main() {
      * that has to be edited every time the surface shrinks is measuring the wrong thing;
      * this one is armed at any plausible size and dead only if the parser returns
      * nothing. */
-    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_context_register_kind") /* paint registers its canvas kind */ &&
-              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 250 && in_internal.size() > 400,
+    check(declared.size() > 700 && roll.count("rolltui_theme_store_new") && tools.count("rolltui_context_register_kind") /* paint registers its canvas kind */ &&
+              lib.count("rolltui_str_append") && !lib.count("rolltui_theme_store_new_NOSUCH") && in_def.size() > 250 && in_internal.size() > 400,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
     std::map<std::string, std::string> cls;
     for (const Row& r : kApi) cls[r.fn] = r.cls;
@@ -788,7 +831,11 @@ int main() {
     };
     std::set<std::string> part[3];
     if (p1 != std::string::npos && p2 != std::string::npos && p3 != std::string::npos) {
-      const std::string chunk[3] = {hdr.substr(p1, p2 - p1), hdr.substr(p2, p3 - p2), hdr.substr(p3)};
+      // rolltui_studio.h's own functions are a HOST's (the studio's, narrowly) — declared in a
+      // separate file for section 3b's reason, not a fourth part of rolltui.h's own layout, so
+      // its text joins part 2's chunk rather than getting a part of its own.
+      const std::string studio_h = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui_studio.h");
+      const std::string chunk[3] = {hdr.substr(p1, p2 - p1), hdr.substr(p2, p3 - p2) + studio_h, hdr.substr(p3)};
       static const std::regex dre(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
       for (int k = 0; k < 3; ++k) {
         const std::string t = d0(strip_all_comments(chunk[k]));
@@ -841,10 +888,10 @@ int main() {
     //
     // A NAMED EMPTY STAGE STAYS IN THE TABLE. An empty row asserts that nothing is filed
     // there; deleting the row would make a future arrival unremarkable.
-    check(rt["VOCAB"] == 36 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 56 &&
+    check(rt["VOCAB"] == 36 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 90 &&
               rt["HOST_BIND"] == 95 && rt["HOST_RUN"] == 108 && rt["HOST_RELEASE"] == 10 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 27,
-          "the roles are the recorded shape — vocab 36, host load 30 / settings 56 / bind 95 / run 108 / "
+          "the roles are the recorded shape — vocab 36, host load 30 / settings 90 / bind 95 / run 108 / "
           "release 10, tool interop 0, widget 27 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

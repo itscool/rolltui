@@ -453,8 +453,8 @@ struct App {
   // OWNED: the user's own theme and key presets. An app that cannot change how it looks is an
   // app the library's editors have nothing to edit — the kinds are the library's, the STORE is
   // what makes them this app's.
-  RolltuiPresetStore* theme_store = nullptr;
-  RolltuiPresetStore* keys_store = nullptr;
+  RolltuiThemeStore* theme_store = nullptr;
+  RolltuiBindingsStore* keys_store = nullptr;
   unsigned long long theme_seen = 0;
   Options opt;
   RolltuiStr root;
@@ -616,8 +616,8 @@ struct App {
   ~App() {
     rolltui_hint_bar_free(hints);
     rolltui_hint_bar_free(crumbs);
-    rolltui_preset_store_free(keys_store);
-    rolltui_preset_store_free(theme_store);
+    rolltui_bindings_store_free(keys_store);
+    rolltui_theme_store_free(theme_store);
     rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
@@ -663,7 +663,7 @@ struct App {
   // is what keeps a broken preset directory from being a blank screen.
   void sync_theme() {
     if (!theme_store) return;
-    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
+    const RolltuiThemePresetValue* w = rolltui_theme_store_working(theme_store);
     if (!w) return;
     RolltuiThemeReport rep{};
     RolltuiStyle got[ROLLTUI_ROLE_COUNT]{};
@@ -687,7 +687,6 @@ struct App {
     }
     rolltui_str_free(&name);
     rolltui_theme_report_release(&rep);
-    rolltui_preset_store_value_free(theme_store, w);
   }
 
   // THE PICKER IS THE LIBRARY'S, reached through the window calls by its content string. This
@@ -853,12 +852,11 @@ struct App {
     { const char* v = opt.copy_relative ? "relative" : "absolute"; rolltui_menu_set_value(m, "paths", 5, v, std::strlen(v)); }
     // THE THEME AND THE KEY BINDINGS are the stores' presets, listed live — a preset saved a
     // moment ago in the editor is in the list — with the current one as the value.
-    fill_store_choice(m, "theme", 5, theme_store, "default");
+    fill_store_choice(m, "theme", 5, theme_store, "default", rolltui_theme_store_origin, rolltui_theme_store_modified, rolltui_theme_store_list);
     // Light or dark is a SETTING beside the theme's colours, not a preset of its own — the
     // working value's own "mode" field, same as the library's own authoring tool reads it.
     if (theme_store) {
-      RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
-      if (w) {
+      if (const RolltuiThemePresetValue* w = rolltui_theme_store_working(theme_store)) {
         const char* mv = w->mode.p && w->mode.n ? w->mode.p : "auto";
         const size_t mvlen = w->mode.p && w->mode.n ? w->mode.n : 4;
         rolltui_menu_set_value(m, "mode", 4, mv, mvlen);
@@ -867,10 +865,9 @@ struct App {
         const char* dv = w->depth.p && w->depth.n ? w->depth.p : "auto";
         const size_t dvlen = w->depth.p && w->depth.n ? w->depth.n : 4;
         rolltui_menu_set_value(m, "depth", 5, dv, dvlen);
-        rolltui_preset_store_value_free(theme_store, w);
       }
     }
-    fill_store_choice(m, "keys", 4, keys_store, "default");
+    fill_store_choice(m, "keys", 4, keys_store, "default", rolltui_bindings_store_origin, rolltui_bindings_store_modified, rolltui_bindings_store_list);
     // THE "OPEN WITH" CHOICES ARE FILLED HERE, not in the file: their options are what this
     // machine has. The skeleton (one choice per type group) is the file's; the contents are
     // what `detect_programs` found, the same move roll makes with its preset listings.
@@ -931,12 +928,15 @@ struct App {
   // of its own, "name (modified)", just above the preset it began as. That preset stays in the list as shipped, so the way back is
   // to choose it: the store loads it over the edits.
   static constexpr const char* kModifiedId = "(modified)";  // not a valid preset name, so no preset can be mistaken for it
-  static void fill_store_choice(RolltuiMenu* m, const char* id, std::size_t id_len, const RolltuiPresetStore* store, const char* preset) {
+  template <class Store>
+  static void fill_store_choice(RolltuiMenu* m, const char* id, std::size_t id_len, const Store* store, const char* preset,
+                                const char* (*origin_fn)(const Store*, std::size_t*), int (*modified_fn)(const Store*),
+                                void (*list_fn)(const Store*, RolltuiPresetList*)) {
     if (!store) return;
     std::size_t on = 0;
-    const char* o = rolltui_preset_store_origin(store, &on);
+    const char* o = origin_fn(store, &on);
     const StrView origin(o, on);
-    const bool modified = rolltui_preset_store_modified(store) != 0;
+    const bool modified = modified_fn(store) != 0;
     RolltuiMenuItemList options{};
     auto add_working_copy = [&] {
       const RolltuiStr label = rolltui::own(origin) + " (modified)";
@@ -944,7 +944,7 @@ struct App {
     };
     bool placed = false;
     RolltuiPresetList presets{};
-    rolltui_preset_store_list(store, &presets);
+    list_fn(store, &presets);
     for (std::size_t i = 0; i < presets.n; ++i) {
       const RolltuiPresetInfo& p = presets.v[i];
       if (modified && !placed && StrView(p.name) == origin) { add_working_copy(); placed = true; }
@@ -959,19 +959,6 @@ struct App {
     if (modified) rolltui_menu_set_value(m, id, id_len, kModifiedId, std::strlen(kModifiedId));
     else rolltui_menu_set_value(m, id, id_len, origin.data(), origin.size());
   }
-  // `rolltui_preset_store_edit`'s callback: the Theme domain's value is a `RolltuiThemePresetValue`,
-  // and light/dark/auto is its own "mode" field beside the colours, not a preset of its own
-  // (the same setting the library's own authoring tool edits, `tools/studio.cpp`'s `set_mode`).
-  static void set_theme_mode(void* value, void* ctx) {
-    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
-    const RolltuiStr* mode = static_cast<const RolltuiStr*>(ctx);
-    rolltui_str_set(&v->mode, mode->data(), mode->size());
-  }
-  static void set_theme_depth(void* value, void* ctx) {
-    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
-    const RolltuiStr* depth = static_cast<const RolltuiStr*>(ctx);
-    rolltui_str_set(&v->depth, depth->data(), depth->size());
-  }
   // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
   // working copy, then this app's own bindings file on top, then the layout's declarations.
   RolltuiStr bindings_json;  // the app's bindings file, kept for that rebuild
@@ -980,11 +967,10 @@ struct App {
   RolltuiStr rebuild_bindings() {
     RolltuiStr undeliverable;
     if (!keys_store) return undeliverable;
-    RolltuiBindings* w = static_cast<RolltuiBindings*>(rolltui_preset_store_working(keys_store));
+    const RolltuiBindings* w = rolltui_bindings_store_working(keys_store);
     if (!w) return undeliverable;
     rolltui_bindings_free(bindings);
     bindings = rolltui_bindings_clone(w);
-    rolltui_preset_store_value_free(keys_store, w);
     if (!bindings_json.empty()) {
       RolltuiBindingsReport brep{};
       rolltui_bindings_load_json(bindings, bindings_json.data(), bindings_json.size(), rolltui_key_active_protocol(),
@@ -1265,7 +1251,7 @@ struct App {
     // version, and a frame that draws the old styles would make the editor look broken. A
     // version compare rather than a deep one, so an unchanged frame costs nothing.
     if (theme_store) {
-      const unsigned long long v = rolltui_preset_store_version(theme_store);
+      const unsigned long long v = rolltui_theme_store_version(theme_store);
       if (v != theme_seen) { theme_seen = v; sync_theme(); }
     }
     const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
@@ -1633,26 +1619,24 @@ struct App {
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
         const StrView name = ev.value;
         RolltuiThemePresetReport trep{};
-        const bool edited = theme_store && rolltui_preset_store_modified(theme_store) != 0;
-        if (theme_store && rolltui_preset_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = edited ? "theme: " + name + " loaded over your edits" : "theme: " + name;
+        const bool edited = theme_store && rolltui_theme_store_modified(theme_store) != 0;
+        if (theme_store && rolltui_theme_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = edited ? "theme: " + name + " loaded over your edits" : "theme: " + name;
         else hint = "could not load the theme " + name;
         rolltui_theme_preset_report_release(&trep);
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "mode") {
-        RolltuiStr mode = rolltui::own(ev.value);
-        if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_mode, &mode, 1);
-        hint = "light or dark: " + mode;
+        if (theme_store) rolltui_theme_store_set_mode(theme_store, ev.value.data(), ev.value.size(), 1);
+        hint = "light or dark: " + ev.value;
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "depth") {
-        RolltuiStr depth = rolltui::own(ev.value);
-        if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_depth, &depth, 1);
-        hint = "colours: " + depth;
+        if (theme_store) rolltui_theme_store_set_depth(theme_store, ev.value.data(), ev.value.size(), 1);
+        hint = "colours: " + ev.value;
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
         const StrView name = ev.value;
         RolltuiBindingsPresetReport brep{};
-        const bool edited = keys_store && rolltui_preset_store_modified(keys_store) != 0;
-        if (keys_store && rolltui_preset_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = edited ? "key bindings: " + name + " loaded over your edits" : "key bindings: " + name; }
+        const bool edited = keys_store && rolltui_bindings_store_modified(keys_store) != 0;
+        if (keys_store && rolltui_bindings_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = edited ? "key bindings: " + name + " loaded over your edits" : "key bindings: " + name; }
         else hint = "could not load the key bindings " + name;
         rolltui_bindings_preset_report_release(&brep);
         menu_dirty = true;
@@ -2537,16 +2521,14 @@ int main(int argc, char** argv) {
     // an explicit `--presets` points the SCREEN somewhere, and where a person's presets live is a
     // separate question with its own answer.
     const RolltuiStr store_dir = presets_dir.empty() ? user_presets_dir() : rolltui::own(presets_dir);
-    RolltuiPresetDomain* td = rolltui_preset_domain_theme(app.ctx);
-    RolltuiPresetDomain* bd = rolltui_preset_domain_bindings(app.ctx);
     RolltuiThemePresetReport trep{};
     RolltuiBindingsPresetReport brep{};
-    app.theme_store = rolltui_preset_store_new(td, store_dir.data(), store_dir.size(), 0, "", 0);
-    app.keys_store = rolltui_preset_store_new(bd, store_dir.data(), store_dir.size(), 0, "", 0);
+    app.theme_store = rolltui_theme_store_new(app.ctx, store_dir.data(), store_dir.size(), 0, "", 0);
+    app.keys_store = rolltui_bindings_store_new(app.ctx, store_dir.data(), store_dir.size(), 0, "", 0);
     // A report is REQUIRED, not optional: a store that cannot say what it did on start would make
     // a missing preset directory look like a successful one.
-    rolltui_preset_store_start(app.theme_store, &trep);
-    rolltui_preset_store_start(app.keys_store, &brep);
+    rolltui_theme_store_start(app.theme_store, &trep);
+    rolltui_bindings_store_start(app.keys_store, &brep);
     rolltui_theme_preset_report_release(&trep);
     rolltui_bindings_preset_report_release(&brep);
     rolltui_windows_set_theme_store(app.windows, "theme", 5, app.theme_store, /*persist=*/1);

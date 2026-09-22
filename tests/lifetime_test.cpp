@@ -335,12 +335,9 @@ void use_the_ported_modules(const char* when) {
 
   constexpr std::string_view kDefaultPreset = "default";
   const bool presets_ok =
-      rolltui_preset_shipped(rolltui_preset_domain_theme(session()), kDefaultPreset.data(),
-                             kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain_layout(session()), kDefaultPreset.data(),
-                             kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain_bindings(session()), kDefaultPreset.data(),
-                             kDefaultPreset.size()) != nullptr;
+      rolltui_theme_shipped(session(), kDefaultPreset.data(), kDefaultPreset.size()) != nullptr &&
+      rolltui_layout_shipped(session(), kDefaultPreset.data(), kDefaultPreset.size()) != nullptr &&
+      rolltui_bindings_shipped(session(), kDefaultPreset.data(), kDefaultPreset.size()) != nullptr;
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 
   constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";

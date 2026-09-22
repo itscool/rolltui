@@ -36,6 +36,7 @@ static const char kModifiedSuffix[] = " (modified)";
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_studio.h" /* the CREATE-AND-EDIT declarations, checked against their definitions below */
 #include "testkit/testctl.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
@@ -1441,6 +1442,11 @@ void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v) {
   rolltui_str_free(&v->depth);
   memset(v, 0, sizeof *v);
 }
+void rolltui_theme_preset_value_free(RolltuiThemePresetValue* v) {
+  if (!v) return;
+  rolltui_theme_preset_value_release(v);
+  rolltui_mem_free(v);
+}
 
 static void theme_preset_report_reset(void* r) { rolltui_theme_preset_report_release((RolltuiThemePresetReport*)r); }
 static void theme_preset_report_set_error(void* r, const char* s, size_t len) {
@@ -1620,8 +1626,7 @@ static void* theme_domain_clone(const void* v) {
   return out;
 }
 static void theme_domain_destroy(void* v) {
-  rolltui_theme_preset_value_release((RolltuiThemePresetValue*)v);
-  rolltui_mem_free(v);
+  rolltui_theme_preset_value_free((RolltuiThemePresetValue*)v);
 }
 /* THE THEME IS ITS COLOURS. Light or dark and colour depth are the person's, not part of what a theme is, so choosing
  * either is not an edit: a working copy that differed from its preset only there was written out as a frozen snapshot, and a
@@ -1747,6 +1752,9 @@ void rolltui_theme_store_label(const RolltuiThemeStore* s, RolltuiStr* out) {
 unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s) {
   return rolltui_preset_store_version((const RolltuiPresetStore*)s);
 }
+const char* rolltui_theme_store_origin(const RolltuiThemeStore* s, size_t* len) {
+  return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
+}
 void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
@@ -1792,6 +1800,32 @@ void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
 }
 const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const char* name, size_t len) {
   return (const RolltuiThemePresetValue*)rolltui_preset_shipped(rolltui_preset_domain_theme(c), name, len);
+}
+
+/* ---- the theme store: CREATE-AND-EDIT (rolltui_studio.h) ----------------------------------
+ * A trampoline per store: the concrete `fn` the studio wrote is not the generic `void (*)(void*, void*)` shape the engine's own
+ * `_edit` takes, so this closes over it in a stack-local struct and hands the engine a fixed shim that restores the type before
+ * calling it — the standard way a typed callback crosses a boundary that is, underneath, still one generic function. */
+typedef struct { RolltuiThemeEditFn fn; void* ctx; } ThemeEditTrampoline;
+static void theme_edit_trampoline(void* value, void* ctx) {
+  const ThemeEditTrampoline* t = (const ThemeEditTrampoline*)ctx;
+  t->fn((RolltuiThemePresetValue*)value, t->ctx);
+}
+void rolltui_theme_store_edit(RolltuiThemeStore* s, RolltuiThemeEditFn fn, void* ctx, int persist) {
+  ThemeEditTrampoline t;
+  t.fn = fn;
+  t.ctx = ctx;
+  rolltui_preset_store_edit((RolltuiPresetStore*)s, theme_edit_trampoline, &t, persist);
+}
+int rolltui_theme_store_save_as(RolltuiThemeStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
+  return rolltui_preset_store_save_as((RolltuiPresetStore*)s, name, len, overwrite, err);
+}
+int rolltui_theme_store_add(RolltuiThemeStore* s, const char* path, size_t path_len, const char* as, size_t as_len,
+                            RolltuiStr* err) {
+  return rolltui_preset_store_add((RolltuiPresetStore*)s, path, path_len, as, as_len, err);
+}
+void rolltui_theme_store_set_working(RolltuiThemeStore* s, RolltuiThemePresetValue* v, int persist) {
+  rolltui_preset_store_set_working((RolltuiPresetStore*)s, v, persist);
 }
 
 /* ---- the Layout domain ------------------------------------------------------------------- */
@@ -2033,6 +2067,9 @@ void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out) {
 unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s) {
   return rolltui_preset_store_version((const RolltuiPresetStore*)s);
 }
+const char* rolltui_layout_store_origin(const RolltuiLayoutStore* s, size_t* len) {
+  return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
+}
 void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
@@ -2056,6 +2093,29 @@ void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
 }
 const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name, size_t len) {
   return (const RolltuiLayout*)rolltui_preset_shipped(rolltui_preset_domain_layout(c), name, len);
+}
+
+/* ---- the layout store: CREATE-AND-EDIT (rolltui_studio.h) --------------------------------- */
+typedef struct { RolltuiLayoutEditFn fn; void* ctx; } LayoutEditTrampoline;
+static void layout_edit_trampoline(void* value, void* ctx) {
+  const LayoutEditTrampoline* t = (const LayoutEditTrampoline*)ctx;
+  t->fn((RolltuiLayout*)value, t->ctx);
+}
+void rolltui_layout_store_edit(RolltuiLayoutStore* s, RolltuiLayoutEditFn fn, void* ctx, int persist) {
+  LayoutEditTrampoline t;
+  t.fn = fn;
+  t.ctx = ctx;
+  rolltui_preset_store_edit((RolltuiPresetStore*)s, layout_edit_trampoline, &t, persist);
+}
+int rolltui_layout_store_save_as(RolltuiLayoutStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
+  return rolltui_preset_store_save_as((RolltuiPresetStore*)s, name, len, overwrite, err);
+}
+int rolltui_layout_store_add(RolltuiLayoutStore* s, const char* path, size_t path_len, const char* as, size_t as_len,
+                             RolltuiStr* err) {
+  return rolltui_preset_store_add((RolltuiPresetStore*)s, path, path_len, as, as_len, err);
+}
+void rolltui_layout_store_set_working(RolltuiLayoutStore* s, RolltuiLayout* v, int persist) {
+  rolltui_preset_store_set_working((RolltuiPresetStore*)s, v, persist);
 }
 
 /* ---- the Bindings domain ----------------------------------------------------------------- */
@@ -2297,6 +2357,9 @@ void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out
 unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s) {
   return rolltui_preset_store_version((const RolltuiPresetStore*)s);
 }
+const char* rolltui_bindings_store_origin(const RolltuiBindingsStore* s, size_t* len) {
+  return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
+}
 void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
@@ -2320,6 +2383,30 @@ void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
 }
 const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len) {
   return (const RolltuiBindings*)rolltui_preset_shipped(rolltui_preset_domain_bindings(c), name, len);
+}
+
+/* ---- the bindings store: CREATE-AND-EDIT (rolltui_studio.h) ------------------------------- */
+typedef struct { RolltuiBindingsEditFn fn; void* ctx; } BindingsEditTrampoline;
+static void bindings_edit_trampoline(void* value, void* ctx) {
+  const BindingsEditTrampoline* t = (const BindingsEditTrampoline*)ctx;
+  t->fn((RolltuiBindings*)value, t->ctx);
+}
+void rolltui_bindings_store_edit(RolltuiBindingsStore* s, RolltuiBindingsEditFn fn, void* ctx, int persist) {
+  BindingsEditTrampoline t;
+  t.fn = fn;
+  t.ctx = ctx;
+  rolltui_preset_store_edit((RolltuiPresetStore*)s, bindings_edit_trampoline, &t, persist);
+}
+int rolltui_bindings_store_save_as(RolltuiBindingsStore* s, const char* name, size_t len, int overwrite,
+                                   RolltuiStr* err) {
+  return rolltui_preset_store_save_as((RolltuiPresetStore*)s, name, len, overwrite, err);
+}
+int rolltui_bindings_store_add(RolltuiBindingsStore* s, const char* path, size_t path_len, const char* as,
+                               size_t as_len, RolltuiStr* err) {
+  return rolltui_preset_store_add((RolltuiPresetStore*)s, path, path_len, as, as_len, err);
+}
+void rolltui_bindings_store_set_working(RolltuiBindingsStore* s, RolltuiBindings* v, int persist) {
+  rolltui_preset_store_set_working((RolltuiPresetStore*)s, v, persist);
 }
 
 /* ---- the library's own three domains (the case is at the header) ------------------------- */

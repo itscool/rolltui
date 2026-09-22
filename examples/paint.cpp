@@ -602,8 +602,8 @@ struct App {
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
   // OWNED: this app's own presets. The editors are the library's kinds; the STORE is what gives
   // them something of this app's to edit.
-  RolltuiPresetStore* theme_store = nullptr;
-  RolltuiPresetStore* keys_store = nullptr;
+  RolltuiThemeStore* theme_store = nullptr;
+  RolltuiBindingsStore* keys_store = nullptr;
   unsigned long long theme_seen = 0;
   CanvasFactoryCtx factory_ctx{};
   // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
@@ -626,8 +626,8 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
-    rolltui_preset_store_free(keys_store);
-    rolltui_preset_store_free(theme_store);
+    rolltui_bindings_store_free(keys_store);
+    rolltui_theme_store_free(theme_store);
     rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
@@ -749,10 +749,10 @@ struct App {
   // make the editor look broken. Compared by version, so an unchanged frame costs nothing.
   void sync_theme() {
     if (!theme_store) return;
-    const unsigned long long v = rolltui_preset_store_version(theme_store);
+    const unsigned long long v = rolltui_theme_store_version(theme_store);
     if (v == theme_seen) return;
     theme_seen = v;
-    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
+    const RolltuiThemePresetValue* w = rolltui_theme_store_working(theme_store);
     if (!w) return;
     RolltuiThemeReport rep{};
     RolltuiStyle got[ROLLTUI_ROLE_COUNT]{};
@@ -770,7 +770,6 @@ struct App {
     }
     rolltui_str_free(&name);
     rolltui_theme_report_release(&rep);
-    rolltui_preset_store_value_free(theme_store, w);
   }
 
   // WHAT THE PICKER HANDED BACK, taken once. The popup is opened by the library — any
@@ -1094,12 +1093,10 @@ int main(int argc, char** argv) {
     const RolltuiStr store_dir = presets_dir.empty() ? user_presets_dir() : rolltui::own(presets_dir);
     RolltuiThemePresetReport trep{};
     RolltuiBindingsPresetReport brep{};
-    app.theme_store = rolltui_preset_store_new(rolltui_preset_domain_theme(app.ctx),
-                                               store_dir.data(), store_dir.size(), 0, "", 0);
-    app.keys_store = rolltui_preset_store_new(rolltui_preset_domain_bindings(app.ctx),
-                                              store_dir.data(), store_dir.size(), 0, "", 0);
-    rolltui_preset_store_start(app.theme_store, &trep);
-    rolltui_preset_store_start(app.keys_store, &brep);
+    app.theme_store = rolltui_theme_store_new(app.ctx, store_dir.data(), store_dir.size(), 0, "", 0);
+    app.keys_store = rolltui_bindings_store_new(app.ctx, store_dir.data(), store_dir.size(), 0, "", 0);
+    rolltui_theme_store_start(app.theme_store, &trep);
+    rolltui_bindings_store_start(app.keys_store, &brep);
     rolltui_theme_preset_report_release(&trep);
     rolltui_bindings_preset_report_release(&brep);
     rolltui_windows_set_theme_store(app.windows, "theme", 5, app.theme_store, /*persist=*/1);

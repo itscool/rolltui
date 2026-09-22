@@ -274,7 +274,11 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 132}, /* +12: `RolltuiPickerActions` carries the picker scope's twelve names as BORROWED
+        {"rolltui.h", 122}, /* -10: `RolltuiPresetDomain`/`RolltuiPresetReportFns` — the generic engine's own descriptor structs,
+                              carrying most of this header's stored function pointers plus its `theme_vocab`/`layout_hooks`/
+                              `layout_actions`/`bindings_scope_ctx`/`bindings_reason_ctx`/`cache` BORROWS and OWN — moved to
+                              `c/rolltui_presets.h`, counted below, once nothing public still needed the generic shape. +12
+                              before that: `RolltuiPickerActions` carries the picker scope's twelve names as BORROWED
                               static literals, the same shape as `RolltuiMenuActions`. +1 before it: `RolltuiSetting` carries five BORROWED literals where the row it replaces
                               carried four, all of them static storage alive for the process. -1 alongside it:
                               `RolltuiSettingsReport` holds its notes in a `RolltuiStrList`, which owns them.
@@ -282,6 +286,8 @@ int main() {
                               own growing array of owned strings, freed by `rolltui_theme_report_release` beside
                               the other three. -2 before it: `RolltuiAppProfileReport`'s two array members went with the app profile.
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
+        {"rolltui_studio.h", 0},  /* the studio's CREATE-AND-EDIT surface: twelve functions and three typed edit-callback
+                                     typedefs, no struct of its own — nothing here stores a pointer */
         {"c/rolltui_theme_editor.h", 0},
         {"c/rolltui_keys_editor.h", 0},
         {"c/rolltui_style.h", 0},
@@ -304,7 +310,11 @@ int main() {
         {"c/rolltui_undo.h", 0},
         {"c/rolltui_widget_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
-        {"c/rolltui_presets.h", 0},
+        {"c/rolltui_presets.h", 10}, /* `RolltuiPresetDomain`/`RolltuiPresetReportFns`, moved from rolltui.h above: `report`
+                                       (a BORROW of a library static), `theme_vocab`/`layout_hooks`/`layout_actions` (BORROWED),
+                                       `bindings_scope_ctx`/`bindings_reason_ctx` (a host's, borrowed for the process's life),
+                                       `cache` (OWNED, built on first use), plus the four `*_valid`/`*_is_library_scope`/
+                                       `*_reason` function-pointer fields the census counts alongside them. */
         /* `RolltuiDirList::v` — the entries array, OWNED by the list and freed by `_release`,
            which is the one raw pointer this header declares. */
         

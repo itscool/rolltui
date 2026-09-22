@@ -125,16 +125,15 @@ struct Screen {
   RolltuiWindowStack* stack = nullptr;
   RolltuiBindings* bindings = nullptr;
   RolltuiLayout* layout = nullptr;
-  RolltuiPresetStore* store = nullptr;
+  RolltuiBindingsStore* store = nullptr;
 
   void open(const std::string& dir, bool hand_over_the_store) {
     ctx = rolltui_context_new();
     rolltui_context_set_library_defaults(ctx);
     rolltui_context_set_dir(ctx, dir.data(), dir.size());
-    store = rolltui_preset_store_new(rolltui_preset_domain_bindings(ctx), dir.data(),
-                                     dir.size(), 0, "", 0);
+    store = rolltui_bindings_store_new(ctx, dir.data(), dir.size(), 0, "", 0);
     RolltuiBindingsPresetReport start{};
-    rolltui_preset_store_start(store, &start);
+    rolltui_bindings_store_start(store, &start);
     rolltui_bindings_preset_report_release(&start);
 
     RolltuiLayoutReport lrep{};
@@ -143,7 +142,10 @@ struct Screen {
 
     windows = rolltui_windows_new(ctx);
     stack = rolltui_window_stack_new();
-    bindings = static_cast<RolltuiBindings*>(rolltui_preset_store_working(store));
+    // A CLONE, not the store's own borrow: `ctx`'s bindings are what routes keys TODAY, and the
+    // widget kind commits into the store separately — a check below asserts the two stay apart
+    // until a Save closes the gap.
+    bindings = rolltui_bindings_clone(rolltui_bindings_store_working(store));
     rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
 
     RolltuiWidgetEnv env{};
@@ -173,8 +175,8 @@ struct Screen {
     rolltui_window_stack_free(stack);
     rolltui_windows_free(windows);
     rolltui_layout_free(layout);
-    rolltui_preset_store_value_free(store, bindings);
-    rolltui_preset_store_free(store);
+    rolltui_bindings_free(bindings);
+    rolltui_bindings_store_free(store);
     rolltui_context_free(ctx);
   }
 };
@@ -194,13 +196,10 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   s.open(dir, hand_over_the_store);
 
   auto snapshot = [&](std::string& holder) {
-    RolltuiBindings* v = static_cast<RolltuiBindings*>(rolltui_preset_store_working(s.store));
-    if (v) {
-      holder = alt_b_holder(v);
-      rolltui_preset_store_value_free(s.store, v);
-    }
+    const RolltuiBindings* v = rolltui_bindings_store_working(s.store);
+    if (v) holder = alt_b_holder(v);
   };
-  out.version_before = rolltui_preset_store_version(s.store);
+  out.version_before = rolltui_bindings_store_version(s.store);
   snapshot(out.holder_before);
 
   const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
@@ -212,7 +211,7 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   s.send(enter);        // add a chord (press it)…
   s.send(key_event(ROLLTUI_KEY_CHAR, 'b', /*alt=*/true));
 
-  out.version_after = rolltui_preset_store_version(s.store);
+  out.version_after = rolltui_bindings_store_version(s.store);
   snapshot(out.holder_after);
   return out;
 }
@@ -337,12 +336,11 @@ int main() {
     };
     auto preset_holder = [&](const char* name) {
       RolltuiBindingsPresetReport rep{};
-      RolltuiBindings* v =
-          static_cast<RolltuiBindings*>(rolltui_preset_store_get(s.store, name, std::strlen(name), &rep));
+      RolltuiBindings* v = rolltui_bindings_store_get(s.store, name, std::strlen(name), &rep);
       std::string holder = "(no preset)";
       if (v) {
         holder = alt_b_holder(v);
-        rolltui_preset_store_value_free(s.store, v);
+        rolltui_bindings_free(v);
       }
       rolltui_bindings_preset_report_release(&rep);
       return holder;
@@ -370,13 +368,8 @@ int main() {
 
     // ---- 9. RESET GOES BACK TO THE PRESET, not to the edit it is meant to throw away --------
     auto working_holder = [&]() {
-      RolltuiBindings* v = static_cast<RolltuiBindings*>(rolltui_preset_store_working(s.store));
-      std::string holder;
-      if (v) {
-        holder = alt_b_holder(v);
-        rolltui_preset_store_value_free(s.store, v);
-      }
-      return holder;
+      const RolltuiBindings* v = rolltui_bindings_store_working(s.store);
+      return v ? alt_b_holder(v) : std::string();
     };
     check(working_holder() == "app.quench", "the working copy is the edited table, so a reset has something to undo");
     to_root();
