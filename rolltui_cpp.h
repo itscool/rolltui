@@ -419,4 +419,22 @@ class RolltuiPresetList : public RolltuiPresetListRaw {
   const RolltuiPresetInfo& operator[](size_t i) const { return v[i]; }
 };
 
+/* ---- THE ZERO-OVERHEAD CLAIM, PROVED RATHER THAN ASSERTED --------------------------------------
+ * Public single inheritance over a POD base with no virtual functions and no added data member
+ * cannot change `sizeof` or layout — every one of the 13 rename+derive types above checked here,
+ * once, so the claim above the file's own comment stays true rather than merely stated. */
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyleColor) == sizeof(RolltuiStyleColorRaw), "RolltuiStyleColor must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCell) == sizeof(RolltuiCellRaw), "RolltuiCell must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiInputSelection) == sizeof(RolltuiInputSelectionRaw), "RolltuiInputSelection must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiSelection) == sizeof(RolltuiSelectionRaw), "RolltuiSelection must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiSplitSize) == sizeof(RolltuiSplitSizeRaw), "RolltuiSplitSize must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiInputOptions) == sizeof(RolltuiInputOptionsRaw), "RolltuiInputOptions must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiInputSpec) == sizeof(RolltuiInputSpecRaw), "RolltuiInputSpec must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiNote) == sizeof(RolltuiNoteRaw), "RolltuiNote must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiMenuActionList) == sizeof(RolltuiMenuActionListRaw), "RolltuiMenuActionList must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiDocEntry) == sizeof(RolltuiDocEntryRaw), "RolltuiDocEntry must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiDocument) == sizeof(RolltuiDocumentRaw), "RolltuiDocument must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStrList) == sizeof(RolltuiStrListRaw), "RolltuiStrList must cost nothing over its Raw base");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiPresetList) == sizeof(RolltuiPresetListRaw), "RolltuiPresetList must cost nothing over its Raw base");
+
 #endif /* ROLLTUI_CPP_H */
