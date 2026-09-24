@@ -406,4 +406,17 @@ class RolltuiStrList : public RolltuiStrListRaw {
   const RolltuiStr& operator[](size_t i) const { return v[i]; }
 };
 
+class RolltuiPresetList : public RolltuiPresetListRaw {
+ public:
+  RolltuiPresetList() = default;
+  RolltuiPresetList(const RolltuiPresetList&) = delete;
+  RolltuiPresetList& operator=(const RolltuiPresetList&) = delete;
+  ~RolltuiPresetList() { rolltui_preset_list_release(this); }
+  const RolltuiPresetInfo* begin() const { return v; }
+  const RolltuiPresetInfo* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  const RolltuiPresetInfo& operator[](size_t i) const { return v[i]; }
+};
+
 #endif /* ROLLTUI_CPP_H */

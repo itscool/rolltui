@@ -932,7 +932,7 @@ struct App {
   template <class Store>
   static void fill_store_choice(RolltuiMenu* m, const char* id, std::size_t id_len, const Store* store, const char* preset,
                                 const char* (*origin_fn)(const Store*, std::size_t*), int (*modified_fn)(const Store*),
-                                void (*list_fn)(const Store*, RolltuiPresetList*)) {
+                                void (*list_fn)(const Store*, RolltuiPresetListRaw*)) {
     if (!store) return;
     std::size_t on = 0;
     const char* o = origin_fn(store, &on);

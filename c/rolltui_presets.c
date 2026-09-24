@@ -860,7 +860,7 @@ void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, vo
   pthread_mutex_unlock(&s->mu);
 }
 
-void rolltui_preset_list_release(RolltuiPresetList* l) {
+void rolltui_preset_list_release(RolltuiPresetListRaw* l) {
   size_t i;
   if (!l) return;
   for (i = 0; i < l->cap; ++i) {
@@ -875,7 +875,7 @@ void rolltui_preset_list_release(RolltuiPresetList* l) {
 
 /* One entry appended, REUSING the string buffers a previous call left in `cap` — which is the
  * whole reason this list is the caller's rather than a fresh vector per call. */
-static RolltuiPresetInfo* list_add(RolltuiPresetList* l) {
+static RolltuiPresetInfo* list_add(RolltuiPresetListRaw* l) {
   if (l->n == l->cap) {
     const size_t want = l->cap ? l->cap * 2 : 8;
     l->v = (RolltuiPresetInfo*)rolltui_grow_zeroed(l->v, &l->cap, want, sizeof *l->v);
@@ -883,7 +883,7 @@ static RolltuiPresetInfo* list_add(RolltuiPresetList* l) {
   return &l->v[l->n++];
 }
 
-void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out) {
+void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetListRaw* out) {
   Buf dir = {NULL, 0, 0}, path = {NULL, 0, 0};
   NameList list = {NULL, 0, 0};
   const size_t n = s->d->shipped_count();
@@ -1755,7 +1755,7 @@ unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s) {
 const char* rolltui_theme_store_origin(const RolltuiThemeStore* s, size_t* len) {
   return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
 }
-void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out) {
+void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetListRaw* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
 RolltuiThemePresetValue* rolltui_theme_store_get(const RolltuiThemeStore* s, const char* name, size_t len,
@@ -2070,7 +2070,7 @@ unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s) {
 const char* rolltui_layout_store_origin(const RolltuiLayoutStore* s, size_t* len) {
   return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
 }
-void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out) {
+void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetListRaw* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
 RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char* name, size_t len,
@@ -2360,7 +2360,7 @@ unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s)
 const char* rolltui_bindings_store_origin(const RolltuiBindingsStore* s, size_t* len) {
   return rolltui_preset_store_origin((const RolltuiPresetStore*)s, len);
 }
-void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out) {
+void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetListRaw* out) {
   rolltui_preset_store_list((const RolltuiPresetStore*)s, out);
 }
 RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const char* name, size_t len,

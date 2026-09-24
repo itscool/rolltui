@@ -220,7 +220,7 @@ unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
 void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist);
 
 /* REPLACES `*out` (its capacity, and each entry's string buffers, are reused). */
-void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out);
+void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetListRaw* out);
 
 /* A preset by name or path, as a value the caller OWNS and frees with
  * `rolltui_preset_store_value_free`; NULL with the report saying why. */

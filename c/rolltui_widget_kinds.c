@@ -1985,7 +1985,7 @@ typedef struct RolltuiThemeCtx {
  * choice. A no-op with no store: the editor keeps the built-in pair it starts on. */
 static void theme_ctx_sync_store(RolltuiThemeCtx* tc) {
   RolltuiThemePresetValue* v;
-  RolltuiPresetList list;
+  RolltuiPresetListRaw list;
   RolltuiStrListRaw names;
   RolltuiThemeReport rep;
   size_t i;
@@ -2509,7 +2509,7 @@ static void keys_ctx_load_rows(RolltuiKeysCtx* kc, const RolltuiBindings* rows) 
 /* The store's preset names into the Load choice. A no-op with no store: the editor still edits
  * the live table, it just has nowhere to put the result. */
 static void keys_ctx_sync_store(RolltuiKeysCtx* kc) {
-  RolltuiPresetList list;
+  RolltuiPresetListRaw list;
   RolltuiStrListRaw names;
   size_t i;
   if (!kc->store) return;

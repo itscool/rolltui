@@ -2063,24 +2063,14 @@ typedef struct RolltuiPresetInfo {
 } RolltuiPresetInfo;
 
 /* A caller-owned, reusable list of them. Zero-initialise; `_release` frees and zeroes it (a no-op on a zeroed list and on NULL); the
- * C++ destructor does that. */
-typedef struct RolltuiPresetList {
+ * C++ destructor does that.
+ * RolltuiPresetListRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiPresetList : public
+ * RolltuiPresetListRaw` reclaiming the name, with the destructor and accessors. */
+typedef struct RolltuiPresetListRaw {
   RolltuiPresetInfo* v ROLLTUI_DEFAULT(nullptr);
   size_t n ROLLTUI_DEFAULT(0);
   size_t cap ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiPresetList() = default;
-  RolltuiPresetList(const RolltuiPresetList&) = delete;
-  RolltuiPresetList& operator=(const RolltuiPresetList&) = delete;
-  ~RolltuiPresetList();
-  const RolltuiPresetInfo* begin() const { return v; }
-  const RolltuiPresetInfo* end() const { return v + n; }
-  size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  const RolltuiPresetInfo& operator[](size_t i) const { return v[i]; }
-#endif
-} RolltuiPresetList;
+} RolltuiPresetListRaw;
 
 #define ROLLTUI_SAVE_SAVED 0
 
@@ -2181,15 +2171,7 @@ typedef struct RolltuiSettingsReport {
   RolltuiStrListRaw notes; /* what the load kept, rewrote or ignored — notes are not problems */
 } RolltuiSettingsReport;
 
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
-void rolltui_preset_list_release(RolltuiPresetList* l);
-
-#ifdef __cplusplus
-/* The one method that cannot be inline in the struct: it calls a function declared after it.
- * Same placement, and same reason, as `RolltuiStr::~RolltuiStr` in `rolltui_str.h`. */
-inline RolltuiPresetList::~RolltuiPresetList() { rolltui_preset_list_release(this); }
-
-#endif
+void rolltui_preset_list_release(RolltuiPresetListRaw* l);
 
 /* ========================================================================================
  * swap — the double buffer, the newest entry point
@@ -2691,9 +2673,9 @@ int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const ch
 const char* rolltui_preset_save_result_text(int result, size_t* len);
 
 /* REPLACES `*out` (its capacity, and each entry's string buffers, are reused) — the result type every `_list` below fills.
- * Redeclared here: `RolltuiPresetList`'s own definition, in part 1, already forward-declares it for the inline C++ destructor to
- * call, and a reader working with `_list` wants it beside the calls that fill what it releases. */
-void rolltui_preset_list_release(RolltuiPresetList* l);
+ * Redeclared here: already declared in part 1 beside `RolltuiPresetListRaw`'s own definition, and a reader working with
+ * `_list` wants it beside the calls that fill what it releases. */
+void rolltui_preset_list_release(RolltuiPresetListRaw* l);
 
 /* Frees everything and zeroes the struct: safe on an already-zeroed one and on repeated calls (the "reset, not just release" contract of
  * every report here). */
@@ -2753,7 +2735,7 @@ unsigned long long rolltui_theme_store_version(const RolltuiThemeStore* s);
 const char* rolltui_theme_store_origin(const RolltuiThemeStore* s, size_t* len);
 
 /* The shipped ones first ("default" ahead of the rest), then this person's own that do not shadow a shipped name. REPLACES `*out`. */
-void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetList* out);
+void rolltui_theme_store_list(const RolltuiThemeStore* s, RolltuiPresetListRaw* out);
 
 /* A named preset's value WITHOUT switching to it — reading a theme's badges before choosing it, say. OWNED: free the result with
  * `rolltui_theme_preset_value_free`. NULL when no preset has that name (`report` says why). */
@@ -2859,7 +2841,7 @@ unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s);
 
 /* A BORROW of the origin's name alone, same as the theme store's. */
 const char* rolltui_layout_store_origin(const RolltuiLayoutStore* s, size_t* len);
-void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetList* out);
+void rolltui_layout_store_list(const RolltuiLayoutStore* s, RolltuiPresetListRaw* out);
 /* OWNED: free the result with `rolltui_layout_free`. */
 RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char* name, size_t len,
                                        RolltuiLayoutPresetReport* report);
@@ -2888,7 +2870,7 @@ unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s)
 
 /* A BORROW of the origin's name alone, same as the theme store's. */
 const char* rolltui_bindings_store_origin(const RolltuiBindingsStore* s, size_t* len);
-void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetList* out);
+void rolltui_bindings_store_list(const RolltuiBindingsStore* s, RolltuiPresetListRaw* out);
 /* OWNED: free the result with `rolltui_bindings_free`. */
 RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const char* name, size_t len,
                                             RolltuiBindingsPresetReport* report);
