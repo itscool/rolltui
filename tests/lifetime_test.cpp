@@ -261,7 +261,7 @@ void paint_something() {
 
 void probe_effect(void*, const RolltuiEffectSpec*, const RolltuiStyle*, const void*, const RolltuiEffectCell*,
                   RolltuiEffectOut* out) {
-  out->set_glyph("*", 1);
+  set_glyph(*out, "*", 1);
 }
 void note_unknown_effect(void* ctx, const char*, std::size_t) { *static_cast<bool*>(ctx) = true; }
 

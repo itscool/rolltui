@@ -44,8 +44,8 @@ RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
-void rolltui_input_spec_init(RolltuiInputSpec* s);
-void rolltui_input_spec_release(RolltuiInputSpec* s);
+void rolltui_input_spec_init(RolltuiInputSpecRaw* s);
+void rolltui_input_spec_release(RolltuiInputSpecRaw* s);
 
 
 RolltuiMenuItem* rolltui_menu_item_new(void);

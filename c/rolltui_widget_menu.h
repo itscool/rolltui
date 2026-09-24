@@ -77,7 +77,7 @@ void rolltui_input_check_release(RolltuiInputCheck* c);
  * cluster walk needs somewhere to work. CLAUDE.md's strategy 3 as amended: that is a missing
  * handle, not a new strategy, and inventing a stack buffer with a spill here would be the
  * exact mistake a stack buffer with a heap spill is. */
-void rolltui_check_input(const RolltuiInputSpec* spec, const char* text, size_t len,
+void rolltui_check_input(const RolltuiInputSpecRaw* spec, const char* text, size_t len,
                          RolltuiUnicodeScratch* u, RolltuiInputCheck* out);
 /* The type's name, and the reverse. A BORROW of a constant; NULL for an unknown name. */
 const char* rolltui_input_type_name(unsigned char type, size_t* len);
@@ -113,7 +113,7 @@ void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char
  * menu — the menu widget
  * ======================================================================================== */
 /* "1..100", "0.0..1.0 (2 digits)", "#rrggbb | 0-255 | none", … into a caller's string. */
-void rolltui_input_hint(const RolltuiInputSpec* spec, RolltuiStr* out);
+void rolltui_input_hint(const RolltuiInputSpecRaw* spec, RolltuiStr* out);
 /* The path from the root down, as a BORROW valid until the menu next navigates. */
 size_t rolltui_menu_path(const RolltuiMenu* m, const size_t** out);
 size_t rolltui_menu_selected(const RolltuiMenu* m);

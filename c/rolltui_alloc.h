@@ -20,7 +20,7 @@
  * THE SET. Four of CLAUDE.md's six need code here; the other two are API shapes and need
  * none — LENT is `Scratch` one level up, and CALLER-FILLED is a parameter.
  *
- *   1. VALUE / INLINE, with a stated SPILL — no code, a layout choice. `RolltuiCell`'s ten
+ *   1. VALUE / INLINE, with a stated SPILL — no code, a layout choice. `RolltuiCellRaw`'s ten
  *      inline glyph bytes spilling into the frame's table is the worked example.
  *   2. GROWING, AMORTISED  `rolltui_grow` / `rolltui_grow_zeroed` — a buffer APPENDED to,
  *      whose final size is not known. Doubles, never shrinks.

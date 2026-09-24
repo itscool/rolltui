@@ -2053,7 +2053,7 @@ int main() {
     set_input_text(windows.input("prompt"), std::string(30, 'x') + "\n" + std::string(30, 'y') + "\n" + std::string(200, 'z'));
     windows.prepare(s, box);
     check(s.find("prompt")->size == RolltuiSplitSize::fixed(RolltuiDim::abs(10)), "…and never more than half the parent's height");
-    windows.bind_note("prompt", [](void*, RolltuiNote* out) { out->text = "working"; });
+    windows.bind_note("prompt", [](void*, RolltuiNoteRaw* out) { out->text = "working"; });
     set_input_text(windows.input("prompt"), "hi");
     windows.prepare(s, box);
     check(s.find("prompt")->size == RolltuiSplitSize::fixed(RolltuiDim::abs(1)), "a note that fits beside one row of text adds nothing");

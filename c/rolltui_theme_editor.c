@@ -98,7 +98,7 @@ static int edit_equal(const Edit* a, const Edit* b) {
  * GROWING AMORTISED (strategy 2): rebuilt on every load and on any commit that introduces a
  * colour, appended one entry at a time. */
 typedef struct PaletteEntry {
-  RolltuiStyleColor color;
+  RolltuiStyleColorRaw color;
   RolltuiStr id;    /* the colour's own spelling — a choice's option id */
   RolltuiStr label; /* the id, prefixed by the `defs` name for that colour where there is one */
 } PaletteEntry;
@@ -152,7 +152,7 @@ static void list_add_action(RolltuiMenuItemList* l, const char* id, size_t id_le
 
 /* ---- colour text -------------------------------------------------------------------------- */
 
-static void color_id(RolltuiStyleColor c, char* buf, size_t cap, size_t* len) { *len = rolltui_color_to_string(c, buf, cap); }
+static void color_id(RolltuiStyleColorRaw c, char* buf, size_t cap, size_t* len) { *len = rolltui_color_to_string(c, buf, cap); }
 
 /* ---- "role.<name>.<field>": the id shape every colour and attribute field uses -------------
  * A ".custom" suffix is the typed-in form of the same field, so it resolves to the same one. */
@@ -451,7 +451,7 @@ static void palette_label(const RolltuiThemeEditor* e, const char* id, size_t le
     const char* k = rolltui_json_object_key_at(e->defs, i, &klen);
     const RolltuiJsonValue* v = rolltui_json_object_value_at(e->defs, i);
     const char* vs;
-    RolltuiStyleColor c;
+    RolltuiStyleColorRaw c;
     char buf[ROLLTUI_COLOR_STRING_MAX];
     if (!rolltui_json_is_string(v)) continue;
     vs = rolltui_json_as_string(v, "", 0, &vlen);
@@ -465,7 +465,7 @@ static void palette_label(const RolltuiThemeEditor* e, const char* id, size_t le
   rolltui_str_append(out, id, len);
 }
 
-static void palette_add(RolltuiThemeEditor* e, RolltuiStyleColor c) {
+static void palette_add(RolltuiThemeEditor* e, RolltuiStyleColorRaw c) {
   char buf[ROLLTUI_COLOR_STRING_MAX];
   size_t len = 0;
   PaletteEntry* p;
@@ -481,7 +481,7 @@ static void palette_add(RolltuiThemeEditor* e, RolltuiStyleColor c) {
 
 static void rebuild_palette(RolltuiThemeEditor* e) {
   size_t i;
-  RolltuiStyleColor none;
+  RolltuiStyleColorRaw none;
   for (i = 0; i < e->palette_n; ++i) {
     rolltui_str_free(&e->palette[i].id);
     rolltui_str_free(&e->palette[i].label);
@@ -519,7 +519,7 @@ const char* rolltui_theme_editor_palette_label(const RolltuiThemeEditor* e, size
   return e->palette[i].label.p;
 }
 
-int rolltui_theme_editor_palette_color(const RolltuiThemeEditor* e, size_t i, RolltuiStyleColor* out) {
+int rolltui_theme_editor_palette_color(const RolltuiThemeEditor* e, size_t i, RolltuiStyleColorRaw* out) {
   if (i >= e->palette_n) return 0;
   *out = e->palette[i].color;
   return 1;
@@ -814,7 +814,7 @@ void rolltui_theme_editor_status_line(const RolltuiThemeEditor* e, RolltuiStr* o
 
 /* ---- editing ------------------------------------------------------------------------------- */
 
-static void apply_field(RolltuiThemeEditor* e, const Field* f, RolltuiStyleColor c) {
+static void apply_field(RolltuiThemeEditor* e, const Field* f, RolltuiStyleColorRaw c) {
   RolltuiStyle* s = &style_table(e, e->mode)[f->role];
   if (f->name_len == 2 && memcmp(f->name, "fg", 2) == 0) s->fg = c;
   else if (f->name_len == 2 && memcmp(f->name, "bg", 2) == 0) s->bg = c;
@@ -910,7 +910,7 @@ int rolltui_theme_editor_focused_role(const RolltuiThemeEditor* e, unsigned char
   return 0;
 }
 
-int rolltui_theme_editor_highlighted_color(const RolltuiThemeEditor* e, RolltuiStyleColor* out) {
+int rolltui_theme_editor_highlighted_color(const RolltuiThemeEditor* e, RolltuiStyleColorRaw* out) {
   const RolltuiMenuItem* sel = rolltui_menu_selected_item(e->menu);
   const RolltuiMenuItem* level;
   Field f;
@@ -1054,7 +1054,7 @@ static void follow_menu(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
     const int editing = rolltui_menu_editing(e->menu) != 0;
     Field level_field = level ? field_of(level->id.p ? level->id.p : "", level->id.n) : (Field){0, NULL, 0, 0};
     if (field_is_colour(&level_field) && sel && !editing) {
-      RolltuiStyleColor c;
+      RolltuiStyleColorRaw c;
       if (rolltui_color_parse(sel->id.p ? sel->id.p : "", sel->id.n, &c)) {
         begin_preview(e);
         apply_field(e, &level_field, c);
@@ -1067,7 +1067,7 @@ static void follow_menu(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
       if (sf.ok) {
         size_t len = 0;
         const char* p = rolltui_input_text(rolltui_menu_editor(e->menu), &len);
-        RolltuiStyleColor c;
+        RolltuiStyleColorRaw c;
         begin_preview(e);
         /* The editing TEXT, never the item's value: that is the committed colour. */
         if (rolltui_color_parse(p, len, &c)) {
@@ -1121,7 +1121,7 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
   if (kind == ROLLTUI_MENU_EVENT_CHOOSE) {
     f = field_of(id.p ? id.p : "", id.n);
     if (f.ok) {
-      RolltuiStyleColor c;
+      RolltuiStyleColorRaw c;
       if (rolltui_color_parse(value.p ? value.p : "", value.n, &c)) { begin_preview(e); apply_field(e, &f, c); }
       commit_current(e, out);
     } else if (rolltui_str_eq(&id, K("mode"))) {
@@ -1156,7 +1156,7 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
     }
     f = field_of(id.p ? id.p : "", id.n);
     if (f.ok) {
-      RolltuiStyleColor c;
+      RolltuiStyleColorRaw c;
       if (rolltui_color_parse(value.p ? value.p : "", value.n, &c)) {
         begin_preview(e);
         apply_field(e, &f, c);

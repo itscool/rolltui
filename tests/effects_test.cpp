@@ -475,8 +475,8 @@ void host_sweep_kind(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styl
                      const RolltuiEffectCell* in, RolltuiEffectOut* out) {
   if ((in->index + static_cast<int>(in->elapsed_ms / 100)) % 2) return;
   out->has_style = 1;
-  out->style = styles[s->role(0)];  // never empty: the map substitutes its fallback
-  out->set_glyph("#", 1);
+  out->style = styles[role(*s, 0)];  // never empty: the map substitutes its fallback
+  set_glyph(*out, "#", 1);
 }
 
 // THE MISBEHAVING ONE. It tries every way a callback could corrupt a frame that the
@@ -485,7 +485,7 @@ void wide_liar_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle* styles,
                     const RolltuiEffectCell* in, RolltuiEffectOut* out) {
   out->has_style = 1;
   out->style = styles[static_cast<unsigned char>(Role::error)];
-  out->set_glyph(std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").data(), std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").size());  // 0 cells / 2 cells
+  set_glyph(*out, std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").data(), std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").size());  // 0 cells / 2 cells
 }
 
 // ---- rung 2, and the registry vocabulary — the direct C calls Effects.cpp's shim made

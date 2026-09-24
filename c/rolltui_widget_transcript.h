@@ -62,7 +62,7 @@ static ROLLTUI_INLINE void rolltui_entry_layout_release(RolltuiEntryLayout* L) {
   L->hidden_lines = 0;
 }
 
-int rolltui_selection_range_in(const RolltuiSelection* s, size_t entry, size_t len, size_t* begin, size_t* end);
+int rolltui_selection_range_in(const RolltuiSelectionRaw* s, size_t entry, size_t len, size_t* begin, size_t* end);
 
 /* THE SYNTAX HIGHLIGHTER, forwarded straight to `rolltui_md_render` — one seam, not two.
  * Setting it bumps an epoch, so a LATER highlighter re-lays everything rather than being
@@ -107,7 +107,7 @@ void rolltui_transcript_set_code_uncapped(RolltuiTranscript* t, const char* id, 
                                           int uncapped);
 int rolltui_transcript_match_at(const RolltuiTranscript* t, size_t i, RolltuiFindMatch* out);
 int rolltui_transcript_current_match(const RolltuiTranscript* t, RolltuiFindMatch* out);
-void rolltui_transcript_selection(const RolltuiTranscript* t, RolltuiSelection* out);
+void rolltui_transcript_selection(const RolltuiTranscript* t, RolltuiSelectionRaw* out);
 void rolltui_transcript_clear_selection(RolltuiTranscript* t);
 void rolltui_transcript_select(RolltuiTranscript* t, RolltuiTextPos anchor, RolltuiTextPos head);
 int rolltui_transcript_hit(const RolltuiTranscript* t, int x, int y, RolltuiTextPos* out);

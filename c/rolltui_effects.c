@@ -818,7 +818,7 @@ void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffe
     for (int i = 0; i < cells; ++i) {
       const int x = mx + i;
       if (x < 0 || x >= fw) continue;
-      RolltuiCell cell;
+      RolltuiCellRaw cell;
       rolltui_frame_cell(f, x, my, &cell); /* a COPY: the handle lends no reference into itself */
       /* Property 2, at its two edges: a continuation cell belongs to the glyph before it,
        * and a 2-cell glyph whose second half is outside the span is skipped WHOLE. */

@@ -890,7 +890,7 @@ void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner) {
  * the border reads as a tear: its cells are pulled toward the panel's background, most at the
  * border and none a dozen cells in, on a cosine that bottoms one step above nothing. ONLY IN
  * 24-BIT COLOUR: a blend is a colour the theme did not name. */
-static RolltuiStyle faded(RolltuiStyle st, RolltuiStyleColor ground, double keep) {
+static RolltuiStyle faded(RolltuiStyle st, RolltuiStyleColorRaw ground, double keep) {
   RolltuiStyle out;
   rolltui_style_fade(&st, ground, keep, &out);
   return out;
@@ -909,7 +909,7 @@ typedef struct Draw {
   RolltuiFrame* f;
   RolltuiDrawScratch* ds;
   RolltuiRect r;
-  RolltuiStyleColor ground;
+  RolltuiStyleColorRaw ground;
   int clipped;
 } Draw;
 

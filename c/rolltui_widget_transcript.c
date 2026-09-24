@@ -32,14 +32,14 @@ int rolltui_text_pos_less(const RolltuiTextPos* a, const RolltuiTextPos* b) {
   return a->length < b->length;
 }
 
-static RolltuiTextPos sel_first(const RolltuiSelection* s) {
+static RolltuiTextPos sel_first(const RolltuiSelectionRaw* s) {
   return rolltui_text_pos_less(&s->head, &s->anchor) ? s->head : s->anchor;
 }
-static RolltuiTextPos sel_last(const RolltuiSelection* s) {
+static RolltuiTextPos sel_last(const RolltuiSelectionRaw* s) {
   return rolltui_text_pos_less(&s->head, &s->anchor) ? s->anchor : s->head;
 }
 
-int rolltui_selection_range_in(const RolltuiSelection* s, size_t entry, size_t len, size_t* begin,
+int rolltui_selection_range_in(const RolltuiSelectionRaw* s, size_t entry, size_t len, size_t* begin,
                                size_t* end) {
   RolltuiTextPos f, l;
   size_t b, e;
@@ -127,7 +127,7 @@ struct RolltuiTranscript {
   RolltuiRect area_, text_area_;
   RolltuiTranscriptOptions opt_;
   RolltuiScrollAnchor scroll_;
-  RolltuiSelection sel_;
+  RolltuiSelectionRaw sel_;
 
   RolltuiMdHighlightFn highlight_;
   void* highlight_ctx_;
@@ -929,8 +929,8 @@ static void draw_cell(void* ctx, const RolltuiMdSpan* sp, size_t k, const char* 
   selected = c->fully || (c->in_sel && src != ROLLTUI_MD_NO_SOURCE && src >= c->sb && src < c->se);
   st = c->styles[sp->role];
   if (sp->bg_role != ROLLTUI_MD_NO_ROLE) { /* code, on its block's ground, unless its own role has a ground that is not just the window's */
-    const RolltuiStyleColor* ground = &c->styles[c->roles->background].bg;
-    const RolltuiStyleColor* under = &c->styles[sp->bg_role].bg;
+    const RolltuiStyleColorRaw* ground = &c->styles[c->roles->background].bg;
+    const RolltuiStyleColorRaw* under = &c->styles[sp->bg_role].bg;
     const int plain = st.bg.kind == 0 || (st.bg.kind == ground->kind && st.bg.index == ground->index && st.bg.r == ground->r && st.bg.g == ground->g && st.bg.b == ground->b);
     if (plain && under->kind != 0) st.bg = *under;
   }
@@ -1223,7 +1223,7 @@ int rolltui_transcript_hit(const RolltuiTranscript* ct, int x, int y, RolltuiTex
   return hit_row(t, &r, x, out);
 }
 
-void rolltui_transcript_selection(const RolltuiTranscript* t, RolltuiSelection* out) { *out = t->sel_; }
+void rolltui_transcript_selection(const RolltuiTranscript* t, RolltuiSelectionRaw* out) { *out = t->sel_; }
 void rolltui_transcript_clear_selection(RolltuiTranscript* t) { memset(&t->sel_, 0, sizeof t->sel_); }
 void rolltui_transcript_select(RolltuiTranscript* t, RolltuiTextPos anchor, RolltuiTextPos head) {
   t->sel_.anchor = anchor;

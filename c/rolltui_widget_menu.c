@@ -155,7 +155,7 @@ static void check_begin(RolltuiInputCheck* c) {
 
 /* ---- the hint ---------------------------------------------------------------------------- */
 
-static void hint_bound(const RolltuiInputSpec* spec, double v, int is_min, RolltuiStr* out) {
+static void hint_bound(const RolltuiInputSpecRaw* spec, double v, int is_min, RolltuiStr* out) {
   char buf[64];
   if ((is_min && v <= -1e15) || (!is_min && v >= 1e15)) {
     str_add(out, "any");
@@ -166,7 +166,7 @@ static void hint_bound(const RolltuiInputSpec* spec, double v, int is_min, Rollt
   str_add(out, buf);
 }
 
-void rolltui_input_hint(const RolltuiInputSpec* spec, RolltuiStr* out) {
+void rolltui_input_hint(const RolltuiInputSpecRaw* spec, RolltuiStr* out) {
   rolltui_str_clear(out);
   if (spec->hint.n) {
     rolltui_str_set(out, spec->hint.p, spec->hint.n);
@@ -225,7 +225,7 @@ int rolltui_input_type_from_name(const char* name, size_t len, unsigned char* ou
 
 /* Every check builds its reason out of the hint, so the hint is computed once here and lent
  * to whichever branch needs it. */
-static void empty_rule(const RolltuiInputSpec* spec, const RolltuiStr* range, const char* noun,
+static void empty_rule(const RolltuiInputSpecRaw* spec, const RolltuiStr* range, const char* noun,
                        RolltuiInputCheck* c) {
   c->valid = spec->optional;
   if (!spec->optional) {
@@ -238,7 +238,7 @@ static void empty_rule(const RolltuiInputSpec* spec, const RolltuiStr* range, co
   }
 }
 
-static void check_int(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_int(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   RolltuiStr range;
   NumParts p;
   double v, signed_v;
@@ -297,7 +297,7 @@ done:
   rolltui_str_free(&range);
 }
 
-static void check_float(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_float(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   RolltuiStr range;
   NumParts p;
   int reachable;
@@ -395,10 +395,10 @@ static int is_prefix_ci(const char* text, size_t n, const char* word) {
   return 1;
 }
 
-static void check_color(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_color(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   static const char* const kHint = "#rrggbb | 0-255 | none";
   int prefix = n == 0 || is_prefix_ci(text, n, "none");
-  RolltuiStyleColor col;
+  RolltuiStyleColorRaw col;
   if (!prefix && text[0] == '#') {
     size_t i;
     prefix = n <= 7;
@@ -471,9 +471,9 @@ static int dim_prefix(const char* t, size_t n, int size) {
   return 1;
 }
 
-static void check_size(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_size(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   static const char* const kHint = "fill | fill N | N% | N% \xC2\xB1 cells | cells";
-  RolltuiSplitSize s;
+  RolltuiSplitSizeRaw s;
   if (!dim_prefix(text, n, 1)) {
     str_add(&c->reason, "not the start of a size (");
     str_add(&c->reason, kHint);
@@ -502,7 +502,7 @@ static void check_size(const RolltuiInputSpec* spec, const char* text, size_t n,
   str_add(&c->reason, ")");
 }
 
-static void check_dim(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_dim(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   static const char* const kHint = "cells | N% | N% \xC2\xB1 cells";
   RolltuiDim d;
   int have = 0;
@@ -540,7 +540,7 @@ static void check_dim(const RolltuiInputSpec* spec, const char* text, size_t n, 
   str_add(&c->reason, ")");
 }
 
-static void check_name(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
+static void check_name(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
   static const char* const kHint = "letters, digits, - _ . (no leading dot)";
   const size_t cap = spec->max_len ? spec->max_len : 64;
   size_t i;
@@ -574,7 +574,7 @@ static void check_name(const RolltuiInputSpec* spec, const char* text, size_t n,
   rolltui_str_set(&c->canonical, text, n);
 }
 
-static void check_text(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiUnicodeScratch* u,
+static void check_text(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiUnicodeScratch* u,
                        RolltuiInputCheck* c) {
   size_t len = 0;
   char buf[64];
@@ -611,7 +611,7 @@ static void check_text(const RolltuiInputSpec* spec, const char* text, size_t n,
   rolltui_str_set(&c->canonical, text, n);
 }
 
-void rolltui_check_input(const RolltuiInputSpec* spec, const char* text, size_t len,
+void rolltui_check_input(const RolltuiInputSpecRaw* spec, const char* text, size_t len,
                          RolltuiUnicodeScratch* u, RolltuiInputCheck* out) {
   check_begin(out);
   switch (spec->type) {
@@ -1049,7 +1049,7 @@ RolltuiMenu* rolltui_menu_new(void) {
    * one, which is rule 5's tell again. A caller wanting a different editor shape still calls
    * `rolltui_input_set_options` on `rolltui_menu_editor(m)`. */
   {
-    RolltuiInputOptions o;
+    RolltuiInputOptionsRaw o;
     rolltui_input_options_init(&o);
     o.single_line = 1;
     rolltui_str_clear(&o.prompt); /* a field is not a prompt */
@@ -1436,7 +1436,7 @@ static RolltuiMenuItem* dropdown_item(RolltuiMenu* m) {
 /* A colour SPELLED in a string: a plain spelling ("#d8dce2", "38", "none"), or a name followed by one
  * ("a1 = #49b1ff", which is how the theme editor labels a palette entry). Case is folded, as the input's
  * own colour check folds it. */
-static int menu_colour_of(const char* s, size_t n, RolltuiStyleColor* out) {
+static int menu_colour_of(const char* s, size_t n, RolltuiStyleColorRaw* out) {
   char buf[64];
   size_t i, start = 0;
   if (!s || n == 0) return 0;
@@ -1648,7 +1648,7 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
     rolltui_str_append_str(&line, o->label.n ? &o->label : &o->id);
     used_w = rolltui_frame_put_text(f, draw, box.x + 2, box.y + 2 + r, line.p, line.n, st, box.w - 4, aw, 0);
     if (it->swatch) {
-      RolltuiStyleColor c;
+      RolltuiStyleColorRaw c;
       const RolltuiStr* spelled = o->id.n ? &o->id : &o->label;
       if (menu_colour_of(spelled->p, spelled->n, &c) && used_w + 3 <= box.w - 4)
         rolltui_frame_put_swatch(f, draw, box.x + 2 + used_w + 1, box.y + 2 + r, c, st, 2, aw);
@@ -2086,7 +2086,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
    * unselected item's chord, the Back row) resolves it against the menu's ambient row ground,
    * the same move `name_style.bg = base.bg` already makes a few lines down for the VALUE role —
    * this is that same fix, generalised so the next role that says "none" gets it for free. */
-  const RolltuiStyleColor ground = styles[roles->item].bg;
+  const RolltuiStyleColorRaw ground = styles[roles->item].bg;
   size_t vis_n;
   int y = a.y, rows, r;
   RolltuiStr line;
@@ -2228,7 +2228,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       /* A COLOUR BEING TYPED SHOWS AS ONE, as it is typed: the swatch takes the row's last two cells and the field
        * gives up three, and it is hollow until the text parses. */
       if (item_shows_swatch(it) && field.w > 8) {
-        RolltuiStyleColor typed;
+        RolltuiStyleColorRaw typed;
         size_t tn = 0;
         const char* tx = rolltui_input_text(m->edit, &tn);
         memset(&typed, 0, sizeof typed);
@@ -2237,13 +2237,13 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
         rolltui_frame_put_swatch(f, draw, x0 + w - 2, y + r, typed, base, 2, aw);
       }
       if (field.w > 0) {
-        /* THE COMPARISON, NOT A COPY — and a stack `RolltuiInputOptions o;` is GARBAGE in C,
+        /* THE COMPARISON, NOT A COPY — and a stack `RolltuiInputOptionsRaw o;` is GARBAGE in C,
          * where the C++'s default member initializers made the same line safe. The first cut
          * copied into one and ASan caught the write through its uninitialised prompt pointer.
          * Both halves of the fix are the same one: build the copy only when something
          * actually differs, which on a steady frame is never. */
         if (rolltui_input_options(m->edit)->ambiguous_wide != (unsigned char)(aw != 0)) {
-          RolltuiInputOptions o;
+          RolltuiInputOptionsRaw o;
           memset(&o, 0, sizeof o);
           rolltui_input_options_copy(&o, rolltui_input_options(m->edit));
           o.ambiguous_wide = (unsigned char)(aw != 0);
@@ -2259,7 +2259,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       RolltuiStr right;
       int rw, left_max, used, rx;
       size_t split = 0;
-      RolltuiStyleColor swatch_colour;
+      RolltuiStyleColorRaw swatch_colour;
       int swatch_on = 0;
       /* A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. The name is drawn as every other
        * row's is — a muted name beside a bright toggle reads as a DISABLED row, which is the
@@ -2332,7 +2332,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       /* THE SWATCH OF A COLOUR THAT IS THE ROW'S OWN TEXT — a colour input's value, or an option of a choice whose
        * options are colours — sits just after it. (A choice's own answer takes its swatch in the right column.) */
       if (!m->palette && it->kind != ROLLTUI_MENU_CHOICE) {
-        RolltuiStyleColor sc;
+        RolltuiStyleColorRaw sc;
         const RolltuiMenuItem* lvl = rolltui_menu_level(m);
         int show = 0;
         if (it->kind == ROLLTUI_MENU_INPUT && item_shows_swatch(it)) {
@@ -2748,8 +2748,8 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
   if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
 
   if (it->kind == ROLLTUI_MENU_INPUT) {
-    RolltuiInputSpec d;
-    const RolltuiInputSpec* s = &it->spec;
+    RolltuiInputSpecRaw d;
+    const RolltuiInputSpecRaw* s = &it->spec;
     rolltui_input_spec_init(&d);
     if (s->type != d.type) {
       size_t tlen = 0;

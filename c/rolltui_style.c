@@ -61,14 +61,14 @@ int rolltui_effect_state_from_name(const char* name, size_t len) {
   return -1;
 }
 
-static RolltuiStyleColor color_toward(RolltuiStyleColor c, RolltuiStyleColor ground, double keep) {
+static RolltuiStyleColorRaw color_toward(RolltuiStyleColorRaw c, RolltuiStyleColorRaw ground, double keep) {
   if (c.kind != 2 /* Rgb */ || ground.kind != 2) return c;
   c.r = (unsigned char)(ground.r + (c.r - ground.r) * keep + 0.5);
   c.g = (unsigned char)(ground.g + (c.g - ground.g) * keep + 0.5);
   c.b = (unsigned char)(ground.b + (c.b - ground.b) * keep + 0.5);
   return c;
 }
-void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double keep, RolltuiStyle* out) {
+void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out) {
   RolltuiStyle s = *st;
   if (keep < 0) keep = 0;
   if (keep > 1) keep = 1;
@@ -77,7 +77,7 @@ void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double
   *out = s;
 }
 
-void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColor ground) {
+void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColorRaw ground) {
   if (st->fg.kind == 0) st->fg = ground;
   if (st->bg.kind == 0) st->bg = ground;
 }

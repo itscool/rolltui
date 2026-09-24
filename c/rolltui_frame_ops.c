@@ -72,7 +72,7 @@ int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len
  * The eighth-blocks are East Asian AMBIGUOUS, and a terminal that draws those two cells wide would
  * smear the swatch across four. There a bracket pair is the outline instead — ASCII, one cell everywhere.
  * A terminal that draws no colour has nothing for a swatch to show, and gets nothing. */
-int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
                              RolltuiStyle frame, int max_cells, int ambiguous_wide) {
   RolltuiStyle st = frame;
   (void)s;
@@ -90,7 +90,7 @@ int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int 
   return 2;
 }
 
-int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
                              RolltuiStyle text_style, int max_cells, int ambiguous_wide) {
   char buf[ROLLTUI_COLOR_STRING_MAX];
   const size_t n = rolltui_color_to_string(colour, buf, sizeof buf);
@@ -165,7 +165,7 @@ static unsigned char toward(unsigned char from, unsigned char to, double t) {
 }
 
 /* One colour of a style, shaded: see `rolltui_frame_shade` in the header for the three cases. */
-static void shade_color(RolltuiStyleColor* c, RolltuiStyleColor to, double t, unsigned char* dim) {
+static void shade_color(RolltuiStyleColorRaw* c, RolltuiStyleColorRaw to, double t, unsigned char* dim) {
   if (to.kind == 0 /* Color::Kind::None */) return;
   if (t >= 1.0) { *c = to; return; }
   if (c->kind == 2 /* Rgb */ && to.kind == 2) {
@@ -192,7 +192,7 @@ void rolltui_frame_shade(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, dou
   }
   for (yy = c.y; yy < c.y + c.h; ++yy)
     for (xx = c.x; xx < c.x + c.w; ++xx) {
-      RolltuiCell cell;
+      RolltuiCellRaw cell;
       RolltuiStyle st;
       unsigned char dim_fg = 0, dim_bg = 0;
       rolltui_frame_cell(f, xx, yy, &cell);
@@ -223,7 +223,7 @@ void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style) {
     for (xx = c.x; xx < c.x + c.w; ++xx) {
       /* Read, amend, write back: the handle hands out a COPY of the cell, so the style a
        * widget drew is not a reference to reach through. */
-      RolltuiCell cell;
+      RolltuiCellRaw cell;
       RolltuiStyle st;
       rolltui_frame_cell(f, xx, yy, &cell);
       st = cell.style;

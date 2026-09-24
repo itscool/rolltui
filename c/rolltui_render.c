@@ -25,7 +25,7 @@ typedef struct {
   int have;
 } SgrState;
 
-static int color_eq(const RolltuiStyleColor* a, const RolltuiStyleColor* b) {
+static int color_eq(const RolltuiStyleColorRaw* a, const RolltuiStyleColorRaw* b) {
   return a->kind == b->kind && a->index == b->index && a->r == b->r && a->g == b->g &&
          a->b == b->b;
 }
@@ -42,7 +42,7 @@ static int style_eq(const RolltuiStyle* a, const RolltuiStyle* b) {
  * frames, never by their per-frame index: a spill index and a link id mean nothing outside
  * the frame that minted them (`rolltui_screen.h`). */
 static int same(const RolltuiFrame* a, const RolltuiFrame* b, int x, int y) {
-  RolltuiCell p, q;
+  RolltuiCellRaw p, q;
   rolltui_frame_cell(a, x, y, &p);
   rolltui_frame_cell(b, x, y, &q);
   if (p.width != q.width || p.continuation != q.continuation) return 0;
@@ -65,7 +65,7 @@ static void emit_run(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int 
   put_cup(out, x0, y);
   unsigned int link = 0;
   for (int x = x0; x < x1; ++x) {
-    RolltuiCell c;
+    RolltuiCellRaw c;
     rolltui_frame_cell(f, x, y, &c);
     if (c.continuation) continue;
     if (c.link != link) { /* before the SGR, so a link closes right after its last glyph */
@@ -116,7 +116,7 @@ void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out) {
   for (int y = 0; y < h; ++y) {
     rolltui_str_clear(&row); /* keeps the capacity: one buffer for every row of every call */
     for (int x = 0; x < w; ++x) {
-      RolltuiCell c;
+      RolltuiCellRaw c;
       rolltui_frame_cell(f, x, y, &c);
       if (c.continuation) continue;
       size_t glen = 0;
@@ -155,7 +155,7 @@ void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, uns
         continue;
       }
       int start = x;
-      RolltuiCell c;
+      RolltuiCellRaw c;
       rolltui_frame_cell(next, start, y, &c);
       /* Rewrite a wide glyph WHOLE: if the first changed cell is the second half of a
        * two-cell glyph, back up so its lead cell is re-emitted too. Emitting only the tail

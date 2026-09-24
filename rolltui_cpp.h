@@ -38,7 +38,17 @@
  * `rolltui.h` already declares them.
  */
 
+#include <cstddef>
+#include <cstring>
+#include <utility>
+
 #include "rolltui/rolltui.h"
+
+/* Forward: RolltuiStyle's operator== below compares nested RolltuiStyleColorRaw fields, and needs
+ * this visible at its own definition (an ordinary function's body resolves names where it is
+ * written, unlike a template's two-phase lookup) — the real definition is with the rest of
+ * RolltuiStyleColor's C++ half, further down. */
+bool operator==(const RolltuiStyleColorRaw& a, const RolltuiStyleColorRaw& b);
 
 /* ---- pure operators: every field compared, no membership needed --------------------------- */
 
@@ -92,5 +102,157 @@ inline RolltuiRect intersect(const RolltuiRect& a, const RolltuiRect& o) {
   rolltui_rect_intersect(a.x, a.y, a.w, a.h, o.x, o.y, o.w, o.h, r);
   return RolltuiRect{r[0], r[1], r[2], r[3]};
 }
+
+/* ---- rename + derive: static factories and instance methods, none of them ever called on a
+ * NESTED field of another struct (checked per type before it landed here — a false assumption
+ * would show up as a compile error at the one real call site, not silently). */
+
+class RolltuiStyleColor : public RolltuiStyleColorRaw {
+ public:
+  RolltuiStyleColor() = default;
+  constexpr RolltuiStyleColor(const RolltuiStyleColorRaw& r) : RolltuiStyleColorRaw(r) {}  // NOLINT(google-explicit-constructor)
+  static constexpr RolltuiStyleColor none() { return {}; }
+  static constexpr RolltuiStyleColor indexed(unsigned char i) {
+    RolltuiStyleColor c;
+    c.kind = Kind::Indexed;
+    c.index = i;
+    return c;
+  }
+  static constexpr RolltuiStyleColor rgb(unsigned char red, unsigned char green, unsigned char blue) {
+    RolltuiStyleColor c;
+    c.kind = Kind::Rgb;
+    c.r = red;
+    c.g = green;
+    c.b = blue;
+    return c;
+  }
+};
+inline bool operator==(const RolltuiStyleColorRaw& a, const RolltuiStyleColorRaw& b) {
+  return a.kind == b.kind && a.index == b.index && a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+class RolltuiCell : public RolltuiCellRaw {
+ public:
+  RolltuiCell() = default;
+  static constexpr unsigned char kInlineGlyph = ROLLTUI_CELL_INLINE_GLYPH;
+  static constexpr unsigned char kSpilled = ROLLTUI_CELL_SPILLED;
+  bool spilled() const { return len == kSpilled; }
+};
+inline bool operator==(const RolltuiCellRaw& a, const RolltuiCellRaw& b) {
+  if (a.link != b.link || a.style != b.style || a.len != b.len || a.width != b.width ||
+      a.continuation != b.continuation)
+    return false;
+  for (unsigned char i = 0; i < ROLLTUI_CELL_INLINE_GLYPH; ++i)
+    if (a.bytes[i] != b.bytes[i]) return false;
+  return true;
+}
+
+class RolltuiInputSelection : public RolltuiInputSelectionRaw {
+ public:
+  RolltuiInputSelection() = default;
+  size_t begin() const { return anchor < head ? anchor : head; }
+  size_t end() const { return anchor < head ? head : anchor; }
+  bool empty() const { return !active || anchor == head; }
+};
+inline bool operator==(const RolltuiInputSelectionRaw& a, const RolltuiInputSelectionRaw& b) {
+  return a.anchor == b.anchor && a.head == b.head && a.active == b.active;
+}
+
+/* `range_in` is dropped: declared with no definition anywhere and no caller — the real work
+ * already happens through `rolltui_selection_range_in` (c/rolltui_widget_transcript.h). */
+class RolltuiSelection : public RolltuiSelectionRaw {
+ public:
+  RolltuiSelection() = default;
+  bool empty() const { return !active; }
+  RolltuiTextPos first() const { return rolltui_text_pos_less(&head, &anchor) ? head : anchor; }
+  RolltuiTextPos last() const { return rolltui_text_pos_less(&head, &anchor) ? anchor : head; }
+};
+
+/* RolltuiEffectOut/RolltuiEffectSpec stay their ORIGINAL, unrenamed selves — free functions only,
+ * no derive — because both cross a real plugin boundary: a host's own `RolltuiEffectFn`
+ * implementation receives them as `const RolltuiEffectSpec*`/`RolltuiEffectOut*` callback
+ * PARAMETERS (rolltui.h's own typedef), and calls a method through that pointer with `->`, not
+ * `.` — `s->role(0)`, `out->set_glyph(...)` (tests/effects_test.cpp's `host_sweep_kind`). The
+ * pointer's static type is fixed by the callback signature; a method on a derived class would
+ * not be reachable through it, the same reason RolltuiRect's methods are free functions above. */
+inline void set_glyph(RolltuiEffectOut& out, const char* g, std::size_t n) {
+  out.has_glyph = 1;
+  out.glyph_len = n;
+  if (n <= ROLLTUI_EFFECT_GLYPH_MAX && n != 0) std::memcpy(out.glyph, g, n);
+}
+inline std::size_t roles_size(const RolltuiEffectSpec& s) { return s.role_count; }
+inline unsigned char role(const RolltuiEffectSpec& s, std::size_t i) { return s.roles[i % s.role_count]; }
+
+class RolltuiSplitSize : public RolltuiSplitSizeRaw {
+ public:
+  RolltuiSplitSize() = default;
+  constexpr RolltuiSplitSize(const RolltuiSplitSizeRaw& r) : RolltuiSplitSizeRaw(r) {}  // NOLINT(google-explicit-constructor)
+  static constexpr RolltuiSplitSize fixed(RolltuiDim d) {
+    RolltuiSplitSize s{};
+    s.fill = 0;
+    s.weight = 1;
+    s.dim = d;
+    return s;
+  }
+  static constexpr RolltuiSplitSize filling(int w = 1) {
+    RolltuiSplitSize s{};
+    s.fill = 1;
+    s.weight = w;
+    return s;
+  }
+};
+inline bool operator==(const RolltuiSplitSizeRaw& a, const RolltuiSplitSizeRaw& b) {
+  return a.fill == b.fill && a.weight == b.weight && a.dim == b.dim;
+}
+
+class RolltuiInputOptions : public RolltuiInputOptionsRaw {
+ public:
+  /* The default prompt: the one special member `RolltuiInputOptions` had beyond field defaults. */
+  RolltuiInputOptions() { rolltui_str_set(&prompt, "> ", 2); }
+  /* `operator==` is dropped here too: declared with no definition anywhere and no caller. */
+};
+
+class RolltuiInputSpec : public RolltuiInputSpecRaw {
+ public:
+  RolltuiInputSpec() = default;
+  RolltuiInputSpec clone() const {
+    RolltuiInputSpec out;
+    rolltui_input_spec_copy(&out, this);
+    return out;
+  }
+};
+inline bool operator==(const RolltuiInputSpecRaw& a, const RolltuiInputSpecRaw& b) {
+  return rolltui_input_spec_equal(&a, &b) != 0;
+}
+
+/* RolltuiMenuItem/RolltuiMenuItemList stay their ORIGINAL, unrenamed selves — not touched at all.
+ * `RolltuiMenuItem::children` IS a `RolltuiMenuItemList`, and `.children.push_back(...)`/`.size()`/
+ * `.empty()`/`.clear()`/iteration are called on that NESTED field at ~80 call sites across
+ * tools/ and tests/ — converting all of them to free-function syntax is a much bigger, riskier
+ * mechanical change than this pass is for, and RolltuiMenuItemList's element type BEING
+ * RolltuiMenuItem means the two cannot be split apart from each other either. Left as they were. */
+
+class RolltuiNote : public RolltuiNoteRaw {
+ public:
+  // No constructor, destructor or assignment beyond the converting ones below: `text` (a `RolltuiStr`) already has correct copy, move
+  // and destroy.
+  RolltuiNote() = default;
+  // Implicit from a C string on purpose: a host with no motion to report writes `return "working";`. Anything else sets the text by
+  // pointer and length.
+  RolltuiNote(const char* t) { text.assign(t); }  // NOLINT(google-explicit-constructor)
+  RolltuiNote(const char* t, std::size_t n, rolltui::EffectState s, unsigned long long since = 0) {
+    state = s;
+    since_ms = since;
+    text.assign(t, n);
+  }
+  // Text only: the state and its clock reset, which is what "a plain note" means.
+  RolltuiNote& set(const char* t, std::size_t n) {
+    text.assign(t, n);
+    state = static_cast<rolltui::EffectState>(0);
+    since_ms = 0;
+    return *this;
+  }
+  RolltuiNote& operator=(const char* t) { return set(t, t ? std::strlen(t) : 0); }
+};
 
 #endif /* ROLLTUI_CPP_H */

@@ -82,13 +82,13 @@ int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
-void rolltui_input_options_init(RolltuiInputOptions* o);
+void rolltui_input_options_init(RolltuiInputOptionsRaw* o);
 RolltuiInput* rolltui_input_new(void);
 void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */
 void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
 size_t rolltui_input_caret(const RolltuiInput* in);
 void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
-void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelection* out);
+void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelectionRaw* out);
 /* The selected bytes, a BORROW into the text; `*len` 0 when there is no selection. */
 const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len);
 void rolltui_input_select_all(RolltuiInput* in);

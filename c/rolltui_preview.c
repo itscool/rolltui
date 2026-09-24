@@ -749,12 +749,12 @@ static void render_md(RolltuiPreview* pv, int width, int aw) {
 
 /* The document, laid out at this width and drawn line by line in the theme's markdown roles. A span whose role
  * states no background stands on the ground under it, as the text of every window now does. */
-static int same_colour(const RolltuiStyleColor* a, const RolltuiStyleColor* b) {
+static int same_colour(const RolltuiStyleColorRaw* a, const RolltuiStyleColorRaw* b) {
   return a->kind == b->kind && a->index == b->index && a->r == b->r && a->g == b->g && a->b == b->b;
 }
 
 static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, const RolltuiStyle* styles,
-                          RolltuiStyleColor ground, int aw, int pinned) {
+                          RolltuiStyleColorRaw ground, int aw, int pinned) {
   int row;
   size_t n;
   if (!pv->md_doc) return;
@@ -790,7 +790,7 @@ static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body,
        * theme gives every role one) stands on what is under the span, and a role with a ground of its own (a diff's removed
        * line) keeps it. */
       if (sp->bg_role != ROLLTUI_MD_NO_ROLE && (st.bg.kind == 0 || same_colour(&st.bg, &ground))) {
-        const RolltuiStyleColor under = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, sp->bg_role)->bg;
+        const RolltuiStyleColorRaw under = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, sp->bg_role)->bg;
         if (under.kind != 0) st.bg = under;
       }
       if (st.bg.kind == 0) st.bg = ground;
@@ -814,7 +814,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
                           int ambiguous_wide, int focused) {
   RolltuiStyle text, dim, head, err;
   RolltuiStyle cs[ROLLTUI_SYN_COUNT];
-  RolltuiStyleColor ground;
+  RolltuiStyleColorRaw ground;
   RolltuiRect body;
   size_t name_n = 0;
   const char* name;

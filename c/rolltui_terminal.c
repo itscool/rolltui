@@ -447,7 +447,7 @@ static long ms_until(const struct timespec* deadline) {
 
 /* ---- what the terminal is: the facts, remembered ------------------------------------------- */
 
-static int same_colour(RolltuiStyleColor a, RolltuiStyleColor b) {
+static int same_colour(RolltuiStyleColorRaw a, RolltuiStyleColorRaw b) {
   return a.kind == b.kind && a.r == b.r && a.g == b.g && a.b == b.b && a.index == b.index;
 }
 
@@ -557,7 +557,7 @@ static void remember(RolltuiTerminal* t, const RolltuiTermReplies* rep) {
 /* A background reply that arrived AFTER the exchange — the re-check of a remembered one, or a slow
  * terminal's late answer. It updates the facts and the memory, and owes the host a FACTS event
  * only when it changes what the host was told. */
-static void late_background(RolltuiTerminal* t, RolltuiStyleColor c) {
+static void late_background(RolltuiTerminal* t, RolltuiStyleColorRaw c) {
   RolltuiTermFacts* f = &t->facts;
   const unsigned char mode = (unsigned char)rolltui_mode_for_background(c);
   f->background = c;
@@ -846,7 +846,7 @@ int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, in
   return found;
 }
 
-int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out) {
+int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColorRaw* out) {
   if (!t->tty) return 0;
   rolltui_terminal_write(t, "\x1b]11;?\x1b\\", 8); /* ESC ] 1 1 ; ? ESC \ */
   char* buf = NULL;

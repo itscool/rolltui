@@ -86,15 +86,15 @@ static void scroll_text_base_layout(RolltuiScrollTextBase* b, const RolltuiResol
  * on the ground the line is drawn over. */
 typedef void (*ScrollLinePaint)(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* text,
                                 size_t len, int cells, size_t src_line, int first, RolltuiStyle plain,
-                                RolltuiStyleColor ground, int ambiguous_wide);
+                                RolltuiStyleColorRaw ground, int ambiguous_wide);
 
 /* TEXT IS DRAWN ON THE WINDOW'S OWN GROUND. A window's fill is whatever the layout gave it — the screen's
  * background, or a popup's panel — and the text role's background is the SCREEN's; drawing every line with it
  * cut a darker slab out of a popup, a box of text on a box. Only the text role's foreground and attributes are
  * taken, the way a menu row takes its value's; the ground is what is already in the frame under the line. */
-static RolltuiStyleColor scroll_text_ground(const RolltuiFrame* f, int x, int y) {
-  RolltuiCell under;
-  RolltuiStyleColor none;
+static RolltuiStyleColorRaw scroll_text_ground(const RolltuiFrame* f, int x, int y) {
+  RolltuiCellRaw under;
+  RolltuiStyleColorRaw none;
   memset(&none, 0, sizeof none);
   if (x < 0 || y < 0 || x >= rolltui_frame_width(f) || y >= rolltui_frame_height(f)) return none;
   memset(&under, 0, sizeof under);
@@ -150,7 +150,7 @@ static int scroll_text_base_draw_with(RolltuiScrollTextBase* b, const RolltuiRes
       size_t gn;
       int width, indent, hard;
       RolltuiStyle plain = styles[b->roles.text];
-      const RolltuiStyleColor ground = scroll_text_ground(f, r.x, y);
+      const RolltuiStyleColorRaw ground = scroll_text_ground(f, r.x, y);
       rolltui_wrap_line(b->wrap, i, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
       plain.bg = ground;
       if (paint)
@@ -582,7 +582,7 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
  * are named (the breadcrumb's role, bold), a chord as a hotkey is drawn everywhere else (the shortcut role, on
  * whatever ground it stands), `(unbound)` muted, and the description as text. */
 static void help_paint(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* t, size_t n,
-                       int cells, size_t src, int first, RolltuiStyle plain, RolltuiStyleColor ground, int aw) {
+                       int cells, size_t src, int first, RolltuiStyle plain, RolltuiStyleColorRaw ground, int aw) {
   RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
   const RolltuiStyle* styles = rolltui_windows_styles(h->base.w);
   const RolltuiMenuRoles* mr = rolltui_windows_menu_roles(h->base.w);
@@ -1254,7 +1254,7 @@ typedef struct RolltuiInputCtx {
   RolltuiBuiltinRoles roles;
   RolltuiUnicodeScratch* uscratch;
   RolltuiDrawScratch* draw;
-  RolltuiNote note; /* reused scratch for note_info() */
+  RolltuiNoteRaw note; /* reused scratch for note_info() */
 } RolltuiInputCtx;
 
 int rolltui_input_max_rows(int parent_extent, int border_rows) {
@@ -1272,7 +1272,7 @@ int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int wi
   return (rows + 1 < max_rows) ? rows + 1 : max_rows;
 }
 
-static RolltuiNote* input_ctx_note_info(RolltuiInputCtx* ic) {
+static RolltuiNoteRaw* input_ctx_note_info(RolltuiInputCtx* ic) {
   rolltui_note_clear(&ic->note);
   rolltui_windows_call_note(ic->w, ic->source.p ? ic->source.p : "", ic->source.n, &ic->note);
   return &ic->note;
@@ -1288,7 +1288,7 @@ static int input_ctx_end_col(RolltuiInputCtx* ic) {
     return col;
   }
   {
-    const RolltuiInputOptions* o = rolltui_input_options(ic->ed);
+    const RolltuiInputOptionsRaw* o = rolltui_input_options(ic->ed);
     int pw = rolltui_u_display_width(ic->uscratch, o->prompt.p ? o->prompt.p : "", o->prompt.n, env->ambiguous_wide);
     int phw =
         rolltui_u_display_width(ic->uscratch, o->placeholder.p ? o->placeholder.p : "", o->placeholder.n, env->ambiguous_wide);
@@ -1296,7 +1296,7 @@ static int input_ctx_end_col(RolltuiInputCtx* ic) {
   }
 }
 static int input_ctx_rows_with_note(RolltuiInputCtx* ic, int width, int text_rows) {
-  RolltuiNote* note = input_ctx_note_info(ic);
+  RolltuiNoteRaw* note = input_ctx_note_info(ic);
   const RolltuiWidgetEnv* env = rolltui_windows_env(ic->w);
   int nw = note->text.n == 0
                ? 0
@@ -1305,7 +1305,7 @@ static int input_ctx_rows_with_note(RolltuiInputCtx* ic, int width, int text_row
   return rolltui_input_window_rows(text_rows, input_ctx_end_col(ic), nw, width, ic->max_rows);
 }
 static int input_ctx_note_owns_row(RolltuiInputCtx* ic, int width) {
-  RolltuiNote* note = input_ctx_note_info(ic);
+  RolltuiNoteRaw* note = input_ctx_note_info(ic);
   if (note->text.n == 0) return 0;
   return input_ctx_rows_with_note(ic, width, rolltui_input_rows_for(ic->ed, width)) > 1;
 }
@@ -1333,12 +1333,12 @@ static int input_ctx_desired_outer(void* ctx, int inner_w, int parent_extent, in
 }
 static void input_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
-  const RolltuiInputOptions* cur = rolltui_input_options(ic->ed);
+  const RolltuiInputOptionsRaw* cur = rolltui_input_options(ic->ed);
   const RolltuiWidgetEnv* env = rolltui_windows_env(ic->w);
   unsigned char aw = env->ambiguous_wide ? 1 : 0;
   int inset = rn->node->border != 0 ? 1 : 0;
   if (cur->ambiguous_wide != aw || cur->inset != inset) {
-    RolltuiInputOptions o;
+    RolltuiInputOptionsRaw o;
     memset(&o, 0, sizeof o);
     rolltui_input_options_copy(&o, cur);
     o.ambiguous_wide = aw;
@@ -1355,7 +1355,7 @@ static void input_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   RolltuiRect r = rn->inner;
   RolltuiRect tr = input_ctx_text_rect(ic, r);
   RolltuiInputRoles iroles;
-  RolltuiNote* note;
+  RolltuiNoteRaw* note;
   int nw, used;
   iroles.text = ic->roles.input_text;
   iroles.selection = ic->roles.input_selection;
@@ -2220,7 +2220,7 @@ static int theme_put(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, const c
 
 /* One colour swatch — the library's one, `rolltui_frame_put_swatch`, the same outlined square a menu row shows
  * beside a colour, so the two cannot come to disagree about what a colour looks like. */
-static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColor c, RolltuiStyle frame,
+static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColorRaw c, RolltuiStyle frame,
                         int max_cells) {
   const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
   return rolltui_frame_put_swatch(f, tc->draw, x, y, c, frame, max_cells, env->ambiguous_wide);
@@ -2257,7 +2257,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     const char* rn_p = rolltui_role_name(role, &rn_len);
     char buf[ROLLTUI_COLOR_STRING_MAX];
     size_t clen = 0;
-    RolltuiStyleColor highlighted;
+    RolltuiStyleColorRaw highlighted;
     rolltui_str_clear(&tc->line);
     rolltui_str_append(&tc->line, rn_p ? rn_p : "", rn_len);
     rolltui_str_append(&tc->line, K("  fg "));

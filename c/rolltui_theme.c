@@ -44,7 +44,7 @@ static int hex_digit(char c) {
   return -1;
 }
 
-int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out) {
+int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out) {
   size_t i;
   unsigned v = 0;
   if (len == 4 && text[0] == 'n' && text[1] == 'o' && text[2] == 'n' && text[3] == 'e') {
@@ -94,7 +94,7 @@ static size_t put_uint(char* out, unsigned v) {
 
 static char hex_char(unsigned v) { return (char)(v < 10 ? '0' + v : 'a' + (v - 10)); }
 
-size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap) {
+size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap) {
   if (cap < ROLLTUI_COLOR_STRING_MAX) return 0;
   switch (c.kind) {
     case 1: return put_uint(out, c.index);
@@ -179,7 +179,7 @@ static unsigned char nearest_16(Rgb c) {
   return pick;
 }
 
-void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColor* out) {
+void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColorRaw* out) {
   const Rgb c = rgb_of_index(index);
   out->kind = 2;
   out->index = 0;
@@ -188,15 +188,15 @@ void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColor* out) {
   out->b = (unsigned char)c.b;
 }
 
-static RolltuiStyleColor indexed(unsigned char i) {
-  RolltuiStyleColor c;
+static RolltuiStyleColorRaw indexed(unsigned char i) {
+  RolltuiStyleColorRaw c;
   c.kind = 1;
   c.index = i;
   c.r = c.g = c.b = 0;
   return c;
 }
 
-void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth) {
+void rolltui_color_downgrade(RolltuiStyleColorRaw* c, unsigned char depth) {
   Rgb v;
   if (c->kind == 0) return;
   v.r = c->r;
@@ -227,7 +227,7 @@ void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth) {
 
 /* ---- the SGR sequence -------------------------------------------------------------------- */
 
-static size_t emit_color(char* out, RolltuiStyleColor c, int bg, unsigned char depth) {
+static size_t emit_color(char* out, RolltuiStyleColorRaw c, int bg, unsigned char depth) {
   size_t n = 0;
   rolltui_color_downgrade(&c, depth);
   switch (c.kind) {
@@ -293,7 +293,7 @@ static long find_bytes(const char* hay, size_t hay_len, const char* needle, size
   return -1;
 }
 
-int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* out) {
+int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColorRaw* out) {
   /* ESC ] 11 ; rgb:RRRR/GGGG/BBBB (ESC \ | BEL), each channel 1-4 hex digits. */
   const long at = find_bytes(reply, len, "\x1b]11;", 5);
   const char* s;
@@ -338,7 +338,7 @@ int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* 
   return 1;
 }
 
-unsigned char rolltui_mode_for_background(RolltuiStyleColor bg) {
+unsigned char rolltui_mode_for_background(RolltuiStyleColorRaw bg) {
   double y;
   double lin[3];
   int i;
@@ -575,7 +575,7 @@ void rolltui_theme_report_add_badge_mismatch(RolltuiThemeReport* r, const char* 
  * `defs` reference (recursive, depth-capped), or a {"dark":..,"light":..} pair. 1 on success
  * with `*out` filled; 0 on failure, with `report` already explaining why. */
 static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs, int mode, const char* where,
-                         RolltuiThemeReport* report, int depth, RolltuiStyleColor* out) {
+                         RolltuiThemeReport* report, int depth, RolltuiStyleColorRaw* out) {
   char buf[ROLLTUI_THEME_WHERE_MAX];
   if (depth > 4) {
     snprintf(buf, sizeof buf, "%s: defs reference cycle", where);
@@ -655,7 +655,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
     const RolltuiJsonValue* x = rolltui_json_object_value_at(v, i);
     if (streq(k, klen, "fg") || streq(k, klen, "bg")) {
       char where2[ROLLTUI_THEME_WHERE_MAX];
-      RolltuiStyleColor c;
+      RolltuiStyleColorRaw c;
       snprintf(where2, sizeof where2, "%s.%s", where, k);
       if (resolve_color(x, defs, mode, where2, report, 0, &c)) {
         if (streq(k, klen, "fg")) out->fg = c;
@@ -1109,7 +1109,7 @@ int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t 
  * "effects" halves of `theme_to_json_value`/`theme_pair_to_json_value`, building a
  * `RolltuiJsonValue*` tree directly instead of a `json::Value` one. */
 
-static int color_eq(RolltuiStyleColor a, RolltuiStyleColor b) {
+static int color_eq(RolltuiStyleColorRaw a, RolltuiStyleColorRaw b) {
   return a.kind == b.kind && a.index == b.index && a.r == b.r && a.g == b.g && a.b == b.b;
 }
 

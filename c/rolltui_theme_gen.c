@@ -95,10 +95,10 @@ static int rng_chance(RolltuiRng* rng, double chaos, double p) { return rolltui_
 /* An OKLCH colour (L, C, h) clamped into the sRGB gamut — `rolltui::(anonymous
  * namespace)::okl`, ported onto the shared `rolltui_into_gamut` (rolltui_theme_analysis.h)
  * instead of carrying its own copy of the reduction loop. */
-static RolltuiStyleColor okl(double L, double C, double h) {
+static RolltuiStyleColorRaw okl(double L, double C, double h) {
   RolltuiOkLch lch;
   RolltuiLin lin;
-  RolltuiStyleColor c;
+  RolltuiStyleColorRaw c;
   lch.L = clampd(L, 0.0, 1.0);
   lch.C = C;
   lch.h = wrap_hue(h);
@@ -107,7 +107,7 @@ static RolltuiStyleColor okl(double L, double C, double h) {
   return c;
 }
 
-static RolltuiStyle mkstyle(RolltuiStyleColor fg, RolltuiStyleColor bg, int bold, int italic, int underline,
+static RolltuiStyle mkstyle(RolltuiStyleColorRaw fg, RolltuiStyleColorRaw bg, int bold, int italic, int underline,
                             int dim, int reverse) {
   RolltuiStyle s;
   s.fg = fg;
@@ -131,7 +131,7 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
   double chroma = 0.13, ink_chroma = 0.01, ground_chroma = 0.01;
   int i;
   double ground_L, panel_L, ink_L, muted_L, border_L, acc_L[4];
-  RolltuiStyleColor bg, panel, fg, muted, border, a[4], warning, error_c, green, cyan, code_bg, sel, find_wash;
+  RolltuiStyleColorRaw bg, panel, fg, muted, border, a[4], warning, error_c, green, cyan, code_bg, sel, find_wash;
   char namebuf[96];
   const char* rn;
   size_t rnlen;

@@ -35,7 +35,7 @@ double rolltui_linear_channel_to_srgb(double v) {
   return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055;
 }
 
-int rolltui_to_linear(RolltuiStyleColor c, RolltuiLin* out) {
+int rolltui_to_linear(RolltuiStyleColorRaw c, RolltuiLin* out) {
   if (c.kind == 0) return 0; /* None: the terminal's own colour, unknown rather than assumed */
   if (c.kind == 1) rolltui_ansi_index_rgb(c.index, &c); /* Indexed -> the Rgb it resolves to */
   out->r = rolltui_srgb_channel_to_linear(c.r / 255.0);
@@ -48,7 +48,7 @@ static unsigned char encode_channel(double v) {
   return (unsigned char)lround(rolltui_linear_channel_to_srgb(v) * 255.0);
 }
 
-void rolltui_from_linear(RolltuiLin l, RolltuiStyleColor* out) {
+void rolltui_from_linear(RolltuiLin l, RolltuiStyleColorRaw* out) {
   out->kind = 2; /* Rgb */
   out->index = 0;
   out->r = encode_channel(l.r);
@@ -262,8 +262,8 @@ static int is_text_role(unsigned char r) {
   }
 }
 
-static RolltuiStyleColor effective_bg(const RolltuiStyle* styles, unsigned char r) {
-  const RolltuiStyleColor own = styles[r].bg;
+static RolltuiStyleColorRaw effective_bg(const RolltuiStyle* styles, unsigned char r) {
+  const RolltuiStyleColorRaw own = styles[r].bg;
   if (own.kind != 0) return own;
   return styles[R_background].bg;
 }
@@ -457,7 +457,7 @@ int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, Rolltui
       RolltuiOkLab laba, labb;
       size_t k;
       int ok_all = 1;
-      RolltuiStyleColor da, db;
+      RolltuiStyleColorRaw da, db;
       any_pair_known = 1;
       rolltui_linear_to_oklab(fa, &laba);
       rolltui_linear_to_oklab(fb, &labb);
@@ -789,7 +789,7 @@ int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned
                          const RolltuiThemeVocab* vocab, RolltuiFix* out) {
   RolltuiStyle before, after;
   RolltuiLin f, bl;
-  RolltuiStyleColor eb;
+  RolltuiStyleColorRaw eb;
   double have, best, dir;
   RolltuiOkLab flab, blab;
   RolltuiOkLch bgc, c;

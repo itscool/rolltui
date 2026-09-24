@@ -23,7 +23,7 @@
  *
  * THE BOUNDARY'S RULES, the library's standing ones and none new:
  *   1. **THE CALLER OWNS EVERY BUFFER.** The colour maths above has none to own: every
- *      result is a handful of doubles or a `RolltuiStyleColor`, so every one of them is an
+ *      result is a handful of doubles or a `RolltuiStyleColorRaw`, so every one of them is an
  *      OUT-PARAM rather than a measure-then-fill round trip. The report/auto-fix below DOES
  *      allocate (a diagnostic list has no bound) — CALLER-FILLED fixed arrays for the
  *      per-role/per-pair checks (the count is known upfront), GROWING AMORTISED
@@ -33,7 +33,7 @@
  *      `double`/`int` (never storage) and a `const char*` BORROW of a string literal that
  *      owns nothing and outlives every caller.
  *   3. **ONE DEFINITION**: `RolltuiLin`/`RolltuiOkLab`/`RolltuiOkLch` are defined once,
- *      here, the same way `RolltuiStyleColor` is in `rolltui_style.h` — `rolltui::Lin` and
+ *      here, the same way `RolltuiStyleColorRaw` is in `rolltui_style.h` — `rolltui::Lin` and
  *      its two siblings are `using` aliases below, so a caller on either side of the
  *      boundary still writes `Lin{...}` / `lin.r` exactly as before. `RolltuiBadges` joins
  *      them the same way (`rolltui::Badges` is now `using Badges = RolltuiBadges;`) —
@@ -70,7 +70,7 @@ void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 /* ---- sRGB <-> linear --------------------------------------------------------------------- */
 double rolltui_srgb_channel_to_linear(double c); /* c in 0..1 */
 double rolltui_linear_channel_to_srgb(double v);
-void rolltui_from_linear(RolltuiLin l, RolltuiStyleColor* out);
+void rolltui_from_linear(RolltuiLin l, RolltuiStyleColorRaw* out);
 /* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) ----------------------------------- */
 void rolltui_linear_to_oklab(RolltuiLin l, RolltuiOkLab* out);
 void rolltui_oklab_to_linear(RolltuiOkLab lab, RolltuiLin* out);
@@ -109,7 +109,7 @@ int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsign
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
 /* 1 on success, 0 for `Color::none()` (the terminal's own colour — unknown, not assumed). */
-int rolltui_to_linear(RolltuiStyleColor c, RolltuiLin* out);
+int rolltui_to_linear(RolltuiStyleColorRaw c, RolltuiLin* out);
 /* Clamped, encoded to an Rgb colour. */
 
 void rolltui_str_array_release(RolltuiStrArray* a);

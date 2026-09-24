@@ -449,7 +449,11 @@ typedef enum RolltuiRole {
 
 #define ROLLTUI_ROLE_DEFAULT_PROMPT ROLLTUI_ROLE_PROMPT
 
-typedef struct RolltuiStyleColor {
+/* RolltuiStyleColorRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiStyleColor : public
+ * RolltuiStyleColorRaw` with the static none()/indexed()/rgb() builders reclaiming the name every
+ * existing C++ call site already uses; `operator==` is a free function there, not a member, so it
+ * still applies through a RolltuiStyleColorRaw-typed field (RolltuiStyle::fg/bg and the rest). */
+typedef struct RolltuiStyleColorRaw {
 #ifdef __cplusplus
   enum class Kind : unsigned char { None = 0, Indexed = 1, Rgb = 2 };
   Kind kind = Kind::None;
@@ -458,31 +462,12 @@ typedef struct RolltuiStyleColor {
 #endif
   unsigned char index ROLLTUI_DEFAULT(0);              /* Indexed: 0-255 */
   unsigned char r ROLLTUI_DEFAULT(0), g ROLLTUI_DEFAULT(0), b ROLLTUI_DEFAULT(0); /* Rgb */
+} RolltuiStyleColorRaw;
 
-#ifdef __cplusplus
-  static constexpr RolltuiStyleColor none() { return {}; }
-  static constexpr RolltuiStyleColor indexed(unsigned char i) {
-    RolltuiStyleColor c;
-    c.kind = Kind::Indexed;
-    c.index = i;
-    return c;
-  }
-  static constexpr RolltuiStyleColor rgb(unsigned char red, unsigned char green, unsigned char blue) {
-    RolltuiStyleColor c;
-    c.kind = Kind::Rgb;
-    c.r = red;
-    c.g = green;
-    c.b = blue;
-    return c;
-  }
-  constexpr bool operator==(const RolltuiStyleColor&) const = default;
-#endif
-} RolltuiStyleColor;
-
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyleColor) == 5, "RolltuiStyleColor must be five bytes in both languages");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyleColorRaw) == 5, "RolltuiStyleColorRaw must be five bytes in both languages");
 
 typedef struct RolltuiStyle {
-  RolltuiStyleColor fg, bg;
+  RolltuiStyleColorRaw fg, bg;
   unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0), underline ROLLTUI_DEFAULT(0),
       dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
 } RolltuiStyle;
@@ -719,26 +704,20 @@ ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in bo
 
 #define ROLLTUI_CELL_SPILLED 0xFF
 
-typedef struct RolltuiCell {
+/* RolltuiCellRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiCell : public
+ * RolltuiCellRaw` reclaiming the name, with `spilled()` and the two constexpr constants. */
+typedef struct RolltuiCellRaw {
   unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from rolltui_frame_link_id */
   RolltuiStyle style;
   char bytes[ROLLTUI_CELL_INLINE_GLYPH] ROLLTUI_DEFAULT({' '}); /* the cluster, or its spill index */
   unsigned char len ROLLTUI_DEFAULT(1);   /* bytes in `bytes`; 0 on a continuation cell */
   unsigned char width ROLLTUI_DEFAULT(1); /* 1 or 2; 0 on a continuation cell */
   unsigned char continuation ROLLTUI_DEFAULT(0); /* the right half of a 2-cell glyph */
-
-#ifdef __cplusplus
-  static constexpr unsigned char kInlineGlyph = ROLLTUI_CELL_INLINE_GLYPH;
-  static constexpr unsigned char kSpilled = ROLLTUI_CELL_SPILLED;
-
-  bool spilled() const { return len == kSpilled; }
-  bool operator==(const RolltuiCell&) const = default;
-#endif
-} RolltuiCell;
+} RolltuiCellRaw;
 
 /* THE CELL HAS NO PADDING, asserted: `rolltui_frame_equal` compares cells with `memcmp`, which is only right when every byte was written. */
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCell) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
-                      "RolltuiCell has padding; memcmp equality would compare bytes nobody wrote");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
+                      "RolltuiCellRaw has padding; memcmp equality would compare bytes nobody wrote");
 
 typedef struct RolltuiFrame RolltuiFrame;
 
@@ -779,8 +758,11 @@ enum class Role : unsigned char;  // declared, not defined: this file names no r
 #define ROLLTUI_INPUT_EOF 3
 
 /* ---- options ---------------------------------------------------------------------------- */
-/* `rolltui::InputOptions` IS this struct. The two strings are OWNED `RolltuiStr`s; a copy is a named function. */
-typedef struct RolltuiInputOptions {
+/* `rolltui::InputOptions` IS this struct. The two strings are OWNED `RolltuiStr`s; a copy is a named function.
+ * RolltuiInputOptionsRaw: the plain data. `rolltui_cpp.h` declares a `RolltuiInputOptions` class
+ * reclaiming the name, with the one special member (the default prompt). Its declared
+ * `operator==` is dropped: no definition existed anywhere, and nothing called it. */
+typedef struct RolltuiInputOptionsRaw {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   int tab_width ROLLTUI_DEFAULT(4);
   int inset ROLLTUI_DEFAULT(0); /* columns kept clear on each side of the area */
@@ -796,25 +778,16 @@ typedef struct RolltuiInputOptions {
   /* ONE ROW: a newline is dropped, the text never wraps, and the row slides under the caret
    * — a menu field, an address bar. Off: the text wraps and the window grows with it. */
   unsigned char single_line ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiInputOptions();
-  bool operator==(const RolltuiInputOptions& o) const;
-#endif
-} RolltuiInputOptions;
+} RolltuiInputOptionsRaw;
 
 /* ---- the selection ------------------------------------------------------------------------ */
-/* `rolltui::InputSelection` IS this struct. */
-typedef struct RolltuiInputSelection {
+/* `rolltui::InputSelection` IS this struct. RolltuiInputSelectionRaw: the plain data.
+ * `rolltui_cpp.h` declares `class RolltuiInputSelection : public RolltuiInputSelectionRaw`
+ * reclaiming the name, with begin()/end()/empty(). */
+typedef struct RolltuiInputSelectionRaw {
   size_t anchor ROLLTUI_DEFAULT(0), head ROLLTUI_DEFAULT(0);
   unsigned char active ROLLTUI_DEFAULT(0);
-#ifdef __cplusplus
-  size_t begin() const { return anchor < head ? anchor : head; }
-  size_t end() const { return anchor < head ? head : anchor; }
-  bool empty() const { return !active || anchor == head; }
-  bool operator==(const RolltuiInputSelection&) const = default;
-#endif
-} RolltuiInputSelection;
+} RolltuiInputSelectionRaw;
 
 typedef struct RolltuiInput RolltuiInput;
 
@@ -865,12 +838,6 @@ typedef struct RolltuiInputRoles {
   unsigned char placeholder;
 } RolltuiInputRoles;
 
-#ifdef __cplusplus
-/* `RolltuiInputOptions`' one special member: the default prompt, a value the struct must start with. Inline here because a body
- * inside the struct cannot yet see `rolltui_str_set`. */
-inline RolltuiInputOptions::RolltuiInputOptions() { rolltui_str_set(&prompt, "> ", 2); }
-
-#endif
 
 /* ========================================================================================
  * md_lines — the transcript's line store
@@ -934,8 +901,10 @@ enum class InputType : unsigned char { Text, Int, Float, Color, Size, Dim, Name 
 
 #define ROLLTUI_INPUT_TYPE_COUNT 7
 
-/* What an Input item accepts. `rolltui::InputSpec` IS this struct. */
-typedef struct RolltuiInputSpec {
+/* What an Input item accepts. `rolltui::InputSpec` IS this struct.
+ * RolltuiInputSpecRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiInputSpec : public
+ * RolltuiInputSpecRaw` reclaiming the name, with `clone()`; `operator==` is free. */
+typedef struct RolltuiInputSpecRaw {
 #ifdef __cplusplus
   rolltui::InputType type = rolltui::InputType::Text;
 #else
@@ -949,19 +918,14 @@ typedef struct RolltuiInputSpec {
   unsigned char optional ROLLTUI_DEFAULT(0); /* empty commits as "" instead of being refused */
   RolltuiStr validator;                /* Text: a host-registered check by name, at commit */
   RolltuiStr hint;                     /* shown beside the field; input_hint(spec) when empty */
-
-#ifdef __cplusplus
-  bool operator==(const RolltuiInputSpec& o) const;
-  RolltuiInputSpec clone() const;  /* `rolltui_input_spec_copy` */
-#endif
-} RolltuiInputSpec;
+} RolltuiInputSpecRaw;
 
 struct RolltuiMenuItem;
 
-/* PINNED PUBLIC BY A PUBLIC STRUCT'S C++ MEMBERS: `RolltuiMenuItem` holds a `RolltuiInputSpec` by value, and its `clone()` and
+/* PINNED PUBLIC BY A PUBLIC STRUCT'S C++ MEMBERS: `RolltuiMenuItem` holds a `RolltuiInputSpecRaw` by value, and its `clone()` and
  * `operator==` call these. */
-void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from);
-int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b);
+void rolltui_input_spec_copy(RolltuiInputSpecRaw* to, const RolltuiInputSpecRaw* from);
+int rolltui_input_spec_equal(const RolltuiInputSpecRaw* a, const RolltuiInputSpecRaw* b);
 
 typedef struct RolltuiMenuItemList {
   struct RolltuiMenuItem** v ROLLTUI_DEFAULT(nullptr);
@@ -1069,7 +1033,7 @@ typedef struct RolltuiMenuItem {
    * File key: `"swatch": true`. */
   unsigned char swatch ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
-  RolltuiInputSpec spec;  /* Input: the type and its constraints */
+  RolltuiInputSpecRaw spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
 
 #ifdef __cplusplus
@@ -1082,7 +1046,7 @@ typedef struct RolltuiMenuItem {
   static RolltuiMenuItem toggle(const char* id, const char* label, bool checked);
   static RolltuiMenuItem choice(const char* id, const char* label, const char* value);  /* options: children.push_back */
   static RolltuiMenuItem input(const char* id, const char* label, const char* value = "");
-  static RolltuiMenuItem input(const char* id, const char* label, RolltuiInputSpec spec, const char* value = "");
+  static RolltuiMenuItem input(const char* id, const char* label, RolltuiInputSpecRaw spec, const char* value = "");
   static RolltuiMenuItem section(const char* id, const char* label);
   static RolltuiMenuItem separator(const char* id);
 #endif
@@ -1101,10 +1065,6 @@ void rolltui_menu_list_release(RolltuiMenuItemList* l);
 /* ---- the C++ special members of the structs above -----------------------------------------
  * Each calls a C function declared above, so "release this subtree" has one implementation; `inline`, beside the declarations,
  * keeps the library free of any C++ translation unit. */
-inline bool RolltuiInputSpec::operator==(const RolltuiInputSpec& o) const {
-  return rolltui_input_spec_equal(this, &o) != 0;
-}
-
 inline RolltuiMenuItemList::~RolltuiMenuItemList() { rolltui_menu_list_release(this); }
 
 inline RolltuiMenuItemList& RolltuiMenuItemList::operator=(RolltuiMenuItemList&& o) noexcept {
@@ -1135,11 +1095,6 @@ inline RolltuiMenuItem::RolltuiMenuItem() = default;
 inline bool RolltuiMenuItem::operator==(const RolltuiMenuItem& o) const {
   return rolltui_menu_item_equal(this, &o) != 0;
 }
-inline RolltuiInputSpec RolltuiInputSpec::clone() const {
-  RolltuiInputSpec out;
-  rolltui_input_spec_copy(&out, this);
-  return out;
-}
 inline RolltuiMenuItem RolltuiMenuItem::clone() const {
   RolltuiMenuItem out;
   rolltui_menu_item_copy(&out, this);
@@ -1168,7 +1123,7 @@ inline RolltuiMenuItem RolltuiMenuItem::input(const char* id, const char* label,
   it.value = value;
   return it;
 }
-inline RolltuiMenuItem RolltuiMenuItem::input(const char* id, const char* label, RolltuiInputSpec spec, const char* value) {
+inline RolltuiMenuItem RolltuiMenuItem::input(const char* id, const char* label, RolltuiInputSpecRaw spec, const char* value) {
   RolltuiMenuItem it = input(id, label, value);
   it.spec = std::move(spec);
   return it;
@@ -1220,16 +1175,6 @@ typedef struct RolltuiEffectOut {
   RolltuiStyle style;
   size_t glyph_len ROLLTUI_DEFAULT(0);
   char glyph[ROLLTUI_EFFECT_GLYPH_MAX];
-
-#ifdef __cplusplus
-  // A kind says what it wants drawn. Records the full length, so an override past the cap is refused by the applier rather than
-  // truncated into a narrower glyph.
-  void set_glyph(const char* g, std::size_t n) {
-    has_glyph = 1;
-    glyph_len = n;
-    if (n <= ROLLTUI_EFFECT_GLYPH_MAX && n != 0) std::memcpy(glyph, g, n);
-  }
-#endif
 } RolltuiEffectOut;
 
 /* One frame of a glyph cycle: a BORROW of bytes the owning map keeps, valid for as long as
@@ -1260,11 +1205,6 @@ typedef struct RolltuiEffectSpec {
    * what lets `--tick N` make a moving frame a golden frame. */
   int jitter;
   unsigned char backward;
-
-#ifdef __cplusplus
-  std::size_t roles_size() const { return role_count; }
-  unsigned char role(std::size_t i) const { return roles[i % role_count]; }
-#endif
 } RolltuiEffectSpec;
 
 /* ---- what a THEME carries, owned in C -------------------------------------------------- */
@@ -1494,17 +1434,17 @@ int rolltui_theme_mode_setting_valid(const char* s, size_t len);
  * What is constrained: an EFFECT may never invent a colour (it picks the base style or a ROLE the theme named), which keeps `mono`
  * legible; a WIDGET drawing may write any colour into any cell (`rolltui_frame_put_text` and `_fill` take a style by value), and the
  * renderer down-converts at the frame's depth. */
-int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
+int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out);
 /* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
  * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
-void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double keep, RolltuiStyle* out);
+void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out);
 
 /* A style ON a ground: `fg`/`bg` "none" (kind 0) become `ground`; a stated colour is left as the theme wrote it. That is what "none"
  * in a theme file MEANS for a role that sits on whatever it is drawn over. Mutates in place; `ground` is typically the caller's
  * already-resolved background. */
-void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColor ground);
+void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColorRaw ground);
 
-size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
+size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
 
 /* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset, so a cell's style never depends on the
  * previous cell's. The longest is 48 bytes; the cap is a constraint on this file, not on a caller's data. */
@@ -1722,17 +1662,14 @@ typedef struct RolltuiTextPos {
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
 int rolltui_text_pos_less(const RolltuiTextPos* a, const RolltuiTextPos* b);
 
-typedef struct RolltuiSelection {
+/* RolltuiSelectionRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiSelection : public
+ * RolltuiSelectionRaw` reclaiming the name, with empty()/first()/last(). (Not `range_in`: declared
+ * here for years with no definition anywhere and no caller — the real work already happens
+ * through `rolltui_selection_range_in`, c/rolltui_widget_transcript.h — dropped rather than moved.) */
+typedef struct RolltuiSelectionRaw {
   RolltuiTextPos anchor, head;
   unsigned char active ROLLTUI_DEFAULT(0);
-#ifdef __cplusplus
-  bool empty() const { return !active; }
-  RolltuiTextPos first() const { return rolltui_text_pos_less(&head, &anchor) ? head : anchor; }
-  RolltuiTextPos last() const { return rolltui_text_pos_less(&head, &anchor) ? anchor : head; }
-  // The selected byte range within `entry`'s text of length `len`: [begin, end).
-  bool range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const;
-#endif
-} RolltuiSelection;
+} RolltuiSelectionRaw;
 
 /* One find hit, in the same logical space as a position. */
 typedef struct RolltuiFindMatch {
@@ -1817,17 +1754,14 @@ typedef struct RolltuiOptDim {
 #endif
 } RolltuiOptDim;
 
-/* How much of the parent split's axis a node takes. */
-typedef struct RolltuiSplitSize {
+/* How much of the parent split's axis a node takes. RolltuiSplitSizeRaw: the plain data.
+ * `rolltui_cpp.h` declares `class RolltuiSplitSize : public RolltuiSplitSizeRaw` reclaiming the
+ * name, with static fixed()/filling(); `operator==` is free. */
+typedef struct RolltuiSplitSizeRaw {
   unsigned char fill ROLLTUI_DEFAULT(1); /* a share of the remainder, by `weight` */
   int weight ROLLTUI_DEFAULT(1);
   RolltuiDim dim; /* when !fill */
-#ifdef __cplusplus
-  static constexpr RolltuiSplitSize fixed(RolltuiDim d) { return {0, 1, d}; }
-  static constexpr RolltuiSplitSize filling(int w = 1) { return {1, w, {}}; }
-  constexpr bool operator==(const RolltuiSplitSize&) const = default;
-#endif
-} RolltuiSplitSize;
+} RolltuiSplitSizeRaw;
 
 /* Where a popup layer sits on the screen; the base layer's is the whole of it. */
 typedef struct RolltuiPlacement {
@@ -2118,13 +2052,13 @@ typedef struct RolltuiRow {
   RolltuiStr label, value;
   /* A row whose value IS a colour (`rolltui_rows_add_colour`): `value` holds its spelling and the row is
    * drawn with `rolltui_frame_put_swatch`'s square before it. `has_swatch` is 0 for every other row. */
-  RolltuiStyleColor swatch;
+  RolltuiStyleColorRaw swatch;
   unsigned char has_swatch;
 } RolltuiRow;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
 void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const char* value, size_t value_len);
-void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColor colour);
+void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColorRaw colour);
 void rolltui_rows_release(RolltuiRows* r);
 void rolltui_rows_reset(RolltuiRows* r);
 
@@ -2145,7 +2079,7 @@ typedef struct RolltuiRows {
   void add(const char* label, const RolltuiStr& value) { rolltui_rows_add(this, label, std::strlen(label), value.p, value.n); }
   void add(const RolltuiStr& label, const RolltuiStr& value) { rolltui_rows_add(this, label.p, label.n, value.p, value.n); }
   // A row whose value is a colour: its spelling, with its swatch before it wherever rows are drawn.
-  void add_colour(const char* label, RolltuiStyleColor colour) { rolltui_rows_add_colour(this, label, std::strlen(label), colour); }
+  void add_colour(const char* label, RolltuiStyleColorRaw colour) { rolltui_rows_add_colour(this, label, std::strlen(label), colour); }
   std::size_t size() const { return n; }
   const RolltuiRow& operator[](std::size_t i) const { return v[i]; }
   RolltuiRows() = default;
@@ -2163,8 +2097,10 @@ typedef void (*RolltuiRowsFn)(void* ctx, RolltuiRows* out);
 typedef void (*RolltuiSubmitFn)(void* ctx, const char* text, size_t len);
 
 /* note: an input's one-line note and the STATE it is in. A host with no motion to report fills only `text`; `state` defaults to None, so
- * a bare string converts to "no motion". `rolltui::Note` IS this struct. */
-typedef struct RolltuiNote {
+ * a bare string converts to "no motion". `rolltui::Note` IS this struct.
+ * RolltuiNoteRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiNote : public RolltuiNoteRaw`
+ * reclaiming the name, with the converting constructors and `set()`/`operator=`. */
+typedef struct RolltuiNoteRaw {
   RolltuiStr text;
 #ifdef __cplusplus
   rolltui::EffectState state = static_cast<rolltui::EffectState>(0); /* None */
@@ -2172,29 +2108,10 @@ typedef struct RolltuiNote {
   unsigned char state;
 #endif
   unsigned long long since_ms ROLLTUI_DEFAULT(0); /* when it entered `state` */
-#ifdef __cplusplus
-  // No constructor, destructor or assignment beyond the converting ones below: `text` (a `RolltuiStr`) already has correct copy, move
-  // and destroy.
-  RolltuiNote() = default;
-  // Implicit from a C string on purpose: a host with no motion to report writes `return "working";`. Anything else sets the text by
-  // pointer and length.
-  RolltuiNote(const char* t) : text(t) {}  // NOLINT(google-explicit-constructor)
-  RolltuiNote(const char* t, std::size_t n, rolltui::EffectState s, unsigned long long since = 0) : state(s), since_ms(since) {
-    text.assign(t, n);
-  }
-  // Text only: the state and its clock reset, which is what "a plain note" means.
-  RolltuiNote& set(const char* t, std::size_t n) {
-    text.assign(t, n);
-    state = static_cast<rolltui::EffectState>(0);
-    since_ms = 0;
-    return *this;
-  }
-  RolltuiNote& operator=(const char* t) { return set(t, t ? std::strlen(t) : 0); }
-#endif
-} RolltuiNote;
+} RolltuiNoteRaw;
 
 /* note: `out` is the caller's `RolltuiNote`, already cleared, filled in place. */
-typedef void (*RolltuiNoteFn)(void* ctx, RolltuiNote* out);
+typedef void (*RolltuiNoteFn)(void* ctx, RolltuiNoteRaw* out);
 
 typedef struct RolltuiWidgetEnv {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
@@ -2515,7 +2432,7 @@ typedef struct RolltuiTermFacts {
   unsigned char mode;           /* ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT: what the background is */
   unsigned char mode_source;
   unsigned char has_background; /* `background` is a colour the terminal reported */
-  RolltuiStyleColor background;
+  RolltuiStyleColorRaw background;
   unsigned char ambiguous_wide; /* 1: an ambiguous-width glyph takes two cells */
   unsigned char ambiguous_source;
   unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
@@ -2604,7 +2521,7 @@ typedef struct RolltuiRoleCheck {
   unsigned char role ROLLTUI_DEFAULT(0);  /* always `i` for out_roles[i] — positional, not looked up */
   unsigned char text ROLLTUI_DEFAULT(1);  /* is this role's fg drawn as text? (counts for readable/high) */
   double wcag ROLLTUI_DEFAULT(0), apca ROLLTUI_DEFAULT(0); /* meaningless when `unknown` */
-  RolltuiStyleColor fg, bg;                /* measured colours (bg: the role's own, else the theme's background) */
+  RolltuiStyleColorRaw fg, bg;                /* measured colours (bg: the role's own, else the theme's background) */
   unsigned char unknown ROLLTUI_DEFAULT(0); /* depends on the terminal: a measured colour was None */
   unsigned char readable ROLLTUI_DEFAULT(0), high ROLLTUI_DEFAULT(0);
 } RolltuiRoleCheck;
@@ -2806,7 +2723,7 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
 
 /* The mode a background implies: relative luminance (sRGB linearised, Rec. 709 weights)
  * above 0.5 is light, anything else — including a colour that is not rgb — is dark. */
-unsigned char rolltui_mode_for_background(RolltuiStyleColor bg);
+unsigned char rolltui_mode_for_background(RolltuiStyleColorRaw bg);
 
 /* THE LIBRARY'S OWN role and effect-state name table: the default for a host with no roles of its own (the parameter stays on every
  * function that takes one). BORROWS static storage. */
@@ -3299,11 +3216,11 @@ void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
 
 /* The defaults, for a C caller — `= {0}` would give a zero tab width and no prompt role,
  * which is the language answering a question nobody asked. */
-void rolltui_input_options_release(RolltuiInputOptions* o);
+void rolltui_input_options_release(RolltuiInputOptionsRaw* o);
 
-void rolltui_input_options_copy(RolltuiInputOptions* to, const RolltuiInputOptions* from);
+void rolltui_input_options_copy(RolltuiInputOptionsRaw* to, const RolltuiInputOptionsRaw* from);
 
-int rolltui_input_options_equal(const RolltuiInputOptions* a, const RolltuiInputOptions* b);
+int rolltui_input_options_equal(const RolltuiInputOptionsRaw* a, const RolltuiInputOptionsRaw* b);
 
 void rolltui_input_set_copy(RolltuiInput* in, RolltuiCopyFn fn, void* ctx);
 
@@ -3322,9 +3239,9 @@ void rolltui_input_select_all(RolltuiInput* in);
 const RolltuiInputActions* rolltui_input_default_actions(void);
 
 /* ---- layout and drawing -------------------------------------------------------------------------- */
-void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptions* o);
+void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptionsRaw* o);
 
-const RolltuiInputOptions* rolltui_input_options(const RolltuiInput* in);
+const RolltuiInputOptionsRaw* rolltui_input_options(const RolltuiInput* in);
 
 /* ---- menu_tree -----------------------------------------------------------------------------*/
 
@@ -4061,7 +3978,7 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
 /* Asks the terminal for its background colour (OSC 11) and waits up to timeout_ms, writing it to `*out`. Returns 0 on a pipe, on no
  * answer in time, or on an unparseable answer; the caller treats every 0 as "dark". Bytes that arrive and are not the reply (a user
  * already typing) are kept and delivered by the next `rolltui_terminal_poll`. Call once, before the event loop. */
-int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out);
+int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColorRaw* out);
 
 /* Asks the terminal how wide it draws an East Asian AMBIGUOUS glyph: 1 for two cells, 0 for one.
  * Leaves `*out` untouched and returns 0 when the terminal does not answer, so a silent terminal
@@ -4260,12 +4177,12 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
 /* The swatch: `frame`'s foreground is the outline and its background is where a `none` colour lands. Returns the cells used: 2, or 0
  * where they do not fit (`max_cells` < 2) or the terminal draws no colour. Where an ambiguous glyph is two cells the outline is a bracket
  * pair, one cell wherever it is drawn. */
-int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
                              RolltuiStyle frame, int max_cells, int ambiguous_wide);
 
 /* The spelling and, before it, the swatch and a space: `▏▕ #d8dce2`. `text_style` styles the
  * spelling and frames the swatch. Returns the cells used. */
-int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
                              RolltuiStyle text_style, int max_cells, int ambiguous_wide);
 
 /* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no

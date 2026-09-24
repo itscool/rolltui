@@ -698,7 +698,7 @@ void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, 
   }
 }
 
-int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out) {
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteRaw* out) {
   NoteBinding* b = (NoteBinding*)rolltui_map_get(&w->notes, name, len);
   if (!b || !b->fn) return 0;
   b->fn(b->ctx, out);
@@ -863,7 +863,7 @@ void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const
   ++r->n;
 }
 
-void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColor colour) {
+void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColorRaw colour) {
   char buf[ROLLTUI_COLOR_STRING_MAX];
   const size_t n = rolltui_color_to_string(colour, buf, sizeof buf);
   rolltui_rows_add(r, label, label_len, buf, n);
@@ -885,7 +885,7 @@ void rolltui_rows_release(RolltuiRows* r) {
 
 /* ---- note (at the boundary, so `input` can be a plugin) ---------------------------------- */
 
-void rolltui_note_clear(RolltuiNote* n) {
+void rolltui_note_clear(RolltuiNoteRaw* n) {
   rolltui_str_clear(&n->text); /* keeps the buffer — the reuse this call exists for */
   n->state = 0;                /* EffectState::None */
   n->since_ms = 0;

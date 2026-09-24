@@ -218,7 +218,7 @@ typedef struct RolltuiLayoutNode {
 #else
   unsigned char background;
 #endif
-  RolltuiSplitSize size;
+  RolltuiSplitSizeRaw size;
   RolltuiNodeList children;
 
 #ifdef __cplusplus
@@ -227,10 +227,10 @@ typedef struct RolltuiLayoutNode {
   RolltuiLayoutNode clone() const;
   // The builders the editor and the tests write trees with — C strings in, fields set
   //. A container node takes its children by `children.push_back(std::move(c))`.
-  static RolltuiLayoutNode window(const char* content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode window_id(const char* id, const char* content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode row(RolltuiSplitSize size = {});
-  static RolltuiLayoutNode column(RolltuiSplitSize size = {});
+  static RolltuiLayoutNode window(const char* content, RolltuiSplitSizeRaw size = {});
+  static RolltuiLayoutNode window_id(const char* id, const char* content, RolltuiSplitSizeRaw size = {});
+  static RolltuiLayoutNode row(RolltuiSplitSizeRaw size = {});
+  static RolltuiLayoutNode column(RolltuiSplitSizeRaw size = {});
 #endif
 } RolltuiLayoutNode;
 
@@ -377,7 +377,7 @@ inline RolltuiLayoutNode RolltuiLayoutNode::clone() const {
   rolltui_layout_node_copy(&out, this);
   return out;
 }
-inline RolltuiLayoutNode RolltuiLayoutNode::window(const char* content, RolltuiSplitSize size) {
+inline RolltuiLayoutNode RolltuiLayoutNode::window(const char* content, RolltuiSplitSizeRaw size) {
   RolltuiLayoutNode n;
   n.kind = Kind::Window;
   n.id = content;
@@ -385,18 +385,18 @@ inline RolltuiLayoutNode RolltuiLayoutNode::window(const char* content, RolltuiS
   n.size = size;
   return n;
 }
-inline RolltuiLayoutNode RolltuiLayoutNode::window_id(const char* id, const char* content, RolltuiSplitSize size) {
+inline RolltuiLayoutNode RolltuiLayoutNode::window_id(const char* id, const char* content, RolltuiSplitSizeRaw size) {
   RolltuiLayoutNode n = window(content, size);
   n.id = id;
   return n;
 }
-inline RolltuiLayoutNode RolltuiLayoutNode::row(RolltuiSplitSize size) {
+inline RolltuiLayoutNode RolltuiLayoutNode::row(RolltuiSplitSizeRaw size) {
   RolltuiLayoutNode n;
   n.kind = Kind::Row;
   n.size = size;
   return n;
 }
-inline RolltuiLayoutNode RolltuiLayoutNode::column(RolltuiSplitSize size) {
+inline RolltuiLayoutNode RolltuiLayoutNode::column(RolltuiSplitSizeRaw size) {
   RolltuiLayoutNode n = row(size);
   n.kind = Kind::Column;
   return n;

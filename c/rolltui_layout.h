@@ -69,7 +69,7 @@ int rolltui_resolve_dim(RolltuiDim d, int extent);
 void rolltui_inner_rect(RolltuiRect outer, unsigned char border, RolltuiRect* out);
 
 /* "fill" | "fill 2" | a dim string. */
-int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSize* out);
+int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSizeRaw* out);
 
 /* Draws the nodes of ONE layer, in the order given. `styles` is `kRoleCount` styles — the
  * theme's table, a BORROW for the call. */
@@ -173,8 +173,8 @@ int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
 size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);
 
 /* The same, plus a bare integer as cells — a size as TYPED. */
-int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out);
-size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
+int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSizeRaw* out);
+size_t rolltui_split_size_to_string(RolltuiSplitSizeRaw s, char* out, size_t cap);
 
 /* Lays out one tree inside `box` (a layer's resolved placement). Hidden nodes are omitted,
  * and a hidden ROOT emits nothing at all. */

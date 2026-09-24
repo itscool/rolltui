@@ -44,7 +44,7 @@ extern "C" {
 
 /* The RGB an ANSI index shows in xterm's default palette (0-15 the system colours, 16-231
  * the 6x6x6 cube, 232-255 the grey ramp). */
-void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColor* out);
+void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColorRaw* out);
 
 void rolltui_theme_report_set_error(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_missing_role(RolltuiThemeReport* r, const char* s, size_t len);
@@ -62,10 +62,10 @@ void rolltui_theme_report_add_badge_mismatch(RolltuiThemeReport* r, const char* 
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* Pure colour reduction: TrueColor keeps everything, Ansi256 maps rgb to the nearest of the
  * cube and the grey ramp, Ansi16 to the nearest of the 16 system colours, Mono drops colour. */
-void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth);
+void rolltui_color_downgrade(RolltuiStyleColorRaw* c, unsigned char depth);
 /* An OSC 11 reply ("\x1b]11;rgb:1414/1616/1a1a\x1b\\" or BEL-terminated; 1-4 hex digits per
  * channel, scaled to 8 bits). 1 on success. */
-int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* out);
+int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColorRaw* out);
 /* ---- the built-in themes --------------------------------------------------------------------
  * "default-dark", "default-light", "mono": three NAMES over two shipped files. A built-in is
  * `rolltui/presets/themes/default.json` or `mono.json` — compiled in as `rolltui_kThemePresets`
@@ -90,7 +90,7 @@ const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 
 /* `rolltui_color_parse` and `rolltui_color_to_string` MOVED to `rolltui/rolltui.h`:
  * the menu offers a typed `"type": "color"` field whose committed value is TEXT, so a host that
- * lets a person pick a colour could not turn what the field validated into a `RolltuiStyleColor`.
+ * lets a person pick a colour could not turn what the field validated into a `RolltuiStyleColorRaw`.
  * A public input type whose value has no public parser is a contradiction inside the surface,
  * and `rolltui-paint` is the consumer that hit it. */
 

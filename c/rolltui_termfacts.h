@@ -136,7 +136,7 @@ typedef struct RolltuiTermReplies {
   int modkeys;      /* `CSI > 4 ; v m` */
   int key_last;     /* which of those two came LAST: 1 kitty, 2 modifyOtherKeys — the order keys are judged in */
   int has_bg;       /* OSC 11 arrived and parsed */
-  RolltuiStyleColor bg;
+  RolltuiStyleColorRaw bg;
   int cpr;          /* `CSI row ; col R`, only when the caller said one was expected */
   int cpr_row, cpr_col;
   int sgr;          /* ROLLTUI_TERMR_SGR_* */
@@ -165,7 +165,7 @@ typedef struct RolltuiTermCacheEntry {
   unsigned char depth;
   unsigned char answers_background; /* it answered OSC 11: worth re-checking each run */
   unsigned char has_background;
-  RolltuiStyleColor background;  /* the last one seen; a starting point, re-checked */
+  RolltuiStyleColorRaw background;  /* the last one seen; a starting point, re-checked */
   char name[64];
 } RolltuiTermCacheEntry;
 

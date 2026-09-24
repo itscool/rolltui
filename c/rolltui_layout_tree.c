@@ -106,7 +106,7 @@ static int str_equal(const RolltuiStr* a, const RolltuiStr* b) {
   return a->n == b->n && (a->n == 0 || memcmp(a->p, b->p, a->n) == 0);
 }
 
-static int split_size_equal(const RolltuiSplitSize* a, const RolltuiSplitSize* b) {
+static int split_size_equal(const RolltuiSplitSizeRaw* a, const RolltuiSplitSizeRaw* b) {
   return a->fill == b->fill && a->weight == b->weight && a->dim.fraction == b->dim.fraction &&
          a->dim.cells == b->dim.cells;
 }

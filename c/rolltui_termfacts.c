@@ -408,7 +408,7 @@ static size_t take_string(const char* p, size_t n, int osc, RolltuiTermReplies* 
     const size_t plen = end - 2 - term_len;
     if (osc) {
       if (plen >= 3 && memcmp(payload, "11;", 3) == 0) {
-        RolltuiStyleColor c;
+        RolltuiStyleColorRaw c;
         if (rolltui_parse_osc11_reply(p, end, &c)) {
           r->has_bg = 1;
           r->bg = c;

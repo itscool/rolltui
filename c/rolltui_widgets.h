@@ -157,7 +157,7 @@ int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len,
 /* 0 (SendAndClear) when nothing is bound to `name` — `Windows::on_submit_for`'s own default. */
 int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len);
 
-int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out);
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteRaw* out);
 
 const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name, size_t len, size_t* out_len);
 
@@ -185,7 +185,7 @@ RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const 
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
-void rolltui_note_clear(RolltuiNote* n); /* text = "", state = None, since_ms = 0; keeps the buffer */
+void rolltui_note_clear(RolltuiNoteRaw* n); /* text = "", state = None, since_ms = 0; keeps the buffer */
 
 const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len);
 

@@ -141,7 +141,7 @@ void rolltui_theme_editor_replace(RolltuiThemeEditor* e, const RolltuiStyle* dar
  * and the colour highlighted in a palette choice or being typed into a custom field. Each
  * returns 1 when there is an answer. */
 int rolltui_theme_editor_focused_role(const RolltuiThemeEditor* e, unsigned char* out);
-int rolltui_theme_editor_highlighted_color(const RolltuiThemeEditor* e, RolltuiStyleColor* out);
+int rolltui_theme_editor_highlighted_color(const RolltuiThemeEditor* e, RolltuiStyleColorRaw* out);
 
 /* One line each, APPENDED to `out` (a fresh caller passes a zeroed `RolltuiStr`): what the
  * editor is doing and how deep undo goes; the badges the variant being edited computes as; and
@@ -156,7 +156,7 @@ void rolltui_theme_editor_report(const RolltuiThemeEditor* e, RolltuiStr* out);
 size_t rolltui_theme_editor_palette_count(const RolltuiThemeEditor* e);
 const char* rolltui_theme_editor_palette_id(const RolltuiThemeEditor* e, size_t i, size_t* len);
 const char* rolltui_theme_editor_palette_label(const RolltuiThemeEditor* e, size_t i, size_t* len);
-int rolltui_theme_editor_palette_color(const RolltuiThemeEditor* e, size_t i, RolltuiStyleColor* out);
+int rolltui_theme_editor_palette_color(const RolltuiThemeEditor* e, size_t i, RolltuiStyleColorRaw* out);
 
 /* The auto-fix proposals for the variant being edited, refreshed on every commit. A BORROW
  * with the same window. */

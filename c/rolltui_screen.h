@@ -14,7 +14,7 @@
  * THE BOUNDARY'S RULES, decided here and applying to everything after:
  *
  *   1. **ONE DEFINITION. The C++ types ARE these structs.** `rolltui::Cell` is a `using`
- *      alias for `RolltuiCell` (and `Style`/`Color` for the two in rolltui_style.h), and
+ *      alias for `RolltuiCellRaw` (and `Style`/`Color` for the two in rolltui_style.h), and
  *      the methods C++ wants live in `#ifdef __cplusplus` blocks inside the struct — the
  *      standard dual-language shape.
  *      **The first draft of this file said the opposite** (two types, converted at the
@@ -73,7 +73,7 @@ void rolltui_frame_unmark_rect(RolltuiFrame* f, RolltuiRect r);
 RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src);
 void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill);
 void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill);
-void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCell* out);
+void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCellRaw* out);
 void rolltui_frame_set_style(RolltuiFrame* f, int x, int y, RolltuiStyle s);
 /* Writes one grapheme of `cells` (1 or 2) at (x, y); returns the cells it occupied. */
 int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t glyph_len,

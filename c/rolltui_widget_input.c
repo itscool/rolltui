@@ -34,7 +34,7 @@ typedef struct FlowCell {
 typedef struct Snapshot {
   RolltuiStr text;
   size_t caret;
-  RolltuiInputSelection sel;
+  RolltuiInputSelectionRaw sel;
 } Snapshot;
 
 struct RolltuiInput {
@@ -42,9 +42,9 @@ struct RolltuiInput {
   RolltuiUnicodeGrapheme* g; /* one per grapheme of `text` */
   size_t g_len, g_cap;
   size_t caret;
-  RolltuiInputSelection sel;
+  RolltuiInputSelectionRaw sel;
   int goal_col, has_goal;
-  RolltuiInputOptions opt;
+  RolltuiInputOptionsRaw opt;
   int prompt_w;
 
   /* the undo stack: whole snapshots, and the C says out loud that each one owns a copy of
@@ -87,7 +87,7 @@ struct RolltuiInput {
 
 /* ---- options ----------------------------------------------------------------------------- */
 
-void rolltui_input_options_init(RolltuiInputOptions* o) {
+void rolltui_input_options_init(RolltuiInputOptionsRaw* o) {
   memset(o, 0, sizeof *o);
   o->tab_width = 4;
   o->prompt_role = ROLLTUI_ROLE_DEFAULT_PROMPT;
@@ -96,12 +96,12 @@ void rolltui_input_options_init(RolltuiInputOptions* o) {
   rolltui_str_set(&o->prompt, "> ", 2);
 }
 
-void rolltui_input_options_release(RolltuiInputOptions* o) {
+void rolltui_input_options_release(RolltuiInputOptionsRaw* o) {
   rolltui_str_free(&o->prompt);
   rolltui_str_free(&o->placeholder);
 }
 
-void rolltui_input_options_copy(RolltuiInputOptions* to, const RolltuiInputOptions* from) {
+void rolltui_input_options_copy(RolltuiInputOptionsRaw* to, const RolltuiInputOptionsRaw* from) {
   if (to == from) return;
   rolltui_str_set(&to->prompt, from->prompt.p, from->prompt.n);
   rolltui_str_set(&to->placeholder, from->placeholder.p, from->placeholder.n);
@@ -114,7 +114,7 @@ void rolltui_input_options_copy(RolltuiInputOptions* to, const RolltuiInputOptio
   to->single_line = from->single_line;
 }
 
-int rolltui_input_options_equal(const RolltuiInputOptions* a, const RolltuiInputOptions* b) {
+int rolltui_input_options_equal(const RolltuiInputOptionsRaw* a, const RolltuiInputOptionsRaw* b) {
   return a->ambiguous_wide == b->ambiguous_wide && a->tab_width == b->tab_width && a->inset == b->inset &&
          a->prompt_role == b->prompt_role && a->multi_click_ms == b->multi_click_ms &&
          a->history_limit == b->history_limit && a->single_line == b->single_line &&
@@ -303,7 +303,7 @@ const char* rolltui_input_text(const RolltuiInput* in, size_t* len) { return rol
 
 size_t rolltui_input_caret(const RolltuiInput* in) { return in->caret; }
 
-void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelection* out) { *out = in->sel; }
+void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelectionRaw* out) { *out = in->sel; }
 
 const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len) {
   const size_t b = in->sel.anchor < in->sel.head ? in->sel.anchor : in->sel.head;
@@ -731,7 +731,7 @@ static void ensure(RolltuiInput* in) {
   in->dirty = 0;
 }
 
-void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptions* o) {
+void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptionsRaw* o) {
   const int retab = o->ambiguous_wide != in->opt.ambiguous_wide;
   rolltui_input_options_copy(&in->opt, o);
   in->prompt_w = rolltui_u_display_width(in->u, in->opt.prompt.p, in->opt.prompt.n, in->opt.ambiguous_wide);
@@ -740,7 +740,7 @@ void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptions* o) {
   in->dirty = 1;
 }
 
-const RolltuiInputOptions* rolltui_input_options(const RolltuiInput* in) { return &in->opt; }
+const RolltuiInputOptionsRaw* rolltui_input_options(const RolltuiInput* in) { return &in->opt; }
 
 int rolltui_input_rows_for(const RolltuiInput* in, int width) {
   RolltuiInput* m = (RolltuiInput*)in; /* the flow arrays are this object's own scratch */

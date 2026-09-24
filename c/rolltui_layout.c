@@ -207,7 +207,7 @@ size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap) {
   return n;
 }
 
-int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSize* out) {
+int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSizeRaw* out) {
   RolltuiDim d;
   text = trim_span(text, len, &len);
   if (len == 4 && memcmp(text, "fill", 4) == 0) {
@@ -237,7 +237,7 @@ int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSize* out
   return 0;
 }
 
-int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out) {
+int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSizeRaw* out) {
   size_t i;
   if (rolltui_parse_split_size(text, len, out)) return 1;
   if (len == 0 || len > 9) return 0;
@@ -251,7 +251,7 @@ int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out)
   return 1;
 }
 
-size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap) {
+size_t rolltui_split_size_to_string(RolltuiSplitSizeRaw s, char* out, size_t cap) {
   if (!s.fill) return rolltui_dim_to_string(s.dim, out, cap);
   if (s.weight == 1) {
     const size_t n = 4 < cap ? 4 : (cap ? cap - 1 : 0);
@@ -1471,7 +1471,7 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       } else if (rolltui_json_is_string(x)) {
         size_t sl = 0;
         const char* s = rolltui_json_as_string(x, "", 0, &sl);
-        RolltuiSplitSize ss;
+        RolltuiSplitSizeRaw ss;
         if (rolltui_parse_split_size(s, sl, &ss)) {
           n->size = ss;
         } else {
@@ -1875,7 +1875,7 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
     rolltui_json_set(o, K("background"), rolltui_json_string(namebuf, nl));
   }
   {
-    /* RolltuiSplitSize{}'s own default (rolltui_layout_tree.h: fill=1, weight=1, dim={0,0}). */
+    /* RolltuiSplitSizeRaw{}'s own default (rolltui_layout_tree.h: fill=1, weight=1, dim={0,0}). */
     const int is_default = n->size.fill && n->size.weight == 1 && n->size.dim.fraction == 0 && n->size.dim.cells == 0;
     if (!is_default) {
       if (!n->size.fill && n->size.dim.fraction == 0) {

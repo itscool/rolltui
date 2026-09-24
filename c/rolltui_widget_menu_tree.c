@@ -9,7 +9,7 @@
 
 /* ---- the spec ---------------------------------------------------------------------------- */
 
-void rolltui_input_spec_init(RolltuiInputSpec* s) {
+void rolltui_input_spec_init(RolltuiInputSpecRaw* s) {
   memset(s, 0, sizeof *s);
   /* The four fields whose zero is NOT the default. Named here rather than left to a `= {0}`
    * at each call site — a spec with min == max == 0 accepts nothing at all. */
@@ -19,12 +19,12 @@ void rolltui_input_spec_init(RolltuiInputSpec* s) {
   s->precision = -1;
 }
 
-void rolltui_input_spec_release(RolltuiInputSpec* s) {
+void rolltui_input_spec_release(RolltuiInputSpecRaw* s) {
   rolltui_str_free(&s->validator);
   rolltui_str_free(&s->hint);
 }
 
-void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from) {
+void rolltui_input_spec_copy(RolltuiInputSpecRaw* to, const RolltuiInputSpecRaw* from) {
   if (to == from) return;
   rolltui_str_set(&to->validator, from->validator.p, from->validator.n);
   rolltui_str_set(&to->hint, from->hint.p, from->hint.n);
@@ -38,7 +38,7 @@ void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from)
   to->optional = from->optional;
 }
 
-int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b) {
+int rolltui_input_spec_equal(const RolltuiInputSpecRaw* a, const RolltuiInputSpecRaw* b) {
   return a->type == b->type && a->min == b->min && a->max == b->max && a->step == b->step &&
          a->precision == b->precision && a->max_len == b->max_len && a->min_len == b->min_len &&
          a->optional == b->optional && rolltui_str_eq(&a->validator, b->validator.p, b->validator.n) &&
