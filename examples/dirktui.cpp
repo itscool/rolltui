@@ -61,6 +61,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
 
 extern char** environ;  // for posix_spawnp: not declared by any header on Darwin
@@ -1711,7 +1712,7 @@ struct App {
         if (const RolltuiLayer* top = rolltui_window_stack_layer(stack, depth - 1)) {
           RolltuiRect box{};
           rolltui_placement_resolve(rolltui_layer_placement(top), area(), &box);
-          covered_by_popup = !box.intersect(pr).empty();
+          covered_by_popup = !empty(intersect(box, pr));
         }
       }
     }

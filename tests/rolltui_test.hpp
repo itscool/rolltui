@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 #include "testkit/testkit.hpp"
 
 namespace rolltui_test {

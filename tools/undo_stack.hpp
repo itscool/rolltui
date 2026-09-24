@@ -30,6 +30,7 @@
 // history moves past it.
 //
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation

@@ -1037,9 +1037,9 @@ void test_degenerate_sizes() {
     bool outside = false;
     for (int y = 0; y < 8; ++y)
       for (int x = 0; x < 8; ++x)
-        if (f.glyph(x, y) != " " && !a.contains(x, y)) outside = true;
+        if (f.glyph(x, y) != " " && !contains(a, x, y)) outside = true;
     check(!outside, name + ": nothing is drawn outside the area");
-    check(!f.cursor().visible || a.contains(f.cursor().x, f.cursor().y) || (a.w == 0 && f.cursor().x == a.x) ||
+    check(!f.cursor().visible || contains(a, f.cursor().x, f.cursor().y) || (a.w == 0 && f.cursor().x == a.x) ||
               (a.h == 0 && f.cursor().y == a.y),
           name + ": the cursor is inside the area or on its collapsed edge");
     set_caret(in.get(), 0);

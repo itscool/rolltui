@@ -176,10 +176,10 @@ int main() {
   }
   {
     RolltuiRect a{0, 0, 10, 5}, b{5, 2, 10, 10};
-    RolltuiRect i = a.intersect(b);
+    RolltuiRect i = intersect(a, b);
     check(i == RolltuiRect{5, 2, 5, 3}, "Rect::intersect");
-    check(a.intersect(RolltuiRect{20, 20, 1, 1}).empty(), "disjoint rects intersect to empty");
-    check(a.contains(9, 4) && !a.contains(10, 4), "Rect::contains is half-open");
+    check(empty(intersect(a, RolltuiRect{20, 20, 1, 1})), "disjoint rects intersect to empty");
+    check(contains(a, 9, 4) && !contains(a, 10, 4), "Rect::contains is half-open");
   }
 
   // ---- golden bytes --------------------------------------------------------------
@@ -371,11 +371,11 @@ int main() {
     // The frame diff's goldens above already exercise `intersect` in anger; these are the
     // edges worth naming.
     const RolltuiRect a{0, 0, 10, 10};
-    check(a.intersect({5, 5, 10, 10}) == RolltuiRect{5, 5, 5, 5}, "overlapping rectangles intersect");
-    check(a.intersect({20, 20, 5, 5}) == RolltuiRect{20, 20, 0, 0},
+    check(intersect(a, {5, 5, 10, 10}) == RolltuiRect{5, 5, 5, 5}, "overlapping rectangles intersect");
+    check(intersect(a, {20, 20, 5, 5}) == RolltuiRect{20, 20, 0, 0},
           "…and disjoint ones give an EMPTY rect at the clamped origin, not at {0,0}");
-    check(a.intersect({2, 2, 3, 3}) == RolltuiRect{2, 2, 3, 3}, "…a contained rect is itself");
-    check(a.intersect({0, 0, 0, 0}) == RolltuiRect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
+    check(intersect(a, {2, 2, 3, 3}) == RolltuiRect{2, 2, 3, 3}, "…a contained rect is itself");
+    check(intersect(a, {0, 0, 0, 0}) == RolltuiRect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
   }
 
   // ---- THE DOUBLE BUFFER --------------------------------------------------------------

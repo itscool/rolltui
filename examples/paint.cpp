@@ -64,6 +64,7 @@
 #include <zlib.h>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
 
 // ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the

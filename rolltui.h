@@ -279,10 +279,6 @@ typedef struct RolltuiMouseEvent {
   int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0); /* 0-based cells */
   int button ROLLTUI_DEFAULT(0);                  /* 1 left, 2 middle, 3 right; 0 for motion/wheel */
   unsigned char ctrl ROLLTUI_DEFAULT(0), alt ROLLTUI_DEFAULT(0), shift ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  constexpr bool operator==(const RolltuiMouseEvent&) const = default;
-#endif
 } RolltuiMouseEvent;
 
 #define ROLLTUI_EVENT_KEY 0
@@ -489,10 +485,6 @@ typedef struct RolltuiStyle {
   RolltuiStyleColor fg, bg;
   unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0), underline ROLLTUI_DEFAULT(0),
       dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  constexpr bool operator==(const RolltuiStyle&) const = default;
-#endif
 } RolltuiStyle;
 
 ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 15, "RolltuiStyle must be fifteen bytes with no padding in either language");
@@ -711,16 +703,6 @@ void rolltui_rect_intersect(int ax, int ay, int aw, int ah,
  * remain because the C++ `intersect` is built on them. */
 typedef struct RolltuiRect {
   int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0), w ROLLTUI_DEFAULT(0), h ROLLTUI_DEFAULT(0);
-#ifdef __cplusplus
-  bool contains(int px, int py) const { return px >= x && py >= y && px < x + w && py < y + h; }
-  RolltuiRect intersect(const RolltuiRect& o) const {  /* still through the seam */
-    int r[4];
-    rolltui_rect_intersect(x, y, w, h, o.x, o.y, o.w, o.h, r);
-    return RolltuiRect{r[0], r[1], r[2], r[3]};
-  }
-  bool empty() const { return w <= 0 || h <= 0; }
-  bool operator==(const RolltuiRect&) const = default;
-#endif
 } RolltuiRect;
 
 ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in both languages");
@@ -1656,9 +1638,6 @@ typedef struct RolltuiMenuActionList {
 typedef struct RolltuiMenuOptions {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   int inset ROLLTUI_DEFAULT(0); /* columns kept clear on each side of the area */
-#ifdef __cplusplus
-  bool operator==(const RolltuiMenuOptions&) const = default;
-#endif
 } RolltuiMenuOptions;
 
 /* THE SEVEN ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
@@ -1712,9 +1691,6 @@ typedef struct RolltuiTranscriptOptions {
   int code_fold_over_lines ROLLTUI_DEFAULT(0); /* 0 disables, as in markdown's fold options */
   int code_cap_lines ROLLTUI_DEFAULT(0);
   unsigned long long multi_click_ms ROLLTUI_DEFAULT(400);
-#ifdef __cplusplus
-  bool operator==(const RolltuiTranscriptOptions&) const = default;
-#endif
 } RolltuiTranscriptOptions;
 
 /* ---- one entry's cached layout ---------------------------------------------------------------- */
@@ -1741,9 +1717,6 @@ typedef struct RolltuiTextPos {
   size_t entry ROLLTUI_DEFAULT(0);
   size_t offset ROLLTUI_DEFAULT(0);
   size_t length ROLLTUI_DEFAULT(0);
-#ifdef __cplusplus
-  bool operator==(const RolltuiTextPos&) const = default;
-#endif
 } RolltuiTextPos;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
@@ -1766,9 +1739,6 @@ typedef struct RolltuiFindMatch {
   size_t entry ROLLTUI_DEFAULT(0);
   size_t offset ROLLTUI_DEFAULT(0);
   size_t length ROLLTUI_DEFAULT(0);
-#ifdef __cplusplus
-  bool operator==(const RolltuiFindMatch&) const = default;
-#endif
 } RolltuiFindMatch;
 
 typedef struct RolltuiTranscriptStats {
@@ -1874,9 +1844,6 @@ typedef struct RolltuiPlacement {
    * either edge. Width only. */
   unsigned char edge_margin ROLLTUI_DEFAULT(0);
   RolltuiOptDim min_w, min_h, max_w, max_h;
-#ifdef __cplusplus
-  bool operator==(const RolltuiPlacement&) const = default;
-#endif
 } RolltuiPlacement;
 
 struct RolltuiLayoutNode;

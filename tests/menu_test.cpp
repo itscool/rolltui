@@ -1385,7 +1385,7 @@ int main() {
       m.draw(f, theme, true);
       for (int y = 0; y < 10; ++y)
         for (int x = 0; x < 10; ++x)
-          if (!a.contains(x, y) && !(f.glyph(x, y) == " " && f.at(x, y).style == fill)) ok = false;
+          if (!contains(a, x, y) && !(f.glyph(x, y) == " " && f.at(x, y).style == fill)) ok = false;
       m.reset();
     }
     check(ok, "0x0, 1x1, 0x5, 5x0, 1x6, 40x1 and an offset 2x2 area: nothing drawn outside, no crash");

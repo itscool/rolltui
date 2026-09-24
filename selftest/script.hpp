@@ -29,6 +29,7 @@
 // TRAP**: `/` passes through untouched so `Type:/tmp/x` is fine, but an underscore ANYWHERE in a
 // typed path becomes a space and the path silently stops existing. Write `\_` for it.
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
 
 // TWO INTERNAL HEADERS, and the reason is worth stating rather than hiding. Naming a key

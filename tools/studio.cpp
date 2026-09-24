@@ -196,6 +196,7 @@
 #include <unistd.h>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/rolltui_cpp.h"
 #include "rolltui/rolltui_studio.h"
 
 // ADDITIVE, NOT SUBTRACTIVE. `rolltui-studio` is the product and cannot drive itself; the script
@@ -1370,8 +1371,8 @@ struct App {
     for (const RolltuiResolvedNode& rn : nodes)
       if (rn.node->id == leditor.selected()) { sel = rn.outer; found = true; break; }
     if (!found) return;
-    if (!sel.intersect(editor_rect(editor_left)).empty()) {
-      if (sel.intersect(editor_rect(!editor_left)).empty()) {
+    if (!empty(intersect(sel, editor_rect(editor_left)))) {
+      if (empty(intersect(sel, editor_rect(!editor_left)))) {
         editor_left = !editor_left;
         close_popup("editor");
         RolltuiLayer popup = editor_popup("layout editor", editor_left);
@@ -1486,7 +1487,7 @@ struct App {
     std::vector<RolltuiResolvedNode> nodes;
     rolltui_resolve_tree(&rolltui_window_stack_base(stack)->root, layout_area(), layout_area(), 0, collect_resolved, &nodes);
     for (const RolltuiResolvedNode& rn : nodes)
-      if (rn.node->is_window() && rn.outer.contains(x, y)) best = rolltui::own(rn.node->id);
+      if (rn.node->is_window() && contains(rn.outer, x, y)) best = rolltui::own(rn.node->id);
     return best;
   }
   // A seam: the two edge cells where two visible siblings meet (each owns one). The node that takes the new
@@ -1523,7 +1524,7 @@ struct App {
   void draw_selection(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
     if (editor_mode != EditorMode::Layout || rn.layer != 0 || !(rn.node->id == leditor.selected())) return;
     if (rn.node->border == rolltui::Border::None) {
-      tint(f, rn.outer.intersect(layout_area()), style(ROLLTUI_ROLE_SELECTION));
+      tint(f, intersect(rn.outer, layout_area()), style(ROLLTUI_ROLE_SELECTION));
       return;
     }
     RolltuiStyle hl{};
@@ -1531,7 +1532,7 @@ struct App {
     const RolltuiRect o = rn.outer;
     for (const RolltuiRect& edge : {RolltuiRect{o.x, o.y, o.w, 1}, RolltuiRect{o.x, o.y + o.h - 1, o.w, 1},
                                     RolltuiRect{o.x, o.y, 1, o.h}, RolltuiRect{o.x + o.w - 1, o.y, 1, o.h}})
-      tint(f, edge.intersect(layout_area()), hl);
+      tint(f, intersect(edge, layout_area()), hl);
   }
   void ask(StrView text, std::function<void()> action) {
     confirm_text = rolltui::own(text);
@@ -2255,7 +2256,7 @@ struct App {
         std::vector<RolltuiResolvedNode> nodes;
         rolltui_window_stack_resolve(stack, layout_area(), collect_resolved, &nodes);
         for (const RolltuiResolvedNode& rn : nodes)
-          if (rn.layer > 0 && rn.node->is_window() && rn.outer.contains(m.x, m.y)) return true;
+          if (rn.layer > 0 && rn.node->is_window() && contains(rn.outer, m.x, m.y)) return true;
         return false;
       }();
       if (!in_editor_popup) {
