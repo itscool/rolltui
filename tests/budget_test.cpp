@@ -235,7 +235,7 @@ struct Scene {
     rolltui_layout_release(&layout);
 
     for (int i = 0; i < 40; ++i) {
-      RolltuiDocEntry* e = rolltui_document_add(&doc);
+      RolltuiDocEntry* e = static_cast<RolltuiDocEntry*>(rolltui_document_add(&doc));
       set_str(e->id, "e" + std::to_string(i));
       e->markdown = 1;
       set_str(e->text, entry_text(i));

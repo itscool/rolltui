@@ -146,7 +146,7 @@ const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWind
 void rolltui_context_set_error_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx);
 void rolltui_context_set_panel_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx);
 
-const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
+const RolltuiDocumentRaw* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
 
 int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t len);
 /* 1 when something was bound and got called; 0 (a no-op) when nothing is bound to `name`. */

@@ -215,7 +215,7 @@ void draw_slot(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 void paint_something() {
   RolltuiDocument doc{};
   for (int i = 0; i < 8; ++i) {
-    RolltuiDocEntry* e = rolltui_document_add(&doc);
+    RolltuiDocEntry* e = static_cast<RolltuiDocEntry*>(rolltui_document_add(&doc));
     set_str(e->id, "e" + std::to_string(i));
     e->markdown = 1;
     set_str(e->text, "## Entry " + std::to_string(i) +

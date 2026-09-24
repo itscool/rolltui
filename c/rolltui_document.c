@@ -11,7 +11,7 @@
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-void rolltui_doc_entry_init(RolltuiDocEntry* e) {
+void rolltui_doc_entry_init(RolltuiDocEntryRaw* e) {
   memset(e, 0, sizeof *e);
   /* The fields whose zero is NOT the default — plus `role` and `state`, which ARE zero and
    * are named anyway so a reader is never left inferring which of the two it is. */
@@ -21,7 +21,7 @@ void rolltui_doc_entry_init(RolltuiDocEntry* e) {
   e->folded = 1;
 }
 
-void rolltui_doc_entry_release(RolltuiDocEntry* e) {
+void rolltui_doc_entry_release(RolltuiDocEntryRaw* e) {
   if (!e) return;
   rolltui_str_free(&e->id);
   rolltui_str_free(&e->text);
@@ -30,7 +30,7 @@ void rolltui_doc_entry_release(RolltuiDocEntry* e) {
   rolltui_doc_entry_init(e);
 }
 
-void rolltui_doc_entry_copy(RolltuiDocEntry* to, const RolltuiDocEntry* from) {
+void rolltui_doc_entry_copy(RolltuiDocEntryRaw* to, const RolltuiDocEntryRaw* from) {
   if (to == from) return;
   rolltui_str_set(&to->id, from->id.p, from->id.n);
   rolltui_str_set(&to->text, from->text.p, from->text.n);
@@ -47,35 +47,35 @@ void rolltui_doc_entry_copy(RolltuiDocEntry* to, const RolltuiDocEntry* from) {
   to->state_since_ms = from->state_since_ms;
 }
 
-size_t rolltui_document_count(const RolltuiDocument* d) { return d->n; }
+size_t rolltui_document_count(const RolltuiDocumentRaw* d) { return d->n; }
 
-RolltuiDocEntry* rolltui_document_at(const RolltuiDocument* d, size_t i) {
+RolltuiDocEntryRaw* rolltui_document_at(const RolltuiDocumentRaw* d, size_t i) {
   return i < d->n ? d->v[i] : NULL;
 }
 
-RolltuiDocEntry* rolltui_document_add(RolltuiDocument* d) {
+RolltuiDocEntryRaw* rolltui_document_add(RolltuiDocumentRaw* d) {
   /* GROWING, AMORTISED AND **ZEROED** — the one place this list does not use
    * `rolltui_ptrvec_push`, and the reason is the reuse below: a slot past `n` may still hold
    * an entry a `clear` released and kept, and telling that from garbage requires the unwritten
    * slots to be NULL. `rolltui_alloc.h` names exactly this case ("a slot holding an owned
    * pointer, where garbage would be freed as if it were a buffer"); ASan named it too, on the
    * first run, as a use-after-poison in `release`. */
-  RolltuiDocEntry* e;
-  d->v = (RolltuiDocEntry**)rolltui_grow_zeroed(d->v, &d->cap, d->n + 1, sizeof *d->v);
+  RolltuiDocEntryRaw* e;
+  d->v = (RolltuiDocEntryRaw**)rolltui_grow_zeroed(d->v, &d->cap, d->n + 1, sizeof *d->v);
   if (d->v[d->n]) return d->v[d->n++]; /* released and kept by a previous clear */
-  e = (RolltuiDocEntry*)rolltui_mem_alloc(sizeof *e);
+  e = (RolltuiDocEntryRaw*)rolltui_mem_alloc(sizeof *e);
   rolltui_doc_entry_init(e);
   d->v[d->n++] = e;
   return e;
 }
 
-void rolltui_document_clear(RolltuiDocument* d) {
+void rolltui_document_clear(RolltuiDocumentRaw* d) {
   size_t i;
   for (i = 0; i < d->n; ++i) rolltui_doc_entry_release(d->v[i]);
   d->n = 0; /* the entries and the array both stay, for the next fill */
 }
 
-void rolltui_document_release(RolltuiDocument* d) {
+void rolltui_document_release(RolltuiDocumentRaw* d) {
   size_t i;
   rolltui_document_clear(d);
   /* Every slot up to `cap`, because `clear` keeps its entries past `n` — and every one of
@@ -89,7 +89,7 @@ void rolltui_document_release(RolltuiDocument* d) {
   rolltui_ptrvec_free((RolltuiPtrVec*)d);
 }
 
-void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from) {
+void rolltui_document_copy(RolltuiDocumentRaw* to, const RolltuiDocumentRaw* from) {
   size_t i;
   if (to == from) return;
   rolltui_document_clear(to);

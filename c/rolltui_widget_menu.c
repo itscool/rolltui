@@ -2809,7 +2809,7 @@ void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* 
   for (i = 0; i < root->children.n; ++i) rolltui_menu_apply_shortcuts(root->children.v[i], b);
 }
 
-void rolltui_menu_action_list_release(RolltuiMenuActionList* l) {
+void rolltui_menu_action_list_release(RolltuiMenuActionListRaw* l) {
   size_t i;
   if (!l) return;
   for (i = 0; i < l->cap; ++i) {
@@ -2822,7 +2822,7 @@ void rolltui_menu_action_list_release(RolltuiMenuActionList* l) {
   l->cap = 0;
 }
 
-static void item_actions_walk(const RolltuiMenuItem* root, RolltuiMenuActionList* out) {
+static void item_actions_walk(const RolltuiMenuItem* root, RolltuiMenuActionListRaw* out) {
   size_t i;
   if (!root) return;
   if (root->action_name.n != 0) {
@@ -2838,7 +2838,7 @@ static void item_actions_walk(const RolltuiMenuItem* root, RolltuiMenuActionList
   for (i = 0; i < root->children.n; ++i) item_actions_walk(root->children.v[i], out);
 }
 
-void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionList* out) {
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionListRaw* out) {
   if (!out) return;
   out->n = 0; /* REPLACES: the entries' buffers stay, to be refilled */
   item_actions_walk(root, out);

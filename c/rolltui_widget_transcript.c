@@ -251,7 +251,7 @@ static void map_free_all(RolltuiMap* m, void (*fn)(void*)) {
   rolltui_map_release(m);
 }
 
-static const RolltuiMdDoc* parsed_doc(RolltuiTranscript* t, const RolltuiDocEntry* e) {
+static const RolltuiMdDoc* parsed_doc(RolltuiTranscript* t, const RolltuiDocEntryRaw* e) {
   /* KEYED ON VERSION AND NOT ON WIDTH: `parse` is a pure
    * function of the entry's text, and the layout cache's key carries `width` — so a resize
    * re-parsed forty unchanged strings into an identical tree and threw it away. */
@@ -282,7 +282,7 @@ static CodeFolds* code_folds_for(RolltuiTranscript* t, const char* id, size_t le
 
 /* ---- laying an entry out ----------------------------------------------------------------- */
 
-static void lay_out(RolltuiTranscript* t, RolltuiEntryLayout* L, const RolltuiDocEntry* e, int width,
+static void lay_out(RolltuiTranscript* t, RolltuiEntryLayout* L, const RolltuiDocEntryRaw* e, int width,
                     const RolltuiTranscriptOptions* opt, int folded) {
   RolltuiMdLines* S = rolltui_entry_layout_store(L);
   const int amb = opt->ambiguous_wide;
@@ -498,7 +498,7 @@ static void layout_text(const RolltuiEntryLayout* L, const char** p, size_t* n) 
 
 /* ---- folding ----------------------------------------------------------------------------- */
 
-int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntry* e) {
+int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntryRaw* e) {
   const int* v = (const int*)rolltui_map_get(&t->fold_over_, e->id.p, e->id.n);
   return v ? *v : (e->folded != 0);
 }
@@ -555,7 +555,7 @@ void rolltui_transcript_set_code_uncapped(RolltuiTranscript* t, const char* id, 
 
 /* ---- the per-frame build ----------------------------------------------------------------- */
 
-static CacheKey key_for(const RolltuiTranscript* t, const RolltuiDocEntry* e, int width, int folded) {
+static CacheKey key_for(const RolltuiTranscript* t, const RolltuiDocEntryRaw* e, int width, int folded) {
   CacheKey k;
   const CodeFolds* f = code_folds_for((RolltuiTranscript*)t, e->id.p, e->id.n, 0);
   memset(&k, 0, sizeof k);
@@ -569,7 +569,7 @@ static CacheKey key_for(const RolltuiTranscript* t, const RolltuiDocEntry* e, in
   return k;
 }
 
-static void build(RolltuiTranscript* t, const RolltuiDocument* doc, int width) {
+static void build(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width) {
   const size_t n = rolltui_document_count(doc);
   size_t i, g = 0;
   t->layouts_ = (const RolltuiEntryLayout**)rolltui_grow(t->layouts_, &t->layouts_cap, n ? n : 1,
@@ -580,7 +580,7 @@ static void build(RolltuiTranscript* t, const RolltuiDocument* doc, int width) {
   for (i = 0; i < rolltui_map_count(&t->cache_); ++i)
     ((Cached*)rolltui_map_value_at(&t->cache_, i))->seen = 0;
   for (i = 0; i < n; ++i) {
-    const RolltuiDocEntry* e = rolltui_document_at(doc, i);
+    const RolltuiDocEntryRaw* e = rolltui_document_at(doc, i);
     const int folded = e->foldable && rolltui_transcript_is_folded(t, e);
     const CacheKey key = key_for(t, e, width, folded);
     Cached* c = (Cached*)rolltui_map_get(&t->cache_, e->id.p, e->id.n);
@@ -653,7 +653,7 @@ int rolltui_transcript_set_query(RolltuiTranscript* t, const char* q, size_t len
 }
 
 /* The entry's logical text AS IF UNFOLDED — what find searches. */
-static void searchable_text(RolltuiTranscript* t, const RolltuiDocEntry* e, size_t entry, int width,
+static void searchable_text(RolltuiTranscript* t, const RolltuiDocEntryRaw* e, size_t entry, int width,
                             const char** out, size_t* out_n) {
   FindText* ft;
   CacheKey key;
@@ -700,7 +700,7 @@ static void match_push(RolltuiTranscript* t, size_t entry, size_t offset, size_t
   ++t->matches_n;
 }
 
-static void recompute_matches(RolltuiTranscript* t, const RolltuiDocument* doc, int width) {
+static void recompute_matches(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width) {
   RolltuiFindMatch was;
   const int had = current_match(t) != NULL;
   size_t i, top, pick = 0;
@@ -811,9 +811,9 @@ static const RolltuiMdCodeBlock* hiding_block(const RolltuiTranscript* t, size_t
   return NULL;
 }
 
-static void reveal_current(RolltuiTranscript* t, const RolltuiDocument* doc, int width) {
+static void reveal_current(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width) {
   const RolltuiFindMatch* m = current_match(t);
-  const RolltuiDocEntry* e;
+  const RolltuiDocEntryRaw* e;
   const RolltuiMdCodeBlock* b;
   size_t line, gapn, g, h, top;
   if (!m || m->entry >= rolltui_document_count(doc)) return;
@@ -866,7 +866,7 @@ static unsigned long long now_us(void) {
   return (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)(ts.tv_nsec / 1000);
 }
 
-void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocument* doc, RolltuiRect area,
+void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, RolltuiRect area,
                                const RolltuiTranscriptOptions* opt) {
   const unsigned long long t0 = now_us();
   int width;
@@ -1336,7 +1336,7 @@ static void drag_to(RolltuiTranscript* t, int x, int y) {
 }
 
 static void begin_drag(RolltuiTranscript* t, int x, int y, int shift, unsigned long long now_ms,
-                       const RolltuiDocument* doc) {
+                       const RolltuiDocumentRaw* doc) {
   RolltuiTextPos pos;
   char marker[ROLLTUI_MARKER_MAX];
   size_t marker_n;
@@ -1362,7 +1362,7 @@ static void begin_drag(RolltuiTranscript* t, int x, int y, int shift, unsigned l
     const int row = iclamp(y - t->area_.y, 0, imax(t->area_.h - 1, 0));
     const RowRef r = row_at(t, top_line(t) + (size_t)row);
     if (!r.gap && !r.beyond && r.entry < rolltui_document_count(doc)) {
-      const RolltuiDocEntry* e = rolltui_document_at(doc, r.entry);
+      const RolltuiDocEntryRaw* e = rolltui_document_at(doc, r.entry);
       const RolltuiEntryLayout* L = t->layouts_[r.entry];
       size_t i, count;
       const RolltuiMdCodeBlock* blocks;
@@ -1459,13 +1459,13 @@ void rolltui_transcript_tick(RolltuiTranscript* t) {
   if (rolltui_transcript_hit(t, t->drag_.x, t->area_.y + row, &pos)) t->sel_.head = pos;
 }
 
-int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const RolltuiDocument* doc) {
+int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const RolltuiDocumentRaw* doc) {
   const size_t top = top_line(t);
   int row;
   for (row = 0; row < t->area_.h; ++row) {
     const size_t g = top + (size_t)row;
     RowRef r;
-    const RolltuiDocEntry* e;
+    const RolltuiDocEntryRaw* e;
     const RolltuiEntryLayout* L;
     const RolltuiMdCodeBlock* blocks;
     size_t i, count;
@@ -1497,7 +1497,7 @@ static int action_is(const char* a, size_t n, const char* name) {
   return name && strlen(name) == n && memcmp(a, name, n) == 0;
 }
 
-int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const RolltuiDocument* doc,
+int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const RolltuiDocumentRaw* doc,
                               unsigned long long now_ms, const RolltuiBindings* bindings,
                               const RolltuiTranscriptActions* A) {
   if (e->kind == ROLLTUI_EVENT_MOUSE) {

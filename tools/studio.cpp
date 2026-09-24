@@ -386,7 +386,7 @@ RolltuiDocument parse_fixture(StrView text) {
     while (b > a && all[b - 1] == '\n') --b;
     const StrView body = all.substr(a, b - a);
     if (body.empty()) { buf.clear(); return; }
-    RolltuiDocEntry* e = rolltui_document_add(&doc);
+    RolltuiDocEntry* e = static_cast<RolltuiDocEntry*>(rolltui_document_add(&doc));
     e->id = rolltui::format("e%d", n++);
     // THE VERSION MOVES PER LOAD, and it has to. An id is a stable identity across FRAMES, and
     // this parser reuses `e0`, `e1`, … for every document it reads — so a second document arrives
@@ -2034,7 +2034,7 @@ struct App {
   // so the studio exercises a growing transcript too.
   void append_prompt(StrView text) {
     if (text.empty()) return;
-    RolltuiDocEntry* e = rolltui_document_add(&doc);
+    RolltuiDocEntry* e = static_cast<RolltuiDocEntry*>(rolltui_document_add(&doc));
     e->id = rolltui::format("input%d", submitted++);
     rolltui::assign(e->text, text);
     e->markdown = 0;

@@ -19,10 +19,10 @@ extern "C" {
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
-void rolltui_doc_entry_init(RolltuiDocEntry* e);
+void rolltui_doc_entry_init(RolltuiDocEntryRaw* e);
 
-size_t rolltui_document_count(const RolltuiDocument* d);
-RolltuiDocEntry* rolltui_document_at(const RolltuiDocument* d, size_t i);
+size_t rolltui_document_count(const RolltuiDocumentRaw* d);
+RolltuiDocEntryRaw* rolltui_document_at(const RolltuiDocumentRaw* d, size_t i);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -255,4 +255,142 @@ class RolltuiNote : public RolltuiNoteRaw {
   RolltuiNote& operator=(const char* t) { return set(t, t ? std::strlen(t) : 0); }
 };
 
+/* ---- rename + derive: the destructor-bearing "out-param" types, smallest blast radius first. --
+ * A `RolltuiPresetList list; store_list(&list);` pattern already covers every real call site — a
+ * local declared as the derived type, its address upcast implicitly to the C function's
+ * `...Raw*` parameter, no other change needed. */
+
+class RolltuiMenuActionList : public RolltuiMenuActionListRaw {
+ public:
+  RolltuiMenuActionList() = default;
+  RolltuiMenuActionList(const RolltuiMenuActionList&) = delete;
+  RolltuiMenuActionList& operator=(const RolltuiMenuActionList&) = delete;
+  ~RolltuiMenuActionList() { rolltui_menu_action_list_release(this); }
+  const RolltuiMenuAction* begin() const { return v; }
+  const RolltuiMenuAction* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+};
+
+class RolltuiDocEntry : public RolltuiDocEntryRaw {
+ public:
+  RolltuiDocEntry() = default;
+  // COPY IS DELETED: spell it `clone()` (`rolltui_doc_entry_copy`). Move and the destructor stay.
+  RolltuiDocEntry(const RolltuiDocEntry&) = delete;
+  RolltuiDocEntry(RolltuiDocEntry&& o) noexcept
+      : RolltuiDocEntryRaw{std::move(o.id),
+                           o.version,
+                           std::move(o.text),
+                           o.markdown,
+                           o.role,
+                           std::move(o.prefix),
+                           o.prefix_role,
+                           o.foldable,
+                           std::move(o.summary),
+                           o.folded,
+                           o.state,
+                           o.progress,
+                           o.state_since_ms} {}
+  RolltuiDocEntry& operator=(const RolltuiDocEntry&) = delete;
+  RolltuiDocEntry& operator=(RolltuiDocEntry&& o) noexcept {
+    if (this != &o) {
+      id = std::move(o.id);
+      version = o.version;
+      text = std::move(o.text);
+      markdown = o.markdown;
+      role = o.role;
+      prefix = std::move(o.prefix);
+      prefix_role = o.prefix_role;
+      foldable = o.foldable;
+      summary = std::move(o.summary);
+      folded = o.folded;
+      state = o.state;
+      progress = o.progress;
+      state_since_ms = o.state_since_ms;
+    }
+    return *this;
+  }
+  ~RolltuiDocEntry() = default;
+  RolltuiDocEntry clone() const {
+    RolltuiDocEntry out;
+    rolltui_doc_entry_copy(&out, this);
+    return out;
+  }
+};
+
+/* Every element `v[i]` is heap-allocated by `rolltui_document_add`, a C function, as a plain
+ * `RolltuiDocEntryRaw` — the `static_cast<RolltuiDocEntry*>` below reads it through the derived
+ * type without having constructed one there. Sound because RolltuiDocEntry adds no data member
+ * and no virtual function over its base: the two have identical layout, and every member this
+ * class calls through the cast is non-virtual, so no vtable or object-identity check is ever
+ * involved — the same reasoning that makes the whole rename+derive mechanism zero-cost applies
+ * here too, just applied to an element the C side allocated rather than one this file did. */
+class RolltuiDocument : public RolltuiDocumentRaw {
+ public:
+  struct iterator {
+    RolltuiDocEntryRaw** p;
+    RolltuiDocEntry& operator*() const { return *static_cast<RolltuiDocEntry*>(*p); }
+    RolltuiDocEntry* operator->() const { return static_cast<RolltuiDocEntry*>(*p); }
+    iterator& operator++() {
+      ++p;
+      return *this;
+    }
+    bool operator==(const iterator& o) const { return p == o.p; }
+  };
+  struct const_iterator {
+    RolltuiDocEntryRaw* const* p;
+    const RolltuiDocEntry& operator*() const { return *static_cast<const RolltuiDocEntry*>(*p); }
+    const RolltuiDocEntry* operator->() const { return static_cast<const RolltuiDocEntry*>(*p); }
+    const_iterator& operator++() {
+      ++p;
+      return *this;
+    }
+    bool operator==(const const_iterator& o) const { return p == o.p; }
+  };
+
+  RolltuiDocument() = default;
+  RolltuiDocument(const RolltuiDocument&) = delete;  /* clone() is the spelling */
+  RolltuiDocument(RolltuiDocument&& o) noexcept : RolltuiDocumentRaw{o.v, o.n, o.cap} {
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  RolltuiDocument& operator=(const RolltuiDocument&) = delete;
+  RolltuiDocument& operator=(RolltuiDocument&& o) noexcept {
+    if (this != &o) {
+      rolltui_document_release(this);
+      v = o.v;
+      n = o.n;
+      cap = o.cap;
+      o.v = nullptr;
+      o.n = o.cap = 0;
+    }
+    return *this;
+  }
+  ~RolltuiDocument() { rolltui_document_release(this); }
+  RolltuiDocument clone() const {
+    RolltuiDocument out;
+    rolltui_document_copy(&out, this);
+    return out;
+  }
+
+  std::size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  RolltuiDocEntry& operator[](std::size_t i) { return *static_cast<RolltuiDocEntry*>(v[i]); }
+  const RolltuiDocEntry& operator[](std::size_t i) const { return *static_cast<const RolltuiDocEntry*>(v[i]); }
+  RolltuiDocEntry& back() { return *static_cast<RolltuiDocEntry*>(v[n - 1]); }
+  const RolltuiDocEntry& back() const { return *static_cast<const RolltuiDocEntry*>(v[n - 1]); }
+  iterator begin() { return {v}; }
+  iterator end() { return {v + n}; }
+  const_iterator begin() const { return {v}; }
+  const_iterator end() const { return {v + n}; }
+  void push_back(RolltuiDocEntry&& e) { *static_cast<RolltuiDocEntry*>(rolltui_document_add(this)) = std::move(e); }
+  void push_back(const RolltuiDocEntry& e) { rolltui_doc_entry_copy(rolltui_document_add(this), &e); }
+  void clear() { rolltui_document_clear(this); }
+  /* Trims or grows, KEEPING the storage past the end: a transcript that trims and refills wants the entries back. */
+  void resize(std::size_t k) {
+    while (n > k) rolltui_doc_entry_release(v[--n]);
+    while (n < k) rolltui_document_add(this);
+  }
+};
+
 #endif /* ROLLTUI_CPP_H */

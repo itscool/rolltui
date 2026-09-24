@@ -274,7 +274,9 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 122}, /* -10: `RolltuiPresetDomain`/`RolltuiPresetReportFns` — the generic engine's own descriptor structs,
+        {"rolltui.h", 120}, /* -2: `RolltuiDocument::iterator`/`::const_iterator`'s own `p` pointer moved to `rolltui_cpp.h`
+                              beside the rest of `RolltuiDocument`'s C++ half, counted below. -10 before that:
+                              `RolltuiPresetDomain`/`RolltuiPresetReportFns` — the generic engine's own descriptor structs,
                               carrying most of this header's stored function pointers plus its `theme_vocab`/`layout_hooks`/
                               `layout_actions`/`bindings_scope_ctx`/`bindings_reason_ctx`/`cache` BORROWS and OWN — moved to
                               `c/rolltui_presets.h`, counted below, once nothing public still needed the generic shape. +12
@@ -288,9 +290,10 @@ int main() {
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
         {"rolltui_studio.h", 0},  /* the studio's CREATE-AND-EDIT surface: twelve functions and three typed edit-callback
                                      typedefs, no struct of its own — nothing here stores a pointer */
-        {"rolltui_cpp.h", 0},  /* the C++ half of rolltui.h's types (free functions, and derived classes reclaiming a
-                                  renamed struct's name) — no NEW struct of its own; a derived class's inherited fields
-                                  are already counted at the base's own row in `rolltui.h` above */
+        {"rolltui_cpp.h", 2},  /* the C++ half of rolltui.h's types (free functions, and derived classes reclaiming a
+                                  renamed struct's name) — a derived class's inherited fields are already counted at
+                                  the base's own row in `rolltui.h` above; the 2 here are `RolltuiDocument::iterator`'s
+                                  and `::const_iterator`'s own `p`, a BORROW into the document's storage */
         {"c/rolltui_theme_editor.h", 0},
         {"c/rolltui_keys_editor.h", 0},
         {"c/rolltui_style.h", 0},

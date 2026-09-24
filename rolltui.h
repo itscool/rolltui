@@ -487,7 +487,9 @@ enum class EffectState : unsigned char;
 }  // namespace rolltui
 #endif
 
-typedef struct RolltuiDocEntry {
+/* RolltuiDocEntryRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiDocEntry : public
+ * RolltuiDocEntryRaw` reclaiming the name, with the destructor, move, and `clone()`. */
+typedef struct RolltuiDocEntryRaw {
   RolltuiStr id; /* stable identity across frames */
   unsigned long long version ROLLTUI_DEFAULT(0);
   RolltuiStr text;                           /* markdown source, or verbatim text */
@@ -513,165 +515,24 @@ typedef struct RolltuiDocEntry {
 #endif
   double progress ROLLTUI_DEFAULT(0); /* Progress: 0..1 */
   unsigned long long state_since_ms ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiDocEntry();
-  // COPY IS DELETED: spell it `clone()` (`rolltui_doc_entry_copy`). Move and the destructor stay.
-  RolltuiDocEntry(const RolltuiDocEntry&) = delete;
-  RolltuiDocEntry(RolltuiDocEntry&& o) noexcept;
-  RolltuiDocEntry& operator=(const RolltuiDocEntry&) = delete;
-  RolltuiDocEntry& operator=(RolltuiDocEntry&& o) noexcept;
-  ~RolltuiDocEntry();
-  RolltuiDocEntry clone() const;
-#endif
-} RolltuiDocEntry;
+} RolltuiDocEntryRaw;
 
 /* The entries, OWNED and individually allocated so an append never moves one. Laid out as
- * `RolltuiPtrVec` by construction, so the append mechanics are that one's. */
-typedef struct RolltuiDocument {
-  RolltuiDocEntry** v ROLLTUI_DEFAULT(nullptr);
+ * `RolltuiPtrVec` by construction, so the append mechanics are that one's.
+ * RolltuiDocumentRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiDocument : public
+ * RolltuiDocumentRaw` reclaiming the name, with the destructor, move, iterators, `clone()`. */
+typedef struct RolltuiDocumentRaw {
+  RolltuiDocEntryRaw** v ROLLTUI_DEFAULT(nullptr);
   size_t n ROLLTUI_DEFAULT(0);
   size_t cap ROLLTUI_DEFAULT(0);
+} RolltuiDocumentRaw;
 
-#ifdef __cplusplus
-  struct iterator {
-    RolltuiDocEntry** p;
-    RolltuiDocEntry& operator*() const { return **p; }
-    RolltuiDocEntry* operator->() const { return *p; }
-    iterator& operator++() {
-      ++p;
-      return *this;
-    }
-    bool operator==(const iterator& o) const { return p == o.p; }
-  };
-  struct const_iterator {
-    RolltuiDocEntry* const* p;
-    const RolltuiDocEntry& operator*() const { return **p; }
-    const RolltuiDocEntry* operator->() const { return *p; }
-    const_iterator& operator++() {
-      ++p;
-      return *this;
-    }
-    bool operator==(const const_iterator& o) const { return p == o.p; }
-  };
-
-  RolltuiDocument() = default;
-  RolltuiDocument(const RolltuiDocument&) = delete;  /* clone() is the spelling */
-  RolltuiDocument(RolltuiDocument&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  RolltuiDocument& operator=(const RolltuiDocument&) = delete;
-  RolltuiDocument& operator=(RolltuiDocument&& o) noexcept;
-  ~RolltuiDocument();
-  RolltuiDocument clone() const;
-
-  std::size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  RolltuiDocEntry& operator[](std::size_t i) { return *v[i]; }
-  const RolltuiDocEntry& operator[](std::size_t i) const { return *v[i]; }
-  RolltuiDocEntry& back() { return *v[n - 1]; }
-  const RolltuiDocEntry& back() const { return *v[n - 1]; }
-  iterator begin() { return {v}; }
-  iterator end() { return {v + n}; }
-  const_iterator begin() const { return {v}; }
-  const_iterator end() const { return {v + n}; }
-  void push_back(RolltuiDocEntry&& e);
-  void push_back(const RolltuiDocEntry& e);
-  void clear();
-  /* Trims or grows, KEEPING the storage past the end: a transcript that trims and refills wants the entries back. */
-  void resize(std::size_t k);
-#endif
-} RolltuiDocument;
-
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
-void rolltui_doc_entry_copy(RolltuiDocEntry* to, const RolltuiDocEntry* from);
-void rolltui_doc_entry_release(RolltuiDocEntry* e);
-RolltuiDocEntry* rolltui_document_add(RolltuiDocument* d);
-void rolltui_document_clear(RolltuiDocument* d);
-void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
-void rolltui_document_release(RolltuiDocument* d);
-
-#ifdef __cplusplus
-/* ---- the C++ special members of the structs above -----------------------------------------
- * Each calls a C function declared above, so "release this subtree" has one implementation; `inline`, beside the declarations,
- * keeps the library free of any C++ translation unit. */
-inline RolltuiDocEntry::RolltuiDocEntry() = default;
-inline RolltuiDocEntry::~RolltuiDocEntry() = default;
-
-inline RolltuiDocEntry::RolltuiDocEntry(RolltuiDocEntry&& o) noexcept
-    : id(std::move(o.id)),
-      version(o.version),
-      text(std::move(o.text)),
-      markdown(o.markdown),
-      role(o.role),
-      prefix(std::move(o.prefix)),
-      prefix_role(o.prefix_role),
-      foldable(o.foldable),
-      summary(std::move(o.summary)),
-      folded(o.folded),
-      state(o.state),
-      progress(o.progress),
-      state_since_ms(o.state_since_ms) {}
-inline RolltuiDocEntry RolltuiDocEntry::clone() const {
-  RolltuiDocEntry out;
-  rolltui_doc_entry_copy(&out, this);
-  return out;
-}
-
-inline RolltuiDocEntry& RolltuiDocEntry::operator=(RolltuiDocEntry&& o) noexcept {
-  if (this != &o) {
-    id = std::move(o.id);
-    version = o.version;
-    text = std::move(o.text);
-    markdown = o.markdown;
-    role = o.role;
-    prefix = std::move(o.prefix);
-    prefix_role = o.prefix_role;
-    foldable = o.foldable;
-    summary = std::move(o.summary);
-    folded = o.folded;
-    state = o.state;
-    progress = o.progress;
-    state_since_ms = o.state_since_ms;
-  }
-  return *this;
-}
-
-inline RolltuiDocument RolltuiDocument::clone() const {
-  RolltuiDocument out;
-  rolltui_document_copy(&out, this);
-  return out;
-}
-
-inline RolltuiDocument::~RolltuiDocument() { rolltui_document_release(this); }
-
-inline RolltuiDocument& RolltuiDocument::operator=(RolltuiDocument&& o) noexcept {
-  if (this != &o) {
-    rolltui_document_release(this);
-    v = o.v;
-    n = o.n;
-    cap = o.cap;
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  return *this;
-}
-
-inline void RolltuiDocument::push_back(RolltuiDocEntry&& e) { *rolltui_document_add(this) = std::move(e); }
-
-inline void RolltuiDocument::push_back(const RolltuiDocEntry& e) {
-  rolltui_doc_entry_copy(rolltui_document_add(this), &e);
-}
-
-inline void RolltuiDocument::clear() { rolltui_document_clear(this); }
-
-inline void RolltuiDocument::resize(std::size_t k) {
-  while (n > k) rolltui_doc_entry_release(v[--n]);
-  while (n < k) rolltui_document_add(this);
-}
-
-#endif
+void rolltui_doc_entry_copy(RolltuiDocEntryRaw* to, const RolltuiDocEntryRaw* from);
+void rolltui_doc_entry_release(RolltuiDocEntryRaw* e);
+RolltuiDocEntryRaw* rolltui_document_add(RolltuiDocumentRaw* d);
+void rolltui_document_clear(RolltuiDocumentRaw* d);
+void rolltui_document_copy(RolltuiDocumentRaw* to, const RolltuiDocumentRaw* from);
+void rolltui_document_release(RolltuiDocumentRaw* d);
 
 /* ========================================================================================
  * geom — RolltuiRect, the vocabulary every layout speaks
@@ -1558,22 +1419,13 @@ typedef struct RolltuiMenuAction {
   RolltuiStr action;
 } RolltuiMenuAction;
 
-typedef struct RolltuiMenuActionList {
+/* RolltuiMenuActionListRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiMenuActionList :
+ * public RolltuiMenuActionListRaw` reclaiming the name, with the destructor and accessors. */
+typedef struct RolltuiMenuActionListRaw {
   RolltuiMenuAction* v ROLLTUI_DEFAULT(nullptr);
   size_t n ROLLTUI_DEFAULT(0);
   size_t cap ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiMenuActionList() = default;
-  RolltuiMenuActionList(const RolltuiMenuActionList&) = delete;
-  RolltuiMenuActionList& operator=(const RolltuiMenuActionList&) = delete;
-  ~RolltuiMenuActionList();
-  const RolltuiMenuAction* begin() const { return v; }
-  const RolltuiMenuAction* end() const { return v + n; }
-  size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-#endif
-} RolltuiMenuActionList;
+} RolltuiMenuActionListRaw;
 
 typedef struct RolltuiMenuOptions {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
@@ -1606,15 +1458,7 @@ typedef struct RolltuiMenuLoadReport {
   size_t bad_values_n, bad_values_cap;
 } RolltuiMenuLoadReport;
 
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
-void rolltui_menu_action_list_release(RolltuiMenuActionList* l);
-
 /* Serialises `root`, 2-space indented with a trailing newline. REPLACES `*out`. */
-
-#ifdef __cplusplus
-inline RolltuiMenuActionList::~RolltuiMenuActionList() { rolltui_menu_action_list_release(this); }
-
-#endif
 
 /* ========================================================================================
  * transcript — the transcript widget
@@ -3199,18 +3043,18 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c);
 
 /* ---- document ------------------------------------------------------------------------------*/
 
-void rolltui_doc_entry_release(RolltuiDocEntry* e);
+void rolltui_doc_entry_release(RolltuiDocEntryRaw* e);
 
-void rolltui_doc_entry_copy(RolltuiDocEntry* to, const RolltuiDocEntry* from);
+void rolltui_doc_entry_copy(RolltuiDocEntryRaw* to, const RolltuiDocEntryRaw* from);
 
 /* Appends an EMPTY entry and returns it — the C's `emplace_back`. */
-RolltuiDocEntry* rolltui_document_add(RolltuiDocument* d);
+RolltuiDocEntryRaw* rolltui_document_add(RolltuiDocumentRaw* d);
 
-void rolltui_document_clear(RolltuiDocument* d);   /* releases every entry, keeps the array */
+void rolltui_document_clear(RolltuiDocumentRaw* d);   /* releases every entry, keeps the array */
 
-void rolltui_document_release(RolltuiDocument* d); /* …and the array */
+void rolltui_document_release(RolltuiDocumentRaw* d); /* …and the array */
 
-void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
+void rolltui_document_copy(RolltuiDocumentRaw* to, const RolltuiDocumentRaw* from);
 
 /* ---- input ---------------------------------------------------------------------------------*/
 
@@ -3316,10 +3160,10 @@ void rolltui_menu_set_palette(RolltuiMenu* m, int on);
  * reports a PAIR per item, which is why it has its own two-string sink rather than `RolltuiPutFn`. */
 void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* b);
 
-void rolltui_menu_action_list_release(RolltuiMenuActionList* l);
+void rolltui_menu_action_list_release(RolltuiMenuActionListRaw* l);
 
 /* REPLACES `*out` (reusing its buffers). Depth-first, the tree's own order. */
-void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionList* out);
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionListRaw* out);
 
 /* The LIBRARY'S OWN fifteen (plus the input table they point at), so a consumer can call `handle` without spelling them. BORROWS static
  * storage. */
@@ -3369,7 +3213,7 @@ void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, 
 
 /* documents: `doc` is a BORROW this table never frees; the host (or the table, for a sample built from markdown) keeps it alive. What
  * crosses is `&doc->entries`, the real `RolltuiDocument` the transcript kind reads directly. */
-void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc);
+void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocumentRaw* doc);
 
 /* …and the OWNED half: one entry of verbatim markdown this table keeps, for a host with no live `RolltuiDocument` to point at (sample
  * content in a preview, a fixed page of help, a C consumer showing one line). Binding the same name twice replaces the sample. The
@@ -3544,7 +3388,7 @@ void rolltui_transcript_set_copy(RolltuiTranscript* t, RolltuiCopyFn fn, void* c
 /* The LIBRARY'S OWN eleven. BORROWS static storage. */
 const RolltuiTranscriptActions* rolltui_transcript_default_actions(void);
 
-int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const RolltuiDocument* doc,
+int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const RolltuiDocumentRaw* doc,
                               unsigned long long now_ms, const RolltuiBindings* bindings,
                               const RolltuiTranscriptActions* actions);
 
@@ -3561,7 +3405,7 @@ void rolltui_transcript_scroll_to_top(RolltuiTranscript* t);
 void rolltui_transcript_scroll_to_bottom(RolltuiTranscript* t);
 
 /* ---- folding ------------------------------------------------------------------------------------------ */
-int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const RolltuiDocument* doc);
+int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const RolltuiDocumentRaw* doc);
 
 /* ---- find -------------------------------------------------------------------------------------------- */
 /* "" clears. Never scrolls: the reveal it asks for happens in layout(). 1 when it CHANGED. */

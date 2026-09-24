@@ -93,13 +93,13 @@ int rolltui_transcript_viewport_height(const RolltuiTranscript* t);
 RolltuiTranscript* rolltui_transcript_new(void);
 void rolltui_transcript_free(RolltuiTranscript* t);
 /* ---- per frame --------------------------------------------------------------------------- */
-void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocument* doc, RolltuiRect area,
+void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, RolltuiRect area,
                                const RolltuiTranscriptOptions* opt);
 void rolltui_transcript_draw(const RolltuiTranscript* t, RolltuiFrame* f, RolltuiDrawScratch* draw,
                              const RolltuiStyle* styles);
 void rolltui_transcript_scroll_by(RolltuiTranscript* t, long lines);
 size_t rolltui_transcript_lines_below(const RolltuiTranscript* t);
-int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntry* e);
+int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntryRaw* e);
 void rolltui_transcript_set_folded(RolltuiTranscript* t, const char* id, size_t len, int folded);
 void rolltui_transcript_set_code_folded(RolltuiTranscript* t, const char* id, size_t len, size_t block,
                                         int folded);

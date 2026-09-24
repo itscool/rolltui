@@ -1505,7 +1505,7 @@ static int transcript_ctx_problem(void* ctx, RolltuiStr* out) {
 }
 static void transcript_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
-  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  const RolltuiDocumentRaw* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
   RolltuiTranscriptOptions o;
   if (!doc) return;
   transcript_ctx_options(tc, rn, &o);
@@ -1513,7 +1513,7 @@ static void transcript_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
 }
 static void transcript_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
-  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  const RolltuiDocumentRaw* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
   RolltuiTranscriptOptions o;
   if (!doc) return;
   transcript_ctx_options(tc, rn, &o);
@@ -1522,7 +1522,7 @@ static void transcript_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, Rolltu
 }
 static int transcript_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
-  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  const RolltuiDocumentRaw* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
   const RolltuiWidgetEnv* env;
   if (!doc) return 0;
   env = rolltui_windows_env(tc->w);
