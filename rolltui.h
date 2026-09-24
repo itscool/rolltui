@@ -2801,7 +2801,9 @@ void rolltui_settings_report_release(RolltuiSettingsReport* r); /* frees everyth
 /* ---- str -----------------------------------------------------------------------------------*/
 
 /* Replaces the contents. `s` may be NULL only when `len` is 0. Keeps the buffer when it
- * already fits, which is what makes a re-assigned name free after the first. */
+ * already fits, which is what makes a re-assigned name free after the first.
+ * Redeclared here: already declared in part 1, where an inline C++ member (`RolltuiStr::assign`) needs it visible early;
+ * a reader working with `RolltuiStr` itself wants it beside the type's other calls. */
 void rolltui_str_set(RolltuiStr* s, const char* text, size_t len);
 
 /* ---- bindings ------------------------------------------------------------------------------*/
@@ -2882,6 +2884,8 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c);
 
 /* ---- document ------------------------------------------------------------------------------*/
 
+/* These six are redeclared here: already declared in part 1, where `RolltuiDocEntry`'s/`RolltuiDocument`'s own inline C++
+ * destructors (rolltui_cpp.h) need them visible early; a reader appending to a document wants them beside the type's other calls. */
 void rolltui_doc_entry_release(RolltuiDocEntryRaw* e);
 
 void rolltui_doc_entry_copy(RolltuiDocEntryRaw* to, const RolltuiDocEntryRaw* from);
@@ -2928,7 +2932,11 @@ const RolltuiInputOptionsRaw* rolltui_input_options(const RolltuiInput* in);
 
 /* ---- menu_tree -----------------------------------------------------------------------------*/
 
-/* Sets an item's kind, id and label in one call, releasing whatever they held: the C form of the builders above. `shortcut` may be NULL
+/* Six of the eight below (`_set`, and `_copy`/`_equal`/the three `_list_*` further down) are redeclared here: already declared in
+ * part 1, where `RolltuiMenuItem`'s/`RolltuiMenuItemList`'s own inline C++ members (right below their definitions) need them
+ * visible early. `_init` and `_release` are new here: a plain-C consumer's own way to build and free an item without going
+ * through the C++ builders. A reader working with the tree wants all eight beside its other calls.
+ * Sets an item's kind, id and label in one call, releasing whatever they held: the C form of the builders above. `shortcut` may be NULL
  * with `shortcut_len` 0. */
 void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
                            size_t label_len, const char* shortcut, size_t shortcut_len);
@@ -3060,6 +3068,8 @@ void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t l
 void rolltui_windows_bind_sample_document(RolltuiWindows* w, const char* name, size_t len, const char* markdown,
                                           size_t markdown_len);
 
+/* These three are redeclared here: already declared in part 1, where `RolltuiRows`'s own inline C++ members need them visible
+ * early; a reader filling a `rows:` window wants them beside the type's other calls. */
 void rolltui_rows_reset(RolltuiRows* r);
 
 void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const char* value, size_t value_len);
