@@ -84,8 +84,8 @@ void rolltui_theme_editor_free(RolltuiThemeEditor* e); /* a no-op on NULL */
 int rolltui_theme_editor_load(RolltuiThemeEditor* e, const RolltuiJsonValue* colours, RolltuiThemeReport* report);
 
 /* The Load and Write-shipped choices' options. Both COPY; neither takes ownership. */
-void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrList* names);
-void rolltui_theme_editor_set_shipped(RolltuiThemeEditor* e, const RolltuiStrList* names, int may_write);
+void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrListRaw* names);
+void rolltui_theme_editor_set_shipped(RolltuiThemeEditor* e, const RolltuiStrListRaw* names, int may_write);
 
 void rolltui_theme_editor_set_mode(RolltuiThemeEditor* e, unsigned char mode); /* ROLLTUI_MODE_* */
 unsigned char rolltui_theme_editor_mode(const RolltuiThemeEditor* e);

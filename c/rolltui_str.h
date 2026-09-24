@@ -55,8 +55,8 @@ void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns
  * so their shape can change without breaking a consumer. */
 void rolltui_str_append_str(RolltuiStr* s, const RolltuiStr* o);
 
-void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
-RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
+void rolltui_str_list_clear(RolltuiStrListRaw* l); /* n = 0; every entry's buffer is KEPT for reuse */
+RolltuiStr* rolltui_str_list_add(RolltuiStrListRaw* l, const char* s, size_t len);
 
 
 /* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape

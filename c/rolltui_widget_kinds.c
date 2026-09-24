@@ -1986,7 +1986,7 @@ typedef struct RolltuiThemeCtx {
 static void theme_ctx_sync_store(RolltuiThemeCtx* tc) {
   RolltuiThemePresetValue* v;
   RolltuiPresetList list;
-  RolltuiStrList names;
+  RolltuiStrListRaw names;
   RolltuiThemeReport rep;
   size_t i;
   if (!tc->store) return;
@@ -2510,7 +2510,7 @@ static void keys_ctx_load_rows(RolltuiKeysCtx* kc, const RolltuiBindings* rows) 
  * the live table, it just has nowhere to put the result. */
 static void keys_ctx_sync_store(RolltuiKeysCtx* kc) {
   RolltuiPresetList list;
-  RolltuiStrList names;
+  RolltuiStrListRaw names;
   size_t i;
   if (!kc->store) return;
   memset(&list, 0, sizeof list);

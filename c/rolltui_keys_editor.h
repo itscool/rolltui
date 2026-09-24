@@ -83,8 +83,8 @@ void rolltui_keys_editor_free(RolltuiKeysEditor* e); /* a no-op on NULL */
 void rolltui_keys_editor_load(RolltuiKeysEditor* e, const RolltuiBindings* b);
 
 /* The Load and Write-shipped choices' options. Both COPY; neither takes ownership. */
-void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrList* names);
-void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrList* names, int may_write);
+void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrListRaw* names);
+void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrListRaw* names, int may_write);
 
 /* Whether "Load keys", "Save keys as" and "Write a SHIPPED preset" appear at all — on (the
  * default) for a host with more than one binding table worth switching between, off for one

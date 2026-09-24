@@ -223,7 +223,7 @@ static void collect_json_names(const char* dir, size_t dir_len, NameList* out) {
   if (out->count > 1) qsort(out->names, out->count, sizeof *out->names, name_cmp);
 }
 
-void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrList* out) {
+void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrListRaw* out) {
   NameList list = {NULL, 0, 0};
   size_t i;
   if (!out) return;
@@ -405,7 +405,7 @@ const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name
   return NULL;
 }
 
-void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out) {
+void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrListRaw* out) {
   const size_t n = d->shipped_count();
   size_t i, pass;
   if (!out) return;
@@ -1795,7 +1795,7 @@ void rolltui_theme_store_path(const RolltuiThemeStore* s, const char* name, size
 int rolltui_theme_is_shipped(RolltuiContext* c, const char* name, size_t len) {
   return rolltui_preset_is_shipped(rolltui_preset_domain_theme(c), name, len);
 }
-void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out) {
   rolltui_preset_shipped_names(rolltui_preset_domain_theme(c), out);
 }
 const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const char* name, size_t len) {
@@ -2088,7 +2088,7 @@ void rolltui_layout_store_path(const RolltuiLayoutStore* s, const char* name, si
 int rolltui_layout_is_shipped(RolltuiContext* c, const char* name, size_t len) {
   return rolltui_preset_is_shipped(rolltui_preset_domain_layout(c), name, len);
 }
-void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out) {
   rolltui_preset_shipped_names(rolltui_preset_domain_layout(c), out);
 }
 const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name, size_t len) {
@@ -2378,7 +2378,7 @@ void rolltui_bindings_store_path(const RolltuiBindingsStore* s, const char* name
 int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len) {
   return rolltui_preset_is_shipped(rolltui_preset_domain_bindings(c), name, len);
 }
-void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out) {
+void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out) {
   rolltui_preset_shipped_names(rolltui_preset_domain_bindings(c), out);
 }
 const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len) {

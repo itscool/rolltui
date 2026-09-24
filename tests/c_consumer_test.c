@@ -495,7 +495,7 @@ int main(void) {
       RolltuiThemeStore* ts;
       RolltuiStr label = {0};
       RolltuiPresetList list = {0};
-      RolltuiStrList shipped = {0};
+      RolltuiStrListRaw shipped = {0};
       unsigned long long v0;
       memset(&rep, 0, sizeof rep);
 
@@ -636,7 +636,7 @@ int main(void) {
       RolltuiLayoutPresetReport rep;
       RolltuiLayoutStore* ls;
       RolltuiPresetList list = {0};
-      RolltuiStrList shipped = {0};
+      RolltuiStrListRaw shipped = {0};
       const RolltuiLayout* w;
       memset(&rep, 0, sizeof rep);
       ls = rolltui_layout_store_new(app.ctx, dir, dir_len, 0, "", 0);

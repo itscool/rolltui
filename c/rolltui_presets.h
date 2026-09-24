@@ -183,7 +183,7 @@ const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name
 
 /* The shipped names, "default" FIRST and the rest in table order — the order a chooser
  * offers them in. REPLACES `*out`. */
-void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out);
+void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrListRaw* out);
 
 RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const char* dir, size_t dir_len,
                                              int may_write_shipped, const char* shipped_dir, size_t shipped_dir_len);
@@ -255,7 +255,7 @@ void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* n
 void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);
 
 /* The stem of every "*.json" in `dir`, sorted. REPLACES `*out`. */
-void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrList* out);
+void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrListRaw* out);
 
 /* ---- THE STORE'S ONE-LINE PROBLEM SENTENCE --------------------------------------------------
  * `rolltui::PresetLoadReport::summary()`'s composition, moved with the words it composes: the

@@ -32,7 +32,7 @@ struct RolltuiKeysEditor {
                               * not a state this editor can be in, so a flag that can be read
                               * beats a length that has to be interpreted */
   RolltuiStr capture;
-  RolltuiStrList presets, shipped;
+  RolltuiStrListRaw presets, shipped;
   int may_write_shipped;
   int show_presets; /* default on; rolltui_keys_editor_set_show_presets */
   RolltuiStr status;
@@ -40,7 +40,7 @@ struct RolltuiKeysEditor {
    * one per ROLE so a builder cannot alias its own caller's buffer: ids, labels, and the
    * chord text a label ends with. */
   RolltuiStr id_buf, label_buf, chords_buf;
-  RolltuiStrList scopes; /* the scopes present in `current`, first-appearance order */
+  RolltuiStrListRaw scopes; /* the scopes present in `current`, first-appearance order */
 };
 
 static const RolltuiBindings* committed_of(const RolltuiKeysEditor* e) {
@@ -72,13 +72,13 @@ static void set_options_list(RolltuiMenu* m, const char* id, size_t len, Rolltui
   rolltui_menu_list_release(list);
 }
 
-static void names_to_options(const RolltuiStrList* names, RolltuiMenuItemList* out) {
+static void names_to_options(const RolltuiStrListRaw* names, RolltuiMenuItemList* out) {
   size_t i;
   for (i = 0; i < names->n; ++i)
     list_add_action(out, names->v[i].p, names->v[i].n, names->v[i].p, names->v[i].n);
 }
 
-static void copy_str_list(RolltuiStrList* to, const RolltuiStrList* from) {
+static void copy_str_list(RolltuiStrListRaw* to, const RolltuiStrListRaw* from) {
   size_t i;
   rolltui_str_list_clear(to);
   if (!from) return;
@@ -167,7 +167,7 @@ void rolltui_keys_editor_load(RolltuiKeysEditor* e, const RolltuiBindings* b) {
   rolltui_str_set(&e->status, K("loaded"));
 }
 
-void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrList* names) {
+void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrListRaw* names) {
   RolltuiMenuItemList opts;
   memset(&opts, 0, sizeof opts);
   copy_str_list(&e->presets, names);
@@ -175,7 +175,7 @@ void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrList*
   set_options_list(e->menu, K("load"), &opts);
 }
 
-void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrList* names, int may_write) {
+void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrListRaw* names, int may_write) {
   RolltuiMenuItemList opts;
   const int privilege_changed = e->may_write_shipped != (may_write != 0);
   memset(&opts, 0, sizeof opts);

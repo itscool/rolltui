@@ -52,7 +52,7 @@ void rolltui_str_free(RolltuiStr* s) {
   s->cap = 0;
 }
 
-void rolltui_str_list_release(RolltuiStrList* l) {
+void rolltui_str_list_release(RolltuiStrListRaw* l) {
   size_t i;
   if (!l) return;
   for (i = 0; i < l->cap; ++i) rolltui_str_free(&l->v[i]);
@@ -62,11 +62,11 @@ void rolltui_str_list_release(RolltuiStrList* l) {
   l->cap = 0;
 }
 
-void rolltui_str_list_clear(RolltuiStrList* l) {
+void rolltui_str_list_clear(RolltuiStrListRaw* l) {
   if (l) l->n = 0; /* the entries' buffers stay, to be refilled */
 }
 
-RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len) {
+RolltuiStr* rolltui_str_list_add(RolltuiStrListRaw* l, const char* s, size_t len) {
   RolltuiStr* e;
   if (!l) return NULL;
   if (l->n == l->cap) {

@@ -112,7 +112,7 @@ struct RolltuiThemeEditor {
   PaletteEntry* palette;
   size_t palette_n, palette_cap;
   RolltuiFixArray fixes;
-  RolltuiStrList presets, shipped;
+  RolltuiStrListRaw presets, shipped;
   int may_write_shipped;
   unsigned char mode;
   RolltuiEffectMap* dark_effects; /* OWNED, never NULL */
@@ -326,20 +326,20 @@ int rolltui_theme_editor_load(RolltuiThemeEditor* e, const RolltuiJsonValue* col
   return 1;
 }
 
-static void names_to_options(const RolltuiStrList* names, RolltuiMenuItemList* out) {
+static void names_to_options(const RolltuiStrListRaw* names, RolltuiMenuItemList* out) {
   size_t i;
   for (i = 0; i < names->n; ++i)
     list_add_action(out, names->v[i].p, names->v[i].n, names->v[i].p, names->v[i].n);
 }
 
-static void copy_str_list(RolltuiStrList* to, const RolltuiStrList* from) {
+static void copy_str_list(RolltuiStrListRaw* to, const RolltuiStrListRaw* from) {
   size_t i;
   rolltui_str_list_clear(to);
   if (!from) return;
   for (i = 0; i < from->n; ++i) rolltui_str_list_add(to, from->v[i].p, from->v[i].n);
 }
 
-void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrList* names) {
+void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrListRaw* names) {
   RolltuiMenuItemList opts;
   memset(&opts, 0, sizeof opts);
   copy_str_list(&e->presets, names);
@@ -347,7 +347,7 @@ void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrLis
   set_options_list(e->menu, "load", &opts);
 }
 
-void rolltui_theme_editor_set_shipped(RolltuiThemeEditor* e, const RolltuiStrList* names, int may_write) {
+void rolltui_theme_editor_set_shipped(RolltuiThemeEditor* e, const RolltuiStrListRaw* names, int may_write) {
   RolltuiMenuItemList opts;
   const int privilege_changed = e->may_write_shipped != (may_write != 0);
   memset(&opts, 0, sizeof opts);

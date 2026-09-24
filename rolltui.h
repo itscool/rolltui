@@ -148,26 +148,16 @@ typedef struct RolltuiPtrVec {
 typedef void (*RolltuiPutFn)(void* ctx, const char* s, size_t len);
 
 /* MANY STRINGS OUT, into a list the caller owns and reuses (rule 3's shape for a list). Zero-initialise; `_release` frees it
- * (the C++ destructor does). `_add` appends a copy and returns a BORROW of the stored entry, valid until the next `_add`. */
-typedef struct RolltuiStrList {
+ * (the C++ destructor does). `_add` appends a copy and returns a BORROW of the stored entry, valid until the next `_add`.
+ * RolltuiStrListRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiStrList : public RolltuiStrListRaw`
+ * reclaiming the name, with the destructor and accessors. */
+typedef struct RolltuiStrListRaw {
   RolltuiStr* v ROLLTUI_DEFAULT(nullptr);
   size_t n ROLLTUI_DEFAULT(0);
   size_t cap ROLLTUI_DEFAULT(0);
+} RolltuiStrListRaw;
 
-#ifdef __cplusplus
-  RolltuiStrList() = default;
-  RolltuiStrList(const RolltuiStrList&) = delete;
-  RolltuiStrList& operator=(const RolltuiStrList&) = delete;
-  ~RolltuiStrList();
-  const RolltuiStr* begin() const { return v; }
-  const RolltuiStr* end() const { return v + n; }
-  size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  const RolltuiStr& operator[](size_t i) const { return v[i]; }
-#endif
-} RolltuiStrList;
-
-void rolltui_str_list_release(RolltuiStrList* l);
+void rolltui_str_list_release(RolltuiStrListRaw* l);
 
 /* Bridge from the sink shape to a `RolltuiStr`: pass this as `put` and the `RolltuiStr*` as `ctx`. APPENDS, so clear the target
  * first when that is wanted. `RolltuiPutFn` is internal plumbing (and the type of a domain's hooks); no public function returns a
@@ -189,7 +179,6 @@ void rolltui_str_set(RolltuiStr* s, const char* text, size_t len);
 
 #ifdef __cplusplus
 inline RolltuiStr::~RolltuiStr() { rolltui_str_free(this); }
-inline RolltuiStrList::~RolltuiStrList() { rolltui_str_list_release(this); }
 inline void RolltuiStr::assign(const char* s, std::size_t len) { rolltui_str_set(this, s, len); }
 inline void RolltuiStr::append(const char* s, std::size_t len) { rolltui_str_append(this, s, len); }
 inline bool RolltuiStr::eq(const char* s, std::size_t len) const { return rolltui_str_eq(this, s, len) != 0; }
@@ -2189,7 +2178,7 @@ typedef struct RolltuiSetting {
 typedef struct RolltuiSettingsReport {
   RolltuiStr error;     /* why the change did not happen */
   RolltuiStr problems;  /* the value took effect, and the file it came from said this */
-  RolltuiStrList notes; /* what the load kept, rewrote or ignored — notes are not problems */
+  RolltuiStrListRaw notes; /* what the load kept, rewrote or ignored — notes are not problems */
 } RolltuiSettingsReport;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
@@ -2789,7 +2778,7 @@ void rolltui_theme_store_path(const RolltuiThemeStore* s, const char* name, size
 
 /* The shipped ones — no store needed, `c` alone: every store built against the same context clones from the same embedded table. */
 int rolltui_theme_is_shipped(RolltuiContext* c, const char* name, size_t len);
-void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+void rolltui_theme_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out);
 /* A BORROW, valid until `c` is freed. NULL when `name` is not shipped. */
 const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const char* name, size_t len);
 
@@ -2879,7 +2868,7 @@ int rolltui_layout_store_load(RolltuiLayoutStore* s, const char* name, size_t le
 void rolltui_layout_store_path(const RolltuiLayoutStore* s, const char* name, size_t len, RolltuiStr* out);
 /* The shipped ones. `c` reaches the session's own descriptor, same as `_new`. */
 int rolltui_layout_is_shipped(RolltuiContext* c, const char* name, size_t len);
-void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+void rolltui_layout_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out);
 const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name, size_t len);
 
 /* ---- the bindings store: USE — same shape as the theme store, minus the person's settings ----
@@ -2907,7 +2896,7 @@ int rolltui_bindings_store_load(RolltuiBindingsStore* s, const char* name, size_
                                 RolltuiBindingsPresetReport* report, int persist);
 void rolltui_bindings_store_path(const RolltuiBindingsStore* s, const char* name, size_t len, RolltuiStr* out);
 int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len);
-void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrList* out);
+void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out);
 const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* name, size_t len);
 
 /* ---- the settings handle --------------------------------------------------------------------

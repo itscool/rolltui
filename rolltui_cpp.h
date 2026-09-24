@@ -393,4 +393,17 @@ class RolltuiDocument : public RolltuiDocumentRaw {
   }
 };
 
+class RolltuiStrList : public RolltuiStrListRaw {
+ public:
+  RolltuiStrList() = default;
+  RolltuiStrList(const RolltuiStrList&) = delete;
+  RolltuiStrList& operator=(const RolltuiStrList&) = delete;
+  ~RolltuiStrList() { rolltui_str_list_release(this); }
+  const RolltuiStr* begin() const { return v; }
+  const RolltuiStr* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  const RolltuiStr& operator[](size_t i) const { return v[i]; }
+};
+
 #endif /* ROLLTUI_CPP_H */
