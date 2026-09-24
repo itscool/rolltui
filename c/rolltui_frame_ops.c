@@ -90,16 +90,6 @@ int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int 
   return 2;
 }
 
-int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
-                             RolltuiStyle text_style, int max_cells, int ambiguous_wide) {
-  char buf[ROLLTUI_COLOR_STRING_MAX];
-  const size_t n = rolltui_color_to_string(colour, buf, sizeof buf);
-  int used = rolltui_frame_put_swatch(f, s, x, y, colour, text_style, max_cells, ambiguous_wide);
-  if (used && used < max_cells)
-    used += rolltui_frame_put_text(f, s, x + used, y, " ", 1, text_style, max_cells - used, ambiguous_wide, 0);
-  return used + rolltui_frame_put_text(f, s, x + used, y, buf, n, text_style, max_cells - used, ambiguous_wide, 0);
-}
-
 int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
                              RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
                              int ambiguous_wide) {

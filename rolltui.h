@@ -3852,21 +3852,16 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
                            RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
 
 /* ---- a colour, shown ---------------------------------------------------------------------
- * ONE WAY A COLOUR VALUE IS PUT ON THE SCREEN, wherever one is (a theme editor's role, a menu's colour input, a painter's ink): its
- * spelling (`rolltui_color_to_string`'s "#rrggbb", palette index or "none") and beside it its SWATCH, two cells showing the colour as it
- * will be drawn (through the same renderer, at the terminal's depth), framed in the text's own foreground so it shows against any
- * ground. A `none` colour is the frame alone. */
+ * A COLOUR VALUE'S SWATCH, wherever one is drawn (a theme editor's role, a menu's colour input, a painter's ink): two cells showing
+ * the colour as it will be drawn (through the same renderer, at the terminal's depth), framed in the text's own foreground so it
+ * shows against any ground. A `none` colour is the frame alone. A caller wanting the spelling beside it (`rolltui_color_to_string`'s
+ * "#rrggbb", palette index or "none") draws that itself, as every real caller already does. */
 
 /* The swatch: `frame`'s foreground is the outline and its background is where a `none` colour lands. Returns the cells used: 2, or 0
  * where they do not fit (`max_cells` < 2) or the terminal draws no colour. Where an ambiguous glyph is two cells the outline is a bracket
  * pair, one cell wherever it is drawn. */
 int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
                              RolltuiStyle frame, int max_cells, int ambiguous_wide);
-
-/* The spelling and, before it, the swatch and a space: `▏▕ #d8dce2`. `text_style` styles the
- * spelling and frames the swatch. Returns the cells used. */
-int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
-                             RolltuiStyle text_style, int max_cells, int ambiguous_wide);
 
 /* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no
  * width. */

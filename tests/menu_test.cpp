@@ -1507,10 +1507,6 @@ int main() {
               at(f, 14, 1) == "[" && at(f, 15, 1) == "]" && f.at(14, 1).style.bg == red,
           "where an ambiguous glyph is two cells the outline is a bracket pair — one cell wherever it is drawn");
 
-    const int used = rolltui_frame_put_colour(f.handle(), draw, 2, 2, red, text, 22, 0);
-    check(used == 2 + 1 + 7 && row(f, 2) == "  \xE2\x96\x8F\xE2\x96\x95 #d03030",
-          "a colour put as a colour is its swatch, a space and its spelling [" + row(f, 2) + "]");
-
     rolltui_termfacts_set_active(ROLLTUI_DEPTH_MONO, 1);
     Frame mono(8, 1, text);
     const int mono_used = rolltui_frame_put_swatch(mono.handle(), draw, 0, 0, red, text, 2, 0);
