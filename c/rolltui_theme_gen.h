@@ -76,6 +76,18 @@ inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
+
+/* ---- the ruleset, as a byte (the same order as `rolltui::Ruleset`) --------------------- */
+#define ROLLTUI_RULESET_ANALOGOUS 0
+#define ROLLTUI_RULESET_COMPLEMENTARY 1
+#define ROLLTUI_RULESET_TRIADIC 2
+#define ROLLTUI_RULESET_TETRADIC 3
+#define ROLLTUI_RULESET_MONOCHROME 4
+#define ROLLTUI_RULESET_PASTEL 5
+#define ROLLTUI_RULESET_NEON 6
+#define ROLLTUI_RULESET_EARTH 7
+#define ROLLTUI_RULESET_COUNT 8
+
 /* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range ruleset. `len`
  * may be NULL. */
 const char* rolltui_ruleset_name(unsigned char ruleset, size_t* len);

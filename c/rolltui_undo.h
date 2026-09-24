@@ -3,9 +3,9 @@
 /*
  * rolltui/c/rolltui_undo.h — INTERNAL.
  *
- * The library's own declarations for this module. The PUBLIC API is `rolltui/rolltui.h`,
- * which declares everything a consumer may call; nothing below is promised to one, so its
- * shape can change without breaking a host.
+ * The library's own declarations for this module, types included: only the studio and its
+ * editors ever reach an undo stack, so nothing here is promised to a host and its shape can
+ * change without breaking one.
  *
  * A suite that needs an internal declaration includes this header BY NAME and lists itself
  * in `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
@@ -14,6 +14,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Releases one snapshot the stack no longer holds: T's own destructor. Fixed for the life of a stack (one instance is always over one
+ * T), so it is supplied once at `rolltui_undo_new`. */
+typedef void (*RolltuiUndoFreeFn)(void* snapshot);
+
+typedef struct RolltuiUndoStack RolltuiUndoStack;
 
 /* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that

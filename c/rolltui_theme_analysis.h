@@ -32,16 +32,13 @@
  *   2. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function except a plain
  *      `double`/`int` (never storage) and a `const char*` BORROW of a string literal that
  *      owns nothing and outlives every caller.
- *   3. **ONE DEFINITION**: `RolltuiLin`/`RolltuiOkLab`/`RolltuiOkLch` are defined once,
- *      here, the same way `RolltuiStyleColorRaw` is in `rolltui_style.h` — `rolltui::Lin` and
- *      its two siblings are `using` aliases below, so a caller on either side of the
- *      boundary still writes `Lin{...}` / `lin.r` exactly as before. `RolltuiBadges` joins
- *      them the same way (`rolltui::Badges` is now `using Badges = RolltuiBadges;`) —
- *      it is thirteen plain flags, no `Role`, no `std::string`, nothing that keeps it from
- *      being one definition. `RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix` carry role
- *      ORDINALS as `unsigned char` — `ROLLTUI_ROLE_*` values, the role vocabulary having been
- * C now (`ROLLTUI_ROLE_LIST`, rolltui_style.h). A C++ consumer that wants
- *      to read `c.role == Role::warning` mirrors the three structs over the same calls
+ *   3. **ONE DEFINITION, AND INTERNAL**: `RolltuiLin`/`RolltuiOkLab`/`RolltuiOkLch`/`RolltuiBadges`/
+ *      `RolltuiStrArray`/`RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix`/`RolltuiFixArray` are
+ *      defined once, here — never in `rolltui.h` — because only the studio and the theme editor
+ *      ever reach them; roll never does. `RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix` carry
+ *      role ORDINALS as `unsigned char` — `ROLLTUI_ROLE_*` values, the role vocabulary having
+ *      been C already (`ROLLTUI_ROLE_LIST`, `rolltui.h`). A C++ consumer that wants to read
+ *      `c.role == Role::warning` mirrors the three structs over the same calls
  *      (`theme_analysis_test.cpp` does); this file hands over numbers and never a type.
  *   4. **NOTHING ALLOCATES** in the colour-maths half; the report/auto-fix half's
  *      allocations are named above and are the only ones in this file.
@@ -54,6 +51,88 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ---- the three colour spaces, defined ONCE and compiled by both languages ------------- */
+/* `RolltuiLin`, `RolltuiOkLab` and `RolltuiOkLch`: linear sRGB, OKLab and OKLCH, each three
+ * doubles defaulting to zero, with no methods. */
+typedef struct RolltuiLin {
+  double r ROLLTUI_DEFAULT(0), g ROLLTUI_DEFAULT(0), b ROLLTUI_DEFAULT(0); /* linear sRGB, 0..1 */
+} RolltuiLin;
+
+typedef struct RolltuiOkLab {
+  double L ROLLTUI_DEFAULT(0), a ROLLTUI_DEFAULT(0), b ROLLTUI_DEFAULT(0);
+} RolltuiOkLab;
+
+typedef struct RolltuiOkLch {
+  double L ROLLTUI_DEFAULT(0), C ROLLTUI_DEFAULT(0), h ROLLTUI_DEFAULT(0); /* h in degrees, [0, 360) */
+} RolltuiOkLch;
+
+/* ---- colour-vision-deficiency type, as a byte ------------------------------------------- */
+#define ROLLTUI_CVD_PROTANOPIA 0
+#define ROLLTUI_CVD_DEUTERANOPIA 1
+#define ROLLTUI_CVD_TRITANOPIA 2
+#define ROLLTUI_CVD_COUNT 3
+
+/* ---- badges: a fixed, closed set of 13 names — this module's OWN vocabulary, never a
+ * Role's, so nothing below needs a vocab table to print or check one. --------------------- */
+typedef struct RolltuiBadges {
+  unsigned char dark ROLLTUI_DEFAULT(0), light ROLLTUI_DEFAULT(0), high_contrast ROLLTUI_DEFAULT(0),
+      readable ROLLTUI_DEFAULT(0), cvd_safe ROLLTUI_DEFAULT(0);
+  unsigned char protan_safe ROLLTUI_DEFAULT(0), deutan_safe ROLLTUI_DEFAULT(0), tritan_safe ROLLTUI_DEFAULT(0);
+  unsigned char mono ROLLTUI_DEFAULT(0), safe_16 ROLLTUI_DEFAULT(0), safe_256 ROLLTUI_DEFAULT(0),
+      transparent ROLLTUI_DEFAULT(0), attribute_redundant ROLLTUI_DEFAULT(0);
+} RolltuiBadges;
+
+/* A growing array of strings: this file's one shape for "a list of short diagnostic messages" (a report's failed badge claims). */
+typedef struct RolltuiStrArray {
+  RolltuiStr* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0), cap ROLLTUI_DEFAULT(0);
+} RolltuiStrArray;
+
+/* ---- thresholds ------------------------------------------------------------------------- */
+#define ROLLTUI_READABLE_RATIO 4.5
+#define ROLLTUI_HIGH_CONTRAST_RATIO 7.0
+#define ROLLTUI_DISTINCT_DELTA_E 0.08
+
+/* The must-differ pairs' COUNT. The pairs are a LIBRARY RULE, closed on purpose (the decision and each pair's justification are at the
+ * table, `kMustDiffer` in rolltui_theme_analysis.c). Only the count is a caller's business: it sizes the `out_pairs` array
+ * `rolltui_theme_analyse` fills, and the pairs come back IN it (`RolltuiPairCheck.a` / `.b`). */
+#define ROLLTUI_MUST_DIFFER_COUNT 11
+
+/* ---- the per-role / per-pair check ------------------------------------------------------- */
+typedef struct RolltuiRoleCheck {
+  unsigned char role ROLLTUI_DEFAULT(0);  /* always `i` for out_roles[i] — positional, not looked up */
+  unsigned char text ROLLTUI_DEFAULT(1);  /* is this role's fg drawn as text? (counts for readable/high) */
+  double wcag ROLLTUI_DEFAULT(0), apca ROLLTUI_DEFAULT(0); /* meaningless when `unknown` */
+  RolltuiStyleColorRaw fg, bg;                /* measured colours (bg: the role's own, else the theme's background) */
+  unsigned char unknown ROLLTUI_DEFAULT(0); /* depends on the terminal: a measured colour was None */
+  unsigned char readable ROLLTUI_DEFAULT(0), high ROLLTUI_DEFAULT(0);
+} RolltuiRoleCheck;
+
+typedef struct RolltuiPairCheck {
+  unsigned char a ROLLTUI_DEFAULT(0), b ROLLTUI_DEFAULT(0); /* the pair's OWN role ordinals, not positional */
+  double delta ROLLTUI_DEFAULT(0);          /* meaningless when `unknown` */
+  double delta_cvd[3];                      /* per ROLLTUI_CVD_*; meaningless when `unknown` */
+  unsigned char unknown ROLLTUI_DEFAULT(0);
+  unsigned char distinct ROLLTUI_DEFAULT(0), cvd_distinct ROLLTUI_DEFAULT(0);
+  unsigned char attribute_redundant ROLLTUI_DEFAULT(0);
+  unsigned char collapses_16 ROLLTUI_DEFAULT(0), collapses_256 ROLLTUI_DEFAULT(0);
+} RolltuiPairCheck;
+
+/* ---- auto-fix proposals ------------------------------------------------------------------ */
+typedef struct RolltuiFix {
+  unsigned char role ROLLTUI_DEFAULT(0);
+  RolltuiStyle before, after;
+  RolltuiStr what;   /* OWNED — e.g. "md_link fg: contrast 3.1 -> 4.6" */
+  double before_value ROLLTUI_DEFAULT(0), after_value ROLLTUI_DEFAULT(0);
+} RolltuiFix;
+
+/* A growing array of `RolltuiFix` (GROWING AMORTISED); each element owns its own `what`. */
+typedef struct RolltuiFixArray {
+  RolltuiFix* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0), cap ROLLTUI_DEFAULT(0);
+} RolltuiFixArray;
+
 /* An OKLCH colour brought into the sRGB gamut by pulling its chroma in — never by clamping
  * channels, which would move its lightness (the thing the auto-fix below relies on). Shared
  * by this file's own fixes and by `rolltui_theme_gen.c`'s hue/lightness picks: the C++ had

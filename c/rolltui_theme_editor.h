@@ -44,6 +44,7 @@
 #include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_theme_analysis.h"
 
 #ifdef __cplusplus
 extern "C" {
