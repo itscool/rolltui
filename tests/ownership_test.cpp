@@ -288,6 +288,9 @@ int main() {
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
         {"rolltui_studio.h", 0},  /* the studio's CREATE-AND-EDIT surface: twelve functions and three typed edit-callback
                                      typedefs, no struct of its own — nothing here stores a pointer */
+        {"rolltui_cpp.h", 0},  /* the C++ half of rolltui.h's types (free functions, and derived classes reclaiming a
+                                  renamed struct's name) — no NEW struct of its own; a derived class's inherited fields
+                                  are already counted at the base's own row in `rolltui.h` above */
         {"c/rolltui_theme_editor.h", 0},
         {"c/rolltui_keys_editor.h", 0},
         {"c/rolltui_style.h", 0},
