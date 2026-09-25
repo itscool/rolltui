@@ -215,7 +215,7 @@ int main() {
     // RECORDED: header -> how many functions it declares twice, and the only accepted reason
     // is the forward-declaration-for-a-C++-member shape above.
     struct Row { const char* header; int dupes; };
-    static const Row kRows[] = {{"rolltui.h", 16}, {"c/rolltui_layout_tree.h", 21}};
+    static const Row kRows[] = {{"rolltui.h", 0}, {"c/rolltui_layout_tree.h", 21}};
     int accounted = 0;
     for (const Row& r : kRows) {
       const int got = dupes_in(depth0(strip_all_comments(read(std::string(ROLLTUI_SOURCE_DIR) + "/" + r.header))));
@@ -234,7 +234,7 @@ int main() {
     check(offenders.empty(),
           "no other header declares anything twice — a repeated declaration compiles silently and is a "
           "vocabulary written down twice" + names);
-    check(accounted == 37, "…and the accepted forward declarations are the recorded 37 [" + std::to_string(accounted) + "]");
+    check(accounted == 21, "…and the accepted forward declarations are the recorded 21 [" + std::to_string(accounted) + "]");
   }
   {
     std::vector<std::string> without;
