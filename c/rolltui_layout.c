@@ -18,6 +18,7 @@
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/nsplit.h"
 #include "rolltui/rolltui.h"
 #include "testkit/testctl.h"
 
@@ -99,12 +100,6 @@ void rolltui_inner_rect(RolltuiRect outer, unsigned char border, RolltuiRect* ou
   out->h = outer.h - 2;
   if (out->w < 0) out->w = 0;
   if (out->h < 0) out->h = 0;
-}
-
-static RolltuiRect inner_rect(RolltuiRect outer, unsigned char border) {
-  RolltuiRect r;
-  rolltui_inner_rect(outer, border, &r);
-  return r;
 }
 
 static RolltuiRect rect_intersect(RolltuiRect a, RolltuiRect b) {
@@ -275,111 +270,102 @@ size_t rolltui_split_size_to_string(RolltuiSplitSizeRaw s, char* out, size_t cap
 
 /* ---- the split --------------------------------------------------------------------------- */
 
-/* THE PER-CONTAINER SCRATCH, and it is an INLINE ARRAY with a stated SPILL (CLAUDE.md
- * strategy 1). `place` RECURSES, so a shared reused buffer would alias across depth — each
- * frame of the recursion has its own inline array and cannot. Twelve is the C++'s number,
- * kept so the two implementations spill at the same size. */
-#define PLACE_INLINE 12
+/* THE SPLIT ITSELF now runs in `nsplit_resolve` (nsplit.h/.c, repo root) — a dependency-free
+ * n-ary space-partitioning engine any project can take as-is, ported line-for-line from what
+ * used to be this file's own `place()`. What stays HERE is entirely rolltui's own vocabulary:
+ * `kind` (Window/Row/Column, not "axis"), `border` (a drawn STYLE — none/single/rounded/double/
+ * heavy — not a numeric inset), screen-clipping and the `layer`/`RolltuiResolvedNode` shape a
+ * caller's `emit` actually wants. Translating between the two is `sync_nsplit_tree`'s whole job. */
 
-typedef struct ChildSlot {
-  const RolltuiLayoutNode* node;
-  int size;
-} ChildSlot;
+/* A border STYLE's numeric inset. `nsplit`'s own `seam` is a plain width — it has no notion of
+ * "rounded" vs "double" and should not: which glyphs a style draws is `draw_border_impl`'s, not
+ * a geometry question. Every drawn style reserves exactly one cell each side, matching
+ * `rolltui_inner_rect`'s own boolean-width behaviour exactly (asserted there, not re-asserted
+ * here — this is the one other place that fact is load-bearing). */
+static unsigned char seam_of(unsigned char border) { return border == ROLLTUI_BORDER_NONE ? 0 : 1; }
 
-static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect screen, size_t layer,
-                  RolltuiResolvedSink emit, void* ctx) {
+/* Rewrites `n->base` (and every reachable descendant's) from this node's OWN, real fields —
+ * `base` carries no information of its own, so this is a translation, never a second source of
+ * truth. ALIASES `n->children.v` into `base.children` rather than copying it (same array, same
+ * pointers, zero allocation): nsplit_resolve only reads, never mutates or frees, what it walks. A
+ * WINDOW is a leaf by TAG, not by having zero children — enforced here explicitly (never derived
+ * from whatever `n->children` happens to hold) so a hypothetical malformed tree cannot make a
+ * window's contents draw as if they were a container's; the JSON loader and the layout editor
+ * both already guarantee a window never has children, but this is the one place that matters if
+ * that were ever untrue, so it does not merely assume it. */
+static void sync_nsplit_tree(RolltuiLayoutNode* n) {
+  size_t i;
+  n->base.axis = (unsigned char)(n->kind == ROLLTUI_NODE_ROW);
+  n->base.seam = seam_of(n->border);
+  n->base.visible = n->visible;
+  n->base.size.fill = n->size.fill;
+  n->base.size.weight = n->size.weight;
+  n->base.size.fraction = n->size.dim.fraction;
+  n->base.size.cells = n->size.dim.cells;
+  if (n->kind == ROLLTUI_NODE_WINDOW) {
+    n->base.children = NULL;
+    n->base.n = 0;
+    n->base.cap = 0;
+    return;
+  }
+  n->base.children = (struct NSplitNode**)n->children.v;
+  n->base.n = n->children.n;
+  n->base.cap = n->children.cap;
+  for (i = 0; i < n->children.n; ++i) sync_nsplit_tree(n->children.v[i]);
+}
+
+/* What `nsplit_resolve`'s sink threads through `ctx`: everything `place()`'s own signature used
+ * to carry as plain parameters, since `NSplitSink` (nsplit.h) has no room for a caller's own
+ * `layer`/screen-clip/final sink — exactly the "a caller does that itself in emit" the header
+ * documents. */
+typedef struct ResolveCtx {
+  RolltuiRect screen;
+  size_t layer;
+  RolltuiResolvedSink emit;
+  void* user_ctx;
+} ResolveCtx;
+
+static void resolve_sink(void* ctx, const NSplitNode* node, NSplitRect outer, NSplitRect inner) {
+  ResolveCtx* rc = (ResolveCtx*)ctx;
+  /* Sound only because `base` is `RolltuiLayoutNode`'s first member (see its declaration): a
+   * pointer to a struct and a pointer to its first member are the same address and convert to
+   * one another, so this is the exact pointer `sync_nsplit_tree` started from, recovered. */
+  const RolltuiLayoutNode* n = (const RolltuiLayoutNode*)node;
   RolltuiResolvedNode rn;
-  ChildSlot inline_slots[PLACE_INLINE];
-  ChildSlot* kid = inline_slots;
-  ChildSlot* spill = NULL;
-  size_t visible = 0, i, w;
-  int row, extent, prev_edge = 0, fixed_total = 0, weight_total = 0;
-  int remainder, cum_w = 0, prev_fill_edge = 0, pos = 0;
-  RolltuiDim cum;
-  RolltuiRect in;
-
+  RolltuiRect router, rinner;
+  router.x = outer.x;
+  router.y = outer.y;
+  router.w = outer.w;
+  router.h = outer.h;
+  rinner.x = inner.x;
+  rinner.y = inner.y;
+  rinner.w = inner.w;
+  rinner.h = inner.h;
   rn.node = n;
-  rn.outer = box;
-  rn.inner = rect_intersect(inner_rect(box, n->border), screen);
+  rn.outer = router;                              /* UNCLIPPED — place() never clipped outer either */
+  rn.inner = rect_intersect(rinner, rc->screen);   /* the one thing nsplit correctly does not know */
   rn.focused = 0;
-  rn.layer = layer;
-  emit(ctx, &rn);
-  if (n->kind == ROLLTUI_NODE_WINDOW) return;
-
-  row = n->kind == ROLLTUI_NODE_ROW;
-  for (i = 0; i < n->children.n; ++i)
-    if (n->children.v[i]->visible) ++visible;
-  if (visible == 0) return;
-  if (visible > PLACE_INLINE) {
-    spill = (ChildSlot*)rolltui_mem_alloc(visible * sizeof *spill);
-    kid = spill;
-  }
-  w = 0;
-  for (i = 0; i < n->children.n; ++i)
-    if (n->children.v[i]->visible) {
-      kid[w].node = n->children.v[i];
-      kid[w].size = 0;
-      ++w;
-    }
-  in = inner_rect(box, n->border); /* unclipped: children resolve against the true box */
-  extent = row ? in.w : in.h;
-
-  /* EVERY NODE OWNS ITS BORDER. Two bordered siblings sit side by side with their own edges in their own cells,
-   * so a panel's ground and its focus colour stop at its own edge and never fight a neighbour for a shared one. */
-
-  /* Fixed children: edges of the cumulative Dim sum. */
-  cum.fraction = 0;
-  cum.cells = 0;
-  for (i = 0; i < visible; ++i) {
-    int edge;
-    if (kid[i].node->size.fill) {
-      weight_total += imax(kid[i].node->size.weight, 1);
-      continue;
-    }
-    cum.fraction += kid[i].node->size.dim.fraction;
-    cum.cells += kid[i].node->size.dim.cells;
-    edge = rolltui_resolve_dim(cum, extent);
-    kid[i].size = imax(edge - prev_edge, 0);
-    prev_edge = imax(edge, prev_edge);
-    fixed_total += kid[i].size;
-  }
-  /* Fills: cumulative weight edges over the remainder. */
-  remainder = imax(extent - fixed_total, 0);
-  for (i = 0; i < visible; ++i) {
-    RolltuiDim share;
-    int edge;
-    if (!kid[i].node->size.fill) continue;
-    cum_w += imax(kid[i].node->size.weight, 1);
-    share.fraction = (double)cum_w / weight_total;
-    share.cells = 0;
-    edge = rolltui_resolve_dim(share, remainder);
-    kid[i].size = edge - prev_fill_edge;
-    prev_fill_edge = edge;
-  }
-  /* Positions, one after the other; clip to the extent in order. */
-  for (i = 0; i < visible; ++i) {
-    RolltuiRect r;
-    if (pos + kid[i].size > imax(extent, 0)) kid[i].size = imax(imax(extent, 0) - pos, 0);
-    if (row) {
-      r.x = in.x + pos;
-      r.y = in.y;
-      r.w = kid[i].size;
-      r.h = in.h;
-    } else {
-      r.x = in.x;
-      r.y = in.y + pos;
-      r.w = in.w;
-      r.h = kid[i].size;
-    }
-    place(kid[i].node, r, screen, layer, emit, ctx);
-    pos += kid[i].size;
-  }
-  rolltui_mem_free(spill); /* NULL in the steady case: the inline array is the whole of it */
+  rn.layer = rc->layer;
+  rc->emit(rc->user_ctx, &rn);
 }
 
 void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
                           RolltuiResolvedSink emit, void* ctx) {
-  if (root->visible) place(root, box, screen, layer, emit, ctx);
+  ResolveCtx rc;
+  NSplitRect nbox;
+  if (!root->visible) return;
+  sync_nsplit_tree((RolltuiLayoutNode*)root); /* `base` is scratch (see its declaration): rewriting
+                                               * it through a tree the caller lent us `const` is not
+                                               * a mutation of the node's own logical state. */
+  rc.screen = screen;
+  rc.layer = layer;
+  rc.emit = emit;
+  rc.user_ctx = ctx;
+  nbox.x = box.x;
+  nbox.y = box.y;
+  nbox.w = box.w;
+  nbox.h = box.h;
+  nsplit_resolve(&root->base, nbox, resolve_sink, &rc);
 }
 
 /* ---- drawing ----------------------------------------------------------------------------- */

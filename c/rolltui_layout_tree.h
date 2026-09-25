@@ -50,6 +50,7 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/nsplit.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -192,6 +193,19 @@ typedef struct RolltuiNodeList {
 #define ROLLTUI_NODE_COLUMN 2
 
 typedef struct RolltuiLayoutNode {
+  /* DERIVED, SCRATCH — not this node's own state. `rolltui_resolve_tree` rewrites every field
+   * of every reachable node's `base` (axis from `kind`, seam from `border`, `visible` and
+   * `size` mirrored, `children`/`n`/`cap` aliased at this node's own child array — no copy) in
+   * one pass immediately before handing the tree to `nsplit_resolve`, which is what actually
+   * runs the fixed/fill-weight placement math now (`nsplit.h`, repo root). Nothing else reads
+   * `base`: it carries no information `kind`/`border`/`visible`/`size`/`children` do not
+   * already carry, so nothing that copies, compares or serialises a node touches it, and a
+   * node's LOGICAL identity is exactly what it was before this field existed. MUST stay the
+   * first member — `nsplit_resolve` walks `base.children[i]` as `NSplitNode*` and rolltui reads
+   * the result back as `RolltuiLayoutNode*`; the two pointers are interchangeable only because
+   * this is the struct's first byte (the standard C guarantee a pointer to a struct and a
+   * pointer to its first member convert to one another). */
+  NSplitNode base ROLLTUI_DEFAULT({});
 #ifdef __cplusplus
   enum class Kind : unsigned char { Window = 0, Row, Column };
   Kind kind = Kind::Window;
