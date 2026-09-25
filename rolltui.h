@@ -57,42 +57,7 @@ extern "C" {
 /* ========================================================================================
  * BOOK 1 — CORE: the primitives everything else is built from
  * Text, geometry, colour and style, the cell grid and drawing into it, JSON, Unicode, wrapping. Nothing here depends on anything
- * outside this book. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
- * phase fills by moving each Core module's type and its functions here, adjacent.
- * ======================================================================================== */
-
-/* ========================================================================================
- * BOOK 2 — CONFIGURATION: the four user/host-authored file types, and the stores that manage them
- * Theme, bindings, layout, menu — what a person or a host author writes to a file — plus the embedded shipped defaults and the
- * settings handle that routes a changed key to the right one. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections
- * below; this banner is the seam a later phase fills.
- * ======================================================================================== */
-
-/* ========================================================================================
- * BOOK 3 — WIDGETS: what actually renders
- * The built-in widget kinds (input, menu, transcript, rows, the file picker, …) and the machinery that supports them: effects,
- * markdown, diff, the window registry a host reaches a kind's sources through. MIGRATION IN PROGRESS: still filed under the
- * PART 1/2/3 sections below; this banner is the seam a later phase fills.
- * ======================================================================================== */
-
-/* ========================================================================================
- * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
- * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
- * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
- * phase fills.
- * ======================================================================================== */
-
-/* ========================================================================================
- * PART 1 — THE NOUNS: every type, table and name the two roles speak
- * C needs a type before the functions that take it, so every public type is defined here; the verbs are in Parts 2 and 3.
- * Shared by a host and a widget author: `RolltuiStr`, `RolltuiRect`, `RolltuiStyle`, `RolltuiEvent`, `RolltuiFrame`, with their
- * operations declared beside them. A name typed into a FILE is an interface too, so a table that is one says so and names its
- * shipped directory.
- *
- * Who authors which file. A THEME or BINDINGS file is a user's: neither can break a host (an unknown role is reported and ignored;
- * a chord bound to an undeclared action is kept and inert). A LAYOUT is the app's to ship: host code names its windows, a user
- * selects among the layouts an app ships, and authoring one is a developer act (`rolltui-studio`). A MENU is the app's too, because
- * nobody has asked for more: the user-shadowing rung works but is not promised.
+ * outside this book.
  * ======================================================================================== */
 
 /* ========================================================================================
@@ -346,65 +311,26 @@ int rolltui_key_deliverable(const RolltuiChord* k, unsigned char protocol);
 #define ROLLTUI_KEY_ENCODE_MAX 16
 
 /* ========================================================================================
- * bindings — a host holds a bindings table and its report
+ * geom — RolltuiRect, the vocabulary every layout speaks
  * ======================================================================================== */
 
-/* The canonical spelling and the help form; "" for an Unknown key. Thirty-two is past the longest either produces. */
-#define ROLLTUI_CHORD_STRING_MAX 32
+/* The intersection of two rectangles, into `out` as {x, y, w, h}. An empty result is {x0, y0, 0, 0} with (x0, y0) the clamped
+ * origin, not {0,0,0,0}: callers position things relative to it. */
+void rolltui_rect_intersect(int ax, int ay, int aw, int ah,
+                            int bx, int by, int bw, int bh,
+                            int out[4]);
 
-/* ---- the table --------------------------------------------------------------------------- */
-/* OWNED, LONG-LIVED: one per `rolltui::Bindings`, which frees it. Three parallel lists: the DECLARED actions with their descriptions,
- * and the ROWS (action -> chords). They are separate because a row may outlive a declaration: a bindings file is global and the
- * user's, so a row for another screen's action is KEPT and inert. */
-typedef struct RolltuiBindings RolltuiBindings;
+/* ---- a rectangle, defined ONCE and compiled by both languages ------------------------- */
+/* `rolltui::Rect` IS this struct. A layout node's outer and inner boxes are the split's whole output; the four-int forms below
+ * remain because the C++ `intersect` is built on them. */
+typedef struct RolltuiRect {
+  int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0), w ROLLTUI_DEFAULT(0), h ROLLTUI_DEFAULT(0);
+} RolltuiRect;
 
-/* Answers whether a scope is one the library defines — the caller's fact, asked for by
- * `rolltui_bindings_undeclare_others` below. */
-typedef int (*RolltuiScopeFn)(void* ctx, const char* scope, size_t len);
-
-/* The report, transparent like every other on this boundary: `RolltuiStr` values in growing arrays, one per load-report field.
- * Zero-initialise before use. */
-
-typedef struct RolltuiBindingsReport {
-  RolltuiStr error; /* non-empty: unusable, and rolltui_bindings_load_json leaves `b` untouched */
-  RolltuiStr* unknown_actions;
-  size_t unknown_actions_n, unknown_actions_cap;
-  RolltuiStr* bad_chords;
-  size_t bad_chords_n, bad_chords_cap;
-  /* Chords this terminal cannot deliver: kept in `b` and reported, never dropped. */
-  RolltuiStr* undeliverable;
-  size_t undeliverable_n, undeliverable_cap;
-  RolltuiStr* conflicts;
-  size_t conflicts_n, conflicts_cap;
-  RolltuiStr* bad_values;
-  size_t bad_values_n, bad_values_cap;
-  RolltuiStr* unknown_keys;
-  size_t unknown_keys_n, unknown_keys_cap;
-} RolltuiBindingsReport;
-
-/* The English for why a chord cannot be delivered, into a caller buffer of at least ROLLTUI_UNDELIVERABLE_REASON_MAX bytes.
- * Returns the length written. */
-
-#define ROLLTUI_UNDELIVERABLE_REASON_MAX 128
-
-typedef size_t (*RolltuiReasonFn)(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out, size_t cap);
-
-/* ---- DECLARING, SUGGESTING, AND THE SHIPPED TABLE -----------------------------------------
- * `RolltuiToolAction` is the row a MOUNTED TOOL brings: its name, its English and the chord it SUGGESTS. A tool states its keys in
- * code because no bindings file can: the shipped file belongs to every host, and a row in it for a tool most hosts never mount would
- * advertise a key they cannot press. */
-/* A FORWARD declaration, never an include: `rolltui_layout.h` includes this header, so including it back would be a cycle.
- * `rolltui_bindings_declare` only takes a pointer. */
-typedef struct RolltuiLayoutAction RolltuiLayoutAction;
-
-typedef struct RolltuiToolAction {
-  const char* name;
-  const char* description;
-  const char* chord; /* "ctrl+q" — a SUGGESTION, never an override. NULL or "" for none. */
-} RolltuiToolAction;
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in both languages");
 
 /* ========================================================================================
- * style — RolltuiStyle and the role list
+ * style — RolltuiStyle, the role list, and colour depth/mode — how a value is spelled and shown
  * ======================================================================================== */
 
 /* Every name here is a key a THEME FILE may set under "colours"/"roles"; a role a theme omits is reported, not silently defaulted.
@@ -499,6 +425,477 @@ typedef struct RolltuiStyle {
 
 ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 15, "RolltuiStyle must be fifteen bytes with no padding in either language");
 
+/* ---- THE MODE AND DEPTH VOCABULARY ---------------------------------------------------------
+ * Same move as `ROLLTUI_ROLE_LIST` and `ROLLTUI_EFFECT_STATE_LIST`: a vocabulary the C refuses to carry relocates into every caller
+ * that cannot reach it, so the names live here once. ORDER IS ABI: the ordinal is what `rolltui_sgr`, `rolltui_color_downgrade` and
+ * every renderer are handed. Mono stays 0 and TrueColor last: `rolltui_color_downgrade` compares against the constants, not a count. */
+/* FOR THE FOURTH READER: the words a THEME FILE's "depth" may take, and `roll config set
+ * color_depth` with them. Shipped files: `rolltui/presets/themes/`. */
+#define ROLLTUI_DEPTH_LIST(X) \
+  X("mono", MONO, Mono) \
+  X("16", ANSI16, Ansi16) \
+  X("256", ANSI256, Ansi256) \
+  X("truecolor", TRUECOLOR, TrueColor)
+
+/* The one ALIAS, and it belongs to the ENVIRONMENT, not the file format: COLORTERM and ROLL_COLOR_DEPTH accept "24bit", a preset
+ * file's "depth" does not, and `color_depth_name` answers only "truecolor". A preset that stored "24bit" would round-trip to "truecolor"
+ * and report a change nobody made. Only `rolltui_detect_color_depth` reads this list. */
+#define ROLLTUI_DEPTH_ENV_ALIAS_LIST(X) X("24bit", TRUECOLOR)
+
+typedef enum RolltuiColorDepth {
+#define ROLLTUI_DEPTH_ENUM_(lower, UPPER, Camel) ROLLTUI_DEPTH_##UPPER,
+  ROLLTUI_DEPTH_LIST(ROLLTUI_DEPTH_ENUM_)
+#undef ROLLTUI_DEPTH_ENUM_
+  ROLLTUI_DEPTH_COUNT
+} RolltuiColorDepth;
+
+/* FOR THE FOURTH READER: the words a THEME FILE's "mode" may take. Shipped files:
+ * `rolltui/presets/themes/`. */
+#define ROLLTUI_MODE_LIST(X) \
+  X("dark", DARK, Dark) \
+  X("light", LIGHT, Light)
+
+typedef enum RolltuiThemeMode {
+#define ROLLTUI_MODE_ENUM_(lower, UPPER, Camel) ROLLTUI_MODE_##UPPER,
+  ROLLTUI_MODE_LIST(ROLLTUI_MODE_ENUM_)
+#undef ROLLTUI_MODE_ENUM_
+  ROLLTUI_MODE_COUNT
+} RolltuiThemeMode;
+
+/* The depth/mode of that name, or -1 when there is none. Neither accepts "auto" (that is the
+ * SETTING layer below, not a depth) and neither accepts the env alias above. */
+int rolltui_color_depth_from_name(const char* name, size_t len);
+
+int rolltui_theme_mode_from_name(const char* name, size_t len);
+
+/* The colour in the same spelling. "#rrggbb" is the longest, so seven bytes plus nothing —
+ * the result is NOT terminated and the length is returned. */
+#define ROLLTUI_COLOR_STRING_MAX 8
+
+/* A COLOUR, BOTH WAYS. A typed `color` input field (`"kind": "input", "type": "color"`) hands the host back TEXT, so the round trip
+ * is public. `parse`: "#rrggbb" | "none" | "0".."255"; 1 on success, 0 when it is not a colour. `to_string`: the same spelling back
+ * into `cap` bytes (`ROLLTUI_COLOR_STRING_MAX` is enough); NOT terminated, the length is returned.
+ * What is constrained: an EFFECT may never invent a colour (it picks the base style or a ROLE the theme named), which keeps `mono`
+ * legible; a WIDGET drawing may write any colour into any cell (`rolltui_frame_put_text` and `_fill` take a style by value), and the
+ * renderer down-converts at the frame's depth. */
+int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out);
+/* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
+ * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
+void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out);
+
+/* A style ON a ground: `fg`/`bg` "none" (kind 0) become `ground`; a stated colour is left as the theme wrote it. That is what "none"
+ * in a theme file MEANS for a role that sits on whatever it is drawn over. Mutates in place; `ground` is typically the caller's
+ * already-resolved background. */
+void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColorRaw ground);
+
+size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
+
+/* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset, so a cell's style never depends on the
+ * previous cell's. The longest is 48 bytes; the cap is a constraint on this file, not on a caller's data. */
+#define ROLLTUI_SGR_MAX 64
+
+/* ========================================================================================
+ * screen and frame_ops — the cell grid, and drawing into it
+ * ======================================================================================== */
+
+/* One cell: a grapheme cluster, its style, its width and its hyperlink id. A cluster has no maximum length: ten bytes cover ASCII,
+ * accented Latin, CJK, an emoji with a variation selector or skin tone, and a flag; anything longer (a ZWJ family is 25+ bytes)
+ * SPILLS into a table the frame owns, its index kept where the bytes would be (`len` reads ROLLTUI_CELL_SPILLED), the same shape
+ * `link` uses. */
+#define ROLLTUI_CELL_INLINE_GLYPH 10
+
+#define ROLLTUI_CELL_SPILLED 0xFF
+
+/* RolltuiCellRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiCell : public
+ * RolltuiCellRaw` reclaiming the name, with `spilled()` and the two constexpr constants. */
+typedef struct RolltuiCellRaw {
+  unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from rolltui_frame_link_id */
+  RolltuiStyle style;
+  char bytes[ROLLTUI_CELL_INLINE_GLYPH] ROLLTUI_DEFAULT({' '}); /* the cluster, or its spill index */
+  unsigned char len ROLLTUI_DEFAULT(1);   /* bytes in `bytes`; 0 on a continuation cell */
+  unsigned char width ROLLTUI_DEFAULT(1); /* 1 or 2; 0 on a continuation cell */
+  unsigned char continuation ROLLTUI_DEFAULT(0); /* the right half of a 2-cell glyph */
+} RolltuiCellRaw;
+
+/* THE CELL HAS NO PADDING, asserted: `rolltui_frame_equal` compares cells with `memcmp`, which is only right when every byte was written. */
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
+                      "RolltuiCellRaw has padding; memcmp equality would compare bytes nobody wrote");
+
+typedef struct RolltuiFrame RolltuiFrame;
+
+/* Reuses every buffer it can: the cells, the link table's strings and the
+ * spill table's. A steady frame allocates nothing through here. */
+
+typedef struct RolltuiDrawScratch RolltuiDrawScratch;
+
+/* `state` is rolltui::EffectState as an int; the C side stores it and never interprets it, which keeps the effects vocabulary in one
+ * place. 0 means None and is not recorded, so "is anything marked" and "does anything move" stay the same question. */
+void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
+                        unsigned long long since_ms, double fraction);
+
+size_t rolltui_frame_mark_count(const RolltuiFrame* f);
+
+/* ---- cursor ------------------------------------------------------------------------ */
+void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible);
+
+RolltuiDrawScratch* rolltui_draw_scratch_new(void);
+
+void rolltui_draw_scratch_free(RolltuiDrawScratch* s); /* a no-op on NULL */
+
+/* Writes `utf8` at (x, y), cluster by cluster, stopping at `max_cells`, at the frame's right
+ * edge, or before a wide glyph that would be cut in half. Returns the cells used. */
+int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
+                           RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
+
+/* ---- a colour, shown ---------------------------------------------------------------------
+ * A COLOUR VALUE'S SWATCH, wherever one is drawn (a theme editor's role, a menu's colour input, a painter's ink): two cells showing
+ * the colour as it will be drawn (through the same renderer, at the terminal's depth), framed in the text's own foreground so it
+ * shows against any ground. A `none` colour is the frame alone. A caller wanting the spelling beside it (`rolltui_color_to_string`'s
+ * "#rrggbb", palette index or "none") draws that itself, as every real caller already does. */
+
+/* The swatch: `frame`'s foreground is the outline and its background is where a `none` colour lands. Returns the cells used: 2, or 0
+ * where they do not fit (`max_cells` < 2) or the terminal draws no colour. Where an ambiguous glyph is two cells the outline is a bracket
+ * pair, one cell wherever it is drawn. */
+int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
+                             RolltuiStyle frame, int max_cells, int ambiguous_wide);
+
+/* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no
+ * width. */
+void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
+                        const char* glyph, size_t glyph_len);
+
+/* ONE ROW OF NAME/VALUE FIELDS, each name in `name_style` and each value in `value_style`, separated by two spaces and stopping at
+ * `max_cells`. Returns the cells used. It is what a status line is: a handful of facts, each with a name (one string in one style is a
+ * wall of words). A row with an EMPTY LABEL draws its value alone (a title, a bracketed note); an empty VALUE draws the name alone (a
+ * flag). It takes a `RolltuiRows` the caller owns and refills, so a warm frame allocates nothing: `rolltui_rows_reset` keeps the array
+ * and every row's buffer. RolltuiRows itself belongs to the widgets book; only a pointer is needed here, so a forward declaration
+ * suffices rather than pulling a widget-registry type into Core. */
+typedef struct RolltuiRows RolltuiRows;
+
+int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
+                             RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
+                             int ambiguous_wide);
+
+/* The cells `utf8` WOULD occupy, measured with the same cluster walk that draws it (`rolltui_frame_put_text` answers only after drawing,
+ * and a caller sizing a column must know first). Same walk, same ambiguous-width rule, same result. */
+int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide);
+
+/* A BORROW into the caller's own table, valid exactly as long as `styles` is. NULL when
+ * `styles` is NULL or `role` is out of range — a bad ordinal is a caller bug, not a crash. */
+const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_count, unsigned char role);
+
+/* ========================================================================================
+ * json — RolltuiJsonValue: a public type (a theme preset holds one), so its API is public
+ * ======================================================================================== */
+
+#define ROLLTUI_JSON_NULL 0
+
+#define ROLLTUI_JSON_BOOL 1
+
+#define ROLLTUI_JSON_NUMBER 2
+
+#define ROLLTUI_JSON_STRING 3
+
+#define ROLLTUI_JSON_ARRAY 4
+
+#define ROLLTUI_JSON_OBJECT 5
+
+typedef struct RolltuiJsonValue RolltuiJsonValue;
+
+/* One member of an object: a key and its OWNED value. `obj` keeps these in insertion order (a theme's role list round-trips in the
+ * order the author wrote it). */
+typedef struct RolltuiJsonMember {
+  RolltuiStr key;
+  RolltuiJsonValue* value ROLLTUI_DEFAULT(nullptr); /* OWNED; never NULL on a complete value */
+} RolltuiJsonMember;
+
+/* A plain struct with every member always present: `kind` says which of `str`/`arr`/`obj` is meaningful, but `_free`, `_clone` and
+ * `_equal` never gate on it, so retagging a value (as `rolltui_json_set` does) cannot orphan a buffer. */
+struct RolltuiJsonValue {
+  unsigned char kind ROLLTUI_DEFAULT(ROLLTUI_JSON_NULL);
+  unsigned char b ROLLTUI_DEFAULT(0);
+  double num ROLLTUI_DEFAULT(0);
+  RolltuiStr str;
+  /* ARRAY children: an owned array of owned value pointers, laid out as `RolltuiPtrVec` with its amortised growth, so an element's
+   * address never moves. */
+  RolltuiJsonValue** arr ROLLTUI_DEFAULT(nullptr);
+  size_t arr_n ROLLTUI_DEFAULT(0);
+  size_t arr_cap ROLLTUI_DEFAULT(0);
+  /* OBJECT members: an owned array of owned member pointers, insertion order kept, same
+   * layout and reason as `arr` above. */
+  RolltuiJsonMember** obj ROLLTUI_DEFAULT(nullptr);
+  size_t obj_n ROLLTUI_DEFAULT(0);
+  size_t obj_cap ROLLTUI_DEFAULT(0);
+};
+
+/* ---- construction: each an OWNED, LONG-LIVED node the caller frees (directly, or by
+ * handing it to `rolltui_json_set`/`_array_push`, which then own it). ---------------------- */
+RolltuiJsonValue* rolltui_json_null(void);
+
+RolltuiJsonValue* rolltui_json_string(const char* s, size_t len);
+
+RolltuiJsonValue* rolltui_json_array(void);
+
+void rolltui_json_free(RolltuiJsonValue* v); /* recursive; a no-op on NULL */
+
+/* A deep copy the caller owns; NULL in, NULL out (mirrors `Value`'s copy constructor). */
+RolltuiJsonValue* rolltui_json_clone(const RolltuiJsonValue* v);
+
+/* Deep, order-sensitive structural equality: compares every member unconditionally rather than only the ones `kind` says are live. */
+
+int rolltui_json_is_bool(const RolltuiJsonValue* v);
+
+int rolltui_json_is_number(const RolltuiJsonValue* v);
+
+/* Typed reads with defaults; never fail. A BORROW valid as long as `v` (or `def`) is. */
+int rolltui_json_as_bool(const RolltuiJsonValue* v, int def);
+const char* rolltui_json_as_string(const RolltuiJsonValue* v, const char* def, size_t def_len, size_t* out_len);
+
+/* Object lookup: a BORROW, never NULL: a static Null (valid forever) when `v` is not an object or the key is absent, so lookups chain. */
+const RolltuiJsonValue* rolltui_json_get(const RolltuiJsonValue* v, const char* key, size_t key_len);
+
+/* Object insert-or-replace. ALWAYS turns `v` into an object (nothing is cleared, which is safe because free/clone/equal never gate on
+ * `kind`). TAKES OWNERSHIP of `child`; a replaced value is freed. Returns a BORROW of the stored child. */
+RolltuiJsonValue* rolltui_json_set(RolltuiJsonValue* v, const char* key, size_t key_len, RolltuiJsonValue* child);
+
+/* Removes `key` if present, freeing the value; 1 when something was removed. Order-preserving. KEPT with `get`/`has`/`set`: an object
+ * API that can add a key but not remove one forces a rebuild. */
+int rolltui_json_object_erase(RolltuiJsonValue* v, const char* key, size_t key_len);
+
+size_t rolltui_json_array_size(const RolltuiJsonValue* v);
+
+RolltuiJsonValue* rolltui_json_array_at(const RolltuiJsonValue* v, size_t i); /* BORROW; NULL out of range */
+
+/* Appends. TAKES OWNERSHIP of `child`. `v` must already be an array (`rolltui_json_array()`): there is no coercion. */
+void rolltui_json_array_push(RolltuiJsonValue* v, RolltuiJsonValue* child);
+
+/* Parses `text`. Returns an OWNED value the caller frees, or NULL on failure. `error` may be
+ * NULL when the caller does not care; otherwise it is cleared on entry and set to
+ * "line N: message" on the first failure only, and left empty on success. */
+RolltuiJsonValue* rolltui_json_parse(const char* text, size_t len, RolltuiStr* error);
+
+/* Serialises deterministically into `out`, REPLACING its contents. indent = 0 -> single
+ * line. */
+void rolltui_json_dump(const RolltuiJsonValue* v, int indent, RolltuiStr* out);
+
+/* ========================================================================================
+ * unicode — the library's Unicode algorithms
+ * ======================================================================================== */
+
+/* One decoded scalar. Decoding is TOTAL: a malformed byte becomes U+FFFD with `length` 1 and
+ * `valid` 0, so every byte of the input is accounted for exactly once and a byte offset is
+ * always recoverable. */
+typedef struct RolltuiDecodedChar {
+  RolltuiCodepoint cp;
+  size_t offset; /* byte offset into the source */
+  size_t length; /* bytes consumed (1 for an invalid byte) */
+  unsigned char valid;
+} RolltuiDecodedChar;
+
+/* ---- working memory ---------------------------------------------------------------------- */
+/* THE GROWING BUFFERS THESE ALGORITHMS NEED, owned by the caller and reused across calls: the functions marked below need somewhere to
+ * decode into, mark boundaries in and build line-break units in. One handle per thread, made once; after the first few calls it never
+ * grows, so the draw path allocates nothing. One buffer per ROLE, so a function that calls another (graphemes -> boundaries,
+ * display_width -> graphemes) cannot alias its own scratch. */
+typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
+
+/* ---- sanitising ------------------------------------------------------------------------ */
+/* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least
+ * `len` bytes — stripping only ever removes. Returns the bytes written. */
+size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out);
+
+RolltuiUnicodeScratch* rolltui_u_scratch_new(void);
+
+void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
+
+int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
+
+/* How many BYTES of `utf8` fit in `max_cells` columns: the offset `rolltui_frame_put_text` computes to honour its own `max_cells`.
+ * Returns that byte length and fills `*out_cells` (may be NULL) with the columns they occupy. Stops BEFORE a glyph that would be cut in
+ * half, put_text's rule, so the two agree about where a cut falls. A widget that truncates needs it to place an ellipsis, and every
+ * list, tree, table and column view truncates. `s` is the caller's scratch (rule 4). */
+size_t rolltui_u_fit(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int max_cells,
+                     int ambiguous_wide, int* out_cells);
+
+/* ========================================================================================
+ * wrap — the wrap engine roll draws with
+ * ======================================================================================== */
+
+/* `ambiguous_wide` is `unsigned char`, not `bool`, for `rolltui_style.h`'s reason. The field order is the C++ struct's, because two
+ * call sites write it as an order-sensitive designated initializer. */
+typedef struct RolltuiWrapOptions {
+  unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
+  int tab_width ROLLTUI_DEFAULT(8);
+  int first_indent ROLLTUI_DEFAULT(0);    /* cells before the first line */
+  int hanging_indent ROLLTUI_DEFAULT(0);  /* cells before every subsequent line */
+} RolltuiWrapOptions;
+
+/* One drawn grapheme cluster of one line. */
+typedef struct RolltuiWrapGrapheme {
+  size_t offset;         /* into the line's text */
+  size_t length;         /* bytes in the line's text */
+  size_t source_offset;  /* byte offset in the wrap input (a tab's, for each of its spaces) */
+  int width;             /* cells */
+  unsigned char space;   /* U+0020 or an expanded tab: droppable at a soft break */
+} RolltuiWrapGrapheme;
+
+typedef struct RolltuiWrapLines RolltuiWrapLines;
+
+/* Drops the LIVE LINES and keeps every buffer, so a handle wrapped into repeatedly allocates nothing after its first few calls (what
+ * `Scratch` calls on acquire and release). */
+
+/* ---- lifetime ------------------------------------------------------------------------ */
+/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
+ * rolltui::mem, because there is nothing useful to do with a half-built wrap. */
+RolltuiWrapLines* rolltui_wrap_new(void);
+
+void rolltui_wrap_free(RolltuiWrapLines* w);
+
+/* Wraps `len` bytes of UTF-8 to `width` cells, into `w`, reusing everything `w` holds. `width <= 0` is legal and draws nothing (one
+ * empty line per paragraph); empty input is one empty line. */
+void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, RolltuiWrapOptions opt);
+
+/* ---- reading the lines ----------------------------------------------------------------- */
+size_t rolltui_wrap_line_count(const RolltuiWrapLines* w);
+
+/* Line `i` as BORROWS into `w` (rule 3(c)). `text` is NOT NUL-terminated: `text_len` is the length, and a zero-length line gives a valid
+ * non-NULL pointer. `hard` receives 1 when the line was ended by a mandatory break or by the end of the text. */
+void rolltui_wrap_line(const RolltuiWrapLines* w, size_t i, const char** text, size_t* text_len,
+                       const RolltuiWrapGrapheme** graphemes, size_t* grapheme_count,
+                       int* width, int* indent, int* hard);
+
+/* ========================================================================================
+ * mem — the leak gauge — public by stated reason: it is how a consumer proves it released everything
+ * ======================================================================================== */
+
+/* Resets the CUMULATIVE counters only (`allocations`, `frees`, `bytes_requested`). `live_bytes` and `live_blocks` describe storage that
+ * still exists; `peak_bytes` is re-based to what is live now. For a test that wants a window; never called by the library. */
+/* MEMORY USAGE, QUERYABLE AT RUNTIME: the allocator's counters as out-params, any of which may be NULL. The three byte numbers answer
+ * different questions: `bytes_requested` is CUMULATIVE (a growing buffer is counted again at every growth: a churn signal, not how much
+ * is held); `live_bytes` is HELD RIGHT NOW as the allocator's usable size (what a status pane means by "memory usage"); `peak_bytes` is
+ * the high-water mark of `live_bytes` (for a library built on reusing buffers, how big the reuse ever had to get). */
+void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_requested,
+                       size_t* live_bytes, size_t* peak_bytes, size_t* live_blocks);
+
+/* ---- the library's one entry point, and the only two halves of it a CONSUMER may name -----
+ * `rolltui_mem_alloc` and `rolltui_mem_free`, declared here so a consumer that wants a handle and its release can reach them.
+ * `rolltui_mem_realloc` is deliberately internal: growth is what the closed set exists to stop being invented. An allocation failure
+ * ABORTS rather than returning NULL, so neither can fail and no caller checks. Every allocation in the library goes through these,
+ * which is why `rolltui_mem_stats` above can be believed. */
+void* rolltui_mem_alloc(size_t bytes);
+
+void rolltui_mem_free(void* p);
+
+/* ========================================================================================
+ * opaque handles — declared once, here, so every later book may reference one freely without an ordering dependency
+ * Never used by value anywhere in this header (rule 2 forbids returning one from an `extern "C"` function, and none appear as a
+ * by-value struct field either), so forward-declaring each once, early, costs nothing and removes any ordering constraint a later
+ * book's module would otherwise have on wherever that type's own book happens to sit.
+ * ======================================================================================== */
+
+typedef struct RolltuiContext RolltuiContext;
+typedef struct RolltuiWindows RolltuiWindows;
+typedef struct RolltuiWindowStack RolltuiWindowStack;
+typedef struct RolltuiTerminal RolltuiTerminal;
+typedef struct RolltuiSwap RolltuiSwap;
+typedef struct RolltuiBindings RolltuiBindings;
+typedef struct RolltuiLayout RolltuiLayout;
+typedef struct RolltuiLayoutNode RolltuiLayoutNode;
+typedef struct RolltuiLayer RolltuiLayer;
+typedef struct RolltuiLayerList RolltuiLayerList;
+typedef struct RolltuiContent RolltuiContent;
+typedef struct RolltuiActionList RolltuiActionList;
+typedef struct RolltuiNodeList RolltuiNodeList;
+typedef struct RolltuiMenu RolltuiMenu;
+typedef struct RolltuiInput RolltuiInput;
+typedef struct RolltuiTranscript RolltuiTranscript;
+typedef struct RolltuiMdLines RolltuiMdLines;
+typedef struct RolltuiEffectMap RolltuiEffectMap;
+typedef struct RolltuiSettings RolltuiSettings;
+
+/* ========================================================================================
+ * BOOK 2 — CONFIGURATION: the four user/host-authored file types, and the stores that manage them
+ * Theme, bindings, layout, menu — what a person or a host author writes to a file — plus the embedded shipped defaults and the
+ * settings handle that routes a changed key to the right one. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections
+ * below; this banner is the seam a later phase fills.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * BOOK 3 — WIDGETS: what actually renders
+ * The built-in widget kinds (input, menu, transcript, rows, the file picker, …) and the machinery that supports them: effects,
+ * markdown, diff, the window registry a host reaches a kind's sources through. MIGRATION IN PROGRESS: still filed under the
+ * PART 1/2/3 sections below; this banner is the seam a later phase fills.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
+ * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
+ * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
+ * phase fills.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * PART 1 — THE NOUNS: what has not yet migrated into a book above
+ * The rest of this file, not yet moved: types and functions of modules whose book hasn't had its migration phase yet. C needs a
+ * type before the functions that take it, so within this leftover section every public type is still defined ahead of its verbs.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * bindings — a host holds a bindings table and its report
+ * ======================================================================================== */
+
+/* The canonical spelling and the help form; "" for an Unknown key. Thirty-two is past the longest either produces. */
+#define ROLLTUI_CHORD_STRING_MAX 32
+
+/* ---- the table --------------------------------------------------------------------------- */
+/* OWNED, LONG-LIVED: one per `rolltui::Bindings`, which frees it. Three parallel lists: the DECLARED actions with their descriptions,
+ * and the ROWS (action -> chords). They are separate because a row may outlive a declaration: a bindings file is global and the
+ * user's, so a row for another screen's action is KEPT and inert.
+ * Answers whether a scope is one the library defines — the caller's fact, asked for by
+ * `rolltui_bindings_undeclare_others` below. */
+typedef int (*RolltuiScopeFn)(void* ctx, const char* scope, size_t len);
+
+/* The report, transparent like every other on this boundary: `RolltuiStr` values in growing arrays, one per load-report field.
+ * Zero-initialise before use. */
+
+typedef struct RolltuiBindingsReport {
+  RolltuiStr error; /* non-empty: unusable, and rolltui_bindings_load_json leaves `b` untouched */
+  RolltuiStr* unknown_actions;
+  size_t unknown_actions_n, unknown_actions_cap;
+  RolltuiStr* bad_chords;
+  size_t bad_chords_n, bad_chords_cap;
+  /* Chords this terminal cannot deliver: kept in `b` and reported, never dropped. */
+  RolltuiStr* undeliverable;
+  size_t undeliverable_n, undeliverable_cap;
+  RolltuiStr* conflicts;
+  size_t conflicts_n, conflicts_cap;
+  RolltuiStr* bad_values;
+  size_t bad_values_n, bad_values_cap;
+  RolltuiStr* unknown_keys;
+  size_t unknown_keys_n, unknown_keys_cap;
+} RolltuiBindingsReport;
+
+/* The English for why a chord cannot be delivered, into a caller buffer of at least ROLLTUI_UNDELIVERABLE_REASON_MAX bytes.
+ * Returns the length written. */
+
+#define ROLLTUI_UNDELIVERABLE_REASON_MAX 128
+
+typedef size_t (*RolltuiReasonFn)(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out, size_t cap);
+
+/* ---- DECLARING, SUGGESTING, AND THE SHIPPED TABLE -----------------------------------------
+ * `RolltuiToolAction` is the row a MOUNTED TOOL brings: its name, its English and the chord it SUGGESTS. A tool states its keys in
+ * code because no bindings file can: the shipped file belongs to every host, and a row in it for a tool most hosts never mount would
+ * advertise a key they cannot press. */
+/* A FORWARD declaration, never an include: `rolltui_layout.h` includes this header, so including it back would be a cycle.
+ * `rolltui_bindings_declare` only takes a pointer. */
+typedef struct RolltuiLayoutAction RolltuiLayoutAction;
+
+typedef struct RolltuiToolAction {
+  const char* name;
+  const char* description;
+  const char* chord; /* "ctrl+q" — a SUGGESTION, never an override. NULL or "" for none. */
+} RolltuiToolAction;
+
 /* ========================================================================================
  * document — the transcript document a host appends to
  * ======================================================================================== */
@@ -560,70 +957,6 @@ void rolltui_document_copy(RolltuiDocumentRaw* to, const RolltuiDocumentRaw* fro
 void rolltui_document_release(RolltuiDocumentRaw* d);
 
 /* ========================================================================================
- * geom — RolltuiRect, the vocabulary every layout speaks
- * ======================================================================================== */
-
-/* The intersection of two rectangles, into `out` as {x, y, w, h}. An empty result is {x0, y0, 0, 0} with (x0, y0) the clamped
- * origin, not {0,0,0,0}: callers position things relative to it. */
-void rolltui_rect_intersect(int ax, int ay, int aw, int ah,
-                            int bx, int by, int bw, int bh,
-                            int out[4]);
-
-/* ---- a rectangle, defined ONCE and compiled by both languages ------------------------- */
-/* `rolltui::Rect` IS this struct. A layout node's outer and inner boxes are the split's whole output; the four-int forms below
- * remain because the C++ `intersect` is built on them. */
-typedef struct RolltuiRect {
-  int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0), w ROLLTUI_DEFAULT(0), h ROLLTUI_DEFAULT(0);
-} RolltuiRect;
-
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in both languages");
-
-/* ========================================================================================
- * screen — the cell grid
- * ======================================================================================== */
-
-/* One cell: a grapheme cluster, its style, its width and its hyperlink id. A cluster has no maximum length: ten bytes cover ASCII,
- * accented Latin, CJK, an emoji with a variation selector or skin tone, and a flag; anything longer (a ZWJ family is 25+ bytes)
- * SPILLS into a table the frame owns, its index kept where the bytes would be (`len` reads ROLLTUI_CELL_SPILLED), the same shape
- * `link` uses. */
-#define ROLLTUI_CELL_INLINE_GLYPH 10
-
-#define ROLLTUI_CELL_SPILLED 0xFF
-
-/* RolltuiCellRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiCell : public
- * RolltuiCellRaw` reclaiming the name, with `spilled()` and the two constexpr constants. */
-typedef struct RolltuiCellRaw {
-  unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from rolltui_frame_link_id */
-  RolltuiStyle style;
-  char bytes[ROLLTUI_CELL_INLINE_GLYPH] ROLLTUI_DEFAULT({' '}); /* the cluster, or its spill index */
-  unsigned char len ROLLTUI_DEFAULT(1);   /* bytes in `bytes`; 0 on a continuation cell */
-  unsigned char width ROLLTUI_DEFAULT(1); /* 1 or 2; 0 on a continuation cell */
-  unsigned char continuation ROLLTUI_DEFAULT(0); /* the right half of a 2-cell glyph */
-} RolltuiCellRaw;
-
-/* THE CELL HAS NO PADDING, asserted: `rolltui_frame_equal` compares cells with `memcmp`, which is only right when every byte was written. */
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
-                      "RolltuiCellRaw has padding; memcmp equality would compare bytes nobody wrote");
-
-typedef struct RolltuiFrame RolltuiFrame;
-
-/* Reuses every buffer it can: the cells, the link table's strings and the
- * spill table's. A steady frame allocates nothing through here. */
-
-/* ---- geometry and cells ----------------------------------------------------------- */
-
-/* A COPY of the cell into `out`, which the caller owns. Out of bounds writes a zeroed cell with width 0. (A caller's buffer and not
- * a return value: a non-POD class returned from `extern "C"` has no ABI every compiler promises.) */
-
-/* ---- marks (the widget's whole vocabulary for motion) ------------------------------ */
-
-/* ========================================================================================
- * frame_ops — drawing into the cell grid
- * ======================================================================================== */
-
-typedef struct RolltuiDrawScratch RolltuiDrawScratch;
-
-/* ========================================================================================
  * input — the input widget: a host sets, selects, undoes and reads
  * ======================================================================================== */
 
@@ -674,8 +1007,6 @@ typedef struct RolltuiInputSelectionRaw {
   size_t anchor ROLLTUI_DEFAULT(0), head ROLLTUI_DEFAULT(0);
   unsigned char active ROLLTUI_DEFAULT(0);
 } RolltuiInputSelectionRaw;
-
-typedef struct RolltuiInput RolltuiInput;
 
 /* THE HOST'S CLIPBOARD: a function pointer and a context. Set once; NULL turns it off. The text is a BORROW for the call. */
 typedef void (*RolltuiCopyFn)(void* ctx, const char* text, size_t len);
@@ -728,8 +1059,6 @@ typedef struct RolltuiInputRoles {
 /* ========================================================================================
  * md_lines — the transcript's line store
  * ======================================================================================== */
-
-typedef struct RolltuiMdLines RolltuiMdLines;
 
 /* ---- working memory the store lends its filler ------------------------------------------
  * Both renderers cluster text constantly; this is the buffer they do it in, one per store, so a renderer holds no per-thread state. */
@@ -1096,10 +1425,8 @@ typedef struct RolltuiEffectSpec {
 /* ---- what a THEME carries, owned in C -------------------------------------------------- */
 /* A map of STATE -> the specs that state looks like while it lasts. `states` is the caller's state vocabulary size (the C never learns
  * a state's name); `fallback_role` is the role a spec with none of its own picks. OWNED, LONG-LIVED: one map per `rolltui::Theme`,
- * which frees it. */
-typedef struct RolltuiEffectMap RolltuiEffectMap;
-
-/* A BORROW, valid until the map next changes. NULL for an index past the state's specs. */
+ * which frees it.
+ * A BORROW, valid until the map next changes. NULL for an index past the state's specs. */
 
 typedef struct RolltuiEffectReport {
   int marks_drawn;    /* marks the theme had an effect for */
@@ -1164,177 +1491,15 @@ typedef struct RolltuiEffectScratch RolltuiEffectScratch;
 typedef void (*RolltuiEffectUnknownFn)(void* ctx, const char* kind, size_t len);
 
 /* ========================================================================================
- * json — RolltuiJsonValue: a public type (a theme preset holds one), so its API is public
- * ======================================================================================== */
-
-#define ROLLTUI_JSON_NULL 0
-
-#define ROLLTUI_JSON_BOOL 1
-
-#define ROLLTUI_JSON_NUMBER 2
-
-#define ROLLTUI_JSON_STRING 3
-
-#define ROLLTUI_JSON_ARRAY 4
-
-#define ROLLTUI_JSON_OBJECT 5
-
-typedef struct RolltuiJsonValue RolltuiJsonValue;
-
-/* One member of an object: a key and its OWNED value. `obj` keeps these in insertion order (a theme's role list round-trips in the
- * order the author wrote it). */
-typedef struct RolltuiJsonMember {
-  RolltuiStr key;
-  RolltuiJsonValue* value ROLLTUI_DEFAULT(nullptr); /* OWNED; never NULL on a complete value */
-} RolltuiJsonMember;
-
-/* A plain struct with every member always present: `kind` says which of `str`/`arr`/`obj` is meaningful, but `_free`, `_clone` and
- * `_equal` never gate on it, so retagging a value (as `rolltui_json_set` does) cannot orphan a buffer. */
-struct RolltuiJsonValue {
-  unsigned char kind ROLLTUI_DEFAULT(ROLLTUI_JSON_NULL);
-  unsigned char b ROLLTUI_DEFAULT(0);
-  double num ROLLTUI_DEFAULT(0);
-  RolltuiStr str;
-  /* ARRAY children: an owned array of owned value pointers, laid out as `RolltuiPtrVec` with its amortised growth, so an element's
-   * address never moves. */
-  RolltuiJsonValue** arr ROLLTUI_DEFAULT(nullptr);
-  size_t arr_n ROLLTUI_DEFAULT(0);
-  size_t arr_cap ROLLTUI_DEFAULT(0);
-  /* OBJECT members: an owned array of owned member pointers, insertion order kept, same
-   * layout and reason as `arr` above. */
-  RolltuiJsonMember** obj ROLLTUI_DEFAULT(nullptr);
-  size_t obj_n ROLLTUI_DEFAULT(0);
-  size_t obj_cap ROLLTUI_DEFAULT(0);
-};
-
-/* ---- construction: each an OWNED, LONG-LIVED node the caller frees (directly, or by
- * handing it to `rolltui_json_set`/`_array_push`, which then own it). ---------------------- */
-RolltuiJsonValue* rolltui_json_null(void);
-
-RolltuiJsonValue* rolltui_json_string(const char* s, size_t len);
-
-RolltuiJsonValue* rolltui_json_array(void);
-
-void rolltui_json_free(RolltuiJsonValue* v); /* recursive; a no-op on NULL */
-
-/* A deep copy the caller owns; NULL in, NULL out (mirrors `Value`'s copy constructor). */
-RolltuiJsonValue* rolltui_json_clone(const RolltuiJsonValue* v);
-
-/* Deep, order-sensitive structural equality: compares every member unconditionally rather than only the ones `kind` says are live. */
-
-int rolltui_json_is_bool(const RolltuiJsonValue* v);
-
-int rolltui_json_is_number(const RolltuiJsonValue* v);
-
-/* Typed reads with defaults; never fail. A BORROW valid as long as `v` (or `def`) is. */
-int rolltui_json_as_bool(const RolltuiJsonValue* v, int def);
-const char* rolltui_json_as_string(const RolltuiJsonValue* v, const char* def, size_t def_len, size_t* out_len);
-
-/* Object lookup: a BORROW, never NULL: a static Null (valid forever) when `v` is not an object or the key is absent, so lookups chain. */
-const RolltuiJsonValue* rolltui_json_get(const RolltuiJsonValue* v, const char* key, size_t key_len);
-
-/* Object insert-or-replace. ALWAYS turns `v` into an object (nothing is cleared, which is safe because free/clone/equal never gate on
- * `kind`). TAKES OWNERSHIP of `child`; a replaced value is freed. Returns a BORROW of the stored child. */
-RolltuiJsonValue* rolltui_json_set(RolltuiJsonValue* v, const char* key, size_t key_len, RolltuiJsonValue* child);
-
-/* Removes `key` if present, freeing the value; 1 when something was removed. Order-preserving. KEPT with `get`/`has`/`set`: an object
- * API that can add a key but not remove one forces a rebuild. */
-int rolltui_json_object_erase(RolltuiJsonValue* v, const char* key, size_t key_len);
-
-size_t rolltui_json_array_size(const RolltuiJsonValue* v);
-
-RolltuiJsonValue* rolltui_json_array_at(const RolltuiJsonValue* v, size_t i); /* BORROW; NULL out of range */
-
-/* Appends. TAKES OWNERSHIP of `child`. `v` must already be an array (`rolltui_json_array()`): there is no coercion. */
-void rolltui_json_array_push(RolltuiJsonValue* v, RolltuiJsonValue* child);
-
-/* Parses `text`. Returns an OWNED value the caller frees, or NULL on failure. `error` may be
- * NULL when the caller does not care; otherwise it is cleared on entry and set to
- * "line N: message" on the first failure only, and left empty on success. */
-RolltuiJsonValue* rolltui_json_parse(const char* text, size_t len, RolltuiStr* error);
-
-/* Serialises deterministically into `out`, REPLACING its contents. indent = 0 -> single
- * line. */
-void rolltui_json_dump(const RolltuiJsonValue* v, int indent, RolltuiStr* out);
-
-/* ========================================================================================
  * theme — a host holds a style table
  * ======================================================================================== */
 
-/* ---- THE MODE AND DEPTH VOCABULARY ---------------------------------------------------------
- * Same move as `ROLLTUI_ROLE_LIST` and `ROLLTUI_EFFECT_STATE_LIST`: a vocabulary the C refuses to carry relocates into every caller
- * that cannot reach it, so the names live here once. ORDER IS ABI: the ordinal is what `rolltui_sgr`, `rolltui_color_downgrade` and
- * every renderer are handed. Mono stays 0 and TrueColor last: `rolltui_color_downgrade` compares against the constants, not a count. */
-/* FOR THE FOURTH READER: the words a THEME FILE's "depth" may take, and `roll config set
- * color_depth` with them. Shipped files: `rolltui/presets/themes/`. */
-#define ROLLTUI_DEPTH_LIST(X) \
-  X("mono", MONO, Mono) \
-  X("16", ANSI16, Ansi16) \
-  X("256", ANSI256, Ansi256) \
-  X("truecolor", TRUECOLOR, TrueColor)
-
-/* The one ALIAS, and it belongs to the ENVIRONMENT, not the file format: COLORTERM and ROLL_COLOR_DEPTH accept "24bit", a preset
- * file's "depth" does not, and `color_depth_name` answers only "truecolor". A preset that stored "24bit" would round-trip to "truecolor"
- * and report a change nobody made. Only `rolltui_detect_color_depth` reads this list. */
-#define ROLLTUI_DEPTH_ENV_ALIAS_LIST(X) X("24bit", TRUECOLOR)
-
-typedef enum RolltuiColorDepth {
-#define ROLLTUI_DEPTH_ENUM_(lower, UPPER, Camel) ROLLTUI_DEPTH_##UPPER,
-  ROLLTUI_DEPTH_LIST(ROLLTUI_DEPTH_ENUM_)
-#undef ROLLTUI_DEPTH_ENUM_
-  ROLLTUI_DEPTH_COUNT
-} RolltuiColorDepth;
-
-/* FOR THE FOURTH READER: the words a THEME FILE's "mode" may take. Shipped files:
- * `rolltui/presets/themes/`. */
-#define ROLLTUI_MODE_LIST(X) \
-  X("dark", DARK, Dark) \
-  X("light", LIGHT, Light)
-
-typedef enum RolltuiThemeMode {
-#define ROLLTUI_MODE_ENUM_(lower, UPPER, Camel) ROLLTUI_MODE_##UPPER,
-  ROLLTUI_MODE_LIST(ROLLTUI_MODE_ENUM_)
-#undef ROLLTUI_MODE_ENUM_
-  ROLLTUI_MODE_COUNT
-} RolltuiThemeMode;
-
-/* The depth/mode of that name, or -1 when there is none. Neither accepts "auto" (that is the
- * SETTING layer below, not a depth) and neither accepts the env alias above. */
-int rolltui_color_depth_from_name(const char* name, size_t len);
-
-int rolltui_theme_mode_from_name(const char* name, size_t len);
-
-/* THE SETTING layer: what a preset file and `--color-depth` / `--theme-mode` accept: every name above PLUS "auto" (resolve it, do not
- * store it). A host may narrow what IT accepts through the parse callbacks. */
+/* THE SETTING layer: what a preset file and `--color-depth` / `--theme-mode` accept: every name `style`'s `ROLLTUI_DEPTH_LIST`/
+ * `ROLLTUI_MODE_LIST` declare (BOOK 1 — CORE) PLUS "auto" (resolve it, do not store it). A host may narrow what IT accepts through
+ * the parse callbacks. */
 int rolltui_color_depth_setting_valid(const char* s, size_t len);
 
 int rolltui_theme_mode_setting_valid(const char* s, size_t len);
-
-/* The colour in the same spelling. "#rrggbb" is the longest, so seven bytes plus nothing —
- * the result is NOT terminated and the length is returned. */
-#define ROLLTUI_COLOR_STRING_MAX 8
-
-/* A COLOUR, BOTH WAYS. A typed `color` input field (`"kind": "input", "type": "color"`) hands the host back TEXT, so the round trip
- * is public. `parse`: "#rrggbb" | "none" | "0".."255"; 1 on success, 0 when it is not a colour. `to_string`: the same spelling back
- * into `cap` bytes (`ROLLTUI_COLOR_STRING_MAX` is enough); NOT terminated, the length is returned.
- * What is constrained: an EFFECT may never invent a colour (it picks the base style or a ROLE the theme named), which keeps `mono`
- * legible; a WIDGET drawing may write any colour into any cell (`rolltui_frame_put_text` and `_fill` take a style by value), and the
- * renderer down-converts at the frame's depth. */
-int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out);
-/* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
- * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
-void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out);
-
-/* A style ON a ground: `fg`/`bg` "none" (kind 0) become `ground`; a stated colour is left as the theme wrote it. That is what "none"
- * in a theme file MEANS for a role that sits on whatever it is drawn over. Mutates in place; `ground` is typically the caller's
- * already-resolved background. */
-void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColorRaw ground);
-
-size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
-
-/* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset, so a cell's style never depends on the
- * previous cell's. The longest is 48 bytes; the cap is a constraint on this file, not on a caller's data. */
-#define ROLLTUI_SGR_MAX 64
 
 /* A role or effect-state NAME TABLE, handed to the loader or dumper once per call. Every name is NUL-terminated and every pointer a
  * BORROW for the one call.
@@ -1364,27 +1529,6 @@ typedef struct RolltuiThemeReport {
   RolltuiStr* badge_mismatches; size_t badge_mismatches_n, badge_mismatches_cap;
 } RolltuiThemeReport;
 
-/* ========================================================================================
- * unicode — the library's Unicode algorithms; three functions a host reaches are public, the rest are the wrap engine's
- * ======================================================================================== */
-
-/* One decoded scalar. Decoding is TOTAL: a malformed byte becomes U+FFFD with `length` 1 and
- * `valid` 0, so every byte of the input is accounted for exactly once and a byte offset is
- * always recoverable. */
-typedef struct RolltuiDecodedChar {
-  RolltuiCodepoint cp;
-  size_t offset; /* byte offset into the source */
-  size_t length; /* bytes consumed (1 for an invalid byte) */
-  unsigned char valid;
-} RolltuiDecodedChar;
-
-/* ---- working memory ---------------------------------------------------------------------- */
-/* THE GROWING BUFFERS THESE ALGORITHMS NEED, owned by the caller and reused across calls: the functions marked below need somewhere to
- * decode into, mark boundaries in and build line-break units in. One handle per thread, made once; after the first few calls it never
- * grows, so the draw path allocates nothing. One buffer per ROLE, so a function that calls another (graphemes -> boundaries,
- * display_width -> graphemes) cannot alias its own scratch. */
-typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
-
 #define ROLLTUI_MENU_EVENT_NONE 0
 
 #define ROLLTUI_MENU_EVENT_ACTIVATE 1
@@ -1403,8 +1547,6 @@ typedef struct RolltuiMenuEvent {
   RolltuiStr value; /* Choose: the option id; Input: the committed (canonical) text */
   unsigned char checked ROLLTUI_DEFAULT(0); /* Toggle: the new state */
 } RolltuiMenuEvent;
-
-typedef struct RolltuiMenu RolltuiMenu;
 
 /* `editor` is BORROWED and must outlive the menu — `rolltui::Menu` owns it. */
 
@@ -1554,8 +1696,6 @@ typedef struct RolltuiTranscriptStats {
   size_t cache_size ROLLTUI_DEFAULT(0);
 } RolltuiTranscriptStats;
 
-typedef struct RolltuiTranscript RolltuiTranscript;
-
 /* THE ELEVEN ACTION NAMES, handed over once. This file knows the RULES and none of the words. */
 typedef struct RolltuiTranscriptActions {
   const char* line_up;
@@ -1660,13 +1800,6 @@ struct RolltuiLayoutNode;
  * window stack, declare the actions, show the name and minimum size, and read an id off a node or layer the library handed back. If
  * a real need appears, add a door and say who forced it. The one consumer that walks and mutates a tree is the studio's layout
  * editor, which reaches the structures through the internal header by name. */
-typedef struct RolltuiNodeList RolltuiNodeList;
-typedef struct RolltuiLayoutNode RolltuiLayoutNode;
-typedef struct RolltuiLayer RolltuiLayer;
-typedef struct RolltuiLayerList RolltuiLayerList;
-typedef struct RolltuiContent RolltuiContent;
-typedef struct RolltuiActionList RolltuiActionList;
-typedef struct RolltuiLayout RolltuiLayout;
 
 /* The eight doors are declared in PART 2 (a host's own section), where their roles put them. */
 
@@ -1802,12 +1935,8 @@ typedef struct RolltuiLayoutAction {
  * it declares no constructor, destructor or copy/move; `popup()` is the one convenience member. */
 
 /* A SESSION's registries and caches — see "THE SESSION" in Part 2 for the six-point contract.
- * Opaque: a host makes one, hands it to what needs it, and frees it. */
-typedef struct RolltuiContext RolltuiContext;
-
-typedef struct RolltuiWindowStack RolltuiWindowStack;
-
-/* THE THREE ACTION NAMES, handed in — this file knows the RULES and none of the words. */
+ * Opaque: a host makes one, hands it to what needs it, and frees it.
+ * THE THREE ACTION NAMES, handed in — this file knows the RULES and none of the words. */
 typedef struct RolltuiStackActions {
   const char* close_popup;
   const char* focus_next;
@@ -1893,8 +2022,6 @@ typedef struct RolltuiWidget {
   const RolltuiWidgetPlugin* vt;
   void* ctx;
 } RolltuiWidget;
-
-typedef struct RolltuiWindows RolltuiWindows;
 
 /* Builds a widget for `content` (the whole string, "kind:source"). Returns a widget whose `ctx` the table then OWNS, or a zeroed one
  * for "I cannot build this" (not an error path: `Windows` draws the error panel and names it in the report). A kind is a session's and
@@ -2067,10 +2194,6 @@ extern const size_t rolltui_kBindingsPresetCount;
 #define ROLLTUI_MARKER_MAX 40
 
 /* ========================================================================================
- * mem — the leak gauge — public by stated reason: it is how a consumer proves it released everything
- * ======================================================================================== */
-
-/* ========================================================================================
  * presets — the preset stores and domains
  * ======================================================================================== */
 
@@ -2165,7 +2288,6 @@ typedef struct RolltuiBindingsPresetReport {
 /* ---- settings: the keys a person changes, over the three working copies ---------------------
  * Which working copy a key lives in is the library's business: a host holds one `RolltuiSettings` over its three stores and spells
  * keys, and the routing, the precedence and the sentence a bad value is refused with are all behind the handle. */
-typedef struct RolltuiSettings RolltuiSettings;
 
 /* Where a resolved value came from. THREE rungs: a fourth (a flag) would be a second configuration system with neither discoverability
  * nor persistence. */
@@ -2213,8 +2335,6 @@ void rolltui_preset_list_release(RolltuiPresetListRaw* l);
  * swap — the double buffer, the newest entry point
  * ======================================================================================== */
 
-typedef struct RolltuiSwap RolltuiSwap;
-
 /* ========================================================================================
  * terminal — the one fd
  * ======================================================================================== */
@@ -2247,8 +2367,6 @@ typedef struct RolltuiTerminalOptions {
    * else XDG_CONFIG_HOME/roll/rolltui, else ~/.config/roll/rolltui). */
   const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
 } RolltuiTerminalOptions;
-
-typedef struct RolltuiTerminal RolltuiTerminal;
 
 /* ---- events ----------------------------------------------------------------------------- */
 /* The same three kinds `rolltui_keys.h` defines, plus RESIZE — see rule 4 above. */
@@ -2329,39 +2447,9 @@ typedef struct RolltuiCodeFold {
 } RolltuiCodeFold;
 
 /* ========================================================================================
- * wrap — the wrap engine roll draws with
- * ======================================================================================== */
-
-/* `ambiguous_wide` is `unsigned char`, not `bool`, for `rolltui_style.h`'s reason. The field order is the C++ struct's, because two
- * call sites write it as an order-sensitive designated initializer. */
-typedef struct RolltuiWrapOptions {
-  unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
-  int tab_width ROLLTUI_DEFAULT(8);
-  int first_indent ROLLTUI_DEFAULT(0);    /* cells before the first line */
-  int hanging_indent ROLLTUI_DEFAULT(0);  /* cells before every subsequent line */
-} RolltuiWrapOptions;
-
-/* One drawn grapheme cluster of one line. */
-typedef struct RolltuiWrapGrapheme {
-  size_t offset;         /* into the line's text */
-  size_t length;         /* bytes in the line's text */
-  size_t source_offset;  /* byte offset in the wrap input (a tab's, for each of its spaces) */
-  int width;             /* cells */
-  unsigned char space;   /* U+0020 or an expanded tab: droppable at a soft break */
-} RolltuiWrapGrapheme;
-
-typedef struct RolltuiWrapLines RolltuiWrapLines;
-
-/* Drops the LIVE LINES and keeps every buffer, so a handle wrapped into repeatedly allocates nothing after its first few calls (what
- * `Scratch` calls on acquire and release). */
-
-/* ---- the engine ----------------------------------------------------------------------- */
-
-/* ========================================================================================
- * PART 2 — THE HOST AUTHOR: load a thing, bind your own functions, run, release
- * Everything an app calls, in the order an app calls it. The order is measured: roll, paint, the explorer and the pure-C consumer
- * barely differ in WHICH calls they make, and those fall into load, bind, stack and compose, draw, run, release. If you are writing
- * an app, this part and Part 1 are the whole API.
+ * PART 2 — THE HOST AUTHOR: what has not yet migrated into a book above
+ * The rest of this file's host-facing functions, not yet moved: their modules' books haven't had their migration phase yet. Once
+ * migrated, a module's functions sit beside its own type in whichever book owns it, not here.
  * ======================================================================================== */
 
 /* ========================================================================================
@@ -2834,14 +2922,6 @@ void rolltui_settings_report_release(RolltuiSettingsReport* r); /* frees everyth
  * document behind a transcript, what a submit does, and any widget kind of your own.
  * ======================================================================================== */
 
-/* ---- str -----------------------------------------------------------------------------------*/
-
-/* Replaces the contents. `s` may be NULL only when `len` is 0. Keeps the buffer when it
- * already fits, which is what makes a re-assigned name free after the first.
- * Redeclared here: already declared in part 1, where an inline C++ member (`RolltuiStr::assign`) needs it visible early;
- * a reader working with `RolltuiStr` itself wants it beside the type's other calls. */
-void rolltui_str_set(RolltuiStr* s, const char* text, size_t len);
-
 /* ---- bindings ------------------------------------------------------------------------------*/
 
 /* "ctrl+shift+left", "alt+enter", "f1", "escape", "?", "space": any modifier order, case-insensitive. 1 on success. A chord never carries
@@ -3255,13 +3335,6 @@ void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffe
  * marked, when the theme maps nothing to what is marked, or when nothing mapped MOVES.
  * Clamped to at least 16 ms so a long span cannot ask for a wakeup per millisecond. */
 int rolltui_effects_tick_ms(const RolltuiContext* c, const RolltuiFrame* f, const RolltuiEffectMap* map);
-
-/* ---- unicode -------------------------------------------------------------------------------*/
-
-/* ---- sanitising ------------------------------------------------------------------------ */
-/* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least
- * `len` bytes — stripping only ever removes. Returns the bytes written. */
-size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out);
 
 /* Entry, then offset, then length — so of two positions at the same offset the one that
  * covers a grapheme is `last()`, and the range includes it. */
@@ -3817,26 +3890,6 @@ void rolltui_run_resume(RolltuiRun* run);
  * and safe to call twice. Nothing is invalidated for a host that carries on: the caches rebuild on next use. */
 void rolltui_shutdown(void);
 
-/* ---- mem -----------------------------------------------------------------------------------*/
-
-/* Resets the CUMULATIVE counters only (`allocations`, `frees`, `bytes_requested`). `live_bytes` and `live_blocks` describe storage that
- * still exists; `peak_bytes` is re-based to what is live now. For a test that wants a window; never called by the library. */
-/* MEMORY USAGE, QUERYABLE AT RUNTIME: the allocator's counters as out-params, any of which may be NULL. The three byte numbers answer
- * different questions: `bytes_requested` is CUMULATIVE (a growing buffer is counted again at every growth: a churn signal, not how much
- * is held); `live_bytes` is HELD RIGHT NOW as the allocator's usable size (what a status pane means by "memory usage"); `peak_bytes` is
- * the high-water mark of `live_bytes` (for a library built on reusing buffers, how big the reuse ever had to get). */
-void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_requested,
-                       size_t* live_bytes, size_t* peak_bytes, size_t* live_blocks);
-
-/* ---- the library's one entry point, and the only two halves of it a CONSUMER may name -----
- * `rolltui_mem_alloc` and `rolltui_mem_free`, declared here so a consumer that wants a handle and its release can reach them.
- * `rolltui_mem_realloc` is deliberately internal: growth is what the closed set exists to stop being invented. An allocation failure
- * ABORTS rather than returning NULL, so neither can fail and no caller checks. Every allocation in the library goes through these,
- * which is why `rolltui_mem_stats` above can be believed. */
-void* rolltui_mem_alloc(size_t bytes);
-
-void rolltui_mem_free(void* p);
-
 /* ---- a hint bar: the keys a status line names, clickable ---------------------------------
  * "F1 help  F2 settings  c copy": each hint is a chord's text, a label, and the ACTION they stand for. Drawn once per frame, and the
  * bar remembers where every hint landed, so a press at a cell answers with the action and a host runs it as it would the key. A hint
@@ -3864,89 +3917,11 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
 const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* len);
 
 /* ========================================================================================
- * PART 3 — THE WIDGET AUTHOR: what implementing a kind needs, and nothing else
- * A widget is nine slots on `RolltuiWidgetPlugin` (destroy, layout, draw, handle, desired_outer, scroll_extent, problem, note_at, and
- * the ctx they share), registered with `rolltui_windows_register_kind` (Part 2: REGISTERING is the host's act, IMPLEMENTING is yours).
- * What fills those slots is here: draw into a frame, measure and fit text, read a style, mark a span for the theme's effects, and
- * read your own rect off the resolved node you are handed.
- * DO draw only through these calls. An effect never invents a colour (it picks a ROLE the theme named), but that rule binds EFFECTS,
- * not you: a widget writes any `RolltuiStyle` into any cell (paint's canvas is a whole app built on that), and marks a span with a
- * STATE when it wants the theme to animate it.
+ * PART 3 — THE WIDGET AUTHOR: what has not yet migrated into a book above
+ * The rest of this file's widget-author-facing functions, not yet moved: their modules' books (WIDGETS, mostly) haven't had their
+ * migration phase yet. The drawing primitives every widget's `draw` slot actually calls (`rolltui_frame_put_text`/`_put_swatch`,
+ * `_mark`, `_set_cursor`, the draw-scratch pair) already moved into BOOK 1 — CORE, beside `RolltuiFrame`, in an earlier phase.
  * ======================================================================================== */
-
-/* ---- screen --------------------------------------------------------------------------------*/
-
-/* `state` is rolltui::EffectState as an int; the C side stores it and never interprets it, which keeps the effects vocabulary in one
- * place. 0 means None and is not recorded, so "is anything marked" and "does anything move" stay the same question. */
-void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
-                        unsigned long long since_ms, double fraction);
-
-size_t rolltui_frame_mark_count(const RolltuiFrame* f);
-
-/* ---- cursor ------------------------------------------------------------------------ */
-void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible);
-
-/* ---- frame_ops -----------------------------------------------------------------------------*/
-
-RolltuiDrawScratch* rolltui_draw_scratch_new(void);
-
-void rolltui_draw_scratch_free(RolltuiDrawScratch* s); /* a no-op on NULL */
-
-/* Writes `utf8` at (x, y), cluster by cluster, stopping at `max_cells`, at the frame's right
- * edge, or before a wide glyph that would be cut in half. Returns the cells used. */
-int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
-                           RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
-
-/* ---- a colour, shown ---------------------------------------------------------------------
- * A COLOUR VALUE'S SWATCH, wherever one is drawn (a theme editor's role, a menu's colour input, a painter's ink): two cells showing
- * the colour as it will be drawn (through the same renderer, at the terminal's depth), framed in the text's own foreground so it
- * shows against any ground. A `none` colour is the frame alone. A caller wanting the spelling beside it (`rolltui_color_to_string`'s
- * "#rrggbb", palette index or "none") draws that itself, as every real caller already does. */
-
-/* The swatch: `frame`'s foreground is the outline and its background is where a `none` colour lands. Returns the cells used: 2, or 0
- * where they do not fit (`max_cells` < 2) or the terminal draws no colour. Where an ambiguous glyph is two cells the outline is a bracket
- * pair, one cell wherever it is drawn. */
-int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColorRaw colour,
-                             RolltuiStyle frame, int max_cells, int ambiguous_wide);
-
-/* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no
- * width. */
-void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
-                        const char* glyph, size_t glyph_len);
-
-/* ONE ROW OF NAME/VALUE FIELDS, each name in `name_style` and each value in `value_style`, separated by two spaces and stopping at
- * `max_cells`. Returns the cells used. It is what a status line is: a handful of facts, each with a name (one string in one style is a
- * wall of words). A row with an EMPTY LABEL draws its value alone (a title, a bracketed note); an empty VALUE draws the name alone (a
- * flag). It takes a `RolltuiRows` the caller owns and refills, so a warm frame allocates nothing: `rolltui_rows_reset` keeps the array
- * and every row's buffer. */
-int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
-                             RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
-                             int ambiguous_wide);
-
-/* The cells `utf8` WOULD occupy, measured with the same cluster walk that draws it (`rolltui_frame_put_text` answers only after drawing,
- * and a caller sizing a column must know first). Same walk, same ambiguous-width rule, same result. */
-int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide);
-
-/* ---- theme ---------------------------------------------------------------------------------*/
-
-/* A BORROW into the caller's own table, valid exactly as long as `styles` is. NULL when
- * `styles` is NULL or `role` is out of range — a bad ordinal is a caller bug, not a crash. */
-const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_count, unsigned char role);
-
-/* ---- unicode -------------------------------------------------------------------------------*/
-
-RolltuiUnicodeScratch* rolltui_u_scratch_new(void);
-
-void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
-
-int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
-
-/* How many BYTES of `utf8` fit in `max_cells` columns: the offset `rolltui_frame_put_text` computes to honour its own `max_cells`.
- * Returns that byte length and fills `*out_cells` (may be NULL) with the columns they occupy. Stops BEFORE a glyph that would be cut in
- * half, put_text's rule, so the two agree about where a cut falls. A widget that truncates needs it to place an ellipsis, and every
- * list, tree, table and column view truncates. `s` is the caller's scratch (rule 4). */
-size_t rolltui_u_fit(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int max_cells,
-                     int ambiguous_wide, int* out_cells);
 
 /* ---- layout --------------------------------------------------------------------------------*/
 
@@ -3983,28 +3958,6 @@ size_t rolltui_diff_spans(RolltuiDiffScratch* s, const char* lang, size_t lang_l
 /* ---- marker --------------------------------------------------------------------------------*/
 
 size_t rolltui_scroll_marker_text(size_t below, int max_width, int ambiguous_wide, char* out, size_t cap);
-
-/* ---- wrap ----------------------------------------------------------------------------------*/
-
-/* ---- lifetime ------------------------------------------------------------------------ */
-/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
- * rolltui::mem, because there is nothing useful to do with a half-built wrap. */
-RolltuiWrapLines* rolltui_wrap_new(void);
-
-void rolltui_wrap_free(RolltuiWrapLines* w);
-
-/* Wraps `len` bytes of UTF-8 to `width` cells, into `w`, reusing everything `w` holds. `width <= 0` is legal and draws nothing (one
- * empty line per paragraph); empty input is one empty line. */
-void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, RolltuiWrapOptions opt);
-
-/* ---- reading the lines ----------------------------------------------------------------- */
-size_t rolltui_wrap_line_count(const RolltuiWrapLines* w);
-
-/* Line `i` as BORROWS into `w` (rule 3(c)). `text` is NOT NUL-terminated: `text_len` is the length, and a zero-length line gives a valid
- * non-NULL pointer. `hard` receives 1 when the line was ended by a mandatory break or by the end of the text. */
-void rolltui_wrap_line(const RolltuiWrapLines* w, size_t i, const char** text, size_t* text_len,
-                       const RolltuiWrapGrapheme** graphemes, size_t* grapheme_count,
-                       int* width, int* indent, int* hard);
 
 #ifdef __cplusplus
 } /* extern "C" */
