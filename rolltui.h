@@ -1858,8 +1858,8 @@ void rolltui_settings_report_release(RolltuiSettingsReport* r); /* frees everyth
 /* ========================================================================================
  * BOOK 3 — WIDGETS: what actually renders
  * The built-in widget kinds (input, menu, transcript, rows, the file picker, …) and the machinery that supports them: effects,
- * markdown, diff, the window registry a host reaches a kind's sources through. MIGRATION IN PROGRESS: window_stack, filepicker
- * and the hint bar are still filed under the PART 1/2/3 sections below; this banner is the seam the next phase fills for them.
+ * markdown, diff, the window registry and window stack a host reaches a kind's sources through, and the hint bar a status line
+ * shows them with.
  * ======================================================================================== */
 
 /* ========================================================================================
@@ -1927,13 +1927,6 @@ void rolltui_document_clear(RolltuiDocumentRaw* d);   /* releases every entry, k
 void rolltui_document_release(RolltuiDocumentRaw* d); /* …and the array */
 
 void rolltui_document_copy(RolltuiDocumentRaw* to, const RolltuiDocumentRaw* from);
-
-/* ========================================================================================
- * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
- * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
- * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
- * phase fills.
- * ======================================================================================== */
 
 /* ========================================================================================
  * input — the input widget: a host sets, selects, undoes and reads
@@ -3217,156 +3210,10 @@ unsigned char rolltui_widget_kind_source_shape(size_t row);
 
 int rolltui_widget_kind_register(RolltuiContext* c, const char* name, size_t len, unsigned char rule,
                                  const char* source_is, size_t source_is_len);
-/* ========================================================================================
- * PART 1 — THE NOUNS: what has not yet migrated into a book above
- * The rest of this file, not yet moved: types and functions of modules whose book hasn't had its migration phase yet. C needs a
- * type before the functions that take it, so within this leftover section every public type is still defined ahead of its verbs.
- * ======================================================================================== */
-
-
 
 /* ========================================================================================
- * swap — the double buffer, the newest entry point
+ * window_stack — a runtime stack of windows built from a resolved layout, and its events
  * ======================================================================================== */
-
-/* ========================================================================================
- * terminal — the one fd
- * ======================================================================================== */
-
-/* ---- options, defined once and compiled by both languages ------------------------------ */
-/* The attribute bits are `unsigned char`, not `bool`, for `rolltui_style.h`'s reason: one type in both languages, nothing to assume
- * about `_Bool` versus `bool`. */
-#define ROLLTUI_DOUBLE_CLICK_MS 400 /* two presses of one button on one cell this close together are a double-click */
-
-typedef struct RolltuiTerminalOptions {
-  unsigned char alt_screen ROLLTUI_DEFAULT(1);
-  unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */
-  unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
-  unsigned char hide_cursor ROLLTUI_DEFAULT(1);
-  unsigned char handle_signals ROLLTUI_DEFAULT(1); /* restore-and-reraise on INT/TERM/HUP/QUIT */
-  /* WHAT THE TERMINAL IS (colour depth, light or dark, how wide an ambiguous glyph draws) is found out at entry and remembered (see
-   * `RolltuiTermFacts`), so every option below is an opt OUT: a host that says nothing gets the right answer, and a zero-initialised C
-   * struct means the same as a default-initialised C++ one. */
-  unsigned char no_probe ROLLTUI_DEFAULT(0); /* ask the terminal nothing but the keyboard question */
-  unsigned char no_cache ROLLTUI_DEFAULT(0); /* neither read nor write the remembered answers */
-  /* Added to what the remembered answers are filed under. A program's own name, size and modification time are ALWAYS part of it, so a new
-   * build asks the terminal again; this is for a host that wants more (a configuration name). A BORROW for the `rolltui_terminal_new`
-   * call only. */
-  const char* app_key ROLLTUI_DEFAULT(ROLLTUI_NULL);
-  /* Send me `ROLLTUI_TERM_EVENT_FACTS` when a remembered answer turns out stale and changes what I draw. Off by default because a host that
-   * does not know the event is better off never being sent one; the facts are corrected either way, and the library's own consumers of
-   * them (present depth, glyph width, theme mode) see the correction regardless. */
-  unsigned char facts_events ROLLTUI_DEFAULT(0);
-  /* Where the remembered answers live. A BORROW for the call only. NULL: the person's rolltui configuration directory (ROLL_CONFIG_DIR,
-   * else XDG_CONFIG_HOME/roll/rolltui, else ~/.config/roll/rolltui). */
-  const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
-} RolltuiTerminalOptions;
-
-/* ---- events ----------------------------------------------------------------------------- */
-/* The same three kinds `rolltui_keys.h` defines, plus RESIZE — see rule 4 above. */
-#define ROLLTUI_TERM_EVENT_KEY ROLLTUI_EVENT_KEY
-
-#define ROLLTUI_TERM_EVENT_MOUSE ROLLTUI_EVENT_MOUSE
-
-#define ROLLTUI_TERM_EVENT_PASTE ROLLTUI_EVENT_PASTE
-
-#define ROLLTUI_TERM_EVENT_RESIZE 3
-
-/* THE TERMINAL LEARNED SOMETHING that changes what a host should draw (today: its background flipped between light and dark since the
- * answers were remembered). Read `rolltui_terminal_facts` again and re-resolve the theme. Sent only to a host that asked
- * (`RolltuiTerminalOptions::facts_events`), and only after a remembered answer was used and then checked against the terminal. A host
- * ignores kinds it does not know. */
-#define ROLLTUI_TERM_EVENT_FACTS 4
-
-/* ---- what the terminal is ------------------------------------------------------------------
- * Facts no host should have to remember to ask: how many colours the terminal can show, whether its background is light or dark, how
- * wide it draws an East Asian AMBIGUOUS glyph. Found out at entry, remembered per terminal, and re-checked in the background when
- * they were remembered rather than asked, so a wrong answer costs one frame, not a session. Every fact says WHERE IT CAME FROM
- * ("the environment said so" and "the terminal said so" deserve different trust). */
-#define ROLLTUI_FACT_DEFAULT 0 /* nothing said anything; the conservative answer */
-#define ROLLTUI_FACT_ENV 1     /* read from the environment */
-#define ROLLTUI_FACT_PROBE 2   /* the terminal answered a question */
-#define ROLLTUI_FACT_CACHE 3   /* remembered from an earlier run on this same terminal */
-#define ROLLTUI_FACT_FORCED 4  /* said outright: ROLL_COLOR_DEPTH, a theme's depth, a host's call */
-
-typedef struct RolltuiTermFacts {
-  unsigned char depth;          /* ROLLTUI_DEPTH_*: what to draw at */
-  unsigned char depth_source;   /* ROLLTUI_FACT_* */
-  unsigned char mode;           /* ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT: what the background is */
-  unsigned char mode_source;
-  unsigned char has_background; /* `background` is a colour the terminal reported */
-  RolltuiStyleColorRaw background;
-  unsigned char ambiguous_wide; /* 1: an ambiguous-width glyph takes two cells */
-  unsigned char ambiguous_source;
-  unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
-  unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
-  unsigned char remembered;     /* this run used remembered answers rather than asking */
-  char name[64];                /* how the terminal introduced itself, for humans: "Apple_Terminal 455" */
-} RolltuiTermFacts;
-
-/* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.
- * `w`/`h` are set only for kind RESIZE. */
-typedef struct RolltuiTermEvent {
-  unsigned char kind;
-  RolltuiChord key;
-  RolltuiMouseEvent mouse;
-  const char* text;
-  size_t text_len;
-  int w, h;
-} RolltuiTermEvent;
-
-/* Called once per event, in order. */
-typedef void (*RolltuiTermEventFn)(void* ctx, const RolltuiTermEvent* e);
-
-
-/* ========================================================================================
- * PART 2 — THE HOST AUTHOR: what has not yet migrated into a book above
- * The rest of this file's host-facing functions, not yet moved: their modules' books haven't had their migration phase yet. Once
- * migrated, a module's functions sit beside its own type in whichever book owns it, not here.
- * ======================================================================================== */
-
-/* ========================================================================================
- * THE SESSION — make one of these FIRST; everything a host does hangs off it
- * ======================================================================================== */
-
-/* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else (as process-wide statics they would make two
- * apps in one process share one widget-kind registry).
- *
- * THE CONTRACT
- *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
- *      which carries its own mutex so a host may edit from one thread and render from another.
- *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
- *      affinity, sharing nothing with another.
- *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at
- *      `rolltui_windows_sync`, not at load, so an unknown kind is a runtime error PANEL and not a load failure, and one layout may
- *      drive two contexts, each resolving kinds against its own registry.
- *   4. A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT: reading one from another context is fine; outliving its owner is not.
- *   5. ONLY ONE CONTEXT MAY DRIVE A TERMINAL (one controlling terminal, one saved `termios`, one signal disposition). Any number may
- *      build screens and render to TEXT headless, as every test and `--frame` run does.
- *   6. The allocator counters are a process-wide atomic SUM: assert `live_bytes == 0` after freeing ALL contexts, not per context.
- *
- * OWNED: `_new` / `_free`, and `_free` is a no-op on NULL. */
-RolltuiContext* rolltui_context_new(void);
-void rolltui_context_free(RolltuiContext* c);
-
-/* ========================================================================================
- * LOAD — a screen, a theme, a bindings table and an app profile are FILES
- * A host reads them; it does not build them in code. What a file may name is Part 1's tables.
- * ======================================================================================== */
-
-/* ========================================================================================
- * BIND — your own functions, sources and kinds
- * Everything the screen named that only your app can supply: the rows behind `rows:`, the
- * document behind a transcript, what a submit does, and any widget kind of your own.
- * ======================================================================================== */
-
-/* ========================================================================================
- * RUN — the terminal, the events, the frame
- * One fd, one event loop, one double buffer. The compose call walks the screen and hands each
- * resolved window back to you to draw.
- * ======================================================================================== */
-
-
 
 /* A stack with one empty base layer, which is what `WindowStack{}` has always meant. */
 RolltuiWindowStack* rolltui_window_stack_new(void);
@@ -3402,6 +3249,101 @@ int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, 
  * action itself. */
 int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
                                       const char* action, size_t len);
+
+const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
+
+void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len);
+
+/* Every layer resolved against `screen`, in draw order, `focused` set on the one focused
+ * window. */
+void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect screen, RolltuiResolvedSink emit,
+                                  void* ctx);
+
+void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, RolltuiRect screen,
+                                  const RolltuiStyle* styles, const RolltuiLayoutRoles* roles,
+                                  RolltuiSlotFn render, void* ctx, int ambiguous_wide,
+                                  RolltuiComposeScratch* scratch);
+
+/* Routes one event. `window` is filled with the target id — a COPY, because the
+ * ClosedPopup case names a layer this call has already freed. */
+unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEvent* e, RolltuiRect screen,
+                                         const RolltuiBindings* bindings, const RolltuiStackActions* actions,
+                                         RolltuiStr* window);
+
+RolltuiInput* rolltui_windows_input(RolltuiWindows* w, const char* source, size_t len);
+
+RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* source, size_t len);
+
+RolltuiMenu* rolltui_windows_menu(RolltuiWindows* w, const char* source, size_t len);
+
+/* Which rung answered for `menus/<source>.json`: the file's path, "the host's", "a shipped
+ * menu", or "" when nothing did. Re-resolves first; a BORROW until the next refresh. */
+const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, size_t len, size_t* out_len);
+
+/* …and the same three by WINDOW id: the typed handle that window's widget draws, or NULL when the window is unknown or its content is a
+ * different kind. A window that has never been synced answers NULL, which is not an error. */
+RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len);
+
+/* That window's widget closes one inner level (its `back` slot); 0 when it has none. The shape of `RolltuiStackLevelFn`, so
+ * `rolltui_window_stack_set_level_fn(stack, rolltui_windows_back, windows)` is the whole wiring. */
+int rolltui_windows_back(void* windows, const char* window, size_t len);
+
+/* WHERE A WINDOW LANDED this frame: its outer rectangle, border included, as the last `rolltui_windows_layout` placed it; 0 when no
+ * window has that id. A host that draws something of its own over a window (a breadcrumb over its path line) asks here. */
+int rolltui_windows_window_rect(const RolltuiWindows* w, const char* window, size_t len, RolltuiRect* out);
+/* That window's content string, a BORROW valid until the next `sync`. */
+const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
+                                       size_t* out_len);
+
+/* Instantiates/reuses a widget per window and collects what each one says is wrong. The
+ * report's lines are BORROWS, valid until the next sync. */
+void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack);
+
+size_t rolltui_windows_report_count(const RolltuiWindows* w);
+
+const char* rolltui_windows_report_at(const RolltuiWindows* w, size_t i, size_t* len);
+
+/* The one-line form: the first bad value, plus " (+N more)" when there are others; "" when there are none. The rule lives with the report
+ * because every host draws this string. APPENDS to `out`. */
+void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out);
+
+/* Asks each widget for the outer extent it wants and writes it into the node (the only thing
+ * a widget writes back into the layout tree). */
+void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, RolltuiRect box);
+
+void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, RolltuiRect box);
+
+/* The library's own three, for the same reason as `rolltui_layout_default_roles`. BORROWS static storage; a host that paints its
+ * scrollbar from another role still passes its own struct. */
+const RolltuiWindowRoles* rolltui_windows_default_roles(void);
+
+/* THE FOUR CELLS A SCROLLBAR THUMB IS MADE OF, so a look is a theme's rather than a literal. A thumb is a CAPSULE: `single` when it is
+ * one cell tall, otherwise `top`, then `middle` repeated, then `bottom` (half-blocks, each filling only the half of its cell facing
+ * inward, so a bar of any length has soft ends and a solid body). Each glyph is one grapheme in eight bytes, copied on set, so a theme's
+ * parsed text need not outlive the call. `ascii_*` is used when the terminal draws East Asian AMBIGUOUS glyphs two cells wide (every
+ * glyph worth using here is ambiguous, as the box-drawing borders are). */
+typedef struct RolltuiScrollbarGlyphs {
+  char single[8], top[8], middle[8], bottom[8];
+  char ascii_single[4], ascii_top[4], ascii_middle[4], ascii_bottom[4];
+} RolltuiScrollbarGlyphs;
+
+/* What a host does with the pair: READ a theme's answer, APPLY it. The default set and the read-back live in the library's own header,
+ * since a theme a host did not write still fills every slot. */
+void rolltui_context_set_scrollbar_glyphs(RolltuiContext* ctx, const RolltuiScrollbarGlyphs* g);
+
+/* Reads a theme's `glyphs.scrollbar` object into `out`, filling every key it does not state with the shipped default, so `out` is always
+ * complete. Returns 0 when the theme says nothing. Separate from `rolltui_theme_load` because it answers a different question. */
+int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollbarGlyphs* out);
+
+void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
+                          const RolltuiStyle* styles, const RolltuiWindowRoles* roles);
+
+/* An event the stack routed to `window`; 1 when the widget (or its scrollbar) consumed it. */
+int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e);
+
+/* ========================================================================================
+ * filepicker — the column browser, and directory reading a host can use on its own
+ * ======================================================================================== */
 
 #define ROLLTUI_SORT_NAME 0
 #define ROLLTUI_SORT_SIZE 1
@@ -3572,96 +3514,169 @@ typedef struct RolltuiPickerActions {
   const char* copy_inverse;
 } RolltuiPickerActions;
 
-const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
+/* ---- a hint bar: the keys a status line names, clickable ---------------------------------
+ * "F1 help  F2 settings  c copy": each hint is a chord's text, a label, and the ACTION they stand for. Drawn once per frame, and the
+ * bar remembers where every hint landed, so a press at a cell answers with the action and a host runs it as it would the key. A hint
+ * that does not fit whole is left out, never cut, and is not hittable. The strings are copied; `_clear` empties the bar for a rebuild
+ * when the bindings change. OWNED by the host: `_free` releases it. */
+typedef struct RolltuiHintBar RolltuiHintBar;
+RolltuiHintBar* rolltui_hint_bar_new(void);
+void rolltui_hint_bar_free(RolltuiHintBar* b);
+void rolltui_hint_bar_clear(RolltuiHintBar* b);
+void rolltui_hint_bar_add(RolltuiHintBar* b, const char* chord, size_t chord_len, const char* label, size_t label_len,
+                          const char* action, size_t action_len);
+/* What goes BETWEEN hints (two spaces by default; " › " makes a breadcrumb), and whether the bar keeps its TAIL when short of room (the
+ * last hints drawn whole, the head replaced by an ellipsis) rather than dropping whichever hints do not fit. A breadcrumb keeps its tail:
+ * the place the eye is at, and the pencil after it, must always be there to click. With the tail kept the LAST hint is the bar's own mark
+ * rather than a part, and a single space joins it. */
+void rolltui_hint_bar_set_separator(RolltuiHintBar* b, const char* sep, size_t len);
+void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on);
+/* A hint whose action cannot be taken now is DISABLED: drawn in `muted`, never hit. Set by
+ * action name, every frame if need be — it allocates nothing. */
+void rolltui_hint_bar_enable(RolltuiHintBar* b, const char* action, size_t len, int on);
+/* Draws from (x, y) within `width` cells and returns the cells used. */
+int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, int width,
+                          RolltuiStyle chord_style, RolltuiStyle label_style, RolltuiStyle muted, int ambiguous_wide);
+/* The action drawn under (x, y) on the last draw — a BORROW into the bar — or NULL. */
+const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* len);
+/* ========================================================================================
+ * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
+ * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
+ * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
+ * phase fills.
+ * ======================================================================================== */
 
-void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len);
+/* ========================================================================================
+ * PART 1 — THE NOUNS: what has not yet migrated into a book above
+ * The rest of this file, not yet moved: types and functions of modules whose book hasn't had its migration phase yet. C needs a
+ * type before the functions that take it, so within this leftover section every public type is still defined ahead of its verbs.
+ * ======================================================================================== */
 
-/* Every layer resolved against `screen`, in draw order, `focused` set on the one focused
- * window. */
-void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect screen, RolltuiResolvedSink emit,
-                                  void* ctx);
 
-void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, RolltuiRect screen,
-                                  const RolltuiStyle* styles, const RolltuiLayoutRoles* roles,
-                                  RolltuiSlotFn render, void* ctx, int ambiguous_wide,
-                                  RolltuiComposeScratch* scratch);
 
-/* Routes one event. `window` is filled with the target id — a COPY, because the
- * ClosedPopup case names a layer this call has already freed. */
-unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEvent* e, RolltuiRect screen,
-                                         const RolltuiBindings* bindings, const RolltuiStackActions* actions,
-                                         RolltuiStr* window);
+/* ========================================================================================
+ * swap — the double buffer, the newest entry point
+ * ======================================================================================== */
 
-RolltuiInput* rolltui_windows_input(RolltuiWindows* w, const char* source, size_t len);
+/* ========================================================================================
+ * terminal — the one fd
+ * ======================================================================================== */
 
-RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* source, size_t len);
+/* ---- options, defined once and compiled by both languages ------------------------------ */
+/* The attribute bits are `unsigned char`, not `bool`, for `rolltui_style.h`'s reason: one type in both languages, nothing to assume
+ * about `_Bool` versus `bool`. */
+#define ROLLTUI_DOUBLE_CLICK_MS 400 /* two presses of one button on one cell this close together are a double-click */
 
-RolltuiMenu* rolltui_windows_menu(RolltuiWindows* w, const char* source, size_t len);
+typedef struct RolltuiTerminalOptions {
+  unsigned char alt_screen ROLLTUI_DEFAULT(1);
+  unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */
+  unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
+  unsigned char hide_cursor ROLLTUI_DEFAULT(1);
+  unsigned char handle_signals ROLLTUI_DEFAULT(1); /* restore-and-reraise on INT/TERM/HUP/QUIT */
+  /* WHAT THE TERMINAL IS (colour depth, light or dark, how wide an ambiguous glyph draws) is found out at entry and remembered (see
+   * `RolltuiTermFacts`), so every option below is an opt OUT: a host that says nothing gets the right answer, and a zero-initialised C
+   * struct means the same as a default-initialised C++ one. */
+  unsigned char no_probe ROLLTUI_DEFAULT(0); /* ask the terminal nothing but the keyboard question */
+  unsigned char no_cache ROLLTUI_DEFAULT(0); /* neither read nor write the remembered answers */
+  /* Added to what the remembered answers are filed under. A program's own name, size and modification time are ALWAYS part of it, so a new
+   * build asks the terminal again; this is for a host that wants more (a configuration name). A BORROW for the `rolltui_terminal_new`
+   * call only. */
+  const char* app_key ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* Send me `ROLLTUI_TERM_EVENT_FACTS` when a remembered answer turns out stale and changes what I draw. Off by default because a host that
+   * does not know the event is better off never being sent one; the facts are corrected either way, and the library's own consumers of
+   * them (present depth, glyph width, theme mode) see the correction regardless. */
+  unsigned char facts_events ROLLTUI_DEFAULT(0);
+  /* Where the remembered answers live. A BORROW for the call only. NULL: the person's rolltui configuration directory (ROLL_CONFIG_DIR,
+   * else XDG_CONFIG_HOME/roll/rolltui, else ~/.config/roll/rolltui). */
+  const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
+} RolltuiTerminalOptions;
 
-/* Which rung answered for `menus/<source>.json`: the file's path, "the host's", "a shipped
- * menu", or "" when nothing did. Re-resolves first; a BORROW until the next refresh. */
-const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, size_t len, size_t* out_len);
+/* ---- events ----------------------------------------------------------------------------- */
+/* The same three kinds `rolltui_keys.h` defines, plus RESIZE — see rule 4 above. */
+#define ROLLTUI_TERM_EVENT_KEY ROLLTUI_EVENT_KEY
 
-/* …and the same three by WINDOW id: the typed handle that window's widget draws, or NULL when the window is unknown or its content is a
- * different kind. A window that has never been synced answers NULL, which is not an error. */
-RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len);
+#define ROLLTUI_TERM_EVENT_MOUSE ROLLTUI_EVENT_MOUSE
 
-/* That window's widget closes one inner level (its `back` slot); 0 when it has none. The shape of `RolltuiStackLevelFn`, so
- * `rolltui_window_stack_set_level_fn(stack, rolltui_windows_back, windows)` is the whole wiring. */
-int rolltui_windows_back(void* windows, const char* window, size_t len);
+#define ROLLTUI_TERM_EVENT_PASTE ROLLTUI_EVENT_PASTE
 
-/* WHERE A WINDOW LANDED this frame: its outer rectangle, border included, as the last `rolltui_windows_layout` placed it; 0 when no
- * window has that id. A host that draws something of its own over a window (a breadcrumb over its path line) asks here. */
-int rolltui_windows_window_rect(const RolltuiWindows* w, const char* window, size_t len, RolltuiRect* out);
-/* That window's content string, a BORROW valid until the next `sync`. */
-const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
-                                       size_t* out_len);
+#define ROLLTUI_TERM_EVENT_RESIZE 3
 
-/* Instantiates/reuses a widget per window and collects what each one says is wrong. The
- * report's lines are BORROWS, valid until the next sync. */
-void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack);
+/* THE TERMINAL LEARNED SOMETHING that changes what a host should draw (today: its background flipped between light and dark since the
+ * answers were remembered). Read `rolltui_terminal_facts` again and re-resolve the theme. Sent only to a host that asked
+ * (`RolltuiTerminalOptions::facts_events`), and only after a remembered answer was used and then checked against the terminal. A host
+ * ignores kinds it does not know. */
+#define ROLLTUI_TERM_EVENT_FACTS 4
 
-size_t rolltui_windows_report_count(const RolltuiWindows* w);
+/* ---- what the terminal is ------------------------------------------------------------------
+ * Facts no host should have to remember to ask: how many colours the terminal can show, whether its background is light or dark, how
+ * wide it draws an East Asian AMBIGUOUS glyph. Found out at entry, remembered per terminal, and re-checked in the background when
+ * they were remembered rather than asked, so a wrong answer costs one frame, not a session. Every fact says WHERE IT CAME FROM
+ * ("the environment said so" and "the terminal said so" deserve different trust). */
+#define ROLLTUI_FACT_DEFAULT 0 /* nothing said anything; the conservative answer */
+#define ROLLTUI_FACT_ENV 1     /* read from the environment */
+#define ROLLTUI_FACT_PROBE 2   /* the terminal answered a question */
+#define ROLLTUI_FACT_CACHE 3   /* remembered from an earlier run on this same terminal */
+#define ROLLTUI_FACT_FORCED 4  /* said outright: ROLL_COLOR_DEPTH, a theme's depth, a host's call */
 
-const char* rolltui_windows_report_at(const RolltuiWindows* w, size_t i, size_t* len);
+typedef struct RolltuiTermFacts {
+  unsigned char depth;          /* ROLLTUI_DEPTH_*: what to draw at */
+  unsigned char depth_source;   /* ROLLTUI_FACT_* */
+  unsigned char mode;           /* ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT: what the background is */
+  unsigned char mode_source;
+  unsigned char has_background; /* `background` is a colour the terminal reported */
+  RolltuiStyleColorRaw background;
+  unsigned char ambiguous_wide; /* 1: an ambiguous-width glyph takes two cells */
+  unsigned char ambiguous_source;
+  unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
+  unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
+  unsigned char remembered;     /* this run used remembered answers rather than asking */
+  char name[64];                /* how the terminal introduced itself, for humans: "Apple_Terminal 455" */
+} RolltuiTermFacts;
 
-/* The one-line form: the first bad value, plus " (+N more)" when there are others; "" when there are none. The rule lives with the report
- * because every host draws this string. APPENDS to `out`. */
-void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out);
+/* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.
+ * `w`/`h` are set only for kind RESIZE. */
+typedef struct RolltuiTermEvent {
+  unsigned char kind;
+  RolltuiChord key;
+  RolltuiMouseEvent mouse;
+  const char* text;
+  size_t text_len;
+  int w, h;
+} RolltuiTermEvent;
 
-/* Asks each widget for the outer extent it wants and writes it into the node (the only thing
- * a widget writes back into the layout tree). */
-void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, RolltuiRect box);
+/* Called once per event, in order. */
+typedef void (*RolltuiTermEventFn)(void* ctx, const RolltuiTermEvent* e);
 
-void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, RolltuiRect box);
 
-/* The library's own three, for the same reason as `rolltui_layout_default_roles`. BORROWS static storage; a host that paints its
- * scrollbar from another role still passes its own struct. */
-const RolltuiWindowRoles* rolltui_windows_default_roles(void);
+/* ========================================================================================
+ * PART 2 — THE HOST AUTHOR: what has not yet migrated into a book above
+ * The rest of this file's host-facing functions, not yet moved: their modules' books haven't had their migration phase yet. Once
+ * migrated, a module's functions sit beside its own type in whichever book owns it, not here.
+ * ======================================================================================== */
 
-/* THE FOUR CELLS A SCROLLBAR THUMB IS MADE OF, so a look is a theme's rather than a literal. A thumb is a CAPSULE: `single` when it is
- * one cell tall, otherwise `top`, then `middle` repeated, then `bottom` (half-blocks, each filling only the half of its cell facing
- * inward, so a bar of any length has soft ends and a solid body). Each glyph is one grapheme in eight bytes, copied on set, so a theme's
- * parsed text need not outlive the call. `ascii_*` is used when the terminal draws East Asian AMBIGUOUS glyphs two cells wide (every
- * glyph worth using here is ambiguous, as the box-drawing borders are). */
-typedef struct RolltuiScrollbarGlyphs {
-  char single[8], top[8], middle[8], bottom[8];
-  char ascii_single[4], ascii_top[4], ascii_middle[4], ascii_bottom[4];
-} RolltuiScrollbarGlyphs;
+/* ========================================================================================
+ * THE SESSION — make one of these FIRST; everything a host does hangs off it
+ * ======================================================================================== */
 
-/* What a host does with the pair: READ a theme's answer, APPLY it. The default set and the read-back live in the library's own header,
- * since a theme a host did not write still fills every slot. */
-void rolltui_context_set_scrollbar_glyphs(RolltuiContext* ctx, const RolltuiScrollbarGlyphs* g);
-
-/* Reads a theme's `glyphs.scrollbar` object into `out`, filling every key it does not state with the shipped default, so `out` is always
- * complete. Returns 0 when the theme says nothing. Separate from `rolltui_theme_load` because it answers a different question. */
-int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollbarGlyphs* out);
-
-void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
-                          const RolltuiStyle* styles, const RolltuiWindowRoles* roles);
-
-/* An event the stack routed to `window`; 1 when the widget (or its scrollbar) consumed it. */
-int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e);
+/* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else (as process-wide statics they would make two
+ * apps in one process share one widget-kind registry).
+ *
+ * THE CONTRACT
+ *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
+ *      which carries its own mutex so a host may edit from one thread and render from another.
+ *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
+ *      affinity, sharing nothing with another.
+ *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at
+ *      `rolltui_windows_sync`, not at load, so an unknown kind is a runtime error PANEL and not a load failure, and one layout may
+ *      drive two contexts, each resolving kinds against its own registry.
+ *   4. A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT: reading one from another context is fine; outliving its owner is not.
+ *   5. ONLY ONE CONTEXT MAY DRIVE A TERMINAL (one controlling terminal, one saved `termios`, one signal disposition). Any number may
+ *      build screens and render to TEXT headless, as every test and `--frame` run does.
+ *   6. The allocator counters are a process-wide atomic SUM: assert `live_bytes == 0` after freeing ALL contexts, not per context.
+ *
+ * OWNED: `_new` / `_free`, and `_free` is a no-op on NULL. */
+RolltuiContext* rolltui_context_new(void);
+void rolltui_context_free(RolltuiContext* c);
 
 /* ---- presets -------------------------------------------------------------------------------*/
 
@@ -3841,32 +3856,6 @@ void rolltui_run_resume(RolltuiRun* run);
  * thread's scratch via `rolltui_release_thread` (another thread's `_Thread_local` storage cannot be freed from here). Safe to never call
  * and safe to call twice. Nothing is invalidated for a host that carries on: the caches rebuild on next use. */
 void rolltui_shutdown(void);
-
-/* ---- a hint bar: the keys a status line names, clickable ---------------------------------
- * "F1 help  F2 settings  c copy": each hint is a chord's text, a label, and the ACTION they stand for. Drawn once per frame, and the
- * bar remembers where every hint landed, so a press at a cell answers with the action and a host runs it as it would the key. A hint
- * that does not fit whole is left out, never cut, and is not hittable. The strings are copied; `_clear` empties the bar for a rebuild
- * when the bindings change. OWNED by the host: `_free` releases it. */
-typedef struct RolltuiHintBar RolltuiHintBar;
-RolltuiHintBar* rolltui_hint_bar_new(void);
-void rolltui_hint_bar_free(RolltuiHintBar* b);
-void rolltui_hint_bar_clear(RolltuiHintBar* b);
-void rolltui_hint_bar_add(RolltuiHintBar* b, const char* chord, size_t chord_len, const char* label, size_t label_len,
-                          const char* action, size_t action_len);
-/* What goes BETWEEN hints (two spaces by default; " › " makes a breadcrumb), and whether the bar keeps its TAIL when short of room (the
- * last hints drawn whole, the head replaced by an ellipsis) rather than dropping whichever hints do not fit. A breadcrumb keeps its tail:
- * the place the eye is at, and the pencil after it, must always be there to click. With the tail kept the LAST hint is the bar's own mark
- * rather than a part, and a single space joins it. */
-void rolltui_hint_bar_set_separator(RolltuiHintBar* b, const char* sep, size_t len);
-void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on);
-/* A hint whose action cannot be taken now is DISABLED: drawn in `muted`, never hit. Set by
- * action name, every frame if need be — it allocates nothing. */
-void rolltui_hint_bar_enable(RolltuiHintBar* b, const char* action, size_t len, int on);
-/* Draws from (x, y) within `width` cells and returns the cells used. */
-int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, int width,
-                          RolltuiStyle chord_style, RolltuiStyle label_style, RolltuiStyle muted, int ambiguous_wide);
-/* The action drawn under (x, y) on the last draw — a BORROW into the bar — or NULL. */
-const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* len);
 
 #ifdef __cplusplus
 } /* extern "C" */
