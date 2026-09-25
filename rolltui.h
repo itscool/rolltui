@@ -3542,21 +3542,32 @@ const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* 
 /* ========================================================================================
  * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
  * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
- * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
- * phase fills.
+ * caches, shutdown.
  * ======================================================================================== */
 
 /* ========================================================================================
- * PART 1 — THE NOUNS: what has not yet migrated into a book above
- * The rest of this file, not yet moved: types and functions of modules whose book hasn't had its migration phase yet. C needs a
- * type before the functions that take it, so within this leftover section every public type is still defined ahead of its verbs.
+ * THE SESSION — make one of these FIRST; everything a host does hangs off it
  * ======================================================================================== */
 
-
-
-/* ========================================================================================
- * swap — the double buffer, the newest entry point
- * ======================================================================================== */
+/* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else (as process-wide statics they would make two
+ * apps in one process share one widget-kind registry).
+ *
+ * THE CONTRACT
+ *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
+ *      which carries its own mutex so a host may edit from one thread and render from another.
+ *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
+ *      affinity, sharing nothing with another.
+ *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at
+ *      `rolltui_windows_sync`, not at load, so an unknown kind is a runtime error PANEL and not a load failure, and one layout may
+ *      drive two contexts, each resolving kinds against its own registry.
+ *   4. A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT: reading one from another context is fine; outliving its owner is not.
+ *   5. ONLY ONE CONTEXT MAY DRIVE A TERMINAL (one controlling terminal, one saved `termios`, one signal disposition). Any number may
+ *      build screens and render to TEXT headless, as every test and `--frame` run does.
+ *   6. The allocator counters are a process-wide atomic SUM: assert `live_bytes == 0` after freeing ALL contexts, not per context.
+ *
+ * OWNED: `_new` / `_free`, and `_free` is a no-op on NULL. */
+RolltuiContext* rolltui_context_new(void);
+void rolltui_context_free(RolltuiContext* c);
 
 /* ========================================================================================
  * terminal — the one fd
@@ -3647,69 +3658,6 @@ typedef struct RolltuiTermEvent {
 /* Called once per event, in order. */
 typedef void (*RolltuiTermEventFn)(void* ctx, const RolltuiTermEvent* e);
 
-
-/* ========================================================================================
- * PART 2 — THE HOST AUTHOR: what has not yet migrated into a book above
- * The rest of this file's host-facing functions, not yet moved: their modules' books haven't had their migration phase yet. Once
- * migrated, a module's functions sit beside its own type in whichever book owns it, not here.
- * ======================================================================================== */
-
-/* ========================================================================================
- * THE SESSION — make one of these FIRST; everything a host does hangs off it
- * ======================================================================================== */
-
-/* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else (as process-wide statics they would make two
- * apps in one process share one widget-kind registry).
- *
- * THE CONTRACT
- *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
- *      which carries its own mutex so a host may edit from one thread and render from another.
- *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
- *      affinity, sharing nothing with another.
- *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at
- *      `rolltui_windows_sync`, not at load, so an unknown kind is a runtime error PANEL and not a load failure, and one layout may
- *      drive two contexts, each resolving kinds against its own registry.
- *   4. A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT: reading one from another context is fine; outliving its owner is not.
- *   5. ONLY ONE CONTEXT MAY DRIVE A TERMINAL (one controlling terminal, one saved `termios`, one signal disposition). Any number may
- *      build screens and render to TEXT headless, as every test and `--frame` run does.
- *   6. The allocator counters are a process-wide atomic SUM: assert `live_bytes == 0` after freeing ALL contexts, not per context.
- *
- * OWNED: `_new` / `_free`, and `_free` is a no-op on NULL. */
-RolltuiContext* rolltui_context_new(void);
-void rolltui_context_free(RolltuiContext* c);
-
-/* ---- presets -------------------------------------------------------------------------------*/
-
-/* The frame as plain text, one row per line with trailing spaces trimmed. The golden-frame
- * harness is the caller; no escapes, no styles. */
-void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out);
-
-/* ---- swap ----------------------------------------------------------------------------------*/
-
-/* Both frames at `w` x `h`, filled with `fill`. Never returns NULL: an allocation failure
- * aborts through `rolltui_mem_alloc`, which is the library's stated answer. */
-RolltuiSwap* rolltui_swap_new(int w, int h, RolltuiStyle fill);
-
-void rolltui_swap_free(RolltuiSwap* s);
-
-/* Resets the back frame to `w` x `h` and LENDS it for drawing. Valid until the next `begin` or `present`; the caller never frees it. A
- * size change is handled by `rolltui_render_diff` at present time. */
-RolltuiFrame* rolltui_swap_begin(RolltuiSwap* s, int w, int h, RolltuiStyle fill);
-
-/* Diffs the drawn frame against the previous one, APPENDS the bytes to `out`, and swaps.
- * After this the drawn frame is the baseline and the other is the next `begin`'s target.
- * Appends nothing when nothing changed and the cursor did not move. */
-void rolltui_swap_present(RolltuiSwap* s, unsigned char depth, RolltuiStr* out);
-
-/* "Repaint whole at the next present": THE HOST'S POLICY (a new layout, a new palette, an explicit repaint). A size change needs no call. */
-void rolltui_swap_invalidate(RolltuiSwap* s);
-
-/* The frame most recently presented, for a caller that needs to read it back — the golden
- * harness and `poll_timeout_ms` both do. Borrowed, valid until the next `present`. */
-const RolltuiFrame* rolltui_swap_front(const RolltuiSwap* s);
-
-/* ---- terminal ------------------------------------------------------------------------------*/
-
 /* ---- lifetime --------------------------------------------------------------------------- */
 /* OWNED by the caller. Enters immediately (raw mode, alt screen, the rest of `opts`) and negotiates the keyboard protocol before
  * returning. Never returns NULL: an allocation failure aborts inside rolltui::mem. */
@@ -3782,7 +3730,41 @@ int rolltui_terminal_reprobe(RolltuiTerminal* t, int timeout_ms);
  * `no_cache`. A BORROW into the handle, valid until it is freed. */
 const char* rolltui_terminal_cache_path(const RolltuiTerminal* t);
 
-/* ---- the run loop ------------------------------------------------------------------------- */
+/* ========================================================================================
+ * swap — the double buffer, the newest entry point
+ * ======================================================================================== */
+
+/* Both frames at `w` x `h`, filled with `fill`. Never returns NULL: an allocation failure
+ * aborts through `rolltui_mem_alloc`, which is the library's stated answer. */
+RolltuiSwap* rolltui_swap_new(int w, int h, RolltuiStyle fill);
+
+void rolltui_swap_free(RolltuiSwap* s);
+
+/* Resets the back frame to `w` x `h` and LENDS it for drawing. Valid until the next `begin` or `present`; the caller never frees it. A
+ * size change is handled by `rolltui_render_diff` at present time. */
+RolltuiFrame* rolltui_swap_begin(RolltuiSwap* s, int w, int h, RolltuiStyle fill);
+
+/* Diffs the drawn frame against the previous one, APPENDS the bytes to `out`, and swaps.
+ * After this the drawn frame is the baseline and the other is the next `begin`'s target.
+ * Appends nothing when nothing changed and the cursor did not move. */
+void rolltui_swap_present(RolltuiSwap* s, unsigned char depth, RolltuiStr* out);
+
+/* "Repaint whole at the next present": THE HOST'S POLICY (a new layout, a new palette, an explicit repaint). A size change needs no call. */
+void rolltui_swap_invalidate(RolltuiSwap* s);
+
+/* The frame most recently presented, for a caller that needs to read it back — the golden
+ * harness and `poll_timeout_ms` both do. Borrowed, valid until the next `present`. */
+const RolltuiFrame* rolltui_swap_front(const RolltuiSwap* s);
+
+/* ---- reading a frame back as plain text (the golden-frame harness's own use) --------------- */
+/* The frame as plain text, one row per line with trailing spaces trimmed. The golden-frame
+ * harness is the caller; no escapes, no styles. */
+void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out);
+
+/* ========================================================================================
+ * the run loop — the loop every terminal app writes, written once
+ * ======================================================================================== */
+
 /* THE LOOP EVERY TERMINAL APP WRITES, WRITTEN ONCE: enter the terminal, make the double buffer, then per frame begin, draw, present at the
  * depth the terminal has, wait for input, copy out what arrived, hand it to the app, and follow a resize and a terminal that turned out
  * not to be what was remembered; at the end put the terminal back BEFORE returning, so what an app prints afterwards lands on the
@@ -3849,8 +3831,6 @@ void rolltui_run_resume(RolltuiRun* run);
  * There is no RAII in C: create and release in a pair, then `rolltui_shutdown()` and assert
  * `live_bytes == 0`. That is how a missed release is caught rather than hoped about.
  * ======================================================================================== */
-
-/* ---- embedded ------------------------------------------------------------------------------*/
 
 /* Releases everything the library retains: every registered process-wide releaser (most recently registered first), then the CALLING
  * thread's scratch via `rolltui_release_thread` (another thread's `_Thread_local` storage cannot be freed from here). Safe to never call
