@@ -59,4 +59,7 @@
     { "id": "open_images", "label": "Pictures: png, jpg, gif, webp, heic", "kind": "choice", "dropdown": true, "items": [] },
     { "id": "open_docs", "label": "PDF and office: pdf, docx, xlsx, pptx, pages, numbers, key", "kind": "choice", "dropdown": true, "items": [] },
     { "id": "open_media", "label": "Audio and video: mp3, wav, mp4, mov", "kind": "choice", "dropdown": true, "items": [] },
-    { "id": "open_apps", "label": "Applications: app bundles", "kind": "choice", "dropdown": true, "items": [] } ] }
+    { "id": "open_apps", "label": "Applications: app bundles", "kind": "choice", "dropdown": true, "items": [] },
+    { "id": "about", "label": "About", "kind": "section" },
+    { "id": "check_update", "label": "Check for updates now", "kind": "action" },
+    { "id": "do_update", "label": "Update and restart", "kind": "action" } ] }

@@ -66,6 +66,12 @@
 
 extern char** environ;  // for posix_spawnp: not declared by any header on Darwin
 
+// The two real targets (dirktui, dirktui-selftest) always define this; a fallback all the same,
+// so a build that somehow does not never reports an update rather than failing to compile.
+#ifndef DIRKTUI_VERSION
+#define DIRKTUI_VERSION "0.0.0"
+#endif
+
 // ADDITIVE, NOT SUBTRACTIVE. `dirk` is the product and cannot drive itself: the
 // script vocabulary is not compiled into it. `dirk-selftest` is the same source plus
 // this, which is what a golden frame is rendered by. The app code either binary runs is the
@@ -465,6 +471,19 @@ struct App {
   unsigned long long hint_since = 0;   // when it appeared, on the frame clock
   static constexpr unsigned long long kHintHoldMs = 2000, kHintFadeMs = 600, kTitleBackMs = 300;
   unsigned long long title_back_since = 0;  // when the last note went, so the name can fade back in
+  // UPDATE CHECKING: dirktui's own version is asked "does the tap have something newer", never the other way
+  // around — Homebrew's receipts stay the one record of what is installed, whether an upgrade happened through
+  // this app or through a plain `brew upgrade dirktui` a person ran themselves. `latest` empty means either
+  // "not checked yet" or "checked, and it's this version" — `checked_ms` (0: never) is what tells them apart.
+  RolltuiStr latest;                        // the tap's version, once known; "" until a check has answered
+  unsigned long long checked_ms = 0;        // when `latest` was last set, on the frame clock; 0: never checked
+  unsigned long long update_since_ms = 0;   // when an update FIRST became known, so re-detecting it on a later
+                                             // launch does not restart the corner's animation from zero
+  bool update_state_loaded = false;         // the cache file is read lazily, once, on the first tick
+  pid_t update_check_pid = 0;               // the in-flight `curl`, or 0 when none is running
+  RolltuiStr update_check_out;              // where its stdout was redirected: read and removed once it exits
+  static constexpr unsigned long long kUpdateCheckIntervalMs = 24ULL * 60 * 60 * 1000;  // don't ask more than once a day
+  char** restart_argv = nullptr;            // BORROWED, main()'s own argv: how `do_update` re-execs after brew
   // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
   // the array and each row's buffer are reused rather than rebuilt.
   RolltuiRows status_rows{};
@@ -827,6 +846,144 @@ struct App {
     if (!ok) hint = "could not write " + file;
   }
 
+  // ---- update checking ----------------------------------------------------------------------
+  // Dotted integers ("0.1.5"), the only shape this project's own versions take — never full
+  // semver (no pre-release/build suffix to weigh). Missing trailing components read as 0, so
+  // "0.2" > "0.1.9". Returns <0, 0, >0 as `a` is less than, equal to, or greater than `b`.
+  static int compare_versions(StrView a, StrView b) {
+    while (!a.empty() || !b.empty()) {
+      const std::size_t da = a.find('.'), db = b.find('.');
+      const int na = std::atoi(rolltui::own(a.substr(0, da)).c_str());
+      const int nb = std::atoi(rolltui::own(b.substr(0, db)).c_str());
+      if (na != nb) return na < nb ? -1 : 1;
+      a = da == StrView::npos ? StrView() : a.drop_front(da + 1);
+      b = db == StrView::npos ? StrView() : b.drop_front(db + 1);
+    }
+    return 0;
+  }
+  bool update_available() const {
+    return !latest.empty() && compare_versions(StrView(DIRKTUI_VERSION), StrView(latest)) < 0;
+  }
+  static RolltuiStr update_cache_file() { return settings_dir() + "/update.json"; }
+  void load_update_state() {
+    RolltuiStr text{};
+    FILE* f = std::fopen(update_cache_file().c_str(), "rb");
+    if (f) {
+      char buf[512];
+      std::size_t n;
+      while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) rolltui_str_append(&text, buf, n);
+      std::fclose(f);
+    }
+    RolltuiStr err{};
+    if (RolltuiJsonValue* root = rolltui_json_parse(text.p ? text.p : "", text.n, &err)) {
+      std::size_t n = 0;
+      const char* lv = rolltui_json_as_string(rolltui_json_get(root, "latest", 6), "", 0, &n);
+      latest.assign(lv, n);
+      // `rolltui_json_get` never returns NULL (a static Null when absent), and a JSON value's own
+      // `.num` defaults to 0 — no separate numeric accessor is needed, or exists.
+      checked_ms = static_cast<unsigned long long>(rolltui_json_get(root, "checked_ms", 10)->num);
+      update_since_ms = static_cast<unsigned long long>(rolltui_json_get(root, "update_since_ms", 15)->num);
+      rolltui_json_free(root);
+    }
+  }
+  void save_update_state() {
+    const RolltuiStr dir = settings_dir();
+    mkdirs(dir);
+    RolltuiStr out;
+    rolltui::appendf(out, "{ \"latest\": \"%.*s\", \"checked_ms\": %llu, \"update_since_ms\": %llu }\n",
+                     static_cast<int>(latest.n), latest.p ? latest.p : "", checked_ms, update_since_ms);
+    FILE* f = std::fopen(update_cache_file().c_str(), "wb");
+    if (f) { std::fwrite(out.data(), 1, out.size(), f); std::fclose(f); }
+  }
+  static RolltuiStr update_check_tmp_file() { return settings_dir() + "/update_check.out"; }
+  // Quiet, `/dev/null`-redirected, non-blocking: the same file-actions shape the editor-open path
+  // uses for a program that should NOT take the terminal (`spawn_program`, above), just with
+  // stdout redirected to a file this reads back once the child has exited rather than to
+  // `/dev/null`. Never `waitpid`s here — `update_check_tick` polls it every frame instead, so a
+  // slow or hung network never costs the render loop a single frame.
+  void spawn_update_check() {
+    if (headless || update_check_pid) return;  // one at a time, and never a real network reach in a test/frame run
+    mkdirs(settings_dir());
+    const RolltuiStr out_path = update_check_tmp_file();
+    const char* url = std::getenv("DIRKTUI_UPDATE_URL");
+    if (!url || !*url) url = "https://raw.githubusercontent.com/itscool/homebrew-tap/main/Formula/dirktui.rb";
+    const char* argv[] = {"curl", "-fsSL", "--max-time", "5", url, "-o", out_path.c_str(), nullptr};
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    pid_t pid = 0;
+    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&fa);
+    if (rc == 0) update_check_pid = pid;
+  }
+  // Runs `brew update && brew upgrade dirktui` with the real terminal — the same terminal-taking
+  // shape `spawn_program` uses for an editor, above, so the person watches brew's own real output
+  // rather than a black box — then re-execs this program exactly as it was invoked. PATH
+  // resolution runs FRESH at that point, so it is whatever `brew upgrade` just put at the symlink,
+  // never a path resolved and cached before the upgrade. Only reached once `update_available()`
+  // is already true.
+  void do_update_and_restart() {
+    if (!run || tty_fd < 0 || !restart_argv) return;
+    rolltui_run_suspend(run);
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, tty_fd, 0);
+    posix_spawn_file_actions_adddup2(&fa, tty_fd, 1);
+    posix_spawn_file_actions_adddup2(&fa, tty_fd, 2);
+    const char* argv[] = {"/bin/sh", "-c", "brew update && brew upgrade dirktui", nullptr};
+    pid_t pid = 0;
+    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&fa);
+    int status = 0;
+    if (rc == 0) waitpid(pid, &status, 0);
+    const bool upgraded = rc == 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    if (upgraded) execvp(restart_argv[0], restart_argv);  // returns only on failure to launch
+    rolltui_run_resume(run);
+    hint = upgraded ? "updated, but could not restart automatically \xE2\x80\x94 quit and run dirktui again"
+                    : "brew upgrade dirktui failed; see your terminal history";
+  }
+  // Called once a frame (`render_into`): lazily loads the cache on the very first call, polls an
+  // in-flight check without blocking, and starts a fresh one when the cache is stale enough —
+  // never on the render path itself, and never more than one in flight.
+  void update_check_tick() {
+    if (!update_state_loaded) { load_update_state(); update_state_loaded = true; }
+    if (update_check_pid) {
+      int status = 0;
+      const pid_t r = waitpid(update_check_pid, &status, WNOHANG);
+      if (r == update_check_pid) {
+        const pid_t done_pid = update_check_pid;
+        update_check_pid = 0;
+        (void)done_pid;
+        RolltuiStr text{};
+        FILE* f = std::fopen(update_check_tmp_file().c_str(), "rb");
+        if (f) {
+          char buf[512];
+          std::size_t n;
+          while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) rolltui_str_append(&text, buf, n);
+          std::fclose(f);
+        }
+        std::remove(update_check_tmp_file().c_str());
+        // The formula's one line this cares about: `version "X.Y.Z"`, written by
+        // tools/release_dirktui.sh and nothing else in that file — a plain scan for it, not a
+        // Ruby parser, because it is this project's own generated literal, not arbitrary input.
+        if (const char* p = std::strstr(text.p ? text.p : "", "version \"")) {
+          p += 9;
+          const char* end = std::strchr(p, '"');
+          if (end && end > p) {
+            const bool was_available = update_available();
+            latest.assign(p, static_cast<std::size_t>(end - p));
+            checked_ms = now_ms;
+            if (update_available() && !was_available) update_since_ms = now_ms;
+            save_update_state();
+          }
+        }
+      }
+    }
+    if (!update_check_pid && (checked_ms == 0 || now_ms > checked_ms + kUpdateCheckIntervalMs)) spawn_update_check();
+  }
+
   // The settings popup's boxes, set from the live values the moment the popup exists — which is
   // after the frame's sync has built its widget, so this runs from `prepare()`. The window is
   // found through the FOCUS, never by a name this source would otherwise have to carry.
@@ -836,6 +993,12 @@ struct App {
     const char* id = n ? rolltui_layout_node_id(n, &len) : nullptr;
     RolltuiMenu* m = id ? rolltui_windows_menu_at(windows, id, len) : nullptr;
     if (!m) return;
+    // `do_update` only makes sense once an update is actually known — disabled otherwise, its
+    // label carrying the live version once it isn't.
+    rolltui_menu_set_enabled(m, "do_update", 9, update_available() ? 1 : 0);
+    if (update_available()) {
+      if (RolltuiMenuItem* it = rolltui_menu_find(m, "do_update", 9)) it->label = "Update to " + latest + " and restart";
+    }
     { const RolltuiStr sid = sort_id(opt.sort, opt.reversed); rolltui_menu_set_value(m, "sort", 4, sid.data(), sid.size()); }
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
@@ -1680,6 +1843,11 @@ struct App {
         opt.dividers = ev.checked != 0;
         hint = opt.dividers ? "column dividers on" : "column dividers off";
         save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "check_update") {
+        spawn_update_check();
+        hint = "checking for an update\xE2\x80\xA6";
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "do_update") {
+        if (update_available()) do_update_and_restart();
       }
       rolltui_menu_event_release(&ev);
       return;
@@ -1693,6 +1861,7 @@ struct App {
   }
 
   void render_into(RolltuiFrame* f) {
+    update_check_tick();
     prepare();
     rolltui_window_stack_compose(stack, f, area(), styles, rolltui_layout_default_roles(), draw_slot, this, 0,
                                  compose_scratch);
@@ -1792,6 +1961,10 @@ struct App {
         RolltuiStyle name_faded;
         rolltui_style_fade(&name_style, ground, keep, &name_faded);
         rolltui_frame_put_text(f, draw_scratch, w - 8, h - 1, "dirktui", 7, name_faded, 7, ambiguous ? 1 : 0, 0);
+        // An update sits on the name itself, not a fourth thing competing for the corner: the
+        // theme's own FLASH treatment (already shipped, already mapped in every theme) says "look
+        // here" without dirktui inventing a state no theme has a mapping for.
+        if (update_available()) rolltui_frame_mark(f, w - 8, h - 1, 7, ROLLTUI_EFFECT_STATE_FLASH, update_since_ms, 0);
       }
       const int right = w - 2 - right_w;
       int at = 1;
@@ -2490,6 +2663,9 @@ int main(int argc, char** argv) {
   }
 
   App app;
+  app.restart_argv = argv;  // for `execvp` after an in-app update: re-run exactly how this run was invoked,
+                            // so PATH resolution (not a resolved-and-cached real path) finds whatever a
+                            // `brew upgrade` just put at the same symlink
   {
     // The app's own MOTION file, through the same three rungs as its layout — embedded, beside
     // the binary, a person's config directory — and read BEFORE any theme, since every theme
