@@ -788,14 +788,18 @@ int main() {
     }
   }
 
-  // ---- 9. WHICH READER IS IT FOR — and the header SECTIONED by the answer --
-  // `api_classes.inc` says WHETHER a function is public. `api_roles.inc` says WHO IT IS FOR, and
-  // this section holds `rolltui.h`'s physical layout to it. Without the placement check the roles
-  // would be a comment nobody re-reads and the parts would drift back into module order.
-  //
-  // The three parts are found by their own banners, so RENAMING one fails here loudly rather than
-  // silently emptying a bucket — the same reason section 6 looks for declarations at brace depth
-  // zero instead of mentions.
+  // ---- 9. WHICH READER IS IT FOR — a DECISION, tracked as data, not by physical position ------
+  // `api_classes.inc` says WHETHER a function is public. `api_roles.inc` says WHO IT IS FOR. Until
+  // this milestone, `rolltui.h`'s physical layout was ALSO held to that answer (a function's role
+  // had to match which of three physical parts its text sat in) — that enforcement is gone now
+  // that the header reorganized around MODULE-MAJOR books (a type and its functions adjacent)
+  // rather than READER-MAJOR parts (every noun, then every host verb, then every widget verb),
+  // because the two axes don't line up: a single book like WIDGETS holds VOCAB types, HOST_BIND
+  // functions and WIDGET functions side by side, on purpose. What role checking still means: every
+  // PUBLIC function has a role, every role row still names a real PUBLIC function, and no role goes
+  // begging as NEITHER — all decidable from `api_classes.inc`/`api_roles.inc` alone, with no need to
+  // parse `rolltui.h`'s text at all. Section 9b, below, checks the header's new physical shape (the
+  // four books, in order) — a DIFFERENT question from this one.
   {
     struct RoleRow { const char* fn; const char* role; };
     static const RoleRow kRoles[] = {
@@ -809,63 +813,21 @@ int main() {
 #include "api_classes.inc"
 #undef ROLLTUI_API
     };
-    const std::string hdr = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui.h");
-    const std::size_t p1 = hdr.find("PART 1 — THE NOUNS");
-    const std::size_t p2 = hdr.find("PART 2 — THE HOST AUTHOR");
-    const std::size_t p3 = hdr.find("PART 3 — THE WIDGET AUTHOR");
-    check(p1 != std::string::npos && p2 != std::string::npos && p3 != std::string::npos && p1 < p2 && p2 < p3,
-          "rolltui.h is in three parts, in reader order: the nouns, the host author, the widget author");
-    auto d0 = [](const std::string& t) {
-      std::string out; std::vector<bool> counted; int depth = 0;
-      for (std::size_t i = 0; i < t.size(); ++i) {
-        const char ch = t[i];
-        if (ch == '{') {
-          const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
-          const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
-          counted.push_back(!linkage); if (!linkage) ++depth; continue;
-        }
-        if (ch == '}') { if (!counted.empty()) { if (counted.back()) --depth; counted.pop_back(); } continue; }
-        if (depth == 0) out += ch;
-      }
-      return out;
-    };
-    std::set<std::string> part[3];
-    if (p1 != std::string::npos && p2 != std::string::npos && p3 != std::string::npos) {
-      // rolltui_studio.h's own functions are a HOST's (the studio's, narrowly) — declared in a
-      // separate file for section 3b's reason, not a fourth part of rolltui.h's own layout, so
-      // its text joins part 2's chunk rather than getting a part of its own.
-      const std::string studio_h = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui_studio.h");
-      const std::string chunk[3] = {hdr.substr(p1, p2 - p1), hdr.substr(p2, p3 - p2) + studio_h, hdr.substr(p3)};
-      static const std::regex dre(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
-      for (int k = 0; k < 3; ++k) {
-        const std::string t = d0(strip_all_comments(chunk[k]));
-        for (std::sregex_iterator it(t.begin(), t.end(), dre), end; it != end; ++it) part[k].insert((*it)[1].str());
-      }
-    }
     std::map<std::string, std::string> role_of;
     for (const RoleRow& r : kRoles) role_of[r.fn] = r.role;
-    std::vector<std::string> no_role, stale_role, misplaced_role, neither;
+    std::vector<std::string> no_role, stale_role, neither;
     std::map<std::string, std::string> cls_of;
     for (const ClsRow& r : kCls) cls_of[r.fn] = r.cls;
     for (const ClsRow& r : kCls)
       if (std::string(r.cls) == "PUBLIC" && !role_of.count(r.fn)) no_role.push_back(r.fn);
     for (const RoleRow& r : kRoles) {
       if (!cls_of.count(r.fn) || cls_of[r.fn] != "PUBLIC") { stale_role.push_back(r.fn); continue; }
-      const std::string role = r.role;
-      if (role == "NEITHER") { neither.push_back(r.fn); continue; }
-      const int want = role == "VOCAB" ? 0 : role == "WIDGET" ? 2 : 1;
-      if (!part[want].count(r.fn)) {
-        int found = -1;
-        for (int k = 0; k < 3; ++k) if (part[k].count(r.fn)) found = k;
-        misplaced_role.push_back(std::string(r.fn) + " (" + role + ", declared in part " +
-                                 (found < 0 ? std::string("none") : std::to_string(found + 1)) + ")");
-      }
+      if (r.role == std::string("NEITHER")) neither.push_back(r.fn);
     }
     auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
     check(no_role.empty(), "every PUBLIC function has a ROLE — who is it for is a DECISION, not an arrival" + join(no_role));
     check(stale_role.empty(), "every role row names a PUBLIC function" + join(stale_role));
     check(neither.empty(), "NO PUBLIC FUNCTION FITS NO READER: NEITHER is a candidate for internal, not a resting place" + join(neither));
-    check(misplaced_role.empty(), "THE HEADER IS SECTIONED BY THE ROLE: VOCAB in part 1, a host's in part 2, WIDGET in part 3" + join(misplaced_role));
     std::map<std::string, int> rt;
     for (const RoleRow& r : kRoles) ++rt[r.role];
     // MEASURED. Moving a role re-records these, which is the point: the SHAPE of the
@@ -907,9 +869,26 @@ int main() {
      * on any move at all, which is stronger than either threshold and never for the wrong
      * reason — the cost is that a human reads the diff, which is the right place for a
      * judgement about whether a stage still means one thing. */
-    check(part[0].size() > 20 && part[1].size() > 200 && part[2].size() > 15,
-          "…and the three parts are non-empty as read from the file (" + std::to_string(part[0].size()) + "/" +
-              std::to_string(part[1].size()) + "/" + std::to_string(part[2].size()) + " declarations)");
+  }
+  // ---- 9b. THE HEADER'S PHYSICAL SHAPE: four books, in dependency order ----------------------
+  // A DIFFERENT question from section 9's (which was WHO a function is for, decidable from data
+  // alone). This one is WHERE things sit: module-major, a type beside its own functions, grouped
+  // into CORE / CONFIGURATION / WIDGETS / RUNTIME — found by their own banners, so renaming one
+  // fails here loudly rather than silently emptying a book.
+  {
+    const std::string hdr = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui.h");
+    const std::size_t b1 = hdr.find("BOOK 1 — CORE");
+    const std::size_t b2 = hdr.find("BOOK 2 — CONFIGURATION");
+    const std::size_t b3 = hdr.find("BOOK 3 — WIDGETS");
+    const std::size_t b4 = hdr.find("BOOK 4 — RUNTIME");
+    check(b1 != std::string::npos && b2 != std::string::npos && b3 != std::string::npos && b4 != std::string::npos &&
+              b1 < b2 && b2 < b3 && b3 < b4,
+          "rolltui.h is four books, in dependency order: core, configuration, widgets, runtime");
+    // NOT YET ASSERTED: that the old PART 1/2/3 scaffolding is gone, and that each book is
+    // non-empty. Both become true only once every module has migrated — adding them now would
+    // fail on every intermediate, honest commit of that migration. Add both once it lands:
+    //   check(hdr.find("PART 1 — THE NOUNS") == std::string::npos, "...");
+    // and a per-book non-empty declaration count, the same shape section 9's old part[] check had.
   }
   // ---- 10. NO ORPHANED DOC COMMENT: a sentence in the header describes something it declares
   // ------------------------------------------------------------------------------------------

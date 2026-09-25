@@ -7,10 +7,18 @@
  * The headers under `rolltui/c/` are internal: they include this file first and add what the library's own `.c` files need. Don't
  * include one from a host; a suite that tests an internal names it and is listed in CMake's opt-in list (`public_header_test`
  * asserts no other consumer does). What is public, and why, is `tests/api_classes.inc` (one class per function, held to measured
- * reach); who each function is for is `tests/api_roles.inc`, and the three parts below follow it.
+ * reach); who each function is for is `tests/api_roles.inc` — WHO a function is for is that data, tracked independently of WHERE
+ * its declaration sits.
  *
- * LAYOUT. PART 1 is the nouns: every type, table and name (C needs a type before the functions that take it). PART 2 is the host
- * author's verbs: load, bind, run, release. PART 3 is the widget author's: what implementing a kind needs.
+ * LAYOUT. Four books, in dependency order: CORE (the primitives everything else is built from — text, geometry, colour, the cell
+ * grid, JSON, Unicode, wrapping), CONFIGURATION (the four user/host-authored file types — theme, bindings, layout, menu — and the
+ * stores that manage them), WIDGETS (what actually renders: the built-in widget kinds and the machinery — effects, markdown,
+ * diff — that supports them), RUNTIME (the terminal, the double buffer, the run loop, the session that ties a screen together).
+ * Each book is MODULE-MAJOR: a module's type and every function that takes it sit adjacent, in the same place, so "where do I look
+ * for menus" is answered by one banner rather than two banners two thousand lines apart. A module never needs a second home for
+ * ordering reasons alone — C's "a type before the functions that take it" is satisfied by declaring a module right after every
+ * OTHER module whose type it uses (an opaque handle, `typedef struct X X;`, needs no such ordering and is forward-declared once,
+ * early, for exactly this reason).
  *
  * THE RULES EVERY DECLARATION OBEYS
  *   1. HANDLES come in pairs, `rolltui_x_new` / `rolltui_x_free`, and `free` is a no-op on NULL. Call `rolltui_shutdown()` at the
@@ -45,6 +53,34 @@
 #include <utility>
 extern "C" {
 #endif
+
+/* ========================================================================================
+ * BOOK 1 — CORE: the primitives everything else is built from
+ * Text, geometry, colour and style, the cell grid and drawing into it, JSON, Unicode, wrapping. Nothing here depends on anything
+ * outside this book. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
+ * phase fills by moving each Core module's type and its functions here, adjacent.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * BOOK 2 — CONFIGURATION: the four user/host-authored file types, and the stores that manage them
+ * Theme, bindings, layout, menu — what a person or a host author writes to a file — plus the embedded shipped defaults and the
+ * settings handle that routes a changed key to the right one. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections
+ * below; this banner is the seam a later phase fills.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * BOOK 3 — WIDGETS: what actually renders
+ * The built-in widget kinds (input, menu, transcript, rows, the file picker, …) and the machinery that supports them: effects,
+ * markdown, diff, the window registry a host reaches a kind's sources through. MIGRATION IN PROGRESS: still filed under the
+ * PART 1/2/3 sections below; this banner is the seam a later phase fills.
+ * ======================================================================================== */
+
+/* ========================================================================================
+ * BOOK 4 — RUNTIME: the terminal, the double buffer, the run loop, the session
+ * What ties a screen together frame to frame: the one fd, presenting a frame at the right depth, the session's registries and
+ * caches, shutdown. MIGRATION IN PROGRESS: still filed under the PART 1/2/3 sections below; this banner is the seam a later
+ * phase fills.
+ * ======================================================================================== */
 
 /* ========================================================================================
  * PART 1 — THE NOUNS: every type, table and name the two roles speak
