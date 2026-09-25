@@ -702,19 +702,27 @@ void handle_mouse(HostMenu* m, const RolltuiMouseEvent& e, Outcome* out) {
 // `handle` answers only "consumed".
 Outcome g_host_outcome;
 
+// The MOVED mirror of rolltui_menu_handle's own: whatever the dispatch below did, if it left
+// no outcome of its own, a focus change is reported as one. `item_at` stands for no item as
+// NULL (the back row, an empty level), which reads as an empty id here same as in the library.
+std::string host_focused_id(HostMenu* m) {
+  const RolltuiMenuItem* it = item_at(m, m->sel);
+  return it ? std::string(it->id.p, it->id.n) : std::string();
+}
+
 int host_handle(void* ctx, const RolltuiEvent* e) {
   HostMenu* m = static_cast<HostMenu*>(ctx);
   if (m->cripple == Cripple::Handle) return 0;
   g_host_outcome = Outcome{};
+  const std::string before = host_focused_id(m);
+  int consumed = 0;
   if (e->kind == ROLLTUI_EVENT_KEY) {
     handle_key(m, e->key, &g_host_outcome);
-    return 1;
-  }
-  if (e->kind == ROLLTUI_EVENT_MOUSE) {
+    consumed = 1;
+  } else if (e->kind == ROLLTUI_EVENT_MOUSE) {
     handle_mouse(m, e->mouse, &g_host_outcome);
-    return 1;
-  }
-  if (e->kind == ROLLTUI_EVENT_PASTE) {
+    consumed = 1;
+  } else if (e->kind == ROLLTUI_EVENT_PASTE) {
     for (std::size_t i = 0; i < e->text_len; ++i) {
       const unsigned char c = static_cast<unsigned char>(e->text[i]);
       if (c >= 0x20 && c != 0x7F) {
@@ -724,8 +732,16 @@ int host_handle(void* ctx, const RolltuiEvent* e) {
         handle_key(m, k, &g_host_outcome);
       }
     }
-    return 1;
+    consumed = 1;
   }
+  if (consumed && g_host_outcome.kind == ROLLTUI_MENU_EVENT_NONE) {
+    const std::string after = host_focused_id(m);
+    if (after != before) {
+      g_host_outcome.kind = ROLLTUI_MENU_EVENT_MOVED;
+      g_host_outcome.id = after;
+    }
+  }
+  if (consumed) return 1;
   return 0;
 }
 

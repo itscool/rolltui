@@ -107,6 +107,7 @@ struct MenuEvent {
     Choose = ROLLTUI_MENU_EVENT_CHOOSE,
     Input = ROLLTUI_MENU_EVENT_INPUT,
     Closed = ROLLTUI_MENU_EVENT_CLOSED,
+    Moved = ROLLTUI_MENU_EVENT_MOVED,
   };
   Kind kind = Kind::None;
   std::string id;
@@ -655,8 +656,8 @@ int main() {
     RolltuiEvent enter = key(Key::Enter), down = key(Key::Down), right = key(Key::Right), esc = key(Key::Escape);
     rolltui_menu_handle(m, &enter, b, A, &ev);
     const size_t* path = nullptr;
-    check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_path(m, &path) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE,
-          "Enter on it opens the dropdown and does NOT descend: the level is unchanged");
+    check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_path(m, &path) == 0 && ev.kind == ROLLTUI_MENU_EVENT_MOVED,
+          "Enter on it opens the dropdown and does NOT descend: the level is unchanged, but the focus moved into the box");
     check(rolltui_menu_dropdown_selected(m) == 0, "…with the cursor on the current answer");
     {
       Frame f(40, 10);
@@ -680,7 +681,7 @@ int main() {
           "Enter chooses: the same CHOOSE event a level would have produced — and the box STAYS OPEN, a selection not being an action");
     rolltui_menu_event_release(&ev);
     rolltui_menu_handle(m, &enter, b, A, &ev);
-    check(ev.kind == ROLLTUI_MENU_EVENT_NONE && rolltui_menu_dropdown_open(m) == 0, "…Enter again on the answer that stands closes it, choosing nothing new");
+    check(ev.kind == ROLLTUI_MENU_EVENT_MOVED && rolltui_menu_dropdown_open(m) == 0, "…Enter again on the answer that stands closes it, choosing nothing new, but the focus moved back to the choice");
     rolltui_menu_handle(m, &enter, b, A, &ev);  // reopen for the checks below
     rolltui_menu_event_release(&ev);
     check(rolltui_menu_selected(m) == 0, "…and the menu's own cursor is still on the choice");
@@ -705,7 +706,7 @@ int main() {
     }
     rolltui_menu_handle(m, &down, b, A, &ev);  // back onto the chosen answer, as the checks below expect
     rolltui_menu_handle(m, &esc, b, A, &ev);
-    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "Escape closes it without choosing and without closing the menu");
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_MOVED, "Escape closes it without choosing and without closing the menu, and the focus moves back to the choice");
     rolltui_menu_event_release(&ev);
     // by mouse: a click on the item opens, a click outside closes and is consumed
     RolltuiEvent click{};
@@ -717,7 +718,7 @@ int main() {
     check(rolltui_menu_dropdown_open(m) != 0, "a click on the choice opens the dropdown");
     click.mouse.x = 0; click.mouse.y = 9;  // the corner: outside the box
     rolltui_menu_handle(m, &click, b, A, &ev);
-    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "…and a click outside it closes it, consumed, choosing nothing");
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_MOVED, "…and a click outside it closes it, consumed, choosing nothing, and the focus moves back to the choice");
     rolltui_menu_event_release(&ev);
     rolltui_menu_free(m);
   }
@@ -742,7 +743,7 @@ int main() {
     m.handle(key(Key::Home));
     m.handle(key(Key::Down));  // layout
     ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None && m.path() == std::vector<std::size_t>{1} && m.breadcrumb() == "settings \xE2\x80\xBA Layout",
+    check(ev.kind == MenuEvent::Kind::Moved && m.path() == std::vector<std::size_t>{1} && m.breadcrumb() == "settings \xE2\x80\xBA Layout",
           "Enter on a submenu descends; the breadcrumb shows the path [" + m.breadcrumb() + "]");
     m.handle(key(Key::Down));
     ev = m.handle(key(Key::Enter));
@@ -760,7 +761,7 @@ int main() {
     m.handle(key(Key::Right));
     check(m.path() == std::vector<std::size_t>{1}, "Right on a submenu descends");
     ev = m.handle(key(Key::Escape));
-    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "Escape one level down ascends instead of closing");
+    check(ev.kind == MenuEvent::Kind::Moved && m.path().empty(), "Escape one level down ascends instead of closing");
   }
   // ---- toggle, choice, input ----
   {
@@ -774,7 +775,7 @@ int main() {
     m.handle(key(Key::Home));
     ev = m.handle(key(Key::Enter));  // theme (choice)
     // Row 0 of a level below the root is the widget's own way back, so the first CHILD is row 1.
-    check(ev.kind == MenuEvent::Kind::None && m.path() == std::vector<std::size_t>{0} && m.selected() == 1,
+    check(ev.kind == MenuEvent::Kind::Moved && m.path() == std::vector<std::size_t>{0} && m.selected() == 1,
           "Enter on a choice descends into its options, the current one selected");
     m.handle(key(Key::Down));
     ev = m.handle(key(Key::Enter));
@@ -790,8 +791,8 @@ int main() {
     m.handle(key(Key::Backspace));
     m.handle(ch('e'));
     check(m.editing_text() == "mine" && m.find("save")->value.empty() && m.selected() == 3, "typing while editing edits the EDITING text, not the filter and not the committed value");
-    m.handle(key(Key::Down));
-    check(m.selected() == 3, "Down while editing does not move");
+    ev = m.handle(key(Key::Down));
+    check(m.selected() == 3 && ev.kind == MenuEvent::Kind::None, "Down while editing does not move, and does not report Moved either — typing is not browsing");
     ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::Input && ev.id == "save" && ev.value == "mine" && !m.editing(), "Enter submits the text and ends the edit");
     m.handle(key(Key::Enter));
@@ -818,7 +819,7 @@ int main() {
     m.handle(key(Key::Backspace));
     check(m.visible().size() == 1, "Backspace erases the last filter character");
     MenuEvent ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None && m.path() == std::vector<std::size_t>{1} && m.filter().empty(),
+    check(ev.kind == MenuEvent::Kind::Moved && m.path() == std::vector<std::size_t>{1} && m.filter().empty(),
           "Enter acts on the filtered selection and the filter is dropped on descend");
     m.handle(ch('s'));
     m.handle(key(Key::Escape));
@@ -1275,7 +1276,7 @@ int main() {
     rolltui_menu_handle(m, &up, b, A, &ev);     // toward Neovim: the cursor will not rest on it
     check(rolltui_menu_dropdown_selected(m) == 1, "…and the cursor never lands on it: Up from the answer stays on the answer");
     rolltui_menu_handle(m, &enter, b, A, &ev);
-    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE &&
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_MOVED &&
               std::string(rolltui_menu_root(m)->children.v[0]->value.p, rolltui_menu_root(m)->children.v[0]->value.n) == "system",
           "…so Enter is on the answer that stands, which closes the box and chooses nothing new");
     rolltui_menu_event_release(&ev);
@@ -1421,7 +1422,7 @@ int main() {
     check(m.selected() == 0 && m.selected_item() == nullptr,
           "Up from the first item reaches it, and it stands for no item in anyone's tree");
     MenuEvent ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "Enter on it ascends, and emits nothing");
+    check(ev.kind == MenuEvent::Kind::Moved && m.path().empty(), "Enter on it ascends, and the focus moves back to where it came from");
 
     // AND BY MOUSE, which is the case the complaint was actually about: a person who is stuck
     // is a person who did not know the chord, so the row has to be clickable.
@@ -1433,7 +1434,7 @@ int main() {
     click.x = 3;
     click.y = 0;  // the first item row: the area's top, since the breadcrumb is the window's title
     ev = m.handle(click);
-    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "a CLICK on it ascends too");
+    check(ev.kind == MenuEvent::Kind::Moved && m.path().empty(), "a CLICK on it ascends too");
 
     // A FILTER NARROWS WHAT YOU ARE LOOKING FOR, and the way out is not one of those things.
     m.handle(key(Key::Enter));  // into Layout a third time
@@ -1468,7 +1469,7 @@ int main() {
           "an EMPTY submenu still offers the way out, and it is the only thing in it [" + row(f, 0) + "]");
     check(m.selected() == 0, "…and the selection is on it, because there is nothing else to be on");
     const MenuEvent ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "…so Enter gets out");
+    check(ev.kind == MenuEvent::Kind::Moved && m.path().empty(), "…so Enter gets out");
   }
 
   // ---- A COLOUR IS SHOWN AS ONE ---------------------------------------------------------------
@@ -1609,6 +1610,32 @@ int main() {
       RolltuiMenuItem copy = root.clone();
       check(copy.children.v[0]->swatch == 1, "…and survives a copy");
       copy.children.v[0]->swatch = 0;
+      check(!rolltui_menu_item_equal(&root, &copy), "…and a tree that differs only in it is a different tree");
+      rolltui_menu_item_release(&copy);
+      rolltui_menu_load_report_release(&rep);
+      rolltui_menu_item_release(&root);
+    }
+
+    // THE FILE: "description" reads, writes, copies and compares — the library draws nothing
+    // with it, so this is the whole of its contract.
+    {
+      const char* json = R"({ "id": "root", "label": "r", "description": "the root's own help line",
+        "items": [ { "id": "go", "label": "Go", "description": "does the thing" } ] })";
+      RolltuiMenuItem root;
+      rolltui_menu_item_init(&root);
+      RolltuiMenuLoadReport rep{};
+      const int parsed = rolltui_menu_parse_json(json, std::strlen(json), &root, &rep);
+      check(parsed && rep.unknown_keys_n == 0 && view_of(root.description) == "the root's own help line" &&
+                view_of(root.children.v[0]->description) == "does the thing",
+            "a menu file may give an item a description, and the key is known");
+      RolltuiStr out;
+      rolltui_menu_dump_json(&root, &out);
+      check(str_of(out).find("\"description\": \"does the thing\"") != std::string::npos,
+            "…and is written back");
+      rolltui_str_free(&out);
+      RolltuiMenuItem copy = root.clone();
+      check(view_of(copy.children.v[0]->description) == "does the thing", "…and survives a copy");
+      copy.children.v[0]->description = "a different help line";
       check(!rolltui_menu_item_equal(&root, &copy), "…and a tree that differs only in it is a different tree");
       rolltui_menu_item_release(&copy);
       rolltui_menu_load_report_release(&rep);

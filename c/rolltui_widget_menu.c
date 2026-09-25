@@ -1901,8 +1901,20 @@ static void handle_popup_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, Rollt
   m->area = saved_area;
 }
 
+/* The item a MOVED event should describe right now: the dropdown's highlighted OPTION when one is open, else the main level's
+ * cursor row. Empty when there is none (the back row, an empty level) — a host looking that up finds nothing and clears its own
+ * help line, which is the right behaviour without a special case here. */
+static void focused_item_id(RolltuiMenu* m, RolltuiStr* out) {
+  RolltuiMenuItem* dd = m->dd_open ? dropdown_item(m) : NULL;
+  const RolltuiMenuItem* it = dd ? dd->children.v[m->dd_sel] : rolltui_menu_selected_item(m);
+  rolltui_str_set(out, it ? it->id.p : NULL, it ? it->id.n : 0);
+}
+
 void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBindings* b,
                          const RolltuiMenuActions* A, RolltuiMenuEvent* out) {
+  RolltuiStr before, after;
+  memset(&before, 0, sizeof before);
+  memset(&after, 0, sizeof after);
   out->kind = ROLLTUI_MENU_EVENT_NONE;
   out->checked = 0;
   rolltui_str_clear(&out->id);
@@ -1911,22 +1923,23 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
     handle_edit(m, e, b, A, out);
     return;
   }
+  focused_item_id(m, &before);
   if (m->dd_open) {
     RolltuiMenuItem* it = dropdown_item(m);
     if (it) {
       if (e->kind == ROLLTUI_EVENT_KEY) handle_dropdown_key(m, it, &e->key, b, A, out);
       else if (e->kind == ROLLTUI_EVENT_MOUSE) handle_dropdown_mouse(m, it, &e->mouse, out);
-      return;
+      goto done;
     }
   }
   if (e->kind == ROLLTUI_EVENT_KEY) {
     handle_key(m, &e->key, b, A, out);
-    return;
+    goto done;
   }
   if (e->kind == ROLLTUI_EVENT_MOUSE) {
     if (current_level_is_popup(m)) handle_popup_mouse(m, &e->mouse, out);
     else handle_mouse(m, &e->mouse, out);
-    return;
+    goto done;
   }
   if (e->kind == ROLLTUI_EVENT_PASTE) {
     /* Pasted text goes where typed text would: the filter. */
@@ -1942,6 +1955,18 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
       }
     }
   }
+done:
+  /* MOVED is the leftover verdict: every other kind (ACTIVATE/TOGGLE/CHOOSE/INPUT/CLOSED) already claims the event above, so
+   * reaching here with NONE still standing means only the focus itself may have moved. */
+  if (out->kind == ROLLTUI_MENU_EVENT_NONE) {
+    focused_item_id(m, &after);
+    if (!rolltui_str_eq(&after, before.p, before.n)) {
+      out->kind = ROLLTUI_MENU_EVENT_MOVED;
+      rolltui_str_move(&out->id, &after);
+    }
+  }
+  rolltui_str_free(&before);
+  rolltui_str_free(&after);
 }
 
 /* ---- layout and drawing ------------------------------------------------------------------ */
@@ -2523,7 +2548,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
     rolltui_str_append(&at, k, klen);
 
     if (streq(k, klen, "id") || streq(k, klen, "label") || streq(k, klen, "shortcut") || streq(k, klen, "value") ||
-        streq(k, klen, "action")) {
+        streq(k, klen, "action") || streq(k, klen, "description")) {
       if (!rolltui_json_is_string(x)) {
         bad_value_at(rep, at.p, at.n, K(": expected a string"));
       } else {
@@ -2533,6 +2558,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         else if (streq(k, klen, "label")) rolltui_str_set(&it->label, s, slen);
         else if (streq(k, klen, "shortcut")) rolltui_str_set(&it->shortcut, s, slen);
         else if (streq(k, klen, "action")) rolltui_str_set(&it->action_name, s, slen);
+        else if (streq(k, klen, "description")) rolltui_str_set(&it->description, s, slen);
         else rolltui_str_set(&it->value, s, slen);
       }
     } else if (streq(k, klen, "kind")) {
@@ -2740,6 +2766,7 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
    * live chords), so a round trip cannot bake one moment's keys into a file. */
   if (it->action_name.n == 0 && it->shortcut.n != 0)
     rolltui_json_set(o, K("shortcut"), rolltui_json_string(it->shortcut.p, it->shortcut.n));
+  if (it->description.n != 0) rolltui_json_set(o, K("description"), rolltui_json_string(it->description.p, it->description.n));
   if (!it->enabled) rolltui_json_set(o, K("enabled"), rolltui_json_bool(0));
   if (it->checked) rolltui_json_set(o, K("checked"), rolltui_json_bool(1));
   if (it->dropdown) rolltui_json_set(o, K("dropdown"), rolltui_json_bool(1));

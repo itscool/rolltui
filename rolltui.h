@@ -2233,6 +2233,7 @@ typedef struct RolltuiMenuItem {
   RolltuiStr label;
   RolltuiStr action_name; /* the BINDINGS action this item does the same thing as */
   RolltuiStr shortcut;    /* display only; with `action_name` set it is the live chords */
+  RolltuiStr description; /* shown by a host that wants one (a help line, a tooltip); the library draws nothing with it */
   unsigned char enabled ROLLTUI_DEFAULT(1);
   unsigned char checked ROLLTUI_DEFAULT(0); /* Toggle */
   /* Choice: its options open as a DROPDOWN, a small box over the menu, rather than as a level of their own. A level suits a set that
@@ -2374,6 +2375,11 @@ inline RolltuiMenuItem RolltuiMenuItem::separator(const char* id) {
 #define ROLLTUI_MENU_EVENT_INPUT 4
 
 #define ROLLTUI_MENU_EVENT_CLOSED 5
+
+/* The focus moved to a different item — an arrow key, a typed filter narrowing the match, a mouse hover or drag, a dropdown's own
+ * up/down — with nothing else to report: `id` is the newly-focused item's, `value`/`checked` are untouched. Never fires while
+ * editing a typed field (that is not browsing), and never alongside another kind: ACTIVATE/TOGGLE/CHOOSE/INPUT/CLOSED always win. */
+#define ROLLTUI_MENU_EVENT_MOVED 6
 
 typedef struct RolltuiMenuEvent {
   unsigned char kind ROLLTUI_DEFAULT(ROLLTUI_MENU_EVENT_NONE);

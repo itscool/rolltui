@@ -324,6 +324,8 @@ void MenuEditor::rebuild_menu() {
   // A SHORTCUT is display only. With an action set, the live chords win and this is ignored;
   // it exists for an item that names no action and still wants to advertise a key.
   top.push_back(MenuItem::input("shortcut", "Shortcut text (display only)", text.clone()));
+  top.push_back(MenuItem::input("description", "Description (a host's help line or tooltip; the library draws nothing with it)",
+                                text.clone()));
   top.push_back(MenuItem::input("add_child", "Add a child item (id)", name.clone()));
   top.push_back(MenuItem::input("add_sibling", "Add a sibling item (id)", name.clone()));
   top.push_back(MenuItem::action("move_up", "Move up"));
@@ -374,6 +376,7 @@ void MenuEditor::sync_fields() {
   set_enabled(menu_, "validator", textual);
   set_enabled(menu_, "optional", is_input);
   set_enabled(menu_, "shortcut", have);
+  set_enabled(menu_, "description", have);
   set_enabled(menu_, "move_up", !root);
   set_enabled(menu_, "move_down", !root);
   set_enabled(menu_, "remove", !root);
@@ -407,6 +410,7 @@ void MenuEditor::sync_values() {
   set_value(menu_, "validator", it->spec.validator);
   set_checked(menu_, "optional", it->spec.optional != 0);
   set_value(menu_, "shortcut", it->shortcut);
+  set_value(menu_, "description", it->description);
   // The actions THIS BINARY knows are the field's HINT and never its option list: an item may
   // name an action the app declares and this tool has never heard of, which is the
   // direction — the screen is the intent and the app reports what it cannot reach.
@@ -564,6 +568,7 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     if (id == "hint") { it->spec.hint.assign(value); return commit_current(); }
     if (id == "validator") { it->spec.validator.assign(value); return commit_current(); }
     if (id == "shortcut") { it->shortcut.assign(value); return commit_current(); }
+    if (id == "description") { it->description.assign(value); return commit_current(); }
     if (id == "precision") { it->spec.precision = std::atoi(value.c_str()); return commit_current(); }
     if (id == "min_len" || id == "max_len") {
       const std::size_t n = static_cast<std::size_t>(std::atol(value.c_str()));

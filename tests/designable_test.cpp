@@ -132,6 +132,7 @@ const Covered kLayout[] = {
 const Covered kMenu[] = {
     {"action", "action", "THE EXCEPTION: a name in the app's table, written unverified"},
     {"checked", "checked", "Toggle only"},
+    {"description", "description", "shown by a host that wants one; the library draws nothing with it"},
     {"dropdown", "dropdown", "Choice only"},
     {"enabled", "enabled", ""},
     {"hint", "hint", "Input only"},
