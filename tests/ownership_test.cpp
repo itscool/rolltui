@@ -346,6 +346,9 @@ int main() {
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_widget_menu_tree.h", 0},
         {"c/rolltui_lifetime.h", 0},
+        {"nsplit.h", 1}, /* `NSplitNode::children`: OWNED array of BORROWED pointers — this library never
+                            allocates or frees what they point to (a caller's node, embedding `NSplitNode`
+                            as its first member); see nsplit_attach/_detach/_release. */
     };
     // A continuation line of a WRAPPED declaration (`const char* name, size_t len);`) has no
     // `(` and ends in `;`, so `is_stored_pointer` alone counts it as a member. Parentheses are
@@ -404,7 +407,7 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 167, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 168, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

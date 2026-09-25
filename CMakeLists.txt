@@ -189,6 +189,9 @@ set(ROLLTUI_SOURCES
   c/rolltui_frame_ops.c       # put_text / fill / tint, reachable by the C widgets that draw.
   c/rolltui_layout_tree.c     # THE SPLIT TREE, as data — the shape of a node, never the
                               #   placement algorithm over it.
+  nsplit.c                    # THE PLACEMENT ALGORITHM ITSELF, extracted to a dependency-free
+                              #   pair (nsplit.h/.c, repo root) any project can drop in whole —
+                              #   rolltui is just its first caller, not its owner.
   c/rolltui_widget_menu_tree.c       # THE MENU TREE, the second recursive owning tree, same shape.
   c/rolltui_document.c        # THE DOCUMENT MODEL, as data. A HOST fills it, so two shapes
                               #   of an entry would be two things to disagree.
@@ -418,6 +421,12 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONL
 # can see a retention before it is trusted to report a zero. Until this existed, "did the
 # library leak?" had no answer: by-design retention and a real leak look identical.
 add_rolltui_test(rolltui-lifetime-test tests/lifetime_test.cpp)
+
+# nsplit's OWN proof, independent of the rest of rolltui: resolution (fixed/fraction/fill-weight
+# mixes, nesting, hidden nodes, seam inset, the >12-children spill path) and mutation
+# (attach/detach/reparent/release) against a caller type that embeds NSplitNode as its intrusive
+# base, exactly as nsplit.h documents.
+add_rolltui_test(rolltui-nsplit-test tests/nsplit_test.cpp)
 
 # THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
 # RANGE against numbers recorded from a real render, with the counter proved armed on
