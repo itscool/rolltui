@@ -3,7 +3,8 @@
 // the two C++ value types a host asked for.
 #include "theme_editor.hpp"
 
-#include "rolltui/c/rolltui_str.h"
+// rolltui_str_list_add (rolltui/c/rolltui_str.h) is curated into rolltui_studio.h, included by
+// theme_editor.hpp above.
 #include "tool_str.hpp"
 
 namespace rolltui::tools {

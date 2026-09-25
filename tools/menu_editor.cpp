@@ -1,11 +1,10 @@
 // rolltui/tools/menu_editor.cpp — see menu_editor.hpp.
 #include "tool_str.hpp"
 
-/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
- * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
- * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
-#include "rolltui/c/rolltui_widget_menu.h"
-#include "rolltui/c/rolltui_widget_menu_tree.h"
+// Everything this file needs beyond rolltui.h is curated into rolltui_studio.h, included by
+// menu_editor.hpp below. (rolltui_widget_menu_tree.h was already confirmed unused here — its
+// only include, in menu_editor.hpp, was removed earlier; this file had its own separate, equally
+// dead copy of the same include, missed in that pass.)
 #include "menu_editor.hpp"
 
 #include <algorithm>

@@ -62,11 +62,10 @@
 //
 #include "rolltui/rolltui.h"
 #include "rolltui/rolltui_cpp.h"
+#include "rolltui/rolltui_studio.h"
 
-/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
- * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
- * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
-#include "rolltui/c/rolltui_widget_menu.h"
+// rolltui_widget_menu.h's former reach here is now curated into rolltui_studio.h above; no raw
+// internal header is needed directly.
 #include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <cstddef>

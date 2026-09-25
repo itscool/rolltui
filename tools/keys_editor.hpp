@@ -16,12 +16,12 @@
 //
 #include "rolltui/rolltui.h"
 #include "rolltui/rolltui_cpp.h"
+#include "rolltui/rolltui_studio.h"
 
-/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
- * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
- * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
+/* rolltui_keys_editor.h is the one raw internal header left here: this editor's own API, not a
+ * curation candidate (rolltui_widget_menu.h's former reach here is now curated into
+ * rolltui_studio.h above). */
 #include "rolltui/c/rolltui_keys_editor.h"
-#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/str.hpp"
 #include "tool_str.hpp"
 #include <cstddef>
