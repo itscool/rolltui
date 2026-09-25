@@ -884,11 +884,25 @@ int main() {
     check(b1 != std::string::npos && b2 != std::string::npos && b3 != std::string::npos && b4 != std::string::npos &&
               b1 < b2 && b2 < b3 && b3 < b4,
           "rolltui.h is four books, in dependency order: core, configuration, widgets, runtime");
-    // NOT YET ASSERTED: that the old PART 1/2/3 scaffolding is gone, and that each book is
-    // non-empty. Both become true only once every module has migrated — adding them now would
-    // fail on every intermediate, honest commit of that migration. Add both once it lands:
-    //   check(hdr.find("PART 1 — THE NOUNS") == std::string::npos, "...");
-    // and a per-book non-empty declaration count, the same shape section 9's old part[] check had.
+    // THE MIGRATION IS COMPLETE: no module is left waiting under the old reader-major scaffolding,
+    // and every book actually holds something — the same shape section 9's old part[] check had,
+    // now asked of four books instead of three parts.
+    check(hdr.find("PART 1 —") == std::string::npos && hdr.find("PART 2 —") == std::string::npos &&
+              hdr.find("PART 3 —") == std::string::npos,
+          "no module is left under the old PART 1/2/3 scaffolding — every module has a book");
+    if (b1 != std::string::npos && b2 != std::string::npos && b3 != std::string::npos && b4 != std::string::npos) {
+      const std::string chunk[4] = {hdr.substr(b1, b2 - b1), hdr.substr(b2, b3 - b2), hdr.substr(b3, b4 - b3), hdr.substr(b4)};
+      static const std::regex dre(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
+      std::set<std::string> book[4];
+      for (int k = 0; k < 4; ++k) {
+        const std::string t = depth0(strip_all_comments(chunk[k]));
+        for (std::sregex_iterator it(t.begin(), t.end(), dre), end; it != end; ++it) book[k].insert((*it)[1].str());
+      }
+      check(book[0].size() > 20 && book[1].size() > 50 && book[2].size() > 100 && book[3].size() > 10,
+            "…and the four books are non-empty as read from the file (" + std::to_string(book[0].size()) + "/" +
+                std::to_string(book[1].size()) + "/" + std::to_string(book[2].size()) + "/" +
+                std::to_string(book[3].size()) + " declarations)");
+    }
   }
   // ---- 10. NO ORPHANED DOC COMMENT: a sentence in the header describes something it declares
   // ------------------------------------------------------------------------------------------
