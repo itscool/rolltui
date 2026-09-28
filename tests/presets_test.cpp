@@ -1498,16 +1498,23 @@ int main() {
         std::this_thread::sleep_for(std::chrono::microseconds(20));
       }
     });
-    constexpr int kFrames = 2000;
-    int copies = 0, whole = 0, labelled = 0;
+    // THE READER IS BOUNDED BY COPIES TAKEN, not by frames: a frame whose version has not moved
+    // costs a microsecond, so a frame count finishes before a slow-to-wake changer has loaded
+    // anything and proves nothing. A deadline turns a stall into a failure rather than a hang.
+    constexpr int kCopies = 200;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    int frames = 0, copies = 0, whole = 0, labelled = 0;
     unsigned long long seen = 0;
     RolltuiStr label{};
-    while (loads.load() == 0) std::this_thread::yield();  // a busy machine may start the changer late
-    for (int frame = 0; frame < kFrames; ++frame) {
+    while (copies < kCopies && std::chrono::steady_clock::now() < deadline) {
+      ++frames;
       rolltui_theme_store_label(ts, &label);
       if (label.n != 0) ++labelled;
       const unsigned long long v = rolltui_theme_store_version(ts);
-      if (v == seen) continue;
+      if (v == seen) {
+        std::this_thread::yield();
+        continue;
+      }
       seen = v;
       RolltuiThemePresetValue* copy = rolltui_theme_store_copy_working(ts);
       ++copies;
@@ -1521,14 +1528,14 @@ int main() {
     changer.join();
     rolltui_str_free(&label);
     rolltui_theme_store_free(ts);
-    check(copies >= 50 && loads.load() >= 50,
-          "the reader and the changer genuinely overlapped: " + std::to_string(copies) + " copies taken across " +
-              std::to_string(loads.load()) + " loads on the other thread");
+    check(copies == kCopies && loads.load() >= kCopies,
+          "the reader took " + std::to_string(copies) + " of " + std::to_string(kCopies) + " copies, each of a new version, while the other thread loaded " +
+              std::to_string(loads.load()) + " times");
     check(whole == copies,
           "…and every copy taken while the other thread loaded is a whole theme: " + std::to_string(whole) + " of " +
               std::to_string(copies));
-    check(labelled == kFrames, "…and the label read every frame alongside it is never empty: " + std::to_string(labelled) +
-                                   " of " + std::to_string(kFrames) + " frames");
+    check(labelled == frames, "…and the label read every frame alongside it is never empty: " + std::to_string(labelled) +
+                                  " of " + std::to_string(frames) + " frames");
   }
 
   return report("rolltui_presets_test");
