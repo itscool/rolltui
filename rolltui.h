@@ -899,8 +899,11 @@ RolltuiBindingsStore* rolltui_bindings_store_new(RolltuiContext* c, const char* 
                                                  const char* shipped_dir, size_t shipped_dir_len);
 void rolltui_bindings_store_free(RolltuiBindingsStore* s);
 void rolltui_bindings_store_start(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report);
-/* A BORROW of the working table, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`). */
+/* A BORROW of the working table, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`), for a host
+ * whose every change happens on the reading thread; across threads, `_copy_working`, as the theme store's. */
 const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore* s);
+/* An OWNED copy, taken under the store's lock, as the theme store's. Free it with `rolltui_bindings_free`. */
+RolltuiBindings* rolltui_bindings_store_copy_working(const RolltuiBindingsStore* s);
 int rolltui_bindings_store_modified(const RolltuiBindingsStore* s);
 void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out);
 unsigned long long rolltui_bindings_store_version(const RolltuiBindingsStore* s);
@@ -913,6 +916,11 @@ RolltuiBindings* rolltui_bindings_store_get(const RolltuiBindingsStore* s, const
                                             RolltuiBindingsPresetReport* report);
 int rolltui_bindings_store_load(RolltuiBindingsStore* s, const char* name, size_t len,
                                 RolltuiBindingsPresetReport* report, int persist);
+/* Save the working table under a name, and add a file someone sent: the same contract as the theme store's. */
+int rolltui_bindings_store_save_as(RolltuiBindingsStore* s, const char* name, size_t len, int overwrite,
+                                   RolltuiStr* err);
+int rolltui_bindings_store_add(RolltuiBindingsStore* s, const char* path, size_t path_len, const char* as,
+                               size_t as_len, RolltuiStr* err);
 void rolltui_bindings_store_path(const RolltuiBindingsStore* s, const char* name, size_t len, RolltuiStr* out);
 int rolltui_bindings_is_shipped(RolltuiContext* c, const char* name, size_t len);
 void rolltui_bindings_shipped_names(RolltuiContext* c, RolltuiStrListRaw* out);
@@ -1137,9 +1145,10 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
                                                const char* depth, size_t depth_len, const char* name,
                                                size_t name_len);
 
-/* ---- the theme store: USE — create it, read it, switch to a different existing preset -------
- * The whole surface an ordinary host needs. Authoring a preset's own content — editing it, saving a new one, adding a file — is
- * `rolltui_studio.h`'s, reached only by rolltui's own studio; nothing here needs it, because nothing but the studio ever does. */
+/* ---- the theme store: USE — create it, read it, switch presets, save one, add one ----------
+ * The whole surface a host needs. Saving the working copy under a name and adding a file someone sent are here because a host offers
+ * both — roll's `theme save`/`theme add` and its settings menu's save-as. Editing a preset's own CONTENT in place — `_edit`,
+ * `_set_working` — is `rolltui_studio.h`'s, reached only by rolltui's own studio and its editors. */
 typedef struct RolltuiThemeStore RolltuiThemeStore;
 
 /* OWNED: `_new`/`_free`, `_free` a no-op on NULL. `dir` is where this person's own presets and working copy live; `shipped_dir`, when
@@ -1156,8 +1165,15 @@ void rolltui_theme_store_free(RolltuiThemeStore* s);
 void rolltui_theme_store_start(RolltuiThemeStore* s, RolltuiThemePresetReport* report);
 
 /* A BORROW of the store's own working value, valid until the next call that changes it (`_load`, `_set_mode`, `_set_depth`, or —
- * `rolltui_studio.h` — `_edit`). Never yours to free. NULL only when `s` is NULL. */
+ * `rolltui_studio.h` — `_edit`). Never yours to free. NULL only when `s` is NULL. For a host whose every change to this store happens
+ * on the thread that reads it; a host that changes it from another thread holds `_copy_working` instead. */
 const RolltuiThemePresetValue* rolltui_theme_store_working(const RolltuiThemeStore* s);
+
+/* An OWNED copy of the working value, taken under the store's lock — what a host that renders on one thread while another changes
+ * the store holds, since a borrow can be freed out from under it by a load on the other thread. Take a fresh one whenever
+ * `_version` moves, which every change does, a live edit's preview included, so the copy never goes stale. Free it with
+ * `rolltui_theme_preset_value_free`. NULL only when `s` is NULL. */
+RolltuiThemePresetValue* rolltui_theme_store_copy_working(const RolltuiThemeStore* s);
 
 int rolltui_theme_store_modified(const RolltuiThemeStore* s);
 
@@ -1184,6 +1200,17 @@ RolltuiThemePresetValue* rolltui_theme_store_get(const RolltuiThemeStore* s, con
  * working copy without writing it, for a run that must not touch disk. */
 int rolltui_theme_store_load(RolltuiThemeStore* s, const char* name, size_t len, RolltuiThemePresetReport* report,
                              int persist);
+
+/* Saves the CURRENT working value under a new name, which becomes the origin. Always autosaves afterwards (a save-as is an explicit
+ * write, unlike `_load`, which respects `persist`): there is no `persist` parameter because no caller wants 0. Returns one of the
+ * ROLLTUI_SAVE_* codes; `err` (may be NULL) carries the sentence for every result but SAVED. */
+int rolltui_theme_store_save_as(RolltuiThemeStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
+
+/* Copies an external FILE in as a new preset (a theme someone sent you) — additive, never replacing an existing one. Named by
+ * `as`, or by the file's own stem when `as` is empty. Same ROLLTUI_SAVE_* codes as `_save_as`, plus BAD_NAME for a file that does
+ * not parse as a theme. */
+int rolltui_theme_store_add(RolltuiThemeStore* s, const char* path, size_t path_len, const char* as, size_t as_len,
+                            RolltuiStr* err);
 
 /* Light-or-dark and colour depth: the person's own settings, carried beside a preset's colours rather than part of them (every preset
  * keeps whichever the person already had). `mode`: "auto"|"dark"|"light"; `depth`: "auto"|"truecolor"|"256"|"16"|"mono". */
@@ -1598,8 +1625,11 @@ RolltuiLayoutStore* rolltui_layout_store_new(RolltuiContext* c, const char* dir,
                                              const char* shipped_dir, size_t shipped_dir_len);
 void rolltui_layout_store_free(RolltuiLayoutStore* s);
 void rolltui_layout_store_start(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report);
-/* A BORROW of the working value, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`). */
+/* A BORROW of the working value, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`), for a host
+ * whose every change happens on the reading thread; across threads, `_copy_working`, as the theme store's. */
 const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s);
+/* An OWNED copy, taken under the store's lock, as the theme store's. Free it with `rolltui_layout_free`. */
+RolltuiLayout* rolltui_layout_store_copy_working(const RolltuiLayoutStore* s);
 int rolltui_layout_store_modified(const RolltuiLayoutStore* s);
 void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out);
 unsigned long long rolltui_layout_store_version(const RolltuiLayoutStore* s);
@@ -1612,6 +1642,10 @@ RolltuiLayout* rolltui_layout_store_get(const RolltuiLayoutStore* s, const char*
                                        RolltuiLayoutPresetReport* report);
 int rolltui_layout_store_load(RolltuiLayoutStore* s, const char* name, size_t len, RolltuiLayoutPresetReport* report,
                               int persist);
+/* Save the working copy under a name, and add a file someone sent: the same contract as the theme store's. */
+int rolltui_layout_store_save_as(RolltuiLayoutStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
+int rolltui_layout_store_add(RolltuiLayoutStore* s, const char* path, size_t path_len, const char* as, size_t as_len,
+                             RolltuiStr* err);
 void rolltui_layout_store_path(const RolltuiLayoutStore* s, const char* name, size_t len, RolltuiStr* out);
 /* The shipped ones. `c` reaches the session's own descriptor, same as `_new`. */
 int rolltui_layout_is_shipped(RolltuiContext* c, const char* name, size_t len);
@@ -1752,7 +1786,7 @@ int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const ch
 
 /* The SENTENCE for an outcome: a table beside the constants it is indexed by. BORROWS a static literal; `*len` may be NULL; an
  * out-of-range code reads back as "". WRITE_FAILED's own reason is still the caller's, through the concrete stores' own `_save_as`/
- * `_add` — `rolltui_studio.h` — which write it into their own `err` for every result but SAVED. */
+ * `_add`, which write it into their own `err` for every result but SAVED. */
 const char* rolltui_preset_save_result_text(int result, size_t* len);
 
 void rolltui_preset_list_release(RolltuiPresetListRaw* l);
@@ -3560,7 +3594,8 @@ const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* 
  *
  * THE CONTRACT
  *   1. One thread at a time: the library locks nothing inside a context. The exception is the theme/layout/bindings stores, each of
- *      which carries its own mutex so a host may edit from one thread and render from another.
+ *      which carries its own mutex so a host may edit from one thread and render from another — rendering from a store's
+ *      `_copy_working`, never from `_working`'s borrow, which a load on the other thread frees.
  *   2. ANY NUMBER OF CONTEXTS, same thread or different, configured alike or differently: a plain owned handle with no thread
  *      affinity, sharing nothing with another.
  *   3. LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA, PORTABLE BETWEEN CONTEXTS. Kind resolution happens at

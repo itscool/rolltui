@@ -1,7 +1,7 @@
 #ifndef ROLLTUI_C_PRESETS_H
 #define ROLLTUI_C_PRESETS_H
 /* INTERNAL: the public surface of this module is the three concrete stores in `rolltui.h`
- * (Theme/Layout/Bindings) and their CREATE-AND-EDIT half in `rolltui_studio.h`. What is below —
+ * (Theme/Layout/Bindings) and their in-place EDIT half in `rolltui_studio.h`. What is below —
  * the generic engine that backs all three, and a handful of narrower helpers — is the library's
  * own: reached by its `.c` files, and by a suite that opts in by including this header by
  * name. */

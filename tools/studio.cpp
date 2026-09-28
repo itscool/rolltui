@@ -175,7 +175,7 @@
 //      once and `rolltui_shutdown`'s `live_bytes == 0` catches it.
 //   3. **THE THREE PRESET STORES ARE THE LIBRARY'S OWN CONCRETE TYPES** (`RolltuiThemeStore`,
 //      `RolltuiLayoutStore`, `RolltuiBindingsStore` — `rolltui.h`), with this binary's own
-//      editing of them — `_edit`, `_save_as`, `_add`, `_set_working` — reached through
+//      in-place editing of them — `_edit`, `_set_working` — reached through
 //      `rolltui_studio.h`, the one header only the studio and its editors may include. No
 //      `PresetStore<Domain>` adapter and no app-side RAII wrapper stand between this file and
 //      the C API: a missed `_free` leaks once, the same as every other handle here.

@@ -288,8 +288,9 @@ int main() {
                               own growing array of owned strings, freed by `rolltui_theme_report_release` beside
                               the other three. -2 before it: `RolltuiAppProfileReport`'s two array members went with the app profile.
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
-        {"rolltui_studio.h", 0},  /* the studio's CREATE-AND-EDIT surface: twelve functions and three typed edit-callback
-                                     typedefs, no struct of its own — nothing here stores a pointer */
+        {"rolltui_studio.h", 0},  /* the studio's curated reach: the stores' six in-place edit functions, their three typed
+                                     edit-callback typedefs and forward declarations — no struct body of its own, so
+                                     nothing here stores a pointer */
         {"rolltui_cpp.h", 2},  /* the C++ half of rolltui.h's types (free functions, and derived classes reclaiming a
                                   renamed struct's name) — a derived class's inherited fields are already counted at
                                   the base's own row in `rolltui.h` above; the 2 here are `RolltuiDocument::iterator`'s

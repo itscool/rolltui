@@ -19,6 +19,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +28,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -39,7 +42,7 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
-#include "rolltui/rolltui_studio.h"     /* the CREATE-AND-EDIT tier: _edit/_save_as/_add/_set_working */
+#include "rolltui/rolltui_studio.h"     /* the in-place EDIT tier: _edit/_set_working */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -1185,6 +1188,22 @@ int main() {
     check(!rolltui_settings_set(set, "frontend", 8, "tui", 3, 1, &srep) &&
               str_of(srep.error) == "'frontend' is not a setting",
           "a key this table does not hold is refused rather than routed nowhere");
+    // A REPORT'S NOTES ARE A NESTED LIST, declared as the Raw struct, so the range-for a host
+    // writes over them reaches `rolltui_cpp.h`'s FREE begin/end rather than the members of a
+    // `RolltuiStrList` it does not have. The colours-only file the Theme section above wrote
+    // loads with a note saying so.
+    {
+      const std::string file = (world / "files" / "colours.json").string();
+      std::size_t walked = 0;
+      bool said = false;
+      if (rolltui_settings_set(set, "theme", 5, file.data(), file.size(), /*persist=*/0, &srep))
+        for (const RolltuiStr& n : srep.notes) {
+          ++walked;
+          said = said || str_of(n).find("colours-only") != std::string::npos;
+        }
+      check(walked != 0 && walked == srep.notes.n && said,
+            "a settings report's notes are walked by a range-for over the nested field, as a host reads them");
+    }
     rolltui_settings_report_release(&srep);
 
     // A HANDLE OVER STORES IT DOES NOT HAVE still answers, because a host may open fewer.
@@ -1446,6 +1465,70 @@ int main() {
     check(store.add(missing, "", err) == ROLLTUI_SAVE_WRITE_FAILED,
           "…and a file that is not there says so rather than adding an empty preset");
     rolltui_str_free(&err);
+  }
+
+  // ---- A HOST MAY CHANGE A STORE ON ONE THREAD AND RENDER FROM IT ON ANOTHER ----------------
+  // rolltui.h's thread contract, the way roll holds it: a REPL thread loads presets while the UI
+  // thread reads the label every frame and takes a fresh `_copy_working` whenever `_version`
+  // moves. A borrow from `_working` would be freed by the other thread's load while it was being
+  // read; the copy is the reader's own. In an ordinary build this proves the two sides neither
+  // deadlock nor see a torn value; the sanitizer build is what makes a use-after-free here loud.
+  {
+    const std::string tdir = (world / "threads").string();
+    RolltuiThemeStore* ts = rolltui_theme_store_new(rolltui_test::test_context(), tdir.data(), tdir.size(), 0, "", 0);
+    RolltuiThemePresetReport rep{};
+    rolltui_theme_store_start(ts, &rep);
+    rolltui_theme_preset_report_release(&rep);
+    // The CHANGER runs until the reader is finished, not for a count of its own, so every one of the
+    // reader's frames overlaps a thread that is loading — a changer that finished first would leave
+    // a reader proving nothing about concurrency, and the count of copies below says it did not.
+    // It PAUSES between loads, as a person's `//set` does: a thread that releases the store's lock
+    // and takes it again at once can starve the other one indefinitely (a pthread mutex promises no
+    // fairness, and Darwin's does not give it), which hangs a test and proves nothing about a host.
+    std::atomic<bool> done{false};
+    std::atomic<int> loads{0};
+    std::thread changer([&] {
+      static const char* const kNames[] = {"mono", "default", "contrast"};
+      for (int i = 0; !done.load(); ++i) {
+        RolltuiThemePresetReport r{};
+        const char* n = kNames[i % 3];
+        rolltui_theme_store_load(ts, n, std::strlen(n), &r, /*persist=*/0);
+        rolltui_theme_preset_report_release(&r);
+        ++loads;
+        std::this_thread::sleep_for(std::chrono::microseconds(20));
+      }
+    });
+    constexpr int kFrames = 2000;
+    int copies = 0, whole = 0, labelled = 0;
+    unsigned long long seen = 0;
+    RolltuiStr label{};
+    while (loads.load() == 0) std::this_thread::yield();  // a busy machine may start the changer late
+    for (int frame = 0; frame < kFrames; ++frame) {
+      rolltui_theme_store_label(ts, &label);
+      if (label.n != 0) ++labelled;
+      const unsigned long long v = rolltui_theme_store_version(ts);
+      if (v == seen) continue;
+      seen = v;
+      RolltuiThemePresetValue* copy = rolltui_theme_store_copy_working(ts);
+      ++copies;
+      ResolvedTheme r;
+      if (copy != nullptr && copy->colours != nullptr && resolve_colours_c(copy->colours, ROLLTUI_MODE_DARK, r) &&
+          r.report.error.empty() && r.report.missing_roles_n == 0)
+        ++whole;
+      rolltui_theme_preset_value_free(copy);
+    }
+    done = true;
+    changer.join();
+    rolltui_str_free(&label);
+    rolltui_theme_store_free(ts);
+    check(copies >= 50 && loads.load() >= 50,
+          "the reader and the changer genuinely overlapped: " + std::to_string(copies) + " copies taken across " +
+              std::to_string(loads.load()) + " loads on the other thread");
+    check(whole == copies,
+          "…and every copy taken while the other thread loaded is a whole theme: " + std::to_string(whole) + " of " +
+              std::to_string(copies));
+    check(labelled == kFrames, "…and the label read every frame alongside it is never empty: " + std::to_string(labelled) +
+                                   " of " + std::to_string(kFrames) + " frames");
   }
 
   return report("rolltui_presets_test");

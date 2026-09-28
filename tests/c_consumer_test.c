@@ -450,10 +450,12 @@ int main(void) {
    * back through the file. Then a Layout and a Bindings store, each compared against a rung
    * this file already stood on, so the two paths are proved to agree.
    *
-   * AUTHORING A PRESET'S CONTENT — `_edit`/`_save_as`/`_add` — is NOT here, on purpose: nothing
-   * this file does is shaped like rolltui's own studio, the one program that ever calls them,
-   * and they live in `rolltui_studio.h`, a header only the studio and its editors may include.
-   * `tests/presets_test.cpp` is where that half is proved, from C++, through that header.
+   * Saving the working copy under a name and adding a file someone sent ARE here, because a host
+   * offers both. EDITING A PRESET'S CONTENT IN PLACE — `_edit`/`_set_working` — is NOT, on
+   * purpose: nothing this file does is shaped like rolltui's own studio, the one program that
+   * ever calls them, and they live in `rolltui_studio.h`, a header only the studio and its
+   * editors may include. `tests/presets_test.cpp` is where that half is proved, from C++,
+   * through that header.
    *
    * THE WALLS THIS SECTION HIT ON ITS FIRST RUN — five, each counted across every
    * consumer before anything was designed, and each moved INTO the C API rather than into a
@@ -583,10 +585,30 @@ int main(void) {
       }
 
       /* LOAD a shipped preset into the working copy: the origin follows it, and the person's
-       * own chosen mode carries over onto it — a preset never brings settings of its own. */
-      check(rolltui_theme_store_load(ts, "mono", 4, &rep, /*persist=*/1) != 0 &&
-                rolltui_theme_preset_report_clean(&rep) != 0 && rolltui_theme_store_modified(ts) == 0,
-            "load a shipped preset from C: the working copy is replaced whole, unmodified");
+       * own chosen mode carries over onto it — a preset never brings settings of its own.
+       * A COPY taken before the load is the host's own and outlives it, which a borrow does not:
+       * the load frees the value `_working` lent, and a thread still drawing from that is reading
+       * freed memory. */
+      {
+        RolltuiThemePresetValue* before = rolltui_theme_store_copy_working(ts);
+        check(before != NULL && before != rolltui_theme_store_working(ts) && rolltui_str_eq(&before->mode, "light", 5) != 0,
+              "a COPY of the working value is the caller's own, not the store's, and says what the working value said");
+        check(rolltui_theme_store_load(ts, "mono", 4, &rep, /*persist=*/1) != 0 &&
+                  rolltui_theme_preset_report_clean(&rep) != 0 && rolltui_theme_store_modified(ts) == 0,
+              "load a shipped preset from C: the working copy is replaced whole, unmodified");
+        if (before != NULL) {
+          RolltuiStyle table[ROLLTUI_ROLE_COUNT];
+          RolltuiStr name = {0};
+          RolltuiThemeReport tr = {0};
+          RolltuiEffectMap* fx =
+              rolltui_theme_load(before->colours, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), table, &name, &tr);
+          check(fx != NULL && tr.missing_roles_n == 0, "…and the copy taken before the load still fills a whole style table after it");
+          rolltui_effect_map_free(fx);
+          rolltui_theme_report_release(&tr);
+          rolltui_str_free(&name);
+          rolltui_theme_preset_value_free(before);
+        }
+      }
       {
         size_t n = 0;
         const char* o = rolltui_theme_store_origin(ts, &n);
@@ -624,6 +646,89 @@ int main(void) {
         rolltui_theme_preset_report_release(&rep2);
       }
 
+      /* SAVE-AS AND ADD — what a host offers beside choosing (roll's `theme save`/`theme add`):
+       * each answers a CODE, and every result but SAVED carries its sentence in `err`. The
+       * files they write are removed here, by the paths the store names, so the directory check
+       * at the end of this section still sees only the working file. */
+      {
+        RolltuiStr err = {0};
+        RolltuiStr mine = {0};
+        RolltuiStr theirs = {0};
+        RolltuiStr junk = {0};
+        unsigned long long v1;
+        size_t sl = 0;
+        const char* sentence;
+        int code;
+        check(rolltui_theme_store_save_as(ts, "mine", 4, /*overwrite=*/0, &err) == ROLLTUI_SAVE_SAVED && err.n == 0,
+              "save-as a user name from C: SAVED, with nothing in `err`");
+        {
+          size_t n = 0;
+          const char* o = rolltui_theme_store_origin(ts, &n);
+          check(n == 4 && memcmp(o, "mine", 4) == 0 && rolltui_theme_store_modified(ts) == 0,
+                "…the saved preset is the origin now, so nothing is modified");
+        }
+        code = rolltui_theme_store_save_as(ts, "default", 7, /*overwrite=*/1, &err);
+        sentence = rolltui_preset_save_result_text(code, &sl);
+        check(code == ROLLTUI_SAVE_REFUSED_SHIPPED && err.n != 0 && sl != 0 && rolltui_str_eq(&err, sentence, sl) != 0,
+              "…a shipped name is refused as a CODE, and `err` carries the table's own sentence for it");
+        check(rolltui_theme_store_save_as(ts, "mine", 4, /*overwrite=*/0, &err) == ROLLTUI_SAVE_EXISTS_ASK && err.n != 0,
+              "…an existing name without overwrite ASKS, in words");
+        check(rolltui_theme_store_save_as(ts, "../mine", 7, /*overwrite=*/0, &err) == ROLLTUI_SAVE_BAD_NAME && err.n != 0,
+              "…and a path-shaped name is a BAD NAME, in words");
+        rolltui_theme_store_path(ts, "mine", 4, &mine);
+        rolltui_theme_store_list(ts, &list);
+        {
+          const RolltuiPresetInfo* last = list.n != 0 ? &list.v[list.n - 1] : NULL;
+          check(last != NULL && list.n == shipped.n + 1 && rolltui_str_eq(&last->name, "mine", 4) != 0 && !last->shipped &&
+                    rolltui_str_eq(&last->path, mine.p, mine.n) != 0,
+                "…the listing now ends with 'mine', unshipped, at the path the store names for it");
+        }
+
+        /* ADD: a file from elsewhere, copied in — here, the one just saved, which is a theme. */
+        check(rolltui_theme_store_add(ts, mine.p, mine.n, "", 0, &err) == ROLLTUI_SAVE_EXISTS_ASK && err.n != 0,
+              "add names a file by its own stem, and a taken name is REFUSED, never overwritten");
+        v1 = rolltui_theme_store_version(ts);
+        check(rolltui_theme_store_add(ts, mine.p, mine.n, "theirs", 6, &err) == ROLLTUI_SAVE_SAVED &&
+                  rolltui_theme_store_version(ts) > v1,
+              "…`as` names it instead: SAVED, and the version moves so a chooser rebuilds");
+        rolltui_theme_store_path(ts, "theirs", 6, &theirs);
+        {
+          RolltuiThemePresetReport grep_;
+          RolltuiThemePresetValue* g;
+          memset(&grep_, 0, sizeof grep_);
+          g = rolltui_theme_store_get(ts, "theirs", 6, &grep_);
+          check(g != NULL && rolltui_theme_preset_report_clean(&grep_) != 0, "…and the added preset reads back by its new name");
+          if (g != NULL) rolltui_theme_preset_value_free(g);
+          rolltui_theme_preset_report_release(&grep_);
+        }
+        {
+          static const char kJunkName[] = "/not-a-theme.json";
+          static const char kJunkText[] = "[1, 2]";
+          rolltui_str_set(&junk, dir, dir_len);
+          rolltui_str_append(&junk, kJunkName, strlen(kJunkName));
+          check(rolltui_preset_write_file_atomic(junk.p, junk.n, kJunkText, strlen(kJunkText), NULL) != 0 &&
+                    rolltui_theme_store_add(ts, junk.p, junk.n, "", 0, &err) == ROLLTUI_SAVE_BAD_NAME && err.n != 0,
+                "…and a file that does not parse as a theme is refused before it lands, in words");
+        }
+
+        {
+          RolltuiStr subdir = {0}; /* the presets' own directory: the saved file's path up to its last '/' */
+          size_t k = mine.n;
+          int ok = remove(junk.p) == 0;
+          ok = remove(mine.p) == 0 && ok;
+          ok = remove(theirs.p) == 0 && ok;
+          while (k != 0 && mine.p[k - 1] != '/') --k;
+          rolltui_str_set(&subdir, mine.p, k != 0 ? k - 1 : 0);
+          ok = subdir.n != 0 && rmdir(subdir.p) == 0 && ok;
+          check(ok, "…each file was where the store said it would be, and the presets' directory held only those two");
+          rolltui_str_free(&subdir);
+        }
+        rolltui_str_free(&err);
+        rolltui_str_free(&mine);
+        rolltui_str_free(&theirs);
+        rolltui_str_free(&junk);
+      }
+
       rolltui_theme_store_free(ts);
       rolltui_preset_list_release(&list);
       rolltui_str_list_release(&shipped);
@@ -657,6 +762,15 @@ int main(void) {
       rolltui_layout_store_list(ls, &list);
       check(list.n == shipped.n && list.n != 0 && rolltui_str_eq(&list.v[0].name, "default", 7) != 0,
             "…and it lists the shipped layouts, 'default' first");
+      {
+        RolltuiLayout* copy = rolltui_layout_store_copy_working(ls);
+        size_t cn = 0, wn = 0;
+        const char* cname = copy != NULL ? rolltui_layout_name(copy, &cn) : NULL;
+        const char* wname = w != NULL ? rolltui_layout_name(w, &wn) : NULL;
+        check(copy != NULL && copy != w && cn == wn && (cn == 0 || memcmp(cname, wname, cn) == 0),
+              "…and a COPY of its working layout is the caller's own, naming the same screen, freed with `rolltui_layout_free`");
+        rolltui_layout_free(copy);
+      }
       rolltui_preset_list_release(&list);
       rolltui_str_list_release(&shipped);
       rolltui_layout_store_free(ls);
@@ -682,6 +796,15 @@ int main(void) {
       check(bs != NULL && w != NULL && rolltui_bindings_preset_report_clean(&rep) != 0 &&
                 rolltui_str_eq(&wj, dj.p, dj.n) != 0,
             "a Bindings store opens from C, and its working copy matches the library's own default table");
+      {
+        RolltuiBindings* copy = rolltui_bindings_store_copy_working(bs);
+        RolltuiStr cj = {0};
+        if (copy != NULL) rolltui_bindings_dump_json(copy, "x", 1, &cj);
+        check(copy != NULL && copy != w && rolltui_str_eq(&cj, wj.p, wj.n) != 0,
+              "…and a COPY of its working table is the caller's own, chord for chord, freed with `rolltui_bindings_free`");
+        rolltui_str_free(&cj);
+        rolltui_bindings_free(copy);
+      }
       rolltui_str_free(&wj);
       rolltui_str_free(&dj);
       rolltui_bindings_store_free(bs);

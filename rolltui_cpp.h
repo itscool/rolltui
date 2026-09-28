@@ -405,6 +405,11 @@ class RolltuiStrList : public RolltuiStrListRaw {
   bool empty() const { return n == 0; }
   const RolltuiStr& operator[](size_t i) const { return v[i]; }
 };
+// FREE, so a range-for also reaches a list held as a NESTED FIELD, whose declared type is the Raw struct whatever the enclosing
+// variable is: `for (const RolltuiStr& n : rep.notes)` over `RolltuiSettingsReport::notes`. A list held directly still uses the
+// members above, which a range-for prefers.
+inline const RolltuiStr* begin(const RolltuiStrListRaw& l) { return l.v; }
+inline const RolltuiStr* end(const RolltuiStrListRaw& l) { return l.v + l.n; }
 
 class RolltuiPresetList : public RolltuiPresetListRaw {
  public:

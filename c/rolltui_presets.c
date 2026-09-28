@@ -36,7 +36,7 @@ static const char kModifiedSuffix[] = " (modified)";
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/rolltui.h"
-#include "rolltui/rolltui_studio.h" /* the CREATE-AND-EDIT declarations, checked against their definitions below */
+#include "rolltui/rolltui_studio.h" /* the in-place EDIT declarations, checked against their definitions below */
 #include "testkit/testctl.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
@@ -1745,6 +1745,9 @@ const RolltuiThemePresetValue* rolltui_theme_store_working(const RolltuiThemeSto
   pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
   return (const RolltuiThemePresetValue*)v;
 }
+RolltuiThemePresetValue* rolltui_theme_store_copy_working(const RolltuiThemeStore* s) {
+  return s ? (RolltuiThemePresetValue*)rolltui_preset_store_working((const RolltuiPresetStore*)s) : NULL;
+}
 int rolltui_theme_store_modified(const RolltuiThemeStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
 void rolltui_theme_store_label(const RolltuiThemeStore* s, RolltuiStr* out) {
   rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
@@ -1802,7 +1805,7 @@ const RolltuiThemePresetValue* rolltui_theme_shipped(RolltuiContext* c, const ch
   return (const RolltuiThemePresetValue*)rolltui_preset_shipped(rolltui_preset_domain_theme(c), name, len);
 }
 
-/* ---- the theme store: CREATE-AND-EDIT (rolltui_studio.h) ----------------------------------
+/* ---- the theme store: SAVE and ADD (rolltui.h), in-place EDIT (rolltui_studio.h) ---------
  * A trampoline per store: the concrete `fn` the studio wrote is not the generic `void (*)(void*, void*)` shape the engine's own
  * `_edit` takes, so this closes over it in a stack-local struct and hands the engine a fixed shim that restores the type before
  * calling it — the standard way a typed callback crosses a boundary that is, underneath, still one generic function. */
@@ -2060,6 +2063,9 @@ const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s) {
   pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
   return (const RolltuiLayout*)v;
 }
+RolltuiLayout* rolltui_layout_store_copy_working(const RolltuiLayoutStore* s) {
+  return s ? (RolltuiLayout*)rolltui_preset_store_working((const RolltuiPresetStore*)s) : NULL;
+}
 int rolltui_layout_store_modified(const RolltuiLayoutStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
 void rolltui_layout_store_label(const RolltuiLayoutStore* s, RolltuiStr* out) {
   rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
@@ -2095,7 +2101,7 @@ const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name,
   return (const RolltuiLayout*)rolltui_preset_shipped(rolltui_preset_domain_layout(c), name, len);
 }
 
-/* ---- the layout store: CREATE-AND-EDIT (rolltui_studio.h) --------------------------------- */
+/* ---- the layout store: SAVE and ADD (rolltui.h), in-place EDIT (rolltui_studio.h) -------- */
 typedef struct { RolltuiLayoutEditFn fn; void* ctx; } LayoutEditTrampoline;
 static void layout_edit_trampoline(void* value, void* ctx) {
   const LayoutEditTrampoline* t = (const LayoutEditTrampoline*)ctx;
@@ -2350,6 +2356,9 @@ const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore
   pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
   return (const RolltuiBindings*)v;
 }
+RolltuiBindings* rolltui_bindings_store_copy_working(const RolltuiBindingsStore* s) {
+  return s ? (RolltuiBindings*)rolltui_preset_store_working((const RolltuiPresetStore*)s) : NULL;
+}
 int rolltui_bindings_store_modified(const RolltuiBindingsStore* s) { return rolltui_preset_store_modified((const RolltuiPresetStore*)s); }
 void rolltui_bindings_store_label(const RolltuiBindingsStore* s, RolltuiStr* out) {
   rolltui_preset_store_label((const RolltuiPresetStore*)s, out);
@@ -2385,7 +2394,7 @@ const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* n
   return (const RolltuiBindings*)rolltui_preset_shipped(rolltui_preset_domain_bindings(c), name, len);
 }
 
-/* ---- the bindings store: CREATE-AND-EDIT (rolltui_studio.h) ------------------------------- */
+/* ---- the bindings store: SAVE and ADD (rolltui.h), in-place EDIT (rolltui_studio.h) ------ */
 typedef struct { RolltuiBindingsEditFn fn; void* ctx; } BindingsEditTrampoline;
 static void bindings_edit_trampoline(void* value, void* ctx) {
   const BindingsEditTrampoline* t = (const BindingsEditTrampoline*)ctx;
@@ -2547,13 +2556,14 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
 
 /* ---- the working copy's label ------------------------------------------------------------ */
 void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
-  size_t len = 0;
-  const char* origin;
   if (!out) return;
   rolltui_str_clear(out); /* REPLACES; the buffer is kept for the next frame */
-  origin = rolltui_preset_store_origin(s, &len);
-  rolltui_str_append(out, origin, len);
-  if (rolltui_preset_store_modified(s)) rolltui_str_append(out, kModifiedSuffix, ROLLTUI_MODIFIED_SUFFIX_LEN);
+  /* ONE LOCK over both reads, because a frame calls this on the thread that renders while another may be loading: `origin` is a
+   * buffer a load rewrites, and reading it unlocked is reading memory another thread may be reallocating. */
+  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_str_append(out, s->origin.p ? s->origin.p : "", s->origin.len);
+  if (s->modified) rolltui_str_append(out, kModifiedSuffix, ROLLTUI_MODIFIED_SUFFIX_LEN);
+  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
 }
 
 /* ============================================================================================

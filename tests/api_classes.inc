@@ -1102,8 +1102,8 @@ ROLLTUI_API(rolltui_preset_store_modified, INTERNAL)  /* each concrete store has
 ROLLTUI_API(rolltui_preset_store_new, INTERNAL)  /* each concrete store has its own `_new` now */
 ROLLTUI_API(rolltui_preset_store_origin, INTERNAL)  /* each concrete store has its own `_origin` now */
 ROLLTUI_API(rolltui_preset_store_preset_path, INTERNAL)  /* merged into each concrete store's own `_path` now */
-ROLLTUI_API(rolltui_preset_store_save_as, INTERNAL)  /* each concrete store has its own `_save_as`, in `rolltui_studio.h` */
-ROLLTUI_API(rolltui_preset_store_add, INTERNAL)  /* each concrete store has its own `_add`, in `rolltui_studio.h` */
+ROLLTUI_API(rolltui_preset_store_save_as, INTERNAL)  /* each concrete store has its own `_save_as` now */
+ROLLTUI_API(rolltui_preset_store_add, INTERNAL)  /* each concrete store has its own `_add` now */
 ROLLTUI_API(rolltui_preset_store_set_working, INTERNAL)
 ROLLTUI_API(rolltui_preset_store_start, INTERNAL)  /* each concrete store has its own `_start` now */
 ROLLTUI_API(rolltui_preset_store_value_free, INTERNAL)  /* `_working` is a BORROW on each concrete store now; `_get`'s own OWNED return frees through its domain's own `_free` */
@@ -1116,12 +1116,15 @@ ROLLTUI_API(rolltui_preset_write_file_atomic, PUBLIC)
 
 /* ---- rolltui.h — the theme/layout/bindings stores' USE surface; default PUBLIC ------------
  * The three concrete types that replaced the generic engine above: create one, read what's
- * loaded, switch to a different existing preset by name. The whole surface an ORDINARY host
- * needs (dirktui, paint, roll) — authoring a preset's content is `rolltui_studio.h`'s, below. */
+ * loaded, switch to a different existing preset by name, save the working copy under a name, add
+ * a file someone sent. The whole surface a host needs — roll reaches `_save_as` and `_add`
+ * (`theme save`/`theme add`, `bindings save`, a settings-menu save-as) — while editing a
+ * preset's content in place is `rolltui_studio.h`'s, below. */
 ROLLTUI_API(rolltui_theme_store_new, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_free, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_start, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_working, PUBLIC)
+ROLLTUI_API(rolltui_theme_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_modified, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_label, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_version, PUBLIC)
@@ -1129,6 +1132,8 @@ ROLLTUI_API(rolltui_theme_store_origin, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_list, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_get, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_load, PUBLIC)
+ROLLTUI_API(rolltui_theme_store_save_as, PUBLIC)
+ROLLTUI_API(rolltui_theme_store_add, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_set_mode, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_set_depth, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_path, PUBLIC)
@@ -1139,6 +1144,7 @@ ROLLTUI_API(rolltui_layout_store_new, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_free, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_start, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_working, PUBLIC)
+ROLLTUI_API(rolltui_layout_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_modified, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_label, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_version, PUBLIC)
@@ -1146,6 +1152,8 @@ ROLLTUI_API(rolltui_layout_store_origin, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_list, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_get, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_load, PUBLIC)
+ROLLTUI_API(rolltui_layout_store_save_as, PUBLIC)
+ROLLTUI_API(rolltui_layout_store_add, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_path, PUBLIC)
 ROLLTUI_API(rolltui_layout_is_shipped, PUBLIC)
 ROLLTUI_API(rolltui_layout_shipped_names, PUBLIC)
@@ -1154,6 +1162,7 @@ ROLLTUI_API(rolltui_bindings_store_new, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_free, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_start, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_working, PUBLIC)
+ROLLTUI_API(rolltui_bindings_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_modified, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_label, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_version, PUBLIC)
@@ -1161,27 +1170,23 @@ ROLLTUI_API(rolltui_bindings_store_origin, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_list, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_get, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_load, PUBLIC)
+ROLLTUI_API(rolltui_bindings_store_save_as, PUBLIC)
+ROLLTUI_API(rolltui_bindings_store_add, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_path, PUBLIC)
 ROLLTUI_API(rolltui_bindings_is_shipped, PUBLIC)
 ROLLTUI_API(rolltui_bindings_shipped_names, PUBLIC)
 ROLLTUI_API(rolltui_bindings_shipped, PUBLIC)
 
-/* ---- rolltui_studio.h — the stores' CREATE-AND-EDIT surface; default PUBLIC ---------------
+/* ---- rolltui_studio.h — the stores' in-place EDIT surface; default PUBLIC -----------------
  * PUBLIC here means public to the header, not to every host: only rolltui-studio and its three
  * editors may include `rolltui_studio.h` at all (enforced by `public_header_test` section 3b,
  * the same mechanism as an internal `c/` header's opt-in list), so nothing here is reached by
- * dirktui, paint or roll — only studio ever authors a preset's content. */
+ * dirktui, paint or roll — only studio ever edits a preset's content in place. */
 ROLLTUI_API(rolltui_theme_store_edit, PUBLIC)
-ROLLTUI_API(rolltui_theme_store_save_as, PUBLIC)
-ROLLTUI_API(rolltui_theme_store_add, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_set_working, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_edit, PUBLIC)
-ROLLTUI_API(rolltui_layout_store_save_as, PUBLIC)
-ROLLTUI_API(rolltui_layout_store_add, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_set_working, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_edit, PUBLIC)
-ROLLTUI_API(rolltui_bindings_store_save_as, PUBLIC)
-ROLLTUI_API(rolltui_bindings_store_add, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_set_working, PUBLIC)
 
 /* ---- rolltui_settings.c — the keys a person changes; default PUBLIC ------------------------
