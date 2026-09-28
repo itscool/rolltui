@@ -53,9 +53,6 @@ add_compile_options(
   -Werror=unused-value
   -Werror=delete-non-virtual-dtor
 )
-if(NOT TARGET testkit)
-  add_subdirectory(testkit)
-endif()
 
 # THE INCLUDE ROOT — what a consumer's `#include "rolltui/rolltui.h"` resolves against — is the
 # directory THIS repository's `rolltui/` prefix lives one level under: roll's own root, when
@@ -65,8 +62,26 @@ endif()
 # self-referential `rolltui` symlink at this root is what supplies the prefix instead).
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ROLLTUI_INCLUDE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+  set(_rolltui_top_level ON)
 else()
   set(ROLLTUI_INCLUDE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+  set(_rolltui_top_level OFF)
+endif()
+
+# THIS REPOSITORY'S SUITE TESTS THIS REPOSITORY. It is built and registered when this is the
+# top-level project. A host that vendors it gets the library and its tools, and proves its own
+# USE of them with its own suite: rolltui's behaviour is rolltui's to test, and is never re-run
+# inside a host's ctest. Vendored, every test target still exists (so the calls that configure
+# one still resolve) but is left out of the default build and never registered.
+option(ROLLTUI_BUILD_TESTS "Build and register rolltui's own test suite" ${_rolltui_top_level})
+if(ROLLTUI_BUILD_TESTS)
+  set(ROLLTUI_TEST_EXCLUDE "")
+else()
+  set(ROLLTUI_TEST_EXCLUDE EXCLUDE_FROM_ALL)
+endif()
+if(NOT TARGET testkit)
+  set(TESTKIT_BUILD_TESTS ${ROLLTUI_BUILD_TESTS})
+  add_subdirectory(testkit)
 endif()
 
 # rolltui — a small terminal-UI library of our own.
@@ -303,7 +318,7 @@ set(ROLLTUI_FIXTURE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 # with the control points compiled in. Only a suite that flips controls asks for it; everything
 # else tests the build that ships.
 function(add_rolltui_test name source)
-  add_executable(${name} ${source})
+  add_executable(${name} ${ROLLTUI_TEST_EXCLUDE} ${source})
   # `testkit` is the shared test module at the repository root — a LEAF that includes nothing of
   # roll's and nothing of rolltui's, so linking it here does not make the library depend on the
   # program that consumes it.
@@ -322,8 +337,22 @@ function(add_rolltui_test name source)
     ROLLTUI_LAYOUTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets/layouts"
     ROLLTUI_MENUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets/menus"
     ROLLTUI_BINDINGS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets/bindings")
-  add_test(NAME ${name} COMMAND ${name})
+  if(ROLLTUI_BUILD_TESTS)
+    add_test(NAME ${name} COMMAND ${name})
+  endif()
 endfunction()
+
+# The Unicode tables' generator (tools/gen_unicode_tables.cpp -> unicode_tables.h + .c, from the
+# pinned files tools/fetch_ucd.sh puts in ucd/), and the check that the checked-in tables are
+# exactly what it produces from the checked-in ucd/ files. Regenerating is a deliberate act, from
+# this repository's root:
+#   build/rolltui-gen-unicode-tables rolltui/ucd --out rolltui
+add_executable(rolltui-gen-unicode-tables ${ROLLTUI_TEST_EXCLUDE} tools/gen_unicode_tables.cpp)
+target_compile_options(rolltui-gen-unicode-tables PRIVATE -Wall -Wextra)
+if(ROLLTUI_BUILD_TESTS)
+  add_test(NAME rolltui-unicode-tables-current
+           COMMAND rolltui-gen-unicode-tables ${CMAKE_CURRENT_SOURCE_DIR}/ucd --check ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
 
 # Milestone 2: the Unicode conformance suites, in full, and the width table.
 # THE BOUNDARY, AS A TEST RATHER THAN A BUILD-CONFIG PROMISE. "rolltui builds and passes with
@@ -413,9 +442,6 @@ set(ROLLTUI_INTERNAL_OPT_IN
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
   keys_editor_test.cpp theme_editor_test.cpp menu_editor_test.cpp designable_test.cpp
-  # the frame-allocation bench. It builds a bare frame to measure that frame's own
-  # allocations; the swap would measure reuse instead. An instrument is not a consumer.
-  frame_allocs.cpp
   # THE NEGATIVE CONTROLS. A control asserts a guarantee at the place the library makes it, and
   # some of those places are internal by design — `rolltui_sgr` and `rolltui_color_downgrade` are
   # the colour engine's, `rolltui_scroll_thumb` and `rolltui_check_input` are the widgets' and the
@@ -425,27 +451,6 @@ set(ROLLTUI_INTERNAL_OPT_IN
   controls_test.cpp)
 list(JOIN ROLLTUI_INTERNAL_OPT_IN "," ROLLTUI_INTERNAL_OPT_IN_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_OPT_IN="${ROLLTUI_INTERNAL_OPT_IN_JOINED}")
-
-# THE INSTRUMENT IS THIS LIST, NOT THE ONE ABOVE: the programs that build against
-# `rolltui/rolltui.h` ALONE. Moving a function INTERNAL costs a suite an opt-in, so the opt-in
-# list only ever grows; if nearly everything ended up on it, the exact-zero bypass check would
-# stop saying anything. What keeps it meaningful is the set that stays OUT, and these are all
-# CONSUMER-SHAPED. What one of them reaches is PUBLIC for that reason, never because a test
-# reaches it.
-#   - `c_consumer_test.c` is MANDATORY and can never be moved: it is the pure-C proof that the
-#     public API alone builds a screen, draws a frame and drives a preset store.
-#   - the whole-host suites run the real binaries; the meta-tests scan sources rather than call
-#     the library; roll's own tests are a HOST's, and roll builds from the one header.
-# `public_header_test` asserts this set is non-empty, contains the C consumer and at least one
-# whole-host suite, and that no function it reaches is INTERNAL.
-set(ROLLTUI_PUBLIC_ONLY_TESTS
-  c_consumer_test.c dirktui_test.cpp paint_art_test.cpp
-  authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
-  keys_kind_test.cpp picker_kind_test.cpp files_test.cpp parity_test.cpp
-  product_flags_test.cpp
-  public_header_test.cpp ownership_test.cpp)
-list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
-target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
 
 # THE RELEASE POINT, as an assertion — after shutdown() the library holds
 # NOTHING, asserted as a number in both configurations, with a control that proves the gauge
@@ -483,9 +488,13 @@ add_rolltui_test(rolltui-str-hpp-test tests/str_hpp_test.cpp)
 add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
 add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
-set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+endif()
 add_rolltui_test(rolltui-run-test tests/run_test.cpp)
-set_tests_properties(rolltui-run-test PROPERTIES TIMEOUT 60)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-run-test PROPERTIES TIMEOUT 60)
+endif()
 add_rolltui_test(rolltui-termfacts-test tests/termfacts_test.cpp)
 add_rolltui_test(rolltui-mermaid-test tests/mermaid_test.cpp)
 target_compile_definitions(rolltui-mermaid-test PRIVATE ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
@@ -496,7 +505,9 @@ target_compile_definitions(rolltui-mermaid-test PRIVATE ROLLTUI_FIXTURE_DIR="${C
 # file loads clean under kitty, and the protocol is negotiated on a real pty pair by a
 # forked terminal that answers — or does not.
 add_rolltui_test(rolltui-deliverability-test tests/deliverability_test.cpp)
-set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
+endif()
 
 # Milestone 8: placement (the resolve table + tiling properties), the split tree, the
 # layout loader and the four built-ins, border joining, the stack's focus routing.
@@ -556,7 +567,7 @@ add_executable(rolltui-studio tools/studio.cpp tools/theme_editor.cpp tools/layo
 # The SELF-TEST build: the same source plus the script vocabulary and the headless frame, so a
 # golden has a driver and the shipped studio has none. `--check` and `--generate` stay in BOTH:
 # they run the theme analyser and the generator, which the theme editor also offers.
-add_executable(rolltui-studio-selftest tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp tools/menu_editor.cpp)
+add_executable(rolltui-studio-selftest ${ROLLTUI_TEST_EXCLUDE} tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp tools/menu_editor.cpp)
 target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_link_libraries(rolltui-studio PRIVATE rolltui)
 target_link_libraries(rolltui-studio-selftest PRIVATE rolltui)
@@ -578,7 +589,7 @@ find_package(ZLIB REQUIRED)
 target_link_libraries(rolltui-paint PRIVATE rolltui ZLIB::ZLIB)
 
 # The SELF-TEST build: the same source plus its scripted strokes and headless frame.
-add_executable(rolltui-paint-selftest examples/paint.cpp)
+add_executable(rolltui-paint-selftest ${ROLLTUI_TEST_EXCLUDE} examples/paint.cpp)
 target_link_libraries(rolltui-paint-selftest PRIVATE rolltui ZLIB::ZLIB)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
@@ -624,7 +635,7 @@ target_compile_definitions(dirktui PRIVATE DIRKTUI_VERSION="${DIRKTUI_VERSION}")
 # The SELF-TEST build: the same source plus the script vocabulary, so a golden frame has a driver
 # and the shipped binary has none. Additive rather than compiled out, so the app code the product
 # runs is the code the tests ran.
-add_executable(dirktui-selftest examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
+add_executable(dirktui-selftest ${ROLLTUI_TEST_EXCLUDE} examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
 target_link_libraries(dirktui-selftest PRIVATE rolltui)
 target_compile_definitions(dirktui-selftest PRIVATE ROLLTUI_SELFTEST=1 DIRKTUI_VERSION="${DIRKTUI_VERSION}")
 target_compile_options(dirktui-selftest PRIVATE -Wall -Wextra)
@@ -724,18 +735,24 @@ target_compile_definitions(rolltui-live-terminal-test PRIVATE
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
   DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
 add_dependencies(rolltui-live-terminal-test rolltui-studio rolltui-paint dirktui)
-set_tests_properties(rolltui-live-terminal-test PROPERTIES TIMEOUT 90)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-live-terminal-test PROPERTIES TIMEOUT 90)
+endif()
 
 # THE WATCHING, IN A PROGRAM'S OWN LOOP: the real dirktui on a pty, files changing under it while it sits idle.
 add_rolltui_test(rolltui-dirktui-watch-test tests/dirktui_watch_test.cpp)
 target_compile_definitions(rolltui-dirktui-watch-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
 add_dependencies(rolltui-dirktui-watch-test dirktui)
-set_tests_properties(rolltui-dirktui-watch-test PROPERTIES TIMEOUT 90)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-dirktui-watch-test PROPERTIES TIMEOUT 90)
+endif()
 add_rolltui_test(rolltui-dirktui-theme-test tests/dirktui_theme_test.cpp)
 target_compile_definitions(rolltui-dirktui-theme-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
                            ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
 add_dependencies(rolltui-dirktui-theme-test dirktui)
-set_tests_properties(rolltui-dirktui-theme-test PROPERTIES TIMEOUT 180)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-dirktui-theme-test PROPERTIES TIMEOUT 180)
+endif()
 
 add_rolltui_test(rolltui-dirktui-test tests/dirktui_test.cpp)
 target_compile_definitions(rolltui-dirktui-test PRIVATE
@@ -789,9 +806,11 @@ add_dependencies(rolltui-from-nothing-test rolltui-studio rolltui-studio-selftes
 # conversions, so a missing C-callable entry point is silently supplied by a method. CMake
 # already infers C from the extension; `LANGUAGE C` says it rather than relying on the
 # inference, and the `#error` at the top of the file is the second, independent guard.
-add_executable(rolltui-c-consumer-test tests/c_consumer_test.c)
+add_executable(rolltui-c-consumer-test ${ROLLTUI_TEST_EXCLUDE} tests/c_consumer_test.c)
 set_source_files_properties(tests/c_consumer_test.c PROPERTIES LANGUAGE C)
 set_target_properties(rolltui-c-consumer-test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_link_libraries(rolltui-c-consumer-test PRIVATE rolltui testkit)
 target_compile_options(rolltui-c-consumer-test PRIVATE -Wall -Wextra -Wpedantic)
-add_test(NAME rolltui-c-consumer-test COMMAND rolltui-c-consumer-test)
+if(ROLLTUI_BUILD_TESTS)
+  add_test(NAME rolltui-c-consumer-test COMMAND rolltui-c-consumer-test)
+endif()

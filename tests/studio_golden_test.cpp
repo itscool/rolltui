@@ -1292,7 +1292,7 @@ int main(int argc, char** argv) {
     // ---- THE RENAME IS FINISHED: NO SOURCE SAYS `playground` AT ALL -----------------
     // One grep answers whether a rename actually happened or whether it was done in the
     // places a reader would look and left in the places they would not. Every source either
-    // binary is built from is scanned — the library, its tools, roll's own — plus the
+    // binary is built from is scanned — the library and its tools — plus the
     // shipped preset FILES, which are compiled into the binary as bytes and are exactly
     // where an action name would survive unnoticed (menus/main.json named two).
     //
@@ -1310,22 +1310,9 @@ int main(int argc, char** argv) {
     // because nothing was ever looked at.
     {
       namespace fs = std::filesystem;
-      const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
-      // THIS SCAN WALKS ONE LEVEL ABOVE THIS CHECKOUT — the whole ecosystem, roll's own source
-      // included, when this repository is roll's rolltui/ submodule (root is then roll's own
-      // root, which is exactly what "no source anywhere says `playground`" needs to mean).
-      // Standing alone, that same directory is whatever happens to contain this checkout on
-      // whatever disk it is cloned to — whichever scratch or home directory a person put it in
-      // — and walking it is neither meaningful (there is no roll there to check) nor safe (it
-      // is not this repository's to read). Detect a real host by a file only roll has, and
-      // scan nothing above this checkout without one.
-      const bool host_present = std::ifstream(root + "/CLAUDE.md").good();
-      if (!host_present) {
-        check(true, "this checkout has no host above it (no CLAUDE.md) — the ecosystem-wide "
-                    "`playground` sweep needs one to mean anything (and to be safe to walk at "
-                    "all); it runs where this repository is mounted inside one (roll, at its "
-                    "own rolltui/)");
-      } else {
+      // THIS LIBRARY'S OWN TREE, and nothing above it: a checkout vendored inside a host tests
+      // itself here, and the host's own sources are the host's suite's business.
+      const std::string root = std::string(ROLLTUI_SOURCE_DIR);
       std::vector<std::string> scanned, hits;
       int sentinel = 0;  // the arming word: `rolltui` appears in every source here
       for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
@@ -1335,12 +1322,11 @@ int main(int argc, char** argv) {
         // `.claude/worktrees/` — carries its own `.git` entry and is not a source these binaries
         // are built from; its copy of THIS file names the word on purpose. Skip the subtree.
         if (e.is_directory() && fs::exists(e.path() / ".git")) { it.disable_recursion_pending(); continue; }
-        if (rel.rfind("build", 0) == 0 || rel.rfind(".git", 0) == 0 || rel.rfind("plan/", 0) == 0 ||
-            rel.rfind("journal/", 0) == 0 || rel.rfind("artifacts/", 0) == 0 || rel.rfind("rolltui/tests/", 0) == 0 ||
-            rel.rfind("tests/", 0) == 0 || rel.rfind("rolltui/third_party/", 0) == 0 || rel.rfind("rolltui/ucd/", 0) == 0)
+        if (rel.rfind("build", 0) == 0 || rel.rfind(".git", 0) == 0 || rel.rfind("tests/", 0) == 0 ||
+            rel.rfind("third_party/", 0) == 0 || rel.rfind("ucd/", 0) == 0)
           continue;
         const std::string ext = e.path().extension().string();
-        const bool preset = rel.rfind("rolltui/presets/", 0) == 0 && ext == ".json";
+        const bool preset = rel.rfind("presets/", 0) == 0 && ext == ".json";
         if (!preset && ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".c" && e.path().filename() != "CMakeLists.txt")
           continue;
         scanned.push_back(rel);
@@ -1360,7 +1346,6 @@ int main(int argc, char** argv) {
       check(sentinel > 500, "the scanner can see: the same pass matched `rolltui` on " + std::to_string(sentinel) + " lines");
       check(hits.empty(), "no source says `playground` anywhere — the rename is finished and nothing keeps a table of it" +
                               (hits.empty() ? "" : ": " + hits.front()));
-      }
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +

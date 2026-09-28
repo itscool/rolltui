@@ -25,7 +25,11 @@ target_compile_definitions(testkit_ctl PUBLIC TESTKIT_CONTROL=1)
 # inside a TESTKIT_TEST body, so a broken self-registration makes this suite run ZERO assertions
 # and the zero-assertion guard fails it. The two mechanisms catch each other's absence, which is
 # what lets both be trusted without a hand-run control.
-add_executable(testkit-test testkit_test.cpp)
-target_link_libraries(testkit-test PRIVATE testkit)
-target_compile_options(testkit-test PRIVATE -Wall -Wextra)
-add_test(NAME testkit-test COMMAND testkit-test)
+# A project that carries this module for its own suites and does not test the module itself sets
+# TESTKIT_BUILD_TESTS OFF first; unset, the suite is built and registered.
+if(NOT DEFINED TESTKIT_BUILD_TESTS OR TESTKIT_BUILD_TESTS)
+  add_executable(testkit-test testkit_test.cpp)
+  target_link_libraries(testkit-test PRIVATE testkit)
+  target_compile_options(testkit-test PRIVATE -Wall -Wextra)
+  add_test(NAME testkit-test COMMAND testkit-test)
+endif()

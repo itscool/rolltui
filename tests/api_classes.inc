@@ -3,8 +3,14 @@
  *
  * This is the library's intentional public API design as data a test enforces: every
  * function declared in a public header has ONE class, with the reason written where it is not the
- * module's default. The census that drives it is `public_header_test`'s section 6, and the classes
- * are what `rolltui.h` is written from — never a prediction of it.
+ * module's default. The classes are what `rolltui.h` is written from — never a prediction of it —
+ * and `public_header_test`'s section 9 reads them (every PUBLIC row has a reader).
+ *
+ * NOT ENFORCED TODAY: that every declared function HAS a row. The census that checked it also
+ * measured reach by walking a host's tree, so it only ran inside one; it is retired, because this
+ * repository's suite tests this repository alone. The modules added since rolltui stood alone —
+ * preview, mermaid, syntax, regex, termfacts and their neighbours — have no rows yet; classifying
+ * them, and a census that runs on this tree by itself, are backlog.
  *
  * ---- REACH IS THE INPUT, NEVER THE CRITERION ------------------------------------------------
  *
@@ -59,18 +65,6 @@
  * reach answer: of the 26 rows it once held, 8 were reached by `studio.cpp` — a host — while the
  * class said roll never reached them. The genuine other category is the EDITORS: models with no
  * terminal in them, mounted inside a host.
- *
- * `ROLLTUI_PUBLIC_ONLY_TESTS` names the programs that build against the definition ALONE, and it
- * is asserted non-empty with the pure-C consumer required: the instrument is not the opt-in list,
- * it is the suites that stay OUT of it.
- *
- * Reach is measured, not remembered: roll = src/ + include/ + tools/bench/ (its own bench builds
- * frames as a host does); the one remaining tool is `rolltui-paint`; the library = the .c files
- * under rolltui/c/ beyond the function's own definition. **Reach is the INPUT; a stated reason is
- * the DECISION** — that is the whole lesson of the three revisions above. The rules the test
- * enforces: a function roll or paint reaches must be PUBLIC; one a public-only suite reaches must
- * not be INTERNAL; every declared function has a row, and every row is declared; and a row whose
- * only justification would be a test's reach FAILS.
  */
 
 /* ---- rolltui_geom.h — RolltuiRect, the vocabulary every layout speaks; default PUBLIC ---- */
