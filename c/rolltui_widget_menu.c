@@ -2357,7 +2357,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       /* THE SWATCH OF A COLOUR THAT IS THE ROW'S OWN TEXT — a colour input's value, or an option of a choice whose
        * options are colours — sits just after it. (A choice's own answer takes its swatch in the right column.) */
       if (!m->palette && it->kind != ROLLTUI_MENU_CHOICE) {
-        RolltuiStyleColorRaw sc;
+        RolltuiStyleColorRaw sc = {0};
         const RolltuiMenuItem* lvl = rolltui_menu_level(m);
         int show = 0;
         if (it->kind == ROLLTUI_MENU_INPUT && item_shows_swatch(it)) {

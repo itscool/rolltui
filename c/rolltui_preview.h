@@ -92,7 +92,7 @@ void rolltui_preview_set_info(RolltuiPreview* pv, const char* text, size_t len);
 
 /* THE FACTS A LISTING HOLDS ABOUT AN ENTRY, said one way wherever they are shown. `size_text`: "12 B", "1.2K", "34M".
  * `mode_text`: the type then the three rwx triplets, "drwxr-xr-x" ('l' for a link, '-' for anything else), 10 characters and
- * a NUL. `when_text`: local time to the minute, "2026-09-20 19:52", `date_only` for "2026-09-20"; "-" when unknown (<= 0). */
+ * a NUL. `when_text`: local time to the minute, "YYYY-MM-DD HH:MM", `date_only` for "YYYY-MM-DD"; "-" when unknown (<= 0). */
 void rolltui_fileinfo_size_text(long long bytes, char* out, size_t cap);
 void rolltui_fileinfo_mode_text(unsigned int mode, char out[11]);
 void rolltui_fileinfo_when_text(long long secs, int date_only, char* out, size_t cap);

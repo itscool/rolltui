@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 # rolltui, as its own top-level project. This same file is also `add_subdirectory()`d from a
 # parent that has already called project() and set the C++ standard — which is what roll does,
-# mounting this whole repository as a git submodule at its own `rolltui/` path — so the block
+# carrying a vendored copy of this whole repository at its own `rolltui/` path — so the block
 # below only runs the parts a standalone build needs and are otherwise harmless: `project()`
 # nested inside a parent's is a standard CMake shape, and `testkit`, the one thing this library
 # needs that lives outside it (a small negative-control harness shared with whatever else
@@ -11,17 +11,48 @@ cmake_minimum_required(VERSION 3.24)
 #
 # THE SYMLINK named `rolltui`, pointing at `.`, is what makes `#include "rolltui/rolltui.h"` —
 # used throughout this library's own sources, and by every consumer — resolve when this
-# repository IS the include root, the same way it already does for free when roll mounts this
-# repository at a directory it names `rolltui/`: the mount point supplies the prefix a
-# submodule's checkout is asked to have; standing alone, this repository has to supply that
-# prefix for itself, and a self-reference is the smallest way to say "the same directory, one
-# name over."
+# repository IS the include root, the same way it already does for free when roll copies this
+# repository into a directory it names `rolltui/`: that directory's name supplies the prefix;
+# standing alone, this repository has to supply that prefix for itself, and a self-reference is
+# the smallest way to say "the same directory, one name over." A vendored copy therefore leaves
+# the symlink out — its mount point already is the prefix, and a directory that contains itself
+# is a loop for anything that walks the tree.
 if(NOT PROJECT_NAME)
   project(rolltui LANGUAGES C CXX)
   set(CMAKE_CXX_STANDARD 23)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   enable_testing()
 endif()
+
+# DIAGNOSTICS THAT ARE ERRORS — the classes where the compiler is reporting a DEFECT rather than
+# a style opinion, so they stop the build instead of scrolling past. This is the same set roll
+# holds its whole tree to, and it lives HERE, not only in roll, because a consumer's stricter
+# build must never be the first thing to find a defect in this library: two variables read on a
+# path the compiler could not prove wrote them (`resolve_axis`'s `start`, the menu swatch's `sc`)
+# built clean here for weeks and failed the first time roll compiled them. Every flag is clean
+# across the whole tree at the moment it is added; check with a full build before adding one.
+# `-Wunused-function`/`-Wunused-variable` are deliberately absent: the studio and paint compile
+# one source twice, with and without their self-test hooks, so the shipped build legitimately
+# leaves the hooks' helpers unreferenced.
+add_compile_options(
+  -Werror=misleading-indentation
+  -Werror=logical-not-parentheses
+  -Werror=format
+  -Werror=return-type
+  -Werror=uninitialized
+  -Werror=sometimes-uninitialized
+  -Werror=conditional-uninitialized
+  -Werror=parentheses
+  -Werror=dangling
+  -Werror=dangling-gsl
+  -Werror=return-stack-address
+  -Werror=unused-result
+  -Werror=array-bounds
+  -Werror=switch
+  -Werror=implicit-fallthrough
+  -Werror=unused-value
+  -Werror=delete-non-virtual-dtor
+)
 if(NOT TARGET testkit)
   add_subdirectory(testkit)
 endif()

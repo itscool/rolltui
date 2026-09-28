@@ -51,7 +51,7 @@ static int align_v(unsigned char a) { return (int)(a / 3); }
 static void resolve_axis(RolltuiDim pos, RolltuiDim size, int align, const RolltuiOptDim* min,
                          const RolltuiOptDim* max, int clamp, int margin, int extent, int* out_start,
                          int* out_len) {
-  int start, len;
+  int start = 0, len;
   if (align == 0) {
     RolltuiDim sum;
     sum.fraction = pos.fraction + size.fraction;
