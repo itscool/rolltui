@@ -1,0 +1,28 @@
+{comment|/* A ring of light, drawn over what is there. */}
+{keyword|struct} ring_vertex { {type|f32x2} uv; {type|u8x4} vertex_color; };
+{keyword|struct} ring_args { {type|f32} time; {type|render}{punct|::}{type|texture} ramp; };
+
+{keyword|shader}(ring_vertex, {constant|null}, ring_args, {type|render}{punct|::}{type|composite}{punct|.}{constant|lighter}) {
+	{tag|varying} {
+		{type|vec2} v_uv;
+		{type|vec4} v_c;
+	}
+	{tag|vertex_globals} {
+		{type|vec2} {function|sway}({type|float} along, {type|float} t) { {keyword|return} {type|vec2}({function|sin}(t + along * {number|0.004}), {number|0.0}); }
+	}
+	{tag|vertex} {
+		v_uv = uv;
+		v_c = vertex_color;
+		{type|vec2} moved = position + {function|sway}(uv{punct|.}{property|y}, time) * scale;
+		{constant|gl_Position} = {function|mul}({variable|u_viewProj}, {type|vec4}(moved, {number|0.0}, {number|1.0}));
+	}
+	{tag|fragment} {
+		{comment|// the ramp's colour, faded toward the edge}
+		{type|float} edge = {number|1.0} - {function|clamp}({function|abs}(v_uv{punct|.}{property|x} - {number|0.5}) * {number|2.0}, {number|0.0}, {number|1.0});
+		{keyword|for} ({type|int} i = {number|0}; i < {number|3}; i++) {
+			edge = {function|mix}(edge, {function|step}({number|0.5}, v_c{punct|.}{property|a}), {number|0.25});
+		}
+		{keyword|if} (edge < {number|0.001}) { {keyword|discard}; }
+		{constant|gl_FragColor} = {function|texture2D}(ramp, {type|vec2}(edge, {number|0.5})) * v_c{punct|.}{property|rgba};
+	}
+}

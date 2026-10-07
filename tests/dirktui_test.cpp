@@ -870,7 +870,7 @@ int main() {
     write_file(cfg / "rolltui" / "syntax" / "mine.json", R"J({ "name": "Mine", "extensions": ["mine"], "contexts": { "main": [ { "words": ["hello"], "class": "keyword" } ] } })J");
     int lrc = 0;
     const std::string clean = run(env + bin + " languages 2>&1", lrc);
-    check(status_of(lrc) == 0 && has(clean, "shipped: 25 languages") && has(clean, "mine.json  Mine"), "`dirktui languages` lists the shipped languages and the ones of your own that loaded, and exits 0 [" + clean.substr(0, 80) + "]");
+    check(status_of(lrc) == 0 && has(clean, "shipped: 27 languages") && has(clean, "mine.json  Mine"), "`dirktui languages` lists the shipped languages and the ones of your own that loaded, and exits 0 [" + clean.substr(0, 80) + "]");
     write_file(cfg / "rolltui" / "syntax" / "bad.json", R"J({ "name": "Bad", "contexts": { "main": [ { "match": "(oops", "class": "keyword" } ] } })J");
     const std::string dirty = run(env + bin + " languages 2>&1", lrc);
     check(status_of(lrc) == 1 && has(dirty, "bad.json  NOT LOADED: Bad: context main, rule 1") && has(dirty, "not closed") && has(dirty, "mine.json  Mine"),

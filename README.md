@@ -139,7 +139,7 @@ It is on unless `RolltuiPickerOptions.no_syntax` says otherwise (dirktui: Settin
 
 **What ships:** C, C++, C#, Java, JavaScript, TypeScript, Python, Rust, Go, Swift, Lua, Luau, shell (sh, bash, zsh), Windows
 batch, PowerShell, CMake, HTML, CSS, XML, JSON, YAML, INI, TOML, the ignore files (`.gitignore` and its family:
-`.dockerignore`, `.npmignore`, …) and `.gitattributes`. A file is found by its whole name (`CMakeLists.txt`, `.bashrc`), then
+`.dockerignore`, `.npmignore`, …) `.gitattributes`, and mother's own DagOnC (`.jc`) and shader (`.shader`) files. A file is found by its whole name (`CMakeLists.txt`, `.bashrc`), then
 by its longest extension (`.d.ts` before `.ts`), then by its first line (a `#!` shebang, `<?xml`, `<!DOCTYPE html`).
 
 **How it looks is the theme's.** Every kind of text (keyword, type, function, string, escape, number, constant, comment,

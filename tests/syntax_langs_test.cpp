@@ -72,6 +72,8 @@ const Fixture kFixtures[] = {
     {"html", "index.html", "HTML"},
     {"ignore", ".gitignore", "Ignore"},
     {"gitattributes", ".gitattributes", "Git Attributes"},
+    {"dagonc", "grove.jc", "DagOnC"},
+    {"mother-shader", "ring.shader", "Mother Shader"},
 };
 
 std::string slurp(const fs::path& p) {
@@ -156,7 +158,7 @@ int main(int argc, char** argv) {
       check(names.size() == rolltui_syntax_language_count(s), "…with no two of one name");
     }
     for (const char* want : {"C", "C++", "C#", "Java", "JavaScript", "TypeScript", "Python", "Rust", "Go", "Swift", "Lua", "Luau", "Shell", "Batch", "PowerShell", "CMake", "HTML", "CSS", "XML", "JSON",
-                             "YAML", "INI", "TOML", "Ignore", "Git Attributes"})
+                             "YAML", "INI", "TOML", "Ignore", "Git Attributes", "DagOnC", "Mother Shader"})
       check(lang_of(s, want) >= 0 && name_of(s, lang_of(s, want)) == want, std::string("the language `") + want + "` is shipped");
 
     // ---- A FILE IS FOUND BY ITS NAME, ITS EXTENSION OR ITS FIRST LINE ----------------------------------------------------------------------------------------
@@ -171,6 +173,7 @@ int main(int argc, char** argv) {
         {"tsconfig.json", "", "JSON"}, {".babelrc", "", "JSON"}, {"a.jsonc", "", "JSON"}, {"a.yaml", "", "YAML"}, {"a.yml", "", "YAML"}, {"a.ini", "", "INI"}, {".editorconfig", "", "INI"},
         {".gitconfig", "", "INI"}, {".gitmodules", "", "INI"}, {"setup.cfg", "", "INI"}, {".env", "", "INI"}, {"a.toml", "", "TOML"}, {"Cargo.lock", "", "TOML"}, {".gitignore", "", "Ignore"},
         {".dockerignore", "", "Ignore"}, {".npmignore", "", "Ignore"}, {"/x/.eslintignore", "", "Ignore"}, {".gitattributes", "", "Git Attributes"},
+        {"grove.jc", "", "DagOnC"}, {"/x/scripts/a.JC", "", "DagOnC"}, {"ring.shader", "", "Mother Shader"}, {"a.shader.bak", "", ""},
         {"run", "#!/usr/bin/env python3", "Python"}, {"run", "#!/bin/bash", "Shell"}, {"run", "#!/bin/sh", "Shell"}, {"run", "#!/usr/bin/env node", "JavaScript"}, {"run", "#!/usr/bin/lua", "Lua"},
         {"run", "#!/usr/bin/env pwsh", "PowerShell"}, {"run", "--!strict", "Luau"}, {"data", "<?xml version=\"1.0\"?>", "XML"}, {"page", "<!DOCTYPE html>", "HTML"}, {"data", "%YAML 1.2", "YAML"},
         {"README", "", ""}, {"Makefile", "", ""}, {"a.txt", "", ""}, {"a.md", "", ""}, {"noext", "", ""}, {".ts", "", ""}, {"a.", "", ""}, {"", "", ""}, {"run", "#!/usr/bin/perl", ""}, {"a.unknownext", "", ""},
@@ -190,6 +193,7 @@ int main(int argc, char** argv) {
         {"shell", "Shell"}, {"ksh", "Shell"}, {"bat", "Batch"}, {"cmd", "Batch"}, {"batch", "Batch"}, {"dos", "Batch"}, {"powershell", "PowerShell"}, {"ps1", "PowerShell"}, {"pwsh", "PowerShell"},
         {"cmake", "CMake"}, {"html", "HTML"}, {"htm", "HTML"}, {"xml", "XML"}, {"svg", "XML"}, {"json", "JSON"}, {"jsonc", "JSON"}, {"json5", "JSON"}, {"yaml", "YAML"}, {"yml", "YAML"}, {"ini", "INI"},
         {"cfg", "INI"}, {"toml", "TOML"}, {"css", "CSS"}, {"gitignore", "Ignore"}, {"dockerignore", "Ignore"}, {"ignore", "Ignore"}, {"gitattributes", "Git Attributes"},
+        {"dagonc", "DagOnC"}, {"jc", "DagOnC"}, {"shader", "Mother Shader"}, {"mother-shader", "Mother Shader"},
         {"", ""}, {"cobol", ""}, {"text", ""}, {"plain", ""}, {"markdown", ""}, {"diff", ""}, {"mermaid", ""},
     };
     for (const Tag& t : kTags) {
@@ -421,7 +425,7 @@ int main(int argc, char** argv) {
       const std::size_t bad_own = rolltui_syntax_check(nullptr, 0, &said);
       const std::string out = str_of(said);
       check(bad_own == 4, "four of the files in the folder did not load: the bad pattern, the one that is not JSON, the empty one, the huge one [" + std::to_string(bad_own) + "]");
-      check(out.find("shipped: 25 languages") != std::string::npos, "it says how many are shipped: " + out.substr(0, 40));
+      check(out.find("shipped: 27 languages") != std::string::npos, "it says how many are shipped: " + out.substr(0, 40));
       check(out.find("zz-mine.json  Mine\n") != std::string::npos, "…which of the person's own loaded");
       check(out.find("lua.json  Lua  (replaces the shipped one of that name)") != std::string::npos, "…and which replaced a shipped one");
       check(out.find("broken.json  NOT LOADED: Broken: context main, rule 1") != std::string::npos && out.find("not closed") != std::string::npos, "…and for a file that did not, its name, its language, the rule and the reason");

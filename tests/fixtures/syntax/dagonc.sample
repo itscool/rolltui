@@ -1,0 +1,41 @@
+/* A grove: motes drift, and a petal's fall rings the puddle. */
+const f32 kDropVolume = 0.01f;
+enum { kNotes = 48 };
+
+asset_scope app {
+	render::texture ramp;
+}
+
+component mote { f32x2 at; f32x2 v; u8x4 tint; };
+relationship tether { target entity to; f32 pull; };
+event sim splash { f32x2 at; };
+
+struct world { i32 wave; f32 time; i64 points; bool lit; };
+
+mem::allocator bump {
+	context { u8[] bytes; i32 used; }
+	u8[] alloc(i32 size, i32 align) { return context.bytes[0:size]; }
+}
+
+jobs::stepped fill { context { i32 n; } }
+
+system sim void drift(mote *m, entity self, sends splash, const struct world *w) {
+	m->at += m->v * time::delta();
+	if (m->at.y > 120.0f && w->lit != false) {
+		send(splash{ .at = m->at });
+	}
+}
+
+system frame void paint(const mote *m) {
+	scope render::vector.composite(render::composite.lighter) {
+		render::vector.fill_circle(m->at, 3.0f, rgba(0xE8F8FFFFu));
+	}
+}
+
+void on_frame(struct world *w) {
+	const u8[] line = "wave {w->wave} at {w->time:.1}s";
+	render::text.draw(render::text.mono, "{w->points}", {24.0f, 50.0f}, 28.0f, {rgba(0x112233FFu)});
+	events::log.info("{line} and {{braces}} \"quoted\"");
+	spawn { mote{ .at = {0.0f, 0.0f}, .v = {1.0f, 0.5e1f} } };
+	i32 hits = 0x1F;  // a comment
+}

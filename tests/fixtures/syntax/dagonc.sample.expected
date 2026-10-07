@@ -1,0 +1,41 @@
+{comment|/* A grove: motes drift, and a petal's fall rings the puddle. */}
+{keyword|const} {type|f32} {constant|kDropVolume} = {number|0.01f};
+{keyword|enum} { {constant|kNotes} = {number|48} };
+
+{keyword|asset_scope} {type|app} {
+	{type|render}{punct|::}{type|texture} ramp;
+}
+
+{keyword|component} {type|mote} { {type|f32x2} at; {type|f32x2} v; {type|u8x4} tint; };
+{keyword|relationship} {type|tether} { {keyword|target} {type|entity} to; {type|f32} pull; };
+{keyword|event} {attribute|sim} {type|splash} { {type|f32x2} at; };
+
+{keyword|struct} {type|world} { {type|i32} wave; {type|f32} time; {type|i64} points; {type|bool} lit; };
+
+{type|mem}{punct|::}{type|allocator} bump {
+	{keyword|context} { {type|u8}[] bytes; {type|i32} used; }
+	{type|u8}[] {function|alloc}({type|i32} size, {type|i32} align) { {keyword|return} {keyword|context}.bytes[{number|0}:size]; }
+}
+
+{type|jobs}{punct|::}{type|stepped} fill { {keyword|context} { {type|i32} n; } }
+
+{keyword|system} {attribute|sim} {type|void} {function|drift}(mote *m, {type|entity} self, {keyword|sends} splash, {keyword|const} {keyword|struct} {type|world} *w) {
+	m->at += m->v * {type|time}{punct|::}{function|delta}();
+	{keyword|if} (m->at.y > {number|120.0f} && w->lit != {constant|false}) {
+		{function|send}(splash{ .at = m->at });
+	}
+}
+
+{keyword|system} {attribute|frame} {type|void} {function|paint}({keyword|const} mote *m) {
+	{keyword|scope} {type|render}{punct|::}{type|vector}{punct|.}{function|composite}({type|render}{punct|::}{type|composite}{punct|.}{constant|lighter}) {
+		{type|render}{punct|::}{type|vector}{punct|.}{function|fill_circle}(m->at, {number|3.0f}, {function|rgba}({number|0xE8F8FFFFu}));
+	}
+}
+
+{type|void} {function|on_frame}({keyword|struct} {type|world} *w) {
+	{keyword|const} {type|u8}[] line = {string|"wave }{punct|{}{variable|w}{punct|->}{variable|wave}{punct|}}{string| at }{punct|{}{variable|w}{punct|->}{variable|time}{punct|:}{number|.1}{punct|}}{string|s"};
+	{type|render}{punct|::}{type|text}{punct|.}{function|draw}({type|render}{punct|::}{type|text}{punct|.}{constant|mono}, {string|"}{punct|{}{variable|w}{punct|->}{variable|points}{punct|}}{string|"}, {{number|24.0f}, {number|50.0f}}, {number|28.0f}, {{function|rgba}({number|0x112233FFu})});
+	{type|events}{punct|::}{type|log}{punct|.}{function|info}({string|"}{punct|{}{variable|line}{punct|}}{string| and }{escape|{{}{string|braces}{escape|}}}{string| }{escape|\"}{string|quoted}{escape|\"}{string|"});
+	{keyword|spawn} { mote{ .at = {{number|0.0f}, {number|0.0f}}, .v = {{number|1.0f}, {number|0.5e1f}} } };
+	{type|i32} hits = {number|0x1F};  {comment|// a comment}
+}

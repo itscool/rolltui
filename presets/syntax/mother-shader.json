@@ -1,0 +1,21 @@
+{
+  "name": "Mother Shader",
+  "aliases": ["mother-shader", "mother_shader", "shader"],
+  "extensions": ["shader"],
+  "not_after": [".", "->"],
+  "contexts": {
+    "main": [
+      { "region": { "begin": "/\\*", "end": "\\*/", "class": "comment" } },
+      { "region": { "begin": "//", "class": "comment" } },
+      { "match": "\\b(shader)\\s*(?=\\()", "captures": { "1": "keyword" } },
+      { "match": "\\b(varying|vertex|fragment|vertex_globals|fragment_globals)\\b(?=\\s*\\{)", "class": "tag" },
+      { "words": ["if", "else", "for", "while", "do", "return", "break", "continue", "discard", "const", "in", "out", "inout", "uniform", "attribute", "highp", "mediump", "lowp", "precision", "struct"], "class": "keyword" },
+      { "words": ["float", "int", "uint", "bool", "void", "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4", "bvec2", "bvec3", "bvec4",
+                  "mat2", "mat3", "mat4", "sampler2D", "sampler2DArray", "sampler3D", "samplerCube"], "class": "type" },
+      { "match": "\\bgl_[A-Za-z]\\w*", "class": "constant" },
+      { "match": "\\bu_[A-Za-z]\\w*", "class": "variable" },
+      { "match": "(\\.)([xyzwrgbastpq]{1,4})\\b", "captures": { "1": "punct", "2": "property" } },
+      { "include": "lang:DagOnC" }
+    ]
+  }
+}
