@@ -1,0 +1,28 @@
+/* A ring of light, drawn over what is there. */
+struct ring_vertex { f32x2 uv; u8x4 vertex_color; };
+struct ring_args { f32 time; render::texture ramp; };
+
+shader(ring_vertex, null, ring_args, render::composite.lighter) {
+	varying {
+		vec2 v_uv;
+		vec4 v_c;
+	}
+	vertex_globals {
+		vec2 sway(float along, float t) { return vec2(sin(t + along * 0.004), 0.0); }
+	}
+	vertex {
+		v_uv = uv;
+		v_c = vertex_color;
+		vec2 moved = position + sway(uv.y, time) * scale;
+		gl_Position = mul(u_viewProj, vec4(moved, 0.0, 1.0));
+	}
+	fragment {
+		// the ramp's colour, faded toward the edge
+		float edge = 1.0 - clamp(abs(v_uv.x - 0.5) * 2.0, 0.0, 1.0);
+		for (int i = 0; i < 3; i++) {
+			edge = mix(edge, step(0.5, v_c.a), 0.25);
+		}
+		if (edge < 0.001) { discard; }
+		gl_FragColor = texture2D(ramp, vec2(edge, 0.5)) * v_c.rgba;
+	}
+}

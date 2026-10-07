@@ -1,0 +1,43 @@
+{
+  "name": "DagOnC",
+  "aliases": ["dagonc", "jc"],
+  "extensions": ["jc"],
+  "not_after": [".", "->"],
+  "contexts": {
+    "main": [
+      { "match": "\"", "class": "string", "push": "text" },
+      { "match": "\\b(system)\\s+(sim|frame|fixed|init|input)\\b", "captures": { "1": "keyword", "2": "attribute" } },
+      { "match": "\\b(event)\\s+(sim|frame|fixed|init|input)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "attribute", "3": "type" } },
+      { "match": "\\b(clock)\\s+(sim|frame|fixed|init|input)\\b", "captures": { "1": "keyword", "2": "attribute" } },
+      { "match": "\\b(component|relationship|event|asset_scope)\\s+([A-Za-z_]\\w*)", "captures": { "1": "keyword", "2": "type" } },
+      { "match": "\\b(target)\\s+(entity)\\b", "captures": { "1": "keyword", "2": "type" } },
+      { "match": "\\b([A-Za-z_]\\w*)(::)([A-Za-z_]\\w*)(\\.)([A-Za-z_]\\w*)(?=\\s*\\()", "captures": { "1": "type", "2": "punct", "3": "type", "4": "punct", "5": "function" } },
+      { "match": "\\b([A-Za-z_]\\w*)(::)([A-Za-z_]\\w*)(\\.)([A-Za-z_]\\w*)", "captures": { "1": "type", "2": "punct", "3": "type", "4": "punct", "5": "constant" } },
+      { "match": "\\b([A-Za-z_]\\w*)(::)([A-Za-z_]\\w*)(?=\\s*\\()", "captures": { "1": "type", "2": "punct", "3": "function" } },
+      { "match": "\\b([A-Za-z_]\\w*)(::)([A-Za-z_]\\w*)", "captures": { "1": "type", "2": "punct", "3": "type" } },
+      { "words": ["component", "system", "event", "relationship", "asset_scope", "spawn", "scope", "handler", "sends", "alias", "context", "relate", "unrelate", "fn", "fnref"], "class": "keyword" },
+      { "words": ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "inative", "unative", "bool", "job", "entity",
+                  "f32x2", "f32x3", "f32x4", "f64x2", "f64x3", "f64x4", "i32x2", "i32x3", "i32x4", "boolx2", "boolx3", "boolx4",
+                  "u8x2", "u8x3", "u8x4"], "class": "type" },
+      { "words": ["null", "true", "false", "pi"], "class": "constant" },
+      { "match": "\\bk[A-Z]\\w*\\b", "class": "constant" },
+      { "include": "lang:C" }
+    ],
+    "text": { "class": "string", "rules": [
+      { "match": "\\\\.", "class": "escape" },
+      { "match": "\\{\\{|\\}\\}", "class": "escape" },
+      { "match": "\\{", "class": "punct", "push": "part" },
+      { "match": "\"", "class": "string", "pop": true },
+      { "match": "$", "pop": true }
+    ] },
+    "part": [
+      { "match": "\\}", "class": "punct", "pop": true },
+      { "match": "\"|$", "pop": true },
+      { "match": "(:)(\\.\\d+)", "captures": { "1": "punct", "2": "number" } },
+      { "match": "\\b\\d+\\b", "class": "number" },
+      { "match": "\\b([A-Za-z_]\\w*)(::)", "captures": { "1": "type", "2": "punct" } },
+      { "match": "[A-Za-z_]\\w*", "class": "variable" },
+      { "match": "->|\\.|\\[|\\]", "class": "punct" }
+    ]
+  }
+}
