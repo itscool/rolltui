@@ -1482,10 +1482,13 @@ typedef struct TableLayout {
   int x[ROLLTUI_MENU_COLUMNS]; /* each shown column's offset from the row's start */
 } TableLayout;
 
-/* A table's columns in `w` cells. Narrower than they need, the label keeps TABLE_LABEL_MIN cells and the columns go from the right;
- * every row of the level and its head are laid out alike, so their columns line up. */
+/* A table's columns in `w` cells, the last kept for the scroll markers. Narrower than they need, the label keeps TABLE_LABEL_MIN
+ * cells and the columns go from the right; every row of the level and its head are laid out alike, so their columns line up. */
 static void table_layout(const RolltuiMenuItem* lvl, int w, TableLayout* out) {
   int k = lvl->column_count, used = 0, i, x;
+  /* the last cell is the scroll markers' (a list longer than its rows draws its ▲ and ▼ there), kept whether or not it
+   * scrolls, so a right-aligned cell never sits under one and the columns never move as the list grows */
+  w = imax(w - 1, 0);
   for (;;) {
     used = 0;
     for (i = 0; i < k; ++i) used += TABLE_GAP + lvl->columns[i].width;
@@ -1556,8 +1559,9 @@ static int popup_level_box(const RolltuiMenu* m, RolltuiRect* box) {
     const RolltuiStr* l = c->label.n ? &c->label : &c->id;
     int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide);
     if (level->column_count) {
-      int k; /* a table's row: its label and every column */
+      int k; /* a table's row: its label, every column, and the scroll markers' cell */
       for (k = 0; k < level->column_count; ++k) lw += TABLE_GAP + level->columns[k].width;
+      lw += 1;
     } else if (c->shortcut.n) {
       lw += 1 + rolltui_u_display_width(m->u, c->shortcut.p, c->shortcut.n, m->opt.ambiguous_wide);
     }

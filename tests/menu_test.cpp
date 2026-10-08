@@ -1750,15 +1750,15 @@ int main() {
       for (int y = 0; y < 6; ++y) rows.push_back(row(f, y));
       return rows;
     };
-    std::vector<std::string> wide = drawn(40); // the label 40 - (2 + 8) - (2 + 6) = 22 cells
+    std::vector<std::string> wide = drawn(40); // the last cell the scroll markers', the label 39 - (2 + 8) - (2 + 6) = 21
     std::size_t head = 0, release = 0;
     for (std::size_t y = 0; y < wide.size(); ++y) {
       if (wide[y].rfind("build", 0) == 0) head = y;
       if (wide[y].rfind("release", 0) == 0) release = y;
     }
-    check(wide[release].find("ready") == 27 && wide[release].find("2 GB") == 34,
+    check(wide[release].find("ready") == 26 && wide[release].find("2 GB") == 33,
           "a cell sits at its column's right edge, or its left where the column says left [" + wide[release] + "]");
-    check(wide[head].find("status") == 26 && wide[head].find("size") == 34 && wide[head].find("\xE2\x94\x80") == std::string::npos,
+    check(wide[head].find("status") == 25 && wide[head].find("size") == 33 && wide[head].find("\xE2\x94\x80") == std::string::npos,
           "a section with cells is the table's head, aligned as its rows are, with no rule [" + wide[head] + "]");
     bool cut = false, kept = false;
     for (const std::string& r : wide) {
@@ -1768,11 +1768,21 @@ int main() {
       }
     }
     check(cut && kept, "a long label is cut at an ellipsis to column 0's width, a long cell to its own column's");
-    std::vector<std::string> narrow = drawn(24); // 24 - 18 leaves the label 6: the last column goes, and it has 14
+    std::vector<std::string> narrow = drawn(24); // 23 - 18 leaves the label 5: the last column goes, and it has 13
     for (const std::string& r : narrow)
       if (r.rfind("release", 0) == 0)
-        check(r.find("ready") == 19 && r.find("2 GB") == std::string::npos,
+        check(r.find("ready") == 18 && r.find("2 GB") == std::string::npos,
               "narrower than the columns need, the label keeps eight cells and the columns go from the right [" + r + "]");
+    {
+      /* two rows of four: the list scrolls, and its ▼ is in the cell kept for it, beside the last column's cell */
+      rolltui_menu_layout(m, RolltuiRect{0, 0, 40, 2});
+      Frame f(40, 2);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      const std::string last = row(f, 1);
+      check(last.find("2 GB") == 33 && last.size() >= 3 && last.compare(last.size() - 3, 3, "\xE2\x96\xBC") == 0,
+            "a scrolling table's marker is in its own cell, never on a cell's text [" + last + "]");
+    }
     std::vector<std::string> tiny = drawn(12);
     for (const std::string& r : tiny)
       if (r.rfind("release", 0) == 0) check(r.find("ready") == std::string::npos, "…every one of them, at the last");
