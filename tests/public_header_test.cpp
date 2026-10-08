@@ -544,10 +544,13 @@ int main() {
     //
     // HOST_SETTINGS 90 -> 93: each store's `_copy_working`, the owned copy a host rendering on
     // another thread than the one that changes the store holds (roll's UI thread beside its REPL).
+    //
+    // HOST_BIND 95 -> 96: `rolltui_menu_focused`, where a menu's cursor is before any MOVED (a host's help line, mother's build
+    // screen's info panel, 2026-10-07).
     check(rt["VOCAB"] == 36 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 93 &&
-              rt["HOST_BIND"] == 95 && rt["HOST_RUN"] == 108 && rt["HOST_RELEASE"] == 10 &&
+              rt["HOST_BIND"] == 96 && rt["HOST_RUN"] == 108 && rt["HOST_RELEASE"] == 10 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 27,
-          "the roles are the recorded shape — vocab 36, host load 30 / settings 93 / bind 95 / run 108 / "
+          "the roles are the recorded shape — vocab 36, host load 30 / settings 93 / bind 96 / run 108 / "
           "release 10, tool interop 0, widget 27 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

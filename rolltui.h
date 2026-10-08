@@ -2256,6 +2256,20 @@ typedef struct RolltuiMenuItemList {
 #define ROLLTUI_MENU_SECTION 5
 #define ROLLTUI_MENU_SEPARATOR 6
 
+/* A LEVEL THAT IS A TABLE: its rows' label is column 0, which takes whatever width the others leave, and after it up to
+ * ROLLTUI_MENU_COLUMNS columns of a fixed width, each a row's `cells` in turn, right-aligned unless the column says left. A section's
+ * cells are the table's head, aligned as its rows are. Narrower than the columns need, the label keeps its last eight cells and the
+ * columns go from the right, never wrapping. File keys: a level's `columns`, a list of `{width, align}` (`width` a whole number of
+ * cells, `align` left or right, right where it says none), and an item's `cells`, a list of strings. */
+#define ROLLTUI_MENU_COLUMNS 8
+#define ROLLTUI_MENU_ALIGN_RIGHT 0
+#define ROLLTUI_MENU_ALIGN_LEFT 1
+
+typedef struct RolltuiMenuColumn {
+  unsigned short width ROLLTUI_DEFAULT(0); /* in cells, at least 1 */
+  unsigned char align ROLLTUI_DEFAULT(ROLLTUI_MENU_ALIGN_RIGHT);
+} RolltuiMenuColumn;
+
 typedef struct RolltuiMenuItem {
 #ifdef __cplusplus
   enum class Kind : unsigned char { Action = 0, Submenu, Toggle, Choice, Input, Section, Separator };
@@ -2286,6 +2300,12 @@ typedef struct RolltuiMenuItem {
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpecRaw spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
+  /* A row of a table (its level's `columns`, above): what it says in each column after its label, the first `cell_count`. */
+  RolltuiStr cells[ROLLTUI_MENU_COLUMNS];
+  unsigned char cell_count ROLLTUI_DEFAULT(0);
+  /* A level that is a table (the root, or a Submenu): its columns after the label, the first `column_count`. */
+  RolltuiMenuColumn columns[ROLLTUI_MENU_COLUMNS];
+  unsigned char column_count ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   RolltuiMenuItem();
@@ -2515,6 +2535,12 @@ RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m);
 /* Depth-first, any level; NULL when absent. A CHOICE's options are NOT searched: they are its VALUES, in their own id namespace, so an
  * option and a field may share an id and only the field is a thing to find. */
 RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
+
+/* The item the cursor is on, as a MOVED event names it - the dropdown's highlighted option while one is open, else the level's cursor
+ * row - its id into `id`, REPLACED; empty where there is none (the back row, an empty level). A MOVED event says the cursor CHANGED; a
+ * host that describes the focused item (a help line, an info panel) asks this for where it is before anything moved - a menu just
+ * made, a window just given the focus - and after a rebuild that kept the cursor where it was. */
+void rolltui_menu_focused(RolltuiMenu* m, RolltuiStr* id);
 
 /* A Choice's options / a Submenu's items, by COPY, then the flat list and the selection are rebuilt. THIS IS WHAT MAKES A MENU DYNAMIC:
  * a file gives the levels, labels and action ids (the SKELETON), and a host FILLS the parts that depend on what exists at runtime by

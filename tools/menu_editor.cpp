@@ -63,6 +63,66 @@ std::optional<unsigned char> input_type_from_name(StrView s) {
 // A number as a field's text. `%g` so 0 reads "0" and not "0.000000" — a range a person
 // typed as 9 must read back as 9, which is what makes the round trip legible.
 RolltuiStr num_text(double v) { return rolltui::format("%g", v); }
+// A table row's cells as one field's text, between bars, "ready | 2 GB", and back: each cell trimmed of the spaces round it.
+RolltuiStr cells_text(const MenuItem* it) {
+  RolltuiStr out;
+  for (unsigned i = 0; i < it->cell_count; ++i) {
+    if (i) out += " | ";
+    out.append(it->cells[i]);
+  }
+  return out;
+}
+// The text's pieces between `sep`, each trimmed; false for more than ROLLTUI_MENU_COLUMNS of them.
+bool pieces(const RolltuiStr& text, char sep, std::vector<std::string>* out) {
+  out->clear();
+  if (text.n == 0) return true;
+  std::string s(text.p, text.n), piece;
+  std::size_t from = 0;
+  for (;;) {
+    const std::size_t at = s.find(sep, from);
+    piece = s.substr(from, at == std::string::npos ? std::string::npos : at - from);
+    const std::size_t a = piece.find_first_not_of(' '), b = piece.find_last_not_of(' ');
+    out->push_back(a == std::string::npos ? std::string() : piece.substr(a, b - a + 1));
+    if (at == std::string::npos) break;
+    from = at + 1;
+  }
+  return out->size() <= ROLLTUI_MENU_COLUMNS;
+}
+bool set_cells(MenuItem* it, const RolltuiStr& text) {
+  std::vector<std::string> cells;
+  if (!pieces(text, '|', &cells)) return false;
+  for (unsigned i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) it->cells[i].assign(i < cells.size() ? cells[i].c_str() : "");
+  it->cell_count = static_cast<unsigned char>(cells.size());
+  return true;
+}
+// A level's columns as one field's text, "8, 6L": each column's width in cells, an L after one aligned left; and back.
+RolltuiStr columns_text(const MenuItem* it) {
+  RolltuiStr out;
+  for (unsigned i = 0; i < it->column_count; ++i) {
+    if (i) out += ", ";
+    out += rolltui::format("%u%s", static_cast<unsigned>(it->columns[i].width),
+                           it->columns[i].align == ROLLTUI_MENU_ALIGN_LEFT ? "L" : "");
+  }
+  return out;
+}
+bool set_columns(MenuItem* it, const RolltuiStr& text) {
+  std::vector<std::string> cols;
+  if (!pieces(text, ',', &cols)) return false;
+  RolltuiMenuColumn read[ROLLTUI_MENU_COLUMNS] = {};
+  for (std::size_t i = 0; i < cols.size(); ++i) {
+    std::string c = cols[i];
+    const bool left = !c.empty() && (c.back() == 'L' || c.back() == 'l');
+    if (left) c.pop_back();
+    char* end = nullptr;
+    const long width = std::strtol(c.c_str(), &end, 10);
+    if (c.empty() || *end != '\0' || width < 1 || width > 1000) return false;
+    read[i].width = static_cast<unsigned short>(width);
+    read[i].align = left ? ROLLTUI_MENU_ALIGN_LEFT : ROLLTUI_MENU_ALIGN_RIGHT;
+  }
+  for (unsigned i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) it->columns[i] = read[i];
+  it->column_count = static_cast<unsigned char>(cols.size());
+  return true;
+}
 // The offered names as one line, for a field's hint — layout_editor.cpp's `joined`, and every
 // list here is short enough that a plain join is the whole of it.
 RolltuiStr joined(const StrVec& names) {
@@ -325,6 +385,11 @@ void MenuEditor::rebuild_menu() {
   top.push_back(MenuItem::input("shortcut", "Shortcut text (display only)", text.clone()));
   top.push_back(MenuItem::input("description", "Description (a host's help line or tooltip; the library draws nothing with it)",
                                 text.clone()));
+  // A TABLE: a level's columns after the label, and a row's cells in them (rolltui.h, ROLLTUI_MENU_COLUMNS).
+  top.push_back(MenuItem::input("table_columns", "Columns (this level as a table: widths in cells, an L after a left one: 8, 6L)",
+                                text.clone()));
+  top.push_back(MenuItem::input("cells", "Cells (a table row's columns after its label, between bars: ready | 2 GB)",
+                                text.clone()));
   top.push_back(MenuItem::input("add_child", "Add a child item (id)", name.clone()));
   top.push_back(MenuItem::input("add_sibling", "Add a sibling item (id)", name.clone()));
   top.push_back(MenuItem::action("move_up", "Move up"));
@@ -376,6 +441,8 @@ void MenuEditor::sync_fields() {
   set_enabled(menu_, "optional", is_input);
   set_enabled(menu_, "shortcut", have);
   set_enabled(menu_, "description", have);
+  set_enabled(menu_, "table_columns", have && (root || k == ROLLTUI_MENU_SUBMENU));
+  set_enabled(menu_, "cells", have && !root);
   set_enabled(menu_, "move_up", !root);
   set_enabled(menu_, "move_down", !root);
   set_enabled(menu_, "remove", !root);
@@ -410,6 +477,8 @@ void MenuEditor::sync_values() {
   set_checked(menu_, "optional", it->spec.optional != 0);
   set_value(menu_, "shortcut", it->shortcut);
   set_value(menu_, "description", it->description);
+  set_value(menu_, "table_columns", columns_text(it));
+  set_value(menu_, "cells", cells_text(it));
   // The actions THIS BINARY knows are the field's HINT and never its option list: an item may
   // name an action the app declares and this tool has never heard of, which is the
   // direction — the screen is the intent and the app reports what it cannot reach.
@@ -568,6 +637,20 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     if (id == "validator") { it->spec.validator.assign(value); return commit_current(); }
     if (id == "shortcut") { it->shortcut.assign(value); return commit_current(); }
     if (id == "description") { it->description.assign(value); return commit_current(); }
+    if (id == "cells") {
+      if (!set_cells(it, value)) {
+        status_ = rolltui::format("cells: at most %d, between bars", ROLLTUI_MENU_COLUMNS);
+        return {O::Changed, {}};
+      }
+      return commit_current();
+    }
+    if (id == "table_columns") {
+      if (!set_columns(it, value)) {
+        status_ = rolltui::format("columns: at most %d widths of at least 1, an L after a left one: 8, 6L", ROLLTUI_MENU_COLUMNS);
+        return {O::Changed, {}};
+      }
+      return commit_current();
+    }
     if (id == "precision") { it->spec.precision = std::atoi(value.c_str()); return commit_current(); }
     if (id == "min_len" || id == "max_len") {
       const std::size_t n = static_cast<std::size_t>(std::atol(value.c_str()));

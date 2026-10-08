@@ -883,6 +883,7 @@ ROLLTUI_API(rolltui_menu_editor, INTERNAL)
 ROLLTUI_API(rolltui_menu_event_release, PUBLIC)
 ROLLTUI_API(rolltui_menu_filter, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_find, PUBLIC)
+ROLLTUI_API(rolltui_menu_focused, PUBLIC)  /* a host that describes the focused item (mother's build screen, its info panel) needs where the cursor is before any MOVED: a menu just made, a window just given the focus */
 ROLLTUI_API(rolltui_menu_flat_count, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_flat_label, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_free, INTERNAL)

@@ -112,6 +112,10 @@ void rolltui_menu_item_release(RolltuiMenuItem* it) {
   rolltui_str_free(&it->value);
   rolltui_input_spec_release(&it->spec);
   rolltui_menu_list_release(&it->children);
+  {
+    size_t i;
+    for (i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) rolltui_str_free(&it->cells[i]);
+  }
   rolltui_menu_item_init(it);
 }
 
@@ -137,6 +141,15 @@ void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from) {
   to->swatch = from->swatch;
   rolltui_input_spec_copy(&to->spec, &from->spec);
   rolltui_menu_list_copy(&to->children, &from->children);
+  {
+    size_t i;
+    for (i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) {
+      rolltui_str_set(&to->cells[i], from->cells[i].p, from->cells[i].n);
+      to->columns[i] = from->columns[i];
+    }
+    to->cell_count = from->cell_count;
+    to->column_count = from->column_count;
+  }
 }
 
 int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b) {
@@ -152,6 +165,11 @@ int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b) 
       !rolltui_str_eq(&a->value, b->value.p, b->value.n))
     return 0;
   if (!rolltui_input_spec_equal(&a->spec, &b->spec)) return 0;
+  if (a->cell_count != b->cell_count || a->column_count != b->column_count) return 0;
+  for (i = 0; i < a->cell_count; ++i)
+    if (!rolltui_str_eq(&a->cells[i], b->cells[i].p, b->cells[i].n)) return 0;
+  for (i = 0; i < a->column_count; ++i)
+    if (a->columns[i].width != b->columns[i].width || a->columns[i].align != b->columns[i].align) return 0;
   if (a->children.n != b->children.n) return 0;
   for (i = 0; i < a->children.n; ++i)
     if (!rolltui_menu_item_equal(a->children.v[i], b->children.v[i])) return 0;

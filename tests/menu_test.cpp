@@ -1665,5 +1665,149 @@ int main() {
     check(row(f, 1).find("\xE2\x80\xA6") != std::string::npos && row(f, 1).find("on \xE2\x96\xB8") != std::string::npos,
           "…and when the NAME is what is too long the answer is left readable and the name is cut [" + row(f, 1) + "]");
   }
+
+  // ---- WHERE THE CURSOR IS, ASKED: what a MOVED event would name, before anything moved -----------------
+  // A host's info panel describes the focused item; a MOVED says the cursor CHANGED, so a menu just made, or a window just given
+  // the focus, has said nothing yet (mother's build screen, 2026-10-07).
+  {
+    const char* text = R"({ "id": "root", "label": "screen", "items": [
+      { "id": "head", "label": "Builds", "kind": "section" },
+      { "id": "release", "label": "release" },
+      { "id": "debug", "label": "debug" },
+      { "id": "text", "label": "Text", "kind": "choice", "dropdown": true, "value": "b",
+        "items": [ { "id": "a", "label": "a" }, { "id": "b", "label": "b" } ] } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0, "the focus test's menu reads");
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 40, 8});
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiMenuEvent ev{};
+    RolltuiStr id{};
+    rolltui_menu_focused(m, &id);
+    check(str_of(id) == "release", "a menu just made is on its first row that takes the cursor, said without a MOVED [" + str_of(id) + "]");
+    RolltuiEvent down = key(Key::Down), enter = key(Key::Enter), up = key(Key::Up);
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    rolltui_menu_focused(m, &id);
+    check(str_of(id) == "debug" && str_of(ev.id) == "debug", "after a move it is what the MOVED named");
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    rolltui_menu_handle(m, &enter, b, A, &ev); // the dropdown opens on the standing answer
+    rolltui_menu_focused(m, &id);
+    check(rolltui_menu_dropdown_open(m) && str_of(id) == "b", "with a dropdown open it is the option highlighted [" + str_of(id) + "]");
+    rolltui_menu_handle(m, &up, b, A, &ev);
+    rolltui_menu_focused(m, &id);
+    check(str_of(id) == "a", "…and follows it");
+    rolltui_menu_event_release(&ev);
+    rolltui_str_free(&id);
+    rolltui_menu_free(m);
+
+    RolltuiMenuItem empty;
+    rolltui_menu_item_init(&empty);
+    rolltui_menu_item_set(&empty, ROLLTUI_MENU_SUBMENU, "root", 4, "nothing", 7, "", 0);
+    RolltuiMenu* none = rolltui_menu_new();
+    rolltui_menu_set_root(none, &empty);
+    rolltui_menu_item_release(&empty);
+    RolltuiStr nothing{};
+    rolltui_str_set(&nothing, "stale", 5);
+    rolltui_menu_focused(none, &nothing);
+    check(nothing.n == 0, "an empty level is on nothing, and says so by an empty id");
+    rolltui_str_free(&nothing);
+    rolltui_menu_free(none);
+  }
+
+  // ---- A LEVEL THAT IS A TABLE: column 0 the label, taking what the columns leave; the others fixed, right-aligned unless left ----
+  // Scott, 2026-10-07: "one column (usually column 0 ...) is dynamically sized based on what is available, after the rest of the
+  // columns which stay at a fixed size and are right aligned".
+  {
+    const char* text = R"({ "id": "root", "label": "builds", "columns": [ { "width": 8 }, { "width": 6, "align": "left" } ],
+      "items": [
+        { "id": "head", "kind": "section", "label": "build", "cells": [ "status", "size" ] },
+        { "id": "release", "label": "release", "cells": [ "ready", "2 GB" ] },
+        { "id": "long", "label": "a build whose name is far too long for its column", "cells": [ "out of date", "12 KB" ] },
+        { "id": "new", "label": "New configuration" } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0 && rep.bad_values_n == 0 && rep.unknown_keys_n == 0,
+          "a level's columns and its rows' cells read, with nothing reported");
+    rolltui_menu_load_report_release(&rep);
+    check(root.column_count == 2 && root.columns[0].width == 8 && root.columns[1].align == ROLLTUI_MENU_ALIGN_LEFT &&
+              root.children.v[1]->cell_count == 2 && str_of(root.children.v[1]->cells[0]) == "ready",
+          "…into the level's columns and each row's cells");
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    auto drawn = [&](int w) {
+      std::vector<std::string> rows;
+      rolltui_menu_layout(m, RolltuiRect{0, 0, w, 6});
+      Frame f(w, 6);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      for (int y = 0; y < 6; ++y) rows.push_back(row(f, y));
+      return rows;
+    };
+    std::vector<std::string> wide = drawn(40); // the label 40 - (2 + 8) - (2 + 6) = 22 cells
+    std::size_t head = 0, release = 0;
+    for (std::size_t y = 0; y < wide.size(); ++y) {
+      if (wide[y].rfind("build", 0) == 0) head = y;
+      if (wide[y].rfind("release", 0) == 0) release = y;
+    }
+    check(wide[release].find("ready") == 27 && wide[release].find("2 GB") == 34,
+          "a cell sits at its column's right edge, or its left where the column says left [" + wide[release] + "]");
+    check(wide[head].find("status") == 26 && wide[head].find("size") == 34 && wide[head].find("\xE2\x94\x80") == std::string::npos,
+          "a section with cells is the table's head, aligned as its rows are, with no rule [" + wide[head] + "]");
+    bool cut = false, kept = false;
+    for (const std::string& r : wide) {
+      if (r.rfind("a build", 0) == 0) {
+        cut = r.find("\xE2\x80\xA6") != std::string::npos && r.find("far too long for its column") == std::string::npos;
+        kept = r.find("12 KB") != std::string::npos && r.find("out of date") == std::string::npos;
+      }
+    }
+    check(cut && kept, "a long label is cut at an ellipsis to column 0's width, a long cell to its own column's");
+    std::vector<std::string> narrow = drawn(24); // 24 - 18 leaves the label 6: the last column goes, and it has 14
+    for (const std::string& r : narrow)
+      if (r.rfind("release", 0) == 0)
+        check(r.find("ready") == 19 && r.find("2 GB") == std::string::npos,
+              "narrower than the columns need, the label keeps eight cells and the columns go from the right [" + r + "]");
+    std::vector<std::string> tiny = drawn(12);
+    for (const std::string& r : tiny)
+      if (r.rfind("release", 0) == 0) check(r.find("ready") == std::string::npos, "…every one of them, at the last");
+    rolltui_menu_free(m);
+
+    RolltuiStr dumped{};
+    rolltui_menu_dump_json(&root, &dumped);
+    RolltuiMenuItem back;
+    rolltui_menu_item_init(&back);
+    check(rolltui_menu_parse_json(dumped.p, dumped.n, &back, &rep) != 0 && rolltui_menu_item_equal(&root, &back),
+          "a table writes back as it read: its columns, the left one's alignment, and every row's cells");
+    rolltui_menu_load_report_release(&rep);
+    rolltui_menu_item_release(&back);
+    RolltuiMenuItem copy;
+    rolltui_menu_item_init(&copy);
+    rolltui_menu_item_copy(&copy, &root);
+    check(rolltui_menu_item_equal(&copy, &root), "a copy carries its cells and columns");
+    rolltui_str_set(&copy.children.v[1]->cells[1], "3 GB", 4);
+    check(!rolltui_menu_item_equal(&copy, &root), "…and a cell told apart is a different item");
+    rolltui_menu_item_release(&copy);
+    rolltui_str_free(&dumped);
+    rolltui_menu_item_release(&root);
+
+    for (const char* bad : {R"({ "id": "r", "columns": [ { "width": 0 } ], "items": [] })",
+                            R"({ "id": "r", "columns": [ { "width": 4, "align": "middle" } ], "items": [] })",
+                            R"({ "id": "r", "columns": [ { "width": 4, "colour": "red" } ], "items": [] })",
+                            R"({ "id": "r", "items": [ { "id": "a", "cells": "ready" } ] })",
+                            R"({ "id": "r", "items": [ { "id": "a", "cells": [ 3 ] } ] })"}) {
+      RolltuiMenuItem it;
+      rolltui_menu_item_init(&it);
+      rolltui_menu_parse_json(bad, std::strlen(bad), &it, &rep);
+      check(rep.bad_values_n != 0, std::string("a column or a cell said wrong is reported: ") + bad);
+      rolltui_menu_load_report_release(&rep);
+      rolltui_menu_item_release(&it);
+    }
+  }
   return report("rolltui_menu_test");
 }
