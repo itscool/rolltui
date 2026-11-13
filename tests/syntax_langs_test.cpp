@@ -12,7 +12,7 @@
 // damaged code or by the lines a regex hates; that a person's own file, in the configuration directory, adds a language,
 // replaces a shipped one, and that one broken file takes nothing else with it.
 #include <algorithm>
-#include <chrono>
+#include <ctime>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -137,7 +137,9 @@ std::string name_of(RolltuiSyntax* s, int lang) {
   return n ? n : "<none>";
 }
 
-double ms_since(std::chrono::steady_clock::time_point t0) { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); }
+// CPU time, not the wall clock: a budget here measures the matcher's work, and a loaded machine
+// stretches the wall clock without adding any.
+double cpu_ms_since(std::clock_t t0) { return static_cast<double>(std::clock() - t0) * 1000.0 / CLOCKS_PER_SEC; }
 
 }  // namespace
 
@@ -336,9 +338,9 @@ int main(int argc, char** argv) {
           // the faster of two runs: a line that is slow is slow every time, a scheduling hiccup is not
           double ms = 1e9;
           for (int k = 0; k < 2; ++k) {
-            const auto t0 = std::chrono::steady_clock::now();
+            const std::clock_t t0 = std::clock();
             rolltui_highlight_run(h, s, lang, hate.text.data(), hate.text.size());
-            ms = std::min(ms, ms_since(t0));
+            ms = std::min(ms, cpu_ms_since(t0));
           }
           if (ms > worst) { worst = ms; worst_case = std::string(fx.language) + " on " + hate.name; }
         }
@@ -360,9 +362,9 @@ int main(int argc, char** argv) {
         const std::string text = slurp(dir / (std::string(fx.sample) + ".sample"));
         std::string big;
         while (big.size() < 262144) big += text;
-        const auto t0 = std::chrono::steady_clock::now();
+        const std::clock_t t0 = std::clock();
         rolltui_highlight_run(h, s, lang_of(s, fx.language), big.data(), big.size());
-        const double ms = ms_since(t0);
+        const double ms = cpu_ms_since(t0);
         if (ms > worst) { worst = ms; worst_lang = fx.language; }
       }
       check(worst < 1500.0 * kClockScale, "a quarter of a megabyte of code in each language: the slowest is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_lang + ")");
