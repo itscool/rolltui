@@ -469,3 +469,13 @@ ROLLTUI_ROLE(rolltui_menu_root, HOST_BIND)
 ROLLTUI_ROLE(rolltui_context_new, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_context_free, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_windows_context, HOST_LOAD)  /* declared beside `rolltui_windows_new` */
+/* declared in rolltui.h and rowed 2026-11-13 */
+ROLLTUI_ROLE(rolltui_frame_put_swatch, WIDGET)
+ROLLTUI_ROLE(rolltui_rows_add_colour, HOST_BIND)
+ROLLTUI_ROLE(rolltui_style_on, VOCAB)
+ROLLTUI_ROLE(rolltui_terminal_cache_path, HOST_RUN)
+ROLLTUI_ROLE(rolltui_terminal_facts, HOST_RUN)
+ROLLTUI_ROLE(rolltui_terminal_present, HOST_RUN)
+ROLLTUI_ROLE(rolltui_terminal_reprobe, HOST_RUN)
+ROLLTUI_ROLE(rolltui_terminal_set_depth, HOST_RUN)
+ROLLTUI_ROLE(rolltui_windows_set_keys_editor_show_presets, HOST_SETTINGS)

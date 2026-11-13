@@ -387,11 +387,83 @@ int main() {
     check(offenders.empty(), "no public function hands a RESULT back through a callback — it takes the caller's RolltuiStr* (one string), RolltuiStrList* (many) or typed list instead" + joined);
   }
 
-  // ---- 6. (the reach census, retired) ------------------------------------------------------
-  // It measured which functions a HOST's source reached, by walking the tree this checkout sits
-  // in, and so only ran inside one. A suite here tests this library alone and passes the same
-  // wherever it is vendored; whether a host still builds and works against it is that host's own
-  // suite's question. `api_classes.inc` remains the class of every function, read by section 9.
+  // ---- 6. THE CLASS TABLE: every function has ONE class, and the headers are written from it ----------------------------
+  // `api_classes.inc` gives every function the library declares a class, PUBLIC or INTERNAL, and this holds the table and the
+  // headers to each other, standing alone: a function added without a row fails, a row whose function is gone fails, a PUBLIC
+  // row must be declared in a public header (rolltui.h, or rolltui_studio.h for the studio's tier) and an INTERNAL one never in
+  // rolltui.h (the studio's header carries curated copies of some). And a CONSUMER in this tree — the examples, dirktui and
+  // paint — never reaches an INTERNAL function. What a host OUTSIDE this tree needs no scan can see, which is why a PUBLIC
+  // function no consumer here reaches says why on its row (KEPT, or the host it is for).
+  {
+    struct Row { const char* fn; const char* cls; };
+    static const Row kApi[] = {
+#define ROLLTUI_API(name, cls) {#name, #cls},
+#include "api_classes.inc"
+#undef ROLLTUI_API
+    };
+    const std::string root = ROLLTUI_SOURCE_DIR;
+    static const std::regex decl_re(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
+    // DECLARED means at brace depth zero: a C++ member of a public struct that CALLS `rolltui_str_append` mentions it without
+    // declaring it. The braces of `extern "C" {` are not depth; everything else's are.
+    auto names_in = [&](const std::string& t, std::set<std::string>& into) {
+      for (std::sregex_iterator it(t.begin(), t.end(), decl_re), end; it != end; ++it) into.insert((*it)[1].str());
+    };
+    std::set<std::string> in_def, in_studio, in_internal;
+    names_in(depth0(strip_all_comments(read(root + "/rolltui.h"))), in_def);
+    names_in(depth0(strip_all_comments(read(root + "/rolltui_studio.h"))), in_studio);
+    {
+      std::vector<std::string> hs;
+      list_files(root + "/c", {".h"}, hs);
+      for (const std::string& h : hs) names_in(depth0(strip_all_comments(read(h))), in_internal);
+    }
+    check(depth0("void a(void);\nstruct S {\n  void m() { b(); }\n};\nextern \"C\" {\nvoid c(void);\n}\n").find("b()") == std::string::npos &&
+              depth0("extern \"C\" {\nvoid c(void);\n}\n").find("c(void)") != std::string::npos,
+          "the depth-zero filter drops a member body and keeps a declaration under extern \"C\"");
+    std::map<std::string, std::string> cls;
+    for (const Row& r : kApi) cls[r.fn] = r.cls;
+    auto unrowed = [&](const std::set<std::string>& declared) {
+      std::vector<std::string> out;
+      for (const std::string& f : declared)
+        if (!cls.count(f)) out.push_back(f);
+      return out;
+    };
+    std::set<std::string> declared = in_def;
+    declared.insert(in_studio.begin(), in_studio.end());
+    declared.insert(in_internal.begin(), in_internal.end());
+    std::vector<std::string> stale, misplaced, consumer_internal;
+    for (const Row& r : kApi) {
+      const std::string c = r.cls;
+      if (!declared.count(r.fn)) { stale.push_back(r.fn); continue; }
+      if (c == "PUBLIC" && !in_def.count(r.fn) && !in_studio.count(r.fn)) misplaced.push_back(std::string(r.fn) + " (PUBLIC, in no public header)");
+      if (c != "PUBLIC" && in_def.count(r.fn)) misplaced.push_back(std::string(r.fn) + " (" + c + ", but in rolltui.h)");
+    }
+    {
+      static const std::regex use_re(R"(\b(rolltui_[a-z0-9_]+)\b)");
+      for (const char* f : {"/examples/dirktui.cpp", "/examples/paint.cpp"}) {
+        const std::string t = strip_all_comments(read(root + f));
+        std::set<std::string> seen;
+        for (std::sregex_iterator it(t.begin(), t.end(), use_re), end; it != end; ++it) {
+          const std::string n = (*it)[1].str();
+          if (seen.insert(n).second && cls.count(n) && cls[n] != "PUBLIC") consumer_internal.push_back(std::string(f + 10) + " -> " + n);
+        }
+      }
+    }
+    auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
+    const std::vector<std::string> unclassified = unrowed(declared);
+    check(declared.size() > 900, "the declaration scan reads every header (" + std::to_string(declared.size()) + " functions declared)");
+    check(unclassified.empty(), "every declared function has a class in api_classes.inc — a new one is a DECISION, not an arrival" + join(unclassified));
+    check(stale.empty(), "every row of api_classes.inc names a declared function (a deleted one takes its row with it)" + join(stale));
+    check(misplaced.empty(), "THE HEADERS ARE WRITTEN FROM THE TABLE: PUBLIC in a public header, INTERNAL never in rolltui.h" + join(misplaced));
+    check(consumer_internal.empty(), "a consumer in this tree (dirktui, paint) reaches no INTERNAL function" + join(consumer_internal));
+    check(unrowed({"rolltui_planted_without_a_row"}).size() == 1, "…and the completeness rule is armed: a declaration with no row is caught");
+    std::map<std::string, int> totals;
+    for (const Row& r : kApi) ++totals[r.cls];
+    // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. 413/712 on 2026-11-13, when the 94 functions the
+    // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC).
+    check(totals["PUBLIC"] == 413 && totals["INTERNAL"] == 712 && totals.size() == 2,
+          "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
+              std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
+  }
 
   // ---- 7. NO std:: CONTAINER OR VIEW UNDER __cplusplus, in the definition or under c/ ------
   // A C++ member may name rolltui's own types and the C standard's,
@@ -547,12 +619,15 @@ int main() {
     //
     // HOST_BIND 95 -> 96: `rolltui_menu_focused`, where a menu's cursor is before any MOVED (a host's help line, mother's build
     // screen's info panel, 2026-10-07). 96 -> 100: a table's two setters, `rolltui_menu_item_add_cell` and `_set_columns`, and the
-    // releases of the two lists they fill, which the lists' C++ destructors call.
-    check(rt["VOCAB"] == 36 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 93 &&
-              rt["HOST_BIND"] == 100 && rt["HOST_RUN"] == 108 && rt["HOST_RELEASE"] == 10 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 27,
-          "the roles are the recorded shape — vocab 36, host load 30 / settings 93 / bind 100 / run 108 / "
-          "release 10, tool interop 0, widget 27 (got " +
+    // releases of the two lists they fill, which the lists' C++ destructors call. Then +9, the public functions declared in
+    // rolltui.h without a row until the class census came back (2026-11-13): vocab +1 (`rolltui_style_on`), settings +1 (the
+    // keys editor's presets switch), bind +1 (`rolltui_rows_add_colour`), run +5 (the terminal facts, their cache, reprobe, depth,
+    // present), widget +1 (`rolltui_frame_put_swatch`).
+    check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 94 &&
+              rt["HOST_BIND"] == 101 && rt["HOST_RUN"] == 113 && rt["HOST_RELEASE"] == 10 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 28,
+          "the roles are the recorded shape — vocab 37, host load 30 / settings 94 / bind 101 / run 113 / "
+          "release 10, tool interop 0, widget 28 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

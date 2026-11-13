@@ -6,11 +6,10 @@
  * module's default. The classes are what `rolltui.h` is written from — never a prediction of it —
  * and `public_header_test`'s section 9 reads them (every PUBLIC row has a reader).
  *
- * NOT ENFORCED TODAY: that every declared function HAS a row. The census that checked it also
- * measured reach by walking a host's tree, so it only ran inside one; it is retired, because this
- * repository's suite tests this repository alone. The modules added since rolltui stood alone —
- * preview, mermaid, syntax, regex, termfacts and their neighbours — have no rows yet; classifying
- * them, and a census that runs on this tree by itself, are backlog.
+ * ENFORCED STANDING ALONE (`public_header_test` section 6): every function declared in rolltui.h, rolltui_studio.h or a c/ header
+ * has exactly one row, every row names a declared function, a PUBLIC row is declared in a public header and an INTERNAL one never
+ * in rolltui.h, and the consumers in this tree (dirktui, paint) reach nothing INTERNAL. What a host OUTSIDE this tree needs (roll,
+ * mother) no scan here can see, so a PUBLIC row no consumer here reaches says why: KEPT, or the host it is for.
  *
  * ---- REACH IS THE INPUT, NEVER THE CRITERION ------------------------------------------------
  *
@@ -1307,3 +1306,111 @@ ROLLTUI_API(rolltui_context_window_config, INTERNAL)
 /* The session a Windows was made for — a host that holds a Windows can reach its context
  * without carrying a second pointer beside it, which is what the built-in widget factories do. */
 ROLLTUI_API(rolltui_windows_context, PUBLIC)
+
+/* ---- MODULES ADDED AFTER ROLLTUI STOOD ALONE, classified 2026-11-13; default INTERNAL, each group's reason above it ----
+ * Every one is declared in an internal c/ header and reached by no host in this tree (dirktui, paint) or by the studio only. */
+/* keys: the key decoder's own wiring: the terminal sets it */
+ROLLTUI_API(rolltui_key_decoder_set_reply_sink, INTERNAL)
+/* keys_editor: the keys editor's own controls, reached by the studio and the keys window */
+ROLLTUI_API(rolltui_keys_editor_back, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_set_show_presets, INTERNAL)
+/* md_lines: the transcript's line store */
+ROLLTUI_API(rolltui_md_lines_span_on, INTERNAL)
+/* mermaid: diagrams drawn as text inside Markdown: the Markdown renderer's */
+ROLLTUI_API(rolltui_mermaid_free, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_kind, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_line, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_line_count, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_new, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_render, INTERNAL)
+ROLLTUI_API(rolltui_mermaid_width, INTERNAL)
+/* preview: the file preview the picker draws: a host turns it on through the picker's options */
+ROLLTUI_API(rolltui_fileinfo_mode_text, INTERNAL)
+ROLLTUI_API(rolltui_fileinfo_size_text, INTERNAL)
+ROLLTUI_API(rolltui_fileinfo_when_text, INTERNAL)
+ROLLTUI_API(rolltui_filesig_racy, INTERNAL)
+ROLLTUI_API(rolltui_filesig_read, INTERNAL)
+ROLLTUI_API(rolltui_filesig_same, INTERNAL)
+ROLLTUI_API(rolltui_preview_draw, INTERNAL)
+ROLLTUI_API(rolltui_preview_free, INTERNAL)
+ROLLTUI_API(rolltui_preview_kind, INTERNAL)
+ROLLTUI_API(rolltui_preview_message, INTERNAL)
+ROLLTUI_API(rolltui_preview_new, INTERNAL)
+ROLLTUI_API(rolltui_preview_refresh, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_by, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_edge, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_extent, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_page, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_to, INTERNAL)
+ROLLTUI_API(rolltui_preview_set_info, INTERNAL)
+ROLLTUI_API(rolltui_preview_set_path, INTERNAL)
+ROLLTUI_API(rolltui_preview_set_syntax, INTERNAL)
+/* regex: the matcher a language file is written in: the syntax engine's, nobody else's */
+ROLLTUI_API(rolltui_regex_can_be_empty, INTERNAL)
+ROLLTUI_API(rolltui_regex_compile, INTERNAL)
+ROLLTUI_API(rolltui_regex_compile_flags, INTERNAL)
+ROLLTUI_API(rolltui_regex_first_byte, INTERNAL)
+ROLLTUI_API(rolltui_regex_free, INTERNAL)
+ROLLTUI_API(rolltui_regex_groups, INTERNAL)
+ROLLTUI_API(rolltui_regex_match_at, INTERNAL)
+ROLLTUI_API(rolltui_regex_match_memo, INTERNAL)
+ROLLTUI_API(rolltui_regex_memo_slots, INTERNAL)
+ROLLTUI_API(rolltui_regex_uses_refs, INTERNAL)
+/* syntax: source colouring's engine and its languages: reached through the picker's preview and the Markdown seam, never by a host */
+ROLLTUI_API(rolltui_highlight_free, INTERNAL)
+ROLLTUI_API(rolltui_highlight_line, INTERNAL)
+ROLLTUI_API(rolltui_highlight_line_count, INTERNAL)
+ROLLTUI_API(rolltui_highlight_new, INTERNAL)
+ROLLTUI_API(rolltui_highlight_run, INTERNAL)
+ROLLTUI_API(rolltui_syntax_add, INTERNAL)
+ROLLTUI_API(rolltui_syntax_add_dir, INTERNAL)
+ROLLTUI_API(rolltui_syntax_add_shipped, INTERNAL)
+ROLLTUI_API(rolltui_syntax_class_name, INTERNAL)
+ROLLTUI_API(rolltui_syntax_find_file, INTERNAL)
+ROLLTUI_API(rolltui_syntax_find_name, INTERNAL)
+ROLLTUI_API(rolltui_syntax_flags, INTERNAL)
+ROLLTUI_API(rolltui_syntax_free, INTERNAL)
+ROLLTUI_API(rolltui_syntax_language_count, INTERNAL)
+ROLLTUI_API(rolltui_syntax_language_name, INTERNAL)
+ROLLTUI_API(rolltui_syntax_md_free, INTERNAL)
+ROLLTUI_API(rolltui_syntax_md_highlight, INTERNAL)
+ROLLTUI_API(rolltui_syntax_md_new, INTERNAL)
+ROLLTUI_API(rolltui_syntax_new, INTERNAL)
+ROLLTUI_API(rolltui_syntax_new_standard, INTERNAL)
+ROLLTUI_API(rolltui_syntax_role, INTERNAL)
+/* termfacts: what the terminal is, found and remembered by the library: a host reads the result through rolltui_terminal_facts */
+ROLLTUI_API(rolltui_termcache_forget, INTERNAL)
+ROLLTUI_API(rolltui_termcache_fresh, INTERNAL)
+ROLLTUI_API(rolltui_termcache_load, INTERNAL)
+ROLLTUI_API(rolltui_termcache_path, INTERNAL)
+ROLLTUI_API(rolltui_termcache_store, INTERNAL)
+ROLLTUI_API(rolltui_termenv_multiplexed, INTERNAL)
+ROLLTUI_API(rolltui_termenv_no_24bit_known, INTERNAL)
+ROLLTUI_API(rolltui_termenv_read, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_active_mode, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_active_wide, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_apply_replies, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_clamp_depth, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_exe_identity, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_fingerprint, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_from_env, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active_mode, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active_wide, INTERNAL)
+ROLLTUI_API(rolltui_termprobe_queries, INTERNAL)
+ROLLTUI_API(rolltui_termreplies_take, INTERNAL)
+/* theme_editor: the theme editor's own controls, reached by the studio and the theme window */
+ROLLTUI_API(rolltui_theme_editor_back, INTERNAL)
+/* widget_picker: the picker's own state, driven through its events and options */
+ROLLTUI_API(rolltui_picker_preview_focused, INTERNAL)
+ROLLTUI_API(rolltui_picker_refresh, INTERNAL)
+/* ---- declared in rolltui.h and never rowed: the public ones a host reaches, and two kept on a stated reason ---- */
+ROLLTUI_API(rolltui_frame_put_swatch, PUBLIC)  /* KEPT: the swatch every colour value is drawn as (a theme role, a menu colour input, a painter's ink), for a host's own widget kind that shows one */
+ROLLTUI_API(rolltui_rows_add_colour, PUBLIC)  /* a status row whose value is a colour, shown as one (paint) */
+ROLLTUI_API(rolltui_style_on, PUBLIC)  /* what `none` in a theme means for a role drawn over a ground (dirktui) */
+ROLLTUI_API(rolltui_terminal_cache_path, PUBLIC)  /* where the remembered terminal facts live, to show or clear (dirktui) */
+ROLLTUI_API(rolltui_terminal_facts, PUBLIC)  /* what the terminal is, found out once by the library (dirktui, paint, the studio) */
+ROLLTUI_API(rolltui_terminal_present, PUBLIC)  /* KEPT: a frame to the terminal at the depth it draws, as one call whose depth cannot be forgotten — what a host running its own loop presents with (rolltui_run does it for the rest) */
+ROLLTUI_API(rolltui_terminal_reprobe, PUBLIC)  /* ask the terminal again (dirktui) */
+ROLLTUI_API(rolltui_terminal_set_depth, PUBLIC)  /* the person's own colour depth over the one found out (dirktui) */
+ROLLTUI_API(rolltui_windows_set_keys_editor_show_presets, PUBLIC)  /* whether the keys editor offers presets (dirktui) */
