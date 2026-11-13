@@ -10,34 +10,24 @@ A small terminal-UI library in C, with a C++ shape for consumers who want one.
 *dirktui, a directory browser built on rolltui, previewing a README. The flowchart is Mermaid
 source drawn in box-drawing characters, and the C is coloured by a grammar file.*
 
-## What it does well
+## How it compares (November 2026)
 
-- **A screen is data.** Themes, key bindings, layouts and menus are JSON files a person can read
-  and edit, and `rolltui-studio` edits them live, with undo and a contrast check. Ten themes ship,
-  each with a light side and a dark side. Light or dark, and the colour depth, are the person's
-  settings, kept when they change theme.
-- **Text is measured, not guessed.** Line breaking (UAX #14), grapheme clusters and word
-  boundaries (UAX #29) and display width come from Unicode 17.0's own data, and the suite replays
-  Unicode's conformance files for all three.
-- **The terminal is asked what it is.** How many colours it draws, whether its background is light
-  or dark, how wide it draws an ambiguous glyph: found out in the same round trip that sets up the
-  keyboard, remembered per terminal, and applied by the library, so no app has to ask. A terminal
-  that answers costs under a millisecond.
-- **Frames have budgets, and tests hold them.** A steady 120×40 frame allocates nothing, and a
-  frame that streams new text re-lays only the entry that changed. `rolltui-budget-test` measures
-  both and fails on a regression.
-- **Rich content comes built in.** Markdown (headings, lists, tables, code boxes); Mermaid diagrams
-  (flowcharts, sequence, state, class and ER diagrams, mind maps, timelines, journeys, Gantt and pie
-  charts); colour for 27 languages and file formats from grammar files you can add to; and a column
-  file browser whose preview keeps up with the disk.
-- **Every theme reads, mono included.** Kinds of text differ by bold, italic, underline and dim as
-  well as by colour, so `mono`, which has no colours at all, still tells a keyword from a comment.
-- **C underneath, C++ when you want it.** `rolltui.h` is the whole public API and compiles as plain
-  C. `rolltui_cpp.h` and `rolltui/str.hpp` give a C++ host classes and a string toolkit over the
-  same data.
-- **Ownership is written down.** Every pointer is OWNED (one owner, freed by a named `_free`
-  function), BORROWED (never owns, never frees) or a VALUE (copied). `rolltui-ownership-test`
-  checks each one, and there is no `shared_ptr` anywhere: every lifetime is structural.
+| | rolltui | Textual | ratatui | Bubble Tea | notcurses | FTXUI |
+|---|---|---|---|---|---|---|
+| Language | C, with a C++ layer | Python | Rust | Go | C | C++ |
+| Dependencies | none | rich, Pygments, markdown-it, … | crossterm and ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
+| Screens, themes and keys as files a person edits | ✓ | stylesheets, keymaps | ✗ | ✗ | ✗ | ✗ |
+| An editor app for them | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Markdown | ✓ | ✓ | ✗ | Glamour | ✗ | ✗ |
+| Mermaid diagrams | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Syntax highlighting | ✓ | ✓ | ✗ | in Glamour | ✗ | ✗ |
+| Line breaking tested against Unicode's own test files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Terminal probed, answers remembered per terminal | ✓ | ✗ | ✗ | probed, not kept | probed, not kept | ✗ |
+| Theme contrast and colour-blindness checks | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Animation chosen by the theme | ✓ | in code | tachyonfx, in code | in code | in code | in code |
+| Column file browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Windows | ✗ | ✓ | ✓ | ✓ | partly | ✓ |
+| Images in the terminal | ✗ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
 
 | | |
 |---|---|
@@ -53,7 +43,8 @@ source drawn in box-drawing characters, and the C is coloured by a grammar file.
 ## What's in the repository
 
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under
-  `c/` is internal. `rolltui_studio.h` adds the authoring calls only the studio needs.
+  `c/` is internal. `rolltui_studio.h` adds the authoring calls only the studio needs. Every pointer
+  is OWNED, BORROWED or a plain VALUE, and there is no `shared_ptr`.
 - **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell, in the spirit of
   `zoxide` or `atuin`. `dirk` browses, prints the chosen path, and a shell function does the rest.
   Signed, notarized, and on Homebrew: `brew install itscool/tap/dirktui`.
