@@ -1597,7 +1597,7 @@ const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* ou
  * THREE RUNGS, LATER OVERRIDING EARLIER, so an embedded copy is a FLOOR that guarantees the app runs and a file on disk customises it:
  *   1. `embedded`         compiled in from the app's own files by cmake/embed_presets.cmake, matched by `kind` as the entry's stem. May be NULL.
  *   2. beside the binary  <dir of argv0>/<app>.<kind>.json
- *   3. the known folder   <ROLL_CONFIG_DIR|XDG_CONFIG_HOME/roll|$HOME/.config/roll>/rolltui/<app>/<kind>.json
+ *   3. the known folder   <ROLL_CONFIG_DIR|XDG_CONFIG_HOME/roll|$HOME/.config/roll (Windows: %APPDATA%/roll)>/rolltui/<app>/<kind>.json
  * `out` receives the winning contents. `tried` (may be NULL) receives one line per candidate, hit or miss, so a host that finds nothing can
  * say what it looked for. Returns 0 when every rung missed. */
 int rolltui_app_file(const char* argv0, const char* app, const char* kind,

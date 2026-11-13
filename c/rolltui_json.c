@@ -578,8 +578,9 @@ static void jbuf_add(JBuf* b, const char* s, size_t n) {
 }
 
 static void jbuf_pad(JBuf* b, int indent, int level) {
-  size_t n = (size_t)(indent * level);
-  if (!n) return;
+  size_t n;
+  if (indent <= 0 || level <= 0) return; /* a negative indent pads nothing */
+  n = (size_t)indent * (size_t)level;
   b->p = (char*)rolltui_grow(b->p, &b->cap, b->len + n, sizeof *b->p);
   memset(b->p + b->len, ' ', n);
   b->len += n;

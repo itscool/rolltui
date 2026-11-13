@@ -27,6 +27,7 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_style.h"
+#include "rolltui/c/rolltui_str.h"    // INTERNAL: rolltui_labelf, the report's labels
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 #include "rolltui/c/rolltui_theme_analysis.h"  // INTERNAL: the classification a theme declares
@@ -810,6 +811,42 @@ int main() {
           "an out-of-range role is \"\", never a read past the table");
   }
 
+  // ---- A REPORT'S LABELS ARE CAPPED, AND CUT ON A WHOLE CHARACTER ---------------------------
+  {
+    // Valid UTF-8 throughout: every lead byte followed by exactly its continuation bytes.
+    auto valid_utf8 = [](std::string_view s) {
+      for (std::size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        const std::size_t need = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 0;
+        if (need == 0 || i + need > s.size()) return false;
+        for (std::size_t k = 1; k < need; ++k)
+          if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) return false;
+        i += need;
+      }
+      return true;
+    };
+    char buf[16];
+    rolltui_labelf(buf, sizeof buf, "%s.%d", "roles", 7);
+    check(std::string_view(buf) == "roles.7", "a label that fits is written whole");
+    rolltui_labelf(buf, 10, "%s", "abcdefghijklmnop");
+    check(std::string_view(buf) == "abcdef\xE2\x80\xA6", "a label that does not fit ends in `…` within its buffer [" + std::string(buf) + "]");
+    rolltui_labelf(buf, 10, "%s", "aaaaa\xC3\xA9zzzz");  // `é` straddles the cut
+    check(std::string_view(buf) == "aaaaa\xE2\x80\xA6", "a character the cut would split is dropped whole [" + std::string(buf) + "]");
+    rolltui_labelf(buf, 3, "%s", "a\xC3\xA9");
+    check(std::string_view(buf) == "a", "with no room for `…`, the cut still keeps whole characters only");
+    rolltui_labelf(buf, 3, "%s", "abcdef");
+    check(std::string_view(buf) == "ab", "…and keeps every byte that is a whole character");
+
+    std::string name;
+    for (int i = 0; i < 600; ++i) name += "\xC3\xA9";  // 1200 bytes, every one inside a two-byte character
+    ThemeLoadReport rep;
+    auto t = load_theme("{\"roles\": {\"" + name + "\": {}}}", ThemeMode::Dark, rep);
+    const std::string label = rep.unknown_keys.empty() ? std::string() : rep.unknown_keys.front();
+    check(t.has_value() && label.rfind("roles.\xC3\xA9", 0) == 0 && label.size() < 512 && valid_utf8(label) &&
+              label.size() >= 3 && label.compare(label.size() - 3, 3, "\xE2\x80\xA6") == 0,
+          "an unknown role named in 1200 bytes of `é` is reported under 512 bytes, valid UTF-8, ending in `…` (" +
+              std::to_string(label.size()) + " bytes)");
+  }
 
   return report("rolltui_theme_test");
 }

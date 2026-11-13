@@ -702,7 +702,7 @@ static void match_push(RolltuiTranscript* t, size_t entry, size_t offset, size_t
 }
 
 static void recompute_matches(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width) {
-  RolltuiFindMatch was;
+  RolltuiFindMatch was = {0, 0, 0}; /* read only when `had` */
   const int had = current_match(t) != NULL;
   size_t i, top, pick = 0;
   if (had) was = *current_match(t);

@@ -85,6 +85,7 @@ ROLLTUI_API(rolltui_str_clear, PUBLIC)
 ROLLTUI_API(rolltui_str_eq, PUBLIC)
 ROLLTUI_API(rolltui_str_free, PUBLIC)
 ROLLTUI_API(rolltui_str_get, INTERNAL)  /* Phase 24: RolltuiStr is TRANSPARENT: a consumer reads `.p`/`.n` directly, so there is no hole to fill. Its old KEPT reason was `public_header_test` section 1 — a META-test, which Phase 20 struck as a reason */
+ROLLTUI_API(rolltui_labelf, INTERNAL)  /* bounded diagnostic labels, cut on a whole character; the library's own .c files only */
 ROLLTUI_API(rolltui_str_list_add, INTERNAL)  /* the list's own API */
 ROLLTUI_API(rolltui_str_list_clear, INTERNAL)  /* the list's own API */
 ROLLTUI_API(rolltui_str_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to

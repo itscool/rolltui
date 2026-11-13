@@ -1220,7 +1220,7 @@ static int tp_pairs_whole(const RolltuiJsonValue* v, const char* path, int depth
     size_t klen = 0;
     const char* k = rolltui_json_object_key_at(v, i, &klen);
     char sub[512]; /* a path into a theme: `roles.text.fg` */
-    snprintf(sub, sizeof sub, "%s.%.*s", path, (int)klen, k);
+    rolltui_labelf(sub, sizeof sub, "%s.%.*s", path, (int)klen, k);
     if (!tp_pairs_whole(rolltui_json_object_value_at(v, i), sub, depth + 1, why)) return 0;
   }
   return 1;

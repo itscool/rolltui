@@ -544,6 +544,7 @@ endif()
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 add_rolltui_test(rolltui-files-test tests/files_test.cpp)
+add_rolltui_test(rolltui-app-files-test tests/app_files_test.cpp)
 add_rolltui_test(rolltui-picker-kind-test tests/picker_kind_test.cpp)
 
 # THE PARITY PROBE — can a HOST build what the LIBRARY builds? `menu` reimplemented as a host

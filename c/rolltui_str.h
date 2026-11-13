@@ -31,6 +31,16 @@
 
 #include "rolltui/rolltui.h"
 
+#include <stdio.h> /* MinGW's printf dialect is named in its C runtime headers */
+
+#if defined(__MINGW32__) && defined(__MINGW_PRINTF_FORMAT)
+#define ROLLTUI_LABELF_FORMAT __attribute__((format(__MINGW_PRINTF_FORMAT, 3, 4)))
+#elif defined(__GNUC__) || defined(__clang__)
+#define ROLLTUI_LABELF_FORMAT __attribute__((format(printf, 3, 4)))
+#else
+#define ROLLTUI_LABELF_FORMAT
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -64,6 +74,12 @@ RolltuiStr* rolltui_str_list_add(RolltuiStrListRaw* l, const char* s, size_t len
 /* A BORROW of the bytes, never NULL: the empty string reads back as "" with `*len` 0, so a
  * caller never branches on NULL to print a name. */
 const char* rolltui_str_get(const RolltuiStr* s, size_t* len);
+
+/* A LABEL: printf into a fixed buffer, for diagnostic text with a deliberate cap (a theme
+ * report's location, a path into a document). A label that does not fit is cut on a character
+ * boundary, never inside a UTF-8 sequence, and ends in `…`. A file path is never built this way:
+ * a cut path names another file. */
+void rolltui_labelf(char* buf, size_t cap, const char* fmt, ...) ROLLTUI_LABELF_FORMAT;
 
 #ifdef __cplusplus
 } /* extern "C" */

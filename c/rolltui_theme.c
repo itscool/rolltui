@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_effects.h"
 #include "rolltui/c/rolltui_json.h"
@@ -578,14 +579,14 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
                          RolltuiThemeReport* report, int depth, RolltuiStyleColorRaw* out) {
   char buf[ROLLTUI_THEME_WHERE_MAX];
   if (depth > 4) {
-    snprintf(buf, sizeof buf, "%s: defs reference cycle", where);
+    rolltui_labelf(buf, sizeof buf, "%s: defs reference cycle", where);
     bad(report, buf);
     return 0;
   }
   if (rolltui_json_is_number(v)) {
     const double d = rolltui_json_as_number(v, 0);
     if (d < 0 || d > 255 || d != floor(d)) {
-      snprintf(buf, sizeof buf, "%s: %f is not an ANSI index 0-255", where, d);
+      rolltui_labelf(buf, sizeof buf, "%s: %f is not an ANSI index 0-255", where, d);
       bad(report, buf);
       return 0;
     }
@@ -600,10 +601,10 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
     if (rolltui_color_parse(s, slen, out)) return 1;
     if (rolltui_json_has(defs, s, slen)) {
       char where2[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(where2, sizeof where2, "%s \xe2\x86\x92 defs.%s", where, s);
+      rolltui_labelf(where2, sizeof where2, "%s \xe2\x86\x92 defs.%s", where, s);
       return resolve_color(rolltui_json_get(defs, s, slen), defs, mode, where2, report, depth + 1, out);
     }
-    snprintf(buf, sizeof buf, "%s: '%s' is not a colour (#rrggbb, 0-255, none, or a defs name)", where, s);
+    rolltui_labelf(buf, sizeof buf, "%s: '%s' is not a colour (#rrggbb, 0-255, none, or a defs name)", where, s);
     bad(report, buf);
     return 0;
   }
@@ -611,7 +612,7 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
     const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
     size_t i, n;
     if (!rolltui_json_has(v, key, strlen(key))) {
-      snprintf(buf, sizeof buf, "%s: missing \"%s\" variant", where, key);
+      rolltui_labelf(buf, sizeof buf, "%s: missing \"%s\" variant", where, key);
       bad(report, buf);
       return 0;
     }
@@ -620,17 +621,17 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
       size_t klen;
       const char* k = rolltui_json_object_key_at(v, i, &klen);
       if (!streq(k, klen, "dark") && !streq(k, klen, "light")) {
-        snprintf(buf, sizeof buf, "%s.%s", where, k);
+        rolltui_labelf(buf, sizeof buf, "%s.%s", where, k);
         unk(report, buf);
       }
     }
     {
       char where2[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(where2, sizeof where2, "%s.%s", where, key);
+      rolltui_labelf(where2, sizeof where2, "%s.%s", where, key);
       return resolve_color(rolltui_json_get(v, key, strlen(key)), defs, mode, where2, report, depth + 1, out);
     }
   }
-  snprintf(buf, sizeof buf, "%s: expected a colour", where);
+  rolltui_labelf(buf, sizeof buf, "%s: expected a colour", where);
   bad(report, buf);
   return 0;
 }
@@ -644,7 +645,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
   size_t i, n;
   *out = *base;
   if (!rolltui_json_is_object(v)) {
-    snprintf(buf, sizeof buf, "%s: expected an object", where);
+    rolltui_labelf(buf, sizeof buf, "%s: expected an object", where);
     bad(report, buf);
     return;
   }
@@ -656,7 +657,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
     if (streq(k, klen, "fg") || streq(k, klen, "bg")) {
       char where2[ROLLTUI_THEME_WHERE_MAX];
       RolltuiStyleColorRaw c;
-      snprintf(where2, sizeof where2, "%s.%s", where, k);
+      rolltui_labelf(where2, sizeof where2, "%s.%s", where, k);
       if (resolve_color(x, defs, mode, where2, report, 0, &c)) {
         if (streq(k, klen, "fg")) out->fg = c;
         else out->bg = c;
@@ -667,14 +668,14 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
       if (rolltui_json_is_object(x)) {
         const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
         if (!rolltui_json_has(x, key, strlen(key))) {
-          snprintf(buf, sizeof buf, "%s.%s: missing \"%s\" variant", where, k, key);
+          rolltui_labelf(buf, sizeof buf, "%s.%s: missing \"%s\" variant", where, k, key);
           bad(report, buf);
           continue;
         }
         b = rolltui_json_get(x, key, strlen(key));
       }
       if (!rolltui_json_is_bool(b)) {
-        snprintf(buf, sizeof buf, "%s.%s: expected true or false", where, k);
+        rolltui_labelf(buf, sizeof buf, "%s.%s: expected true or false", where, k);
         bad(report, buf);
         continue;
       }
@@ -687,7 +688,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
         else out->reverse = bv;
       }
     } else {
-      snprintf(buf, sizeof buf, "%s.%s", where, k);
+      rolltui_labelf(buf, sizeof buf, "%s.%s", where, k);
       unk(report, buf);
     }
   }
@@ -772,14 +773,14 @@ static void role_one(const RolltuiJsonValue* n, const char* w, const RolltuiThem
   size_t nlen, r;
   const char* name;
   if (!rolltui_json_is_string(n)) {
-    snprintf(buf, sizeof buf, "%s: expected a role name", w);
+    rolltui_labelf(buf, sizeof buf, "%s: expected a role name", w);
     bad(report, buf);
     return;
   }
   name = rolltui_json_as_string(n, "", 0, &nlen);
   r = vocab_role_from_name(vocab, name, nlen);
   if (r == vocab->role_count) {
-    snprintf(buf, sizeof buf, "%s: '%s' is not a role", w, name);
+    rolltui_labelf(buf, sizeof buf, "%s: '%s' is not a role", w, name);
     bad(report, buf);
     return;
   }
@@ -794,7 +795,7 @@ static void roles_from(const RolltuiJsonValue* x, const char* at, const RolltuiT
     size_t i;
     for (i = 0; i < n; ++i) {
       char w[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(w, sizeof w, "%s[%zu]", at, i);
+      rolltui_labelf(w, sizeof w, "%s[%zu]", at, i);
       role_one(rolltui_json_array_at(x, i), w, vocab, report, out);
     }
   } else {
@@ -811,7 +812,7 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
   memset(out, 0, sizeof *out);
   out->period_ms = 800; /* EffectDraft's own default, same as the C++ member initialiser */
   if (!rolltui_json_is_object(v)) {
-    snprintf(buf, sizeof buf, "%s: expected an effect object", where);
+    rolltui_labelf(buf, sizeof buf, "%s: expected an effect object", where);
     bad(report, buf);
     return 0;
   }
@@ -824,7 +825,7 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       size_t slen;
       const char* s = rolltui_json_as_string(x, "", 0, &slen);
       if (!rolltui_json_is_string(x) || slen == 0) {
-        snprintf(buf, sizeof buf, "%s.kind: expected an effect kind name", where);
+        rolltui_labelf(buf, sizeof buf, "%s.kind: expected an effect kind name", where);
         bad(report, buf);
         continue;
       }
@@ -833,7 +834,7 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
     } else if (streq(k, klen, "frames")) {
       size_t an, j;
       if (!rolltui_json_is_array(x)) {
-        snprintf(buf, sizeof buf, "%s.frames: expected an array of strings", where);
+        rolltui_labelf(buf, sizeof buf, "%s.frames: expected an array of strings", where);
         bad(report, buf);
         continue;
       }
@@ -841,7 +842,7 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       for (j = 0; j < an; ++j) {
         const RolltuiJsonValue* e = rolltui_json_array_at(x, j);
         if (!rolltui_json_is_string(e)) {
-          snprintf(buf, sizeof buf, "%s.frames[%zu]: expected a string", where, j);
+          rolltui_labelf(buf, sizeof buf, "%s.frames[%zu]: expected a string", where, j);
           bad(report, buf);
           continue;
         }
@@ -858,13 +859,13 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       }
     } else if (streq(k, klen, "role") || streq(k, klen, "roles")) {
       char at[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(at, sizeof at, "%s.%s", where, k);
+      rolltui_labelf(at, sizeof at, "%s.%s", where, k);
       roles_from(x, at, vocab, report, out);
     } else if (streq(k, klen, "period_ms") || streq(k, klen, "width") || streq(k, klen, "steps") ||
                streq(k, klen, "jitter")) {
       int val;
       if (!rolltui_json_is_number(x)) {
-        snprintf(buf, sizeof buf, "%s.%s: expected a number", where, k);
+        rolltui_labelf(buf, sizeof buf, "%s.%s: expected a number", where, k);
         bad(report, buf);
         continue;
       }
@@ -875,18 +876,18 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       else out->steps = val;
     } else if (streq(k, klen, "backward")) {
       if (!rolltui_json_is_bool(x)) {
-        snprintf(buf, sizeof buf, "%s.backward: expected true or false", where);
+        rolltui_labelf(buf, sizeof buf, "%s.backward: expected true or false", where);
         bad(report, buf);
         continue;
       }
       out->backward = (unsigned char)rolltui_json_as_bool(x, 0);
     } else {
-      snprintf(buf, sizeof buf, "%s.%s", where, k);
+      rolltui_labelf(buf, sizeof buf, "%s.%s", where, k);
       unk(report, buf);
     }
   }
   if (out->kind_len == 0) {
-    snprintf(buf, sizeof buf, "%s: no \"kind\"", where);
+    rolltui_labelf(buf, sizeof buf, "%s: no \"kind\"", where);
     bad(report, buf);
     return 0;
   }
@@ -896,12 +897,12 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
   if (out->frames_n > 0) {
     const int w = rolltui_u_display_width(scratch, out->frames[0].p, out->frames[0].n, 0);
     if (w <= 0) {
-      snprintf(buf, sizeof buf, "%s.frames[0]: a frame must be at least one cell wide", where);
+      rolltui_labelf(buf, sizeof buf, "%s.frames[0]: a frame must be at least one cell wide", where);
       bad(report, buf);
     }
     for (i = 1; i < out->frames_n; ++i) {
       if (rolltui_u_display_width(scratch, out->frames[i].p, out->frames[i].n, 0) != w) {
-        snprintf(buf, sizeof buf, "%s.frames[%zu]: every frame must be %d cells wide (an effect never changes a span's width)",
+        rolltui_labelf(buf, sizeof buf, "%s.frames[%zu]: every frame must be %d cells wide (an effect never changes a span's width)",
                 where, i, w);
         bad(report, buf);
         break;
@@ -937,11 +938,11 @@ static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* voc
     char where[ROLLTUI_THEME_WHERE_MAX];
     if (state == vocab->state_count || state == 0) {
       char buf[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(buf, sizeof buf, "effects.%s", k);
+      rolltui_labelf(buf, sizeof buf, "effects.%s", k);
       unk(report, buf);
       continue;
     }
-    snprintf(where, sizeof where, "effects.%s", k);
+    rolltui_labelf(where, sizeof where, "effects.%s", k);
     /* A MERGED ROW REPLACES the theme's for that state — a mapping file says what a state
      * looks like, and two answers to that would draw both, one under the other. */
     if (replace) rolltui_effect_map_clear_state(map, state);
@@ -949,9 +950,9 @@ static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* voc
       const size_t an = rolltui_json_array_size(x);
       size_t j;
       for (j = 0; j < an; ++j) {
-        char where2[ROLLTUI_THEME_WHERE_MAX + 24]; /* `where` and an index, whole */
+        char where2[ROLLTUI_THEME_WHERE_MAX];
         EffectDraft d;
-        snprintf(where2, sizeof where2, "%s[%zu]", where, j);
+        rolltui_labelf(where2, sizeof where2, "%s[%zu]", where, j);
         if (read_effect(rolltui_json_array_at(x, j), where2, vocab, scratch, report, &d)) commit_draft(map, state, &d);
         draft_free(&d);
       }
@@ -1007,7 +1008,7 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
     const RolltuiJsonValue* v = rolltui_json_object_value_at(defs, i);
     if (!rolltui_json_is_string(v) && !rolltui_json_is_number(v) && !rolltui_json_is_object(v)) {
       char buf[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(buf, sizeof buf, "defs.%s: expected a colour", k);
+      rolltui_labelf(buf, sizeof buf, "defs.%s: expected a colour", k);
       bad(report, buf);
     }
   }
@@ -1024,7 +1025,7 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
     const char* k = rolltui_json_object_key_at(roles, i, &klen);
     if (vocab_role_from_name(vocab, k, klen) == vocab->role_count) {
       char buf[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(buf, sizeof buf, "roles.%s", k);
+      rolltui_labelf(buf, sizeof buf, "roles.%s", k);
       unk(report, buf);
     }
   }
@@ -1051,7 +1052,7 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
     }
     {
       char where[ROLLTUI_THEME_WHERE_MAX];
-      snprintf(where, sizeof where, "roles.%s", rn);
+      rolltui_labelf(where, sizeof where, "roles.%s", rn);
       read_role_style(rolltui_json_get(roles, rn, strlen(rn)), &text_style, defs, mode, where, report,
                       &out_styles[i]);
     }

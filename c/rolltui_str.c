@@ -4,6 +4,8 @@
  * things that can disagree about what a name is. The flag chooses ALGORITHMS. */
 #include "rolltui/c/rolltui_str.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -136,4 +138,39 @@ void rolltui_ptrvec_free(RolltuiPtrVec* a) {
   a->v = NULL;
   a->n = 0;
   a->cap = 0;
+}
+
+/* How many of the first `k` bytes of `s` to keep so the last character kept is whole: the last
+ * character's lead byte says how long it is, and one that runs past `k` is dropped entirely. */
+static size_t whole_chars(const char* s, size_t k) {
+  size_t j, need;
+  unsigned char c;
+  if (k == 0) return 0;
+  j = k - 1;
+  while (j > 0 && ((unsigned char)s[j] & 0xC0) == 0x80) --j;
+  c = (unsigned char)s[j];
+  need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+  return j + need > k ? j : k;
+}
+
+void rolltui_labelf(char* buf, size_t cap, const char* fmt, ...) {
+  va_list ap;
+  int n;
+  size_t k;
+  if (!cap) return;
+  va_start(ap, fmt);
+  n = vsnprintf(buf, cap, fmt, ap);
+  va_end(ap);
+  if (n < 0) {
+    buf[0] = '\0';
+    return;
+  }
+  if ((size_t)n < cap) return;
+  if (cap > 4) { /* room for the ellipsis: the text, cut whole, then `…` */
+    k = whole_chars(buf, cap - 4);
+    memcpy(buf + k, "\xE2\x80\xA6", 3);
+    buf[k + 3] = '\0';
+  } else {
+    buf[whole_chars(buf, cap - 1)] = '\0';
+  }
 }
