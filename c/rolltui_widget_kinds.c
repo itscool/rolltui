@@ -332,8 +332,12 @@ static void file_ctx_path(const RolltuiFileCtx* fc, RolltuiStr* out) {
 static long long file_ctx_stamp(const char* path) {
   struct stat st;
   if (stat(path, &st) != 0) return -1;
+#if defined(__APPLE__)
   return (long long)st.st_mtimespec.tv_sec * 1000000000LL + (long long)st.st_mtimespec.tv_nsec +
          (long long)st.st_size;
+#else
+  return (long long)st.st_mtim.tv_sec * 1000000000LL + (long long)st.st_mtim.tv_nsec + (long long)st.st_size;
+#endif
 }
 
 /* Appends the whole file at `path` to `out` (which the caller has already cleared); 1 when it
