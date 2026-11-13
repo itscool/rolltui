@@ -618,6 +618,14 @@ int main() {
         clock_gettime(CLOCK_MONOTONIC, &b);
         return (b.tv_sec - a.tv_sec) * 1e3 + (b.tv_nsec - a.tv_nsec) / 1e6;
       };
+      // THIS THREAD'S CPU TIME, its system calls included: the work a look does. Not the wall clock, which also counts the
+      // waits: a stat waits behind any other process using the same folder (the system's indexer, reading twenty thousand
+      // new files), and the wait is no part of what the picker costs.
+      auto cpu_ms_since = [](const timespec& a) {
+        timespec b{};
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &b);
+        return (b.tv_sec - a.tv_sec) * 1e3 + (b.tv_nsec - a.tv_nsec) / 1e6;
+      };
       // What a look costs when nothing has changed, averaged over twenty. Not asserted as a number: the picker also shows
       // the folders ABOVE the scratch tree, and under a parallel test run the temporary directory is being written to by
       // every other test, so those are legitimately read again. What must hold is that it does not depend on how big the
@@ -628,12 +636,17 @@ int main() {
         (void)rolltui_picker_refresh(r.p);
         (void)rolltui_picker_refresh(r.p);
         timespec t0{};
-        clock_gettime(CLOCK_MONOTONIC, &t0);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t0);
         for (int i = 0; i < 20; ++i) (void)rolltui_picker_refresh(r.p);
-        return ms_since(t0) / 20.0;
+        return cpu_ms_since(t0) / 20.0;
       };
-      const double small_ms = unchanged_ms(small);
-      const double big_ms = unchanged_ms(d);
+      // The fastest of five batches each, alternated: a disturbance slows one batch and never all five, while a look that
+      // read the whole folder would be slow in every one.
+      double small_ms = 1e9, big_ms = 1e9;
+      for (int batch = 0; batch < 5; ++batch) {
+        small_ms = std::min(small_ms, unchanged_ms(small));
+        big_ms = std::min(big_ms, unchanged_ms(d));
+      }
       timespec t0{};
       check(big_ms - small_ms < 25.0 * rolltui_test::kClockScale,
             "a look at a folder of twenty thousand entries that has not changed costs no more than one at a folder of ten: a stat and the rows on screen, "
