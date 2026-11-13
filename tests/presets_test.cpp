@@ -1538,5 +1538,7 @@ int main() {
                                   " of " + std::to_string(frames) + " frames");
   }
 
+  // The sections after the reset above write into the world again, so it is removed here too, last: a run leaves nothing.
+  fs::remove_all(world, ec);
   return report("rolltui_presets_test");
 }

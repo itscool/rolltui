@@ -1789,6 +1789,7 @@ int main() {
     check(windows.transcript_at("a") == windows.transcript_at("b"), "two windows on one content are ONE widget");
     check(input_text(windows.input("prompt")) == "half-typed", "a layout reload keeps the input's text (the widget belongs to the content)");
     rolltui_input_clear(windows.input("prompt"));
+    std::filesystem::remove_all(dir); /* a run leaves nothing behind */
   }
   {
     // Every failure, by name AND on screen — never a blank window.
@@ -1995,6 +1996,7 @@ int main() {
               shortcut_of("d").empty() && !rep.clean(),
           "an UNdeclared action keeps its chords, emits nothing, shows no shortcut and is reported again [" +
               shortcut_of("d") + "]");
+    std::filesystem::remove_all(dir); /* a run leaves nothing behind */
   }
   {
     // ---- `help` renders an action declared ONLY in a layout file.
