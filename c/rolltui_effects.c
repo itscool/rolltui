@@ -124,6 +124,13 @@ static int step_index(const RolltuiEffectSpec* s, unsigned long long elapsed, in
 
 /* `role_count` is never zero (rolltui_effects.h), so there is no fallback role to name
  * here — which is what keeps the styling vocabulary in one language. */
+static int same_colour(RolltuiStyleColorRaw a, RolltuiStyleColorRaw b) {
+  if (a.kind != b.kind) return 0;
+  if (a.kind == 1) return a.index == b.index;
+  if (a.kind == 2) return a.r == b.r && a.g == b.g && a.b == b.b;
+  return 1;
+}
+
 static RolltuiStyle role_style(const RolltuiStyle* styles, const RolltuiEffectSpec* s, size_t i) {
   return styles[s->roles[i % s->role_count]];
 }
@@ -853,7 +860,13 @@ void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffe
         if (one.has_glyph) set_glyph(&out, one.glyph, one.glyph_len);
       }
       if (!out.has_glyph && !out.has_style) continue;
-      const RolltuiStyle style = out.has_style ? out.style : cell.style;
+      RolltuiStyle style = out.has_style ? out.style : cell.style;
+      /* AN EFFECT RECOLOURS TEXT AND KEEPS THE CELL'S OWN BACKGROUND. A role whose background is the theme's
+       * ground, or no colour (accent_1 is { fg: a1, bg: bg }), leaves the cell's background as it is, so a
+       * shimmer over a code block or a selected row keeps that colour. A role with a background of its own
+       * (find_current's highlight) paints it. */
+      if (out.has_style && (style.bg.kind == 0 || same_colour(style.bg, styles[ROLLTUI_ROLE_BACKGROUND].bg)))
+        style.bg = cell.style.bg;
       if (out.has_glyph) {
         /* PROPERTY 1, and it is enforced here rather than trusted: a glyph of the wrong
          * width is dropped and counted, never written. A glyph past the cap is refused the

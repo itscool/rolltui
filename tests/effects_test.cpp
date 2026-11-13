@@ -848,6 +848,29 @@ int main() {
     check(rep.cells_touched > 0, "…while its STYLE still landed: only the illegal half was dropped");
   }
 
+  // ---- AN EFFECT RECOLOURS TEXT AND KEEPS THE CELL'S OWN BACKGROUND -----------------
+  // A role whose background is the theme's ground (accent_1: { fg: a1, bg: bg }) leaves the cell's
+  // background as it is, so a shimmer over a code block keeps the block's colour. A role with a
+  // background of its own (find_current's highlight) paints it.
+  {
+    const Theme base = *builtin_theme("default-dark");
+    const RolltuiStyle block = base.style(Role::md_code_block), ground = base.style(Role::background);
+    const RolltuiStyle accent = base.style(Role::accent_1), find = base.style(Role::find_current);
+    check(!(block.bg == ground.bg) && accent.bg == ground.bg && !(find.bg == ground.bg),
+          "the case is real: a code block has its own ground, accent_1 the theme's, find_current a highlight");
+    auto after = [&](Role role) {
+      const Theme t = theme_with(EffectState::Waiting, "pulse", 800, {}, {role});
+      FramePtr f = make_frame(20, 3, t);
+      rolltui_frame_mark(f.get(), 2, 1, 2, static_cast<int>(EffectState::Waiting), 0, 0);  // "ab", inside the code block
+      apply_effects(f.get(), t, 0);
+      return cell_at(f.get(), 2, 1).style;
+    };
+    const RolltuiStyle on_block = after(Role::accent_1);
+    check(on_block.bg == block.bg && on_block.fg == accent.fg,
+          "an effect in a role with the theme's ground recolours the text and keeps the code block's background");
+    check(after(Role::find_current).bg == find.bg, "…and a role with a background of its own paints it, as a find match's flash must");
+  }
+
   // ---- determinism, and that the effect does something ------------------------------
   {
     const Theme theme = *builtin_theme("default-dark");
@@ -890,10 +913,14 @@ int main() {
     FramePtr f = make_frame(20, 3, theme);
     rolltui_frame_mark(f.get(), 2, 1, 4, static_cast<int>(EffectState::Waiting), 0, 0);
     apply_effects(f.get(), theme, 0);
-    check(glyph_at(f.get(), 2, 1) == "x" && cell_at(f.get(), 2, 1).style == theme.style(Role::error),
-          "a stacked pair gives the glyph from one and the style from the other");
-    check(cell_at(f.get(), 3, 1).style == theme.style(Role::error) && glyph_at(f.get(), 3, 1) != "x",
-          "…and the kind that answers for one cell does not answer for the rest");
+    // The pulse's role has the theme's ground, so the cell keeps the code block's background (see above).
+    auto tinted = [&](int x) {
+      RolltuiStyle want = theme.style(Role::error);
+      want.bg = theme.style(Role::md_code_block).bg;
+      return cell_at(f.get(), x, 1).style == want;
+    };
+    check(glyph_at(f.get(), 2, 1) == "x" && tinted(2), "a stacked pair gives the glyph from one and the style from the other");
+    check(tinted(3) && glyph_at(f.get(), 3, 1) != "x", "…and the kind that answers for one cell does not answer for the rest");
   }
 
   // ---- a theme that maps nothing is a STILL UI (the degrade rung) --------------------
