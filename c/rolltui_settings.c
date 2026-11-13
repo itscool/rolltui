@@ -60,7 +60,7 @@ static void write_color_depth(void* value, void* ctx) {
    ix, valid, write}
 
 static const SettingRow kSettings[] = {
-    S("theme", "THEME", "default", "a preset name (see `theme list`) or a preset file", "theme", 1,
+    S("theme", "THEME", "default", "a theme preset name or a theme file", "theme", 1,
       STORE_THEME, NULL, NULL),
     S("layout", "LAYOUT", "default", "a shipped layout, a layouts/ file name, or a layout file", "layout", 1,
       STORE_LAYOUT, NULL, NULL),
@@ -68,7 +68,7 @@ static const SettingRow kSettings[] = {
       STORE_THEME, rolltui_theme_mode_setting_valid, write_theme_mode),
     S("color_depth", "COLOR_DEPTH", "auto", "auto | truecolor | 256 | 16 | mono", "theme", 0,
       STORE_THEME, rolltui_color_depth_setting_valid, write_color_depth),
-    S("bindings", "BINDINGS", "default", "a bindings preset name (see `bindings list`) or a bindings file",
+    S("bindings", "BINDINGS", "default", "a bindings preset name or a bindings file",
       "bindings", 1, STORE_BINDINGS, NULL, NULL),
 };
 #undef S
