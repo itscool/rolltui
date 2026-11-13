@@ -1233,6 +1233,27 @@ struct App {
   static void trim_slashes(RolltuiStr& path) {
     while (path.n > 1 && path.p[path.n - 1] == '/') rolltui::pop_back(path);
   }
+  // An absolute path with its `.` parts dropped and each `..` folded into the part before it. Links are
+  // not resolved: the path keeps the names it was given.
+  static void normalize(RolltuiStr& path) {
+    if (path.empty() || path.p[0] != '/') return;
+    RolltuiStr out;
+    StrView rest(path);
+    while (!rest.empty()) {
+      const std::size_t slash = rest.find('/');
+      const StrView part = slash == StrView::npos ? rest : rest.first(slash);
+      rest = slash == StrView::npos ? StrView() : rest.drop_front(slash + 1);
+      if (part.empty() || part == StrView(".")) continue;
+      if (part == StrView("..")) {
+        const std::size_t cut = StrView(out).rfind('/');
+        if (cut != StrView::npos) out = rolltui::own(StrView(out).first(cut));
+        continue;
+      }
+      out += "/";
+      out += part;
+    }
+    path = out.empty() ? RolltuiStr("/") : std::move(out);
+  }
   static void expand_home(RolltuiStr& path) {
     if (path.empty() || path.p[0] != '~') return;
     const char* home = std::getenv("HOME");
@@ -2723,7 +2744,7 @@ int main(int argc, char** argv) {
     if (start.empty()) app.root = rolltui::own(here);
     else if (start.p[0] == '/') app.root = rolltui::own(start);
     else app.root = here + "/" + start;
-    App::trim_slashes(app.root);
+    App::normalize(app.root);
     app.start_dir = rolltui::own(app.root);  // what a relative path is said from, for the whole session
   }
 

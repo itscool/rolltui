@@ -492,6 +492,13 @@ int main() {
       check((has(deep, "/ \xE2\x80\xBA ") || has(deep, "\xE2\x80\xA6 \xE2\x80\xBA ")) && has(deep, "alpha \xE2\x80\xBA nested \xE2\x80\xBA deep.txt \xE2\x9C\x8E") && !has(deep, "\xE2\x94\x8C dirktui"),
             "the path line is a breadcrumb — the folder's parts joined by ›, the entry under the cursor last, its head behind an ellipsis when long, a pencil at the end — and 'dirktui' is off the border");
       { std::istringstream in(deep); std::string last; for (std::string l; std::getline(in, l);) if (!l.empty()) last = l; check(last.find("dirktui") != std::string::npos, "…and on the status line, at its right end"); }
+      // A RELATIVE START with `.` and `..` in it names the folders it means: `dirktui .` is the folder it was started in.
+      const std::string dotted = run("cd '" + (tree / "alpha").string() + "' && " + home_env + bin + " './../alpha/./nested' --frame 100x12 2>&1", crc);
+      const std::string dot = run("cd '" + (tree / "alpha" / "nested").string() + "' && " + home_env + bin + " . --frame 100x12 2>&1", crc);
+      check(has(dotted, "alpha \xE2\x80\xBA nested \xE2\x80\xBA deep.txt \xE2\x9C\x8E") && !has(dotted, "\xE2\x80\xBA . \xE2\x80\xBA") &&
+                !has(dotted, "\xE2\x80\xBA .. \xE2\x80\xBA") && has(dot, "alpha \xE2\x80\xBA nested \xE2\x80\xBA deep.txt \xE2\x9C\x8E") &&
+                !has(dot, "\xE2\x80\xBA . \xE2\x80\xBA"),
+            "a start path's `.` and `..` parts are folded away: the breadcrumb names the real folders");
       // The x of a part: cells before it on the crumb row (the frame's first row after the two stderr lines).
       auto cell_at = [](const std::string& fr, const std::string& word) { std::istringstream in(fr); std::string l; while (std::getline(in, l) && l.find("\xE2\x9C\x8E") == std::string::npos) {} const std::size_t at = l.find(word); if (at == std::string::npos) return -1; int c = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(l[i]) & 0xC0) != 0x80) ++c; return c; };
       const int ax = cell_at(deep, "alpha"), px = cell_at(deep, "\xE2\x9C\x8E");
