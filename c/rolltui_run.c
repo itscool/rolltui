@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 
@@ -74,14 +75,14 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
   RolltuiStyle fill;
   size_t i;
   if (!app || !app->render || !app->event) return ROLLTUI_RUN_BAD_APP;
+  /* ASKED BEFORE THE TERMINAL IS MADE, of both descriptors. Making it enters: the alternate screen, the modes, the
+   * questions, and the leaving again at free, all WRITTEN — so a refusal decided afterwards has already sent all of
+   * that into a pipe or a file, which is the one place a program refusing to draw must leave untouched. */
+  if (!isatty(in_fd) || !isatty(out_fd)) return ROLLTUI_RUN_NOT_A_TERMINAL;
   memset(&r, 0, sizeof r);
   r.app = app;
   opts.facts_events = 1; /* the loop is what listens for them */
   r.term = rolltui_terminal_new(in_fd, out_fd, opts);
-  if (!rolltui_terminal_is_tty(r.term)) {
-    rolltui_terminal_free(r.term);
-    return ROLLTUI_RUN_NOT_A_TERMINAL;
-  }
   r.w = rolltui_terminal_width(r.term);
   r.h = rolltui_terminal_height(r.term);
   if (app->start) app->start(app->ctx, &r);

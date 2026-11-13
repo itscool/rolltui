@@ -230,7 +230,7 @@ int main() {
   // ---- THE PRODUCTS RUN ON IT: none of the three writes a loop of its own again -----------------------------------
   // A loop written by hand is a loop that can forget the depth, the borrowed events, or the repaint after a child
   // program; each product once did. What is left of `rolltui_terminal_poll` and `rolltui_terminal_present` is for a
-  // host of a different shape.
+  // host of a different shape — `examples/chat.cpp` is the one in this tree, its reply made on another thread.
   for (const char* rel : {"examples/dirktui.cpp", "examples/paint.cpp", "tools/studio.cpp"}) {
     const std::string src = slurp(std::string(ROLLTUI_SOURCE_DIR) + "/" + rel);
     check(!src.empty() && src.find("rolltui_run(") != std::string::npos, std::string(rel) + " runs on `rolltui_run`");
@@ -249,14 +249,49 @@ int main() {
     only_render.event = nullptr;
     check(rolltui_run(0, 1, RolltuiTerminalOptions{}, &only_render) == ROLLTUI_RUN_BAD_APP && s.starts == 0,
           "an app with no `event` is refused, and none of it was called");
-    // a descriptor that is no terminal: said, and nothing entered
+    // A DESCRIPTOR THAT IS NO TERMINAL: said, and NOTHING WRITTEN. The output is a pipe, so what was written is read
+    // back — /dev/null would swallow the very bytes this is about.
+    auto drain = [](int fd) {
+      std::string got;
+      char b[4096];
+      for (ssize_t k; (k = ::read(fd, b, sizeof b)) > 0;) got.append(b, static_cast<std::size_t>(k));
+      return got;
+    };
     const int devnull = ::open("/dev/null", O_RDWR);
     RolltuiTerminalOptions o;
     o.no_cache = 1;
     o.handle_signals = 0;
     RolltuiRunApp app = make_app(&s);
-    check(rolltui_run(devnull, devnull, o, &app) == ROLLTUI_RUN_NOT_A_TERMINAL, "a descriptor that is no terminal is named as such");
+    int out[2] = {-1, -1};
+    check(::pipe(out) == 0, "pipe");
+    check(rolltui_run(devnull, out[1], o, &app) == ROLLTUI_RUN_NOT_A_TERMINAL, "a descriptor that is no terminal is named as such");
     check(s.starts == 0 && s.renders == 0, "…and nothing of the app was called");
+    ::close(out[1]);
+    const std::string refused = drain(out[0]);
+    ::close(out[0]);
+    check(refused.empty(), "…and NOT ONE BYTE reached the output: no screen entered, no question asked, nothing to leave (" +
+                               std::to_string(refused.size()) + " bytes)");
+    // CONTROL: a terminal made on the same kind of descriptor DOES write there, so the silence above is the refusal.
+    int ctl[2] = {-1, -1};
+    check(::pipe(ctl) == 0, "pipe");
+    rolltui_terminal_free(rolltui_terminal_new(devnull, ctl[1], o));
+    ::close(ctl[1]);
+    check(drain(ctl[0]).find("\x1b[?1049h") != std::string::npos,
+          "CONTROL: a terminal made on a pipe writes its entering into it, which is what the refusal must come before");
+    ::close(ctl[0]);
+    // …and the INPUT is asked too: a terminal to draw on with nothing to read keys from is no terminal to run on.
+    int pm = -1, ps = -1;
+    winsize pws{};
+    pws.ws_row = 24;
+    pws.ws_col = 80;
+    if (::openpty(&pm, &ps, nullptr, nullptr, &pws) == 0) {
+      check(rolltui_run(devnull, ps, o, &app) == ROLLTUI_RUN_NOT_A_TERMINAL && s.starts == 0,
+            "input that is no terminal is refused even when the output is one");
+      ::fcntl(pm, F_SETFL, O_NONBLOCK);
+      check(drain(pm).empty(), "…and the terminal it would have drawn on was sent nothing");
+      ::close(pm);
+      ::close(ps);
+    }
     ::close(devnull);
     check(live_bytes() == base, "…and nothing is left allocated by either");
     // the functions the callbacks call are harmless on nothing
