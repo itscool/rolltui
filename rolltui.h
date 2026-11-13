@@ -1076,8 +1076,9 @@ typedef struct RolltuiThemeReport {
   RolltuiStr* badge_mismatches; size_t badge_mismatches_n, badge_mismatches_cap;
 } RolltuiThemeReport;
 
-/* COLORTERM=truecolor|24bit -> TrueColor; TERM containing "256color" -> Ansi256; TERM=dumb or empty -> Mono; else Ansi16. `force`
- * (ROLL_COLOR_DEPTH) wins when set and valid. Any argument may be NULL. */
+/* COLORTERM=truecolor|24bit -> TrueColor; TERM containing "256color" -> Ansi256; TERM=dumb -> Mono; TERM empty -> Mono, except on
+ * Windows, where it is Windows' own console and TrueColor; else Ansi16. `force` (ROLL_COLOR_DEPTH) wins when set and valid. Any
+ * argument may be NULL. */
 unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term, const char* force);
 
 /* The mode a background implies: relative luminance (sRGB linearised, Rec. 709 weights)

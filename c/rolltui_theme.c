@@ -1350,6 +1350,12 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
     if (d == ROLLTUI_DEPTH_TRUECOLOR) return ROLLTUI_DEPTH_TRUECOLOR;
   }
   if (strstr(t, "256color")) return ROLLTUI_DEPTH_ANSI256;
+#if defined(_WIN32)
+  /* Windows' own console, conhost and Windows Terminal alike, sets no TERM and draws 24-bit colour
+   * in the VT mode the terminal turns on. A TERM there is a Unix-style terminal (mintty, an SSH
+   * session from one) and is read as it is everywhere else. */
+  if (t[0] == '\0') return ROLLTUI_DEPTH_TRUECOLOR;
+#endif
   if (t[0] == '\0' || lit_eq(t, strlen(t), "dumb")) return ROLLTUI_DEPTH_MONO;
   return ROLLTUI_DEPTH_ANSI16;
 }

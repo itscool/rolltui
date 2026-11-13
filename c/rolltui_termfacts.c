@@ -60,12 +60,6 @@ static int known_truecolor(const RolltuiTermEnv* e) {
     if (eq(e->term, kTerms[i])) return 1;
   for (i = 0; i < sizeof kPrograms / sizeof kPrograms[0]; ++i)
     if (eq(e->term_program, kPrograms[i])) return 1;
-#if defined(_WIN32)
-  /* Windows' own console, conhost and Windows Terminal alike, draws 24-bit colour in the VT mode
-   * the terminal turns on, and sets no TERM. A TERM there is a Unix-style terminal (mintty, an SSH
-   * session) and is read as it is everywhere else. */
-  if (!e->term) return 1;
-#endif
   return eq(e->lc_terminal, "iTerm2");
 }
 
