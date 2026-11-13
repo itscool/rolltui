@@ -369,13 +369,14 @@ int main(int argc, char** argv) {
       rolltui_highlight_free(h);
     }
 
-    // ---- THE README'S EXAMPLE LANGUAGE LOADS AND WORKS: an example in documentation that stops loading is a lie ---------------------------------------------------
+    // ---- THE GUIDE'S EXAMPLE LANGUAGE LOADS AND WORKS: an example in documentation that stops loading is a lie ------------------------------------------------------
+    // The example moved from the README to docs/guide.md with the rest of the long-form sections, and the check went with it.
     {
-      const std::string readme = slurp(fs::path(ROLLTUI_SOURCE_DIR) / "README.md");
+      const std::string readme = slurp(fs::path(ROLLTUI_SOURCE_DIR) / "docs" / "guide.md");
       const std::size_t sec = readme.find("## Source colour");
       const std::size_t open = readme.find("```json\n", sec);
       const std::size_t close = open == std::string::npos ? std::string::npos : readme.find("\n```", open + 8);
-      check(sec != std::string::npos && open != std::string::npos && close != std::string::npos, "the README has a Source colour section with a JSON example");
+      check(sec != std::string::npos && open != std::string::npos && close != std::string::npos, "docs/guide.md has a Source colour section with a JSON example");
       if (close != std::string::npos) {
         std::string why;
         RolltuiSyntax* t = rolltui_syntax_new_standard(nullptr);
