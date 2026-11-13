@@ -1,39 +1,26 @@
 //
-// boundary_test.cpp — ROLLTUI DOES NOT DEPEND ON ROLL, as a check rather than a promise.
+// boundary_test.cpp — THE LIBRARY INCLUDES ONLY ITSELF, as a check rather than a promise.
 //
-// The rule is not "rolltui depends on nothing". A shared leaf both sides depend on is not an
-// upward dependency. The rule is that the library never reaches INTO the program that consumes
-// it, so `rolltui/` builds and its suite passes with roll's `include/` and `src/` deleted from
-// the tree — which is what makes the library extractable, and what stops the router's types
-// leaking into a library that has other hosts.
-//
-// UNTIL THIS FILE EXISTED THAT WAS A BUILD-CONFIG PROMISE AND NOTHING CHECKED IT. It held only
-// because `rolltui/CMakeLists.txt` happens not to put roll's directories on any target's include
-// path. A promise like that is exactly what a refactor erodes silently: the build still works,
-// the suite is still green, and the property is gone with nothing to say so.
+// rolltui is compiled inside other programs' builds: copied into a host's own `rolltui/` folder, or its sources listed in a host's
+// own build file. Each resolves the library's includes against the HOST's include path, and the one spelling that resolves in every
+// one of them is `rolltui/...`, because the folder the library sits in is named rolltui in all of them. An include spelled any other
+// way resolves against whatever the host happens to keep — a `testkit/` of its own, an `include/` of its own — or against nothing.
+// That is how the library's sources once included `testkit/testctl.h`: it resolved only because the first host kept a testkit at its
+// root, and a host without one could not compile the library until its build file added a line to work round it.
 //
 // TWO ASSERTIONS, AND NEITHER SUBSUMES THE OTHER.
 //
-//   1. THE INCLUDE PATH, read from the BUILD SYSTEM rather than from this file's idea of it.
-//      `ROLLTUI_TARGET_INCLUDES_FILE` names a file CMake writes at generate time from
-//      `$<TARGET_PROPERTY:rolltui,INCLUDE_DIRECTORIES>`, one directory per line, so it is the
-//      list the compiler will actually be given — not a re-reading of the CMakeLists, which
-//      could agree with a stale idea of what that file says.
+//   1. THE INCLUDE PATH, read from the BUILD SYSTEM rather than from this file's idea of it: `ROLLTUI_TARGET_INCLUDES_FILE` is written
+//      at generate time from `$<TARGET_PROPERTY:rolltui,INCLUDE_DIRECTORIES>`, so it is the list the compiler is given. Every
+//      directory on it is inside this repository; one outside would let an include resolve somewhere this repository does not control.
 //
-//   2. THE INCLUDE GRAPH, because the path check alone is not enough HERE for a specific
-//      reason: `rolltui` exports the REPOSITORY ROOT as a public include directory (it is how
-//      `#include "rolltui/rolltui.h"` resolves for every consumer). So roll's headers are
-//      already reachable by a path-qualified spelling — `#include "include/Provider.hpp"` would
-//      compile today — and no include-DIRECTORY check can see that. Every `#include` under
-//      `rolltui/` is therefore resolved against the real search path and its target located.
+//   2. THE INCLUDE GRAPH, because a path check alone cannot see a spelling: the repository root is on the path (it is how
+//      `rolltui/rolltui.h` resolves), so `#include "testkit/testctl.h"` compiles here and nowhere a host lacks a testkit. Every quoted
+//      include in the library's own sources is held to `include_problem` below. Angled includes are the system's, not this file's.
 //
-// ARMED, NOT ASSUMED. Both assertions were seen to FAIL against a planted violation before
-// either was trusted, and the planted forms are named in the checks below so the next person
-// can re-run them: a `target_include_directories(rolltui PRIVATE .../include)` for the first,
-// and an `#include "include/Provider.hpp"` in a library source for the second. A boundary check
-// that has never seen a boundary crossed is the reports-zero shape aimed at the newest
-// instrument.
+// ARMED, NOT ASSUMED: each check's rule is run on planted violations every run, so a pass means a violation would have been seen.
 //
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -47,18 +34,6 @@ namespace fs = std::filesystem;
 using testkit::check;
 
 namespace {
-
-// The repository root: rolltui's source dir with its last component removed. Derived rather
-// than passed, so there is one definition of "up one" and it cannot disagree with the include
-// directory the library actually exports.
-fs::path repo_root() { return fs::path(ROLLTUI_SOURCE_DIR).parent_path(); }
-
-// ROLL'S OWN DIRECTORIES, and the list is deliberately short. These are the two the library's
-// Done-when names, and adding a third is a decision rather than a tidy-up: `tools/` and `tests/`
-// at the root hold roll's mock servers and its suite, which the library also must not reach,
-// but they are not on any search path and a rule that lists everything reads as a rule about
-// nothing.
-const char* kRollDirs[] = {"include", "src"};
 
 bool under(const fs::path& p, const fs::path& dir) {
   const std::string a = fs::weakly_canonical(p).string();
@@ -83,20 +58,32 @@ std::string read_file(const fs::path& p) {
   return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-// Every source the library ships or tests with. `third_party/` is vendored code we do not
-// author and do not hold to this rule; `ucd/` is data.
+// THE LIBRARY'S OWN SOURCES: what a host compiles when it builds rolltui — `c/` and the sources and headers at the repository
+// root. `third_party/` is vendored code we do not author; the tests, tools and examples are hosts of the library, not the library.
 std::vector<fs::path> library_sources() {
+  const fs::path root = ROLLTUI_SOURCE_DIR;
   std::vector<fs::path> out;
-  for (const fs::directory_entry& e : fs::recursive_directory_iterator(ROLLTUI_SOURCE_DIR)) {
-    if (!e.is_regular_file()) continue;
-    const std::string p = e.path().string();
-    if (p.find("/third_party/") != std::string::npos) continue;
-    if (p.find("/ucd/") != std::string::npos) continue;
-    const std::string ext = e.path().extension().string();
-    if (ext == ".c" || ext == ".h" || ext == ".cpp" || ext == ".hpp" || ext == ".inc")
-      out.push_back(e.path());
-  }
+  auto take = [&](const fs::path& dir) {
+    for (const fs::directory_entry& e : fs::directory_iterator(dir)) {
+      if (!e.is_regular_file()) continue;
+      const std::string ext = e.path().extension().string();
+      if (ext == ".c" || ext == ".h" || ext == ".cpp" || ext == ".hpp") out.push_back(e.path());
+    }
+  };
+  take(root);
+  take(root / "c");
   return out;
+}
+
+// What is wrong with one quoted include in a library source, or "" when nothing is: it must be spelled `rolltui/...` and name a
+// file in this repository — the one spelling that resolves in every host, because the folder the library sits in is named rolltui
+// in all of them. nsplit is the exception, and only for its own header: a two-file library meant to be dropped into any project on
+// its own includes its header by plain name, which resolves beside the file in every build.
+std::string include_problem(const std::string& file_name, const std::string& inc) {
+  if ((file_name == "nsplit.c" || file_name == "nsplit.h") && inc == "nsplit.h") return "";
+  if (inc.rfind("rolltui/", 0) != 0) return "not spelled rolltui/...";
+  if (!fs::is_regular_file(fs::path(ROLLTUI_SOURCE_DIR) / inc.substr(8))) return "names no file in this repository";
+  return "";
 }
 
 // The quoted or angled target of every `#include` on a line of its own. Not a preprocessor:
@@ -129,89 +116,55 @@ std::vector<std::string> includes_in(const std::string& text) {
 }  // namespace
 
 int main() {
-  const fs::path root = repo_root();
+  const fs::path root = ROLLTUI_SOURCE_DIR;
 
-  // ---- CONTROL: the scan reaches the library, and the roll directories it is about exist ----
-  // A boundary test that walked nothing, or that was pointed at a tree with no roll in it,
-  // would report a clean boundary forever.
+  // ---- CONTROL: the scan reaches the library ---------------------------------------------------------------------------------------
   const std::vector<fs::path> sources = library_sources();
-  bool saw_umbrella = false;
-  for (const fs::path& p : sources)
+  bool saw_umbrella = false, saw_c = false;
+  for (const fs::path& p : sources) {
     if (p.filename() == "rolltui.h") saw_umbrella = true;
-  check(sources.size() > 80 && saw_umbrella,
-        "the scan reaches the library: " + std::to_string(sources.size()) +
-            " sources, including rolltui.h");
-  bool roll_is_here = true;
-  for (const char* d : kRollDirs)
-    if (!fs::is_directory(root / d)) roll_is_here = false;
-  // THIS REPOSITORY STANDS ALONE, OR IS MOUNTED INSIDE A HOST: both are real trees this suite
-  // runs in. Standing alone (no `include/`, no `src/` beside `rolltui/`), there is no host on
-  // the other side of the boundary to have reached — the assertion below would be checking a
-  // vacuous truth and calling it a pass, which is the exact failure this file's own header
-  // warns against for the boundary itself. Say so plainly instead of failing a control that
-  // cannot fire here; a host that DOES mount this repository (roll, as its `rolltui/`
-  // submodule) still gets the armed version, because there `include/` and `src/` are real.
-  if (!roll_is_here) {
-    check(true,
-          "this checkout has no host beside it (no include/, no src/) — rolltui standing "
-          "alone, which is what this repository is — so there is nothing on the other side "
-          "of the boundary to have reached; a host that mounts this repository (roll, at its "
-          "own rolltui/) runs the armed form of this control, below");
-  } else {
-    check(roll_is_here,
-          "roll's own include/ and src/ are present in this tree — the thing the boundary is "
-          "about exists, so a pass means the library does not reach it rather than that there "
-          "was nothing to reach");
+    if (p.filename() == "rolltui_presets.c") saw_c = true;
   }
+  check(sources.size() > 80 && saw_umbrella && saw_c,
+        "the scan reaches the library: " + std::to_string(sources.size()) + " sources, rolltui.h and c/ among them");
 
-  // ---- 1. THE INCLUDE PATH -----------------------------------------------------------------
-  // Planted violation that must make this FAIL, for whoever re-arms it:
-  //   target_include_directories(rolltui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+  // ---- 1. THE INCLUDE PATH -----------------------------------------------------------------------------------------------------------
+  auto inside = [&](const fs::path& d) { return fs::weakly_canonical(d) == fs::weakly_canonical(root) || under(d, root); };
   const std::string dirs_text = read_file(ROLLTUI_TARGET_INCLUDES_FILE);
-  check(!dirs_text.empty(),
-        "the build system's include list was written and read — an empty one would make the "
-        "next check pass on nothing");
-  std::vector<std::string> bad_dirs;
+  check(!dirs_text.empty(), "the build system's include list was written and read — an empty one would make the next check pass on nothing");
+  std::vector<std::string> outside;
   for (std::string d : split(dirs_text, '\n')) {
     while (!d.empty() && (d.back() == '\r' || d.back() == ' ')) d.pop_back();
-    if (d.empty()) continue;
-    for (const char* r : kRollDirs) {
-      const fs::path rd = root / r;
-      if (fs::weakly_canonical(fs::path(d)) == fs::weakly_canonical(rd) ||
-          under(fs::path(d), rd))
-        bad_dirs.push_back(d);
-    }
+    if (!d.empty() && !inside(fs::path(d))) outside.push_back(d);
   }
-  check(bad_dirs.empty(),
-        "no roll directory is on the library's include path" +
-            (bad_dirs.empty() ? "" : " — " + bad_dirs.front()));
+  check(outside.empty(), "every directory on the library's include path is inside this repository" +
+                             (outside.empty() ? "" : " — " + outside.front()));
+  check(!inside(root.parent_path() / "include") && inside(root / "c"),
+        "…and the rule can tell: a host's include/ beside this repository is outside it, the library's c/ is inside");
 
-  // ---- 2. THE INCLUDE GRAPH ----------------------------------------------------------------
-  // Planted violation that must make this FAIL:
-  //   #include "include/Provider.hpp"   in any file under rolltui/
-  // The search path is the real one: the file's own directory first (quoted form), then the
-  // directories the build adds.
-  std::vector<fs::path> search = {root, fs::path(ROLLTUI_SOURCE_DIR) / "tests",
-                                  fs::path(ROLLTUI_SOURCE_DIR) / "tools"};
-  std::vector<std::string> crossings;
+  // ---- 2. THE INCLUDE GRAPH ----------------------------------------------------------------------------------------------------------
+  std::vector<std::string> bad;
+  int quoted = 0;
   for (const fs::path& srcf : sources) {
-    for (const std::string& inc : includes_in(read_file(srcf))) {
-      std::vector<fs::path> cands = {srcf.parent_path() / inc};
-      for (const fs::path& s : search) cands.push_back(s / inc);
-      for (const fs::path& cand : cands) {
-        if (!fs::is_regular_file(cand)) continue;
-        for (const char* r : kRollDirs) {
-          if (under(cand, root / r)) {
-            crossings.push_back(fs::relative(srcf, root).string() + " -> " + inc);
-          }
-        }
-        break;  // first hit wins, exactly as the preprocessor's search does
-      }
+    const std::string text = read_file(srcf);
+    for (const std::string& inc : includes_in(text)) {
+      if (text.find("#include \"" + inc + "\"") == std::string::npos) continue; /* angled: the system's */
+      ++quoted;
+      const std::string why = include_problem(srcf.filename().string(), inc);
+      if (!why.empty()) bad.push_back(fs::relative(srcf, root).string() + " -> " + inc + " (" + why + ")");
     }
   }
-  check(crossings.empty(),
-        "no source under rolltui/ includes a file from roll's include/ or src/" +
-            (crossings.empty() ? "" : " — " + crossings.front()));
+  check(quoted > 200, "the graph scan reads the library's quoted includes (" + std::to_string(quoted) + ")");
+  check(bad.empty(), "every quoted include in the library is spelled rolltui/... and names a file in this repository" +
+                         (bad.empty() ? "" : " — " + bad.front()));
+  check(!include_problem("rolltui_marker.c", "testkit/testctl.h").empty() &&
+            !include_problem("rolltui_x.c", "include/Provider.hpp").empty() &&
+            !include_problem("rolltui_x.c", "rolltui/no_such_header.h").empty() &&
+            !include_problem("rolltui_x.c", "nsplit.h").empty() &&
+            include_problem("rolltui_marker.c", "rolltui/testkit/testctl.h").empty() &&
+            include_problem("nsplit.c", "nsplit.h").empty(),
+        "…and the rule refuses what it is for: testkit/ and include/ spellings, a rolltui/ name with no file, nsplit's header outside "
+        "nsplit — and keeps rolltui/testkit/testctl.h and nsplit's own include");
 
   return testkit::report("boundary_test");
 }

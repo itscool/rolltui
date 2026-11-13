@@ -37,7 +37,7 @@ static const char kModifiedSuffix[] = " (modified)";
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/rolltui_studio.h" /* the in-place EDIT declarations, checked against their definitions below */
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2). Not NUL-terminated by construction —

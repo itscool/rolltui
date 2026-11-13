@@ -24,7 +24,7 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_widget_menu.c` and
  * `rolltui_json.c` each name locally rather than share — a load happens once per file,

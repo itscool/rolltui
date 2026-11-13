@@ -1,10 +1,10 @@
-# --- testkit: the test module both sides depend on ----------------------------
+# --- testkit: the negative-control harness rolltui's suite is built on --------------------------
 #
-# IT BELONGS TO NEITHER SIDE, and that is a build property rather than a naming convention: it
-# links nothing, includes nothing of roll's and nothing of rolltui's, and sits at the repository
-# root so neither tree owns it. A shared LEAF that both depend on is not an upward dependency,
-# which is what lets `rolltui` keep the property that it builds with roll's include/ and src/
-# deleted — asserted by `rolltui-boundary-test`, which was written before any of this moved.
+# A LEAF: it links nothing and includes nothing but the C library, so anything may depend on it
+# and it depends on nothing back. The library's own sources include its one header as
+# `rolltui/testkit/testctl.h`, the spelling that resolves in any host that compiles them
+# (`rolltui-boundary-test` holds every library include to that), and a host that keeps its own
+# testkit target is not given a second one.
 #
 # TWO BUILDS OF THE SAME SOURCES, the shape roll already uses for `roll_core`:
 #   * `testkit`     — what every ordinary suite links. `testkit_ctl_on` is a MACRO yielding 0,

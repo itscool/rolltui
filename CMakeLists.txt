@@ -355,13 +355,14 @@ if(ROLLTUI_BUILD_TESTS)
 endif()
 
 # Milestone 2: the Unicode conformance suites, in full, and the width table.
-# THE BOUNDARY, AS A TEST RATHER THAN A BUILD-CONFIG PROMISE. "rolltui builds and passes with
-# roll's include/ and src/ absent" held only because nothing here happened to put them on a
-# target's include path — a property a refactor erodes with the build still green. The test reads
-# the REAL include list through a generator expression, so it checks what the compiler is given
-# rather than a second reading of this file, and it resolves every #include under rolltui/ —
-# necessary because the library exports the repository ROOT (that is how `rolltui/rolltui.h`
-# resolves), so `#include "include/Provider.hpp"` would compile and no path check could see it.
+# THE BOUNDARY, AS A TEST RATHER THAN A BUILD-CONFIG PROMISE: the library includes only itself. A
+# host compiles these sources against ITS include path, and `rolltui/...` is the one spelling that
+# resolves in every host, so the test holds every quoted include in the library to it, and every
+# directory on the library's include path to this repository. The include list is read through a
+# generator expression, so it checks what the compiler is given rather than a second reading of
+# this file; the spellings are checked separately because the repository ROOT is on that path (it
+# is how `rolltui/rolltui.h` resolves), so `#include "testkit/testctl.h"` compiles HERE and fails
+# in a host without a testkit of its own — which is the defect this caught.
 # THE NEGATIVE CONTROLS, as permanent tests rather than as prose in a journal entry. TESTCTL: the
 # only target that links the control build of the library, so the flags exist here and in no
 # shipped artifact.

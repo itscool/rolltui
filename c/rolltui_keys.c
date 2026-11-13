@@ -14,7 +14,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* ---- the decoder's own storage ----------------------------------------------------------- */
 

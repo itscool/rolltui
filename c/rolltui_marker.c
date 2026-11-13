@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_unicode.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* The marker is an arrow, ASCII digits and ASCII words, so its display width is its byte
  * count less two for the three-byte arrow — no Unicode scratch, and no allocation, on a

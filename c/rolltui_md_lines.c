@@ -8,7 +8,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* A span WHILE IT IS BEING BUILT: offsets, never pointers, so a pool that grows cannot
  * leave a dangling span behind it (rolltui_md_lines.h, safety rule 2). */

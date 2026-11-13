@@ -26,7 +26,7 @@
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 /* ---- working memory ---------------------------------------------------------------------- */
 

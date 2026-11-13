@@ -20,7 +20,7 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/third_party/md4c/md4c.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 #define NONE ((size_t)-1)
 

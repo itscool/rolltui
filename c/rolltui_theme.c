@@ -16,7 +16,7 @@
  * is exempted BY NAME in `theme_test`'s colour-literal grep control. That control also asserts
  * this file still carries `kSystem16` and still names no theme colour of its own, so either
  * property moving fails a test instead of passing everywhere. */
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */

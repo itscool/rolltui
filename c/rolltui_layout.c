@@ -20,7 +20,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/nsplit.h"
 #include "rolltui/rolltui.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 #define ROLLTUI_BORDER_NONE 0
 #define ROLLTUI_BORDER_SINGLE 1

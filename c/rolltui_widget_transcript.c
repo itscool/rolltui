@@ -17,7 +17,7 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }

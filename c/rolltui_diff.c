@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-#include "testkit/testctl.h"
+#include "rolltui/testkit/testctl.h"
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
