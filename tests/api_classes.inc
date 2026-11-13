@@ -883,6 +883,7 @@ ROLLTUI_API(rolltui_menu_editor, INTERNAL)
 ROLLTUI_API(rolltui_menu_event_release, PUBLIC)
 ROLLTUI_API(rolltui_menu_filter, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_find, PUBLIC)
+ROLLTUI_API(rolltui_menu_focused, PUBLIC)  /* a host that describes the focused item (mother's build screen, its info panel) needs where the cursor is before any MOVED: a menu just made, a window just given the focus */
 ROLLTUI_API(rolltui_menu_flat_count, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_flat_label, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_free, INTERNAL)
@@ -942,6 +943,10 @@ ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* KEPT: a public C++ member in the 
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
 ROLLTUI_API(rolltui_menu_item_release, PUBLIC)  /* rule 1: the pair to `_init`, which is public and which the public parser fills into */
+ROLLTUI_API(rolltui_menu_item_add_cell, PUBLIC)  /* a host fills a table's rows (mother's builds pane); the only way to write a row's cells */
+ROLLTUI_API(rolltui_menu_item_set_columns, PUBLIC)  /* a host makes a level a table; the only way to write its columns, and it holds the file's rules */
+ROLLTUI_API(rolltui_menu_cells_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it (`RolltuiMenuCells`'s destructor), and a row's cells refill from it */
+ROLLTUI_API(rolltui_menu_columns_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it (`RolltuiMenuColumns`'s destructor) */
 ROLLTUI_API(rolltui_menu_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* called from a public C++ member, so every C++ consumer already reaches it; a C consumer needs the same operation */

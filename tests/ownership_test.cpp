@@ -293,7 +293,9 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 138}, /* +18, and NOT new members: every one is a defaulted member (`T* v ROLLTUI_DEFAULT(nullptr);`) the scanner
+        {"rolltui.h", 140}, /* +2: `RolltuiMenuCells::v` (a row's cells) and `RolltuiMenuColumns::v` (a level's columns), each an
+                              OWNED array freed by its `_release`, which the type's C++ destructor calls. Before that, 138 —
+                              +18, and NOT new members: every one is a defaulted member (`T* v ROLLTUI_DEFAULT(nullptr);`) the scanner
                               skipped until it learned that ROLLTUI_DEFAULT's parenthesis is not an argument list. Fourteen OWN what
                               they point at — the growing types' buffers (`RolltuiStr::p`; `RolltuiPtrVec::v`, an owned array whose
                               elements are its user's to say; `RolltuiStrListRaw::v`, `RolltuiPresetListRaw::v`, `RolltuiDocumentRaw::v`,
@@ -441,8 +443,9 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above.
-    check(total == 193, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above. 193 -> 195: a menu
+    // table's two lists.
+    check(total == 195, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
