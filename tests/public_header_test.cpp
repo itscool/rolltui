@@ -75,20 +75,6 @@ void list_files(const std::string& dir, const std::vector<std::string>& exts, st
   closedir(d);
 }
 
-// Every `rolltui_*` identifier in `text` (comments already stripped), counted.
-void count_idents(const std::string& text, std::map<std::string, int>& out) {
-  static const std::regex re(R"(\brolltui_[a-z0-9_]+\b)");
-  for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) ++out[it->str()];
-}
-// A function DEFINITION in a .c file: a line starting at column 0 with a type, the name, a
-// parameter list and an opening brace — the one mention of a function that is not a use of it.
-std::set<std::string> definitions_in(const std::string& text) {
-  static const std::regex re(R"((?:^|\n)[A-Za-z_][^\n;{}]*?\b(rolltui_[a-z0-9_]+)\s*\([^;{}]*\)\s*\{)");
-  std::set<std::string> out;
-  for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) out.insert((*it)[1].str());
-  return out;
-}
-
 std::vector<std::string> declarations(const std::string& text) {
   std::vector<std::string> out;
   std::istringstream in(text);
@@ -456,11 +442,55 @@ int main() {
     check(misplaced.empty(), "THE HEADERS ARE WRITTEN FROM THE TABLE: PUBLIC in a public header, INTERNAL never in rolltui.h" + join(misplaced));
     check(consumer_internal.empty(), "a consumer in this tree (dirktui, paint, chat) reaches no INTERNAL function" + join(consumer_internal));
     check(unrowed({"rolltui_planted_without_a_row"}).size() == 1, "…and the completeness rule is armed: a declaration with no row is caught");
+    // REACH: A PUBLIC FUNCTION IS CALLED BY A PROGRAM IN THIS TREE, OR ITS ROW SAYS WHY. A public function nothing here calls is
+    // one nothing here can see break, so it is either reached or kept on a stated reason: `/* KEPT: <why> */` on its own row,
+    // a sentence rather than a word. The programs are examples/ (dirktui, paint, chat) and tools/ (the studio and its editors),
+    // and the C++ shape a program calls through counts as theirs: `rolltui_cpp.h` and `str.hpp` are nothing else, and in
+    // rolltui.h it is the member bodies (everything not at depth zero), so `s.clear()` reaches `rolltui_str_clear`. A test's
+    // call is never reach. A KEPT row a program does reach keeps its reason: it still says why the function was made public.
+    {
+      static const std::regex ident_re(R"(\b(rolltui_[a-z0-9_]+)\b)");
+      std::set<std::string> reached;
+      auto reach_in = [&](const std::string& t) {
+        for (std::sregex_iterator it(t.begin(), t.end(), ident_re), end; it != end; ++it) reached.insert((*it)[1].str());
+      };
+      std::vector<std::string> programs;
+      list_files(root + "/examples", {".cpp", ".hpp"}, programs);
+      list_files(root + "/tools", {".cpp", ".hpp"}, programs);
+      for (const std::string& f : programs) reach_in(strip_comments_and_literals(read(f)));
+      reach_in(strip_comments_and_literals(read(root + "/rolltui_cpp.h")));
+      reach_in(strip_comments_and_literals(read(root + "/str.hpp")));
+      reach_in(by_depth(strip_comments_and_literals(read(root + "/rolltui.h")), /*inside=*/true));
+      std::set<std::string> kept;
+      {
+        static const std::regex kept_re(R"(ROLLTUI_API\(\s*(rolltui_[a-z0-9_]+)\s*,\s*PUBLIC\s*\)[ \t]*/\*\s*KEPT:\s*[^*\n]{20,})");
+        const std::string table = read(root + "/tests/api_classes.inc");
+        for (std::sregex_iterator it(table.begin(), table.end(), kept_re), end; it != end; ++it) kept.insert((*it)[1].str());
+      }
+      auto explained = [&](const std::string& fn) { return reached.count(fn) || kept.count(fn); };
+      std::vector<std::string> unexplained;
+      int kept_unreached = 0;
+      for (const Row& r : kApi) {
+        if (std::string(r.cls) != "PUBLIC") continue;
+        if (!explained(r.fn)) unexplained.push_back(r.fn);
+        else if (!reached.count(r.fn)) ++kept_unreached;
+      }
+      check(programs.size() >= 10 && reached.count("rolltui_context_register_kind") && reached.count("rolltui_str_clear") &&
+                !reached.count("rolltui_mem_realloc"),
+            "the reach scan reads the programs (" + std::to_string(programs.size()) + " files) and the C++ shape: a kind a program "
+            "registers is reached, `rolltui_str_clear` is reached through `RolltuiStr::clear`, and an internal function is not");
+      check(unexplained.empty(), "every PUBLIC function is called by a program in this tree or carries `/* KEPT: <why> */` on its row" + join(unexplained));
+      check(!explained("rolltui_planted_public_nobody_calls"),
+            "…and the rule is armed: a PUBLIC row no program calls and no reason keeps is caught (" + std::to_string(kept_unreached) +
+                " rows stand on their reason alone; 0 on 2026-11-13, when every public function had a caller in this tree)");
+    }
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
     // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. 413/712 on 2026-11-13, when the 94 functions the
-    // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC).
-    check(totals["PUBLIC"] == 413 && totals["INTERNAL"] == 712 && totals.size() == 2,
+    // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC). 410 the same day, when
+    // the reach rule found three studio-tier functions nothing called, not even a test (`rolltui_theme_store_set_working`,
+    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went.
+    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 712 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -622,11 +652,11 @@ int main() {
     // releases of the two lists they fill, which the lists' C++ destructors call. Then +9, the public functions declared in
     // rolltui.h without a row until the class census came back (2026-11-13): vocab +1 (`rolltui_style_on`), settings +1 (the
     // keys editor's presets switch), bind +1 (`rolltui_rows_add_colour`), run +5 (the terminal facts, their cache, reprobe, depth,
-    // present), widget +1 (`rolltui_frame_put_swatch`).
-    check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 94 &&
+    // present), widget +1 (`rolltui_frame_put_swatch`). Then settings 94 -> 91: the three studio-tier functions nothing called.
+    check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 91 &&
               rt["HOST_BIND"] == 101 && rt["HOST_RUN"] == 113 && rt["HOST_RELEASE"] == 10 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 28,
-          "the roles are the recorded shape — vocab 37, host load 30 / settings 94 / bind 101 / run 113 / "
+          "the roles are the recorded shape — vocab 37, host load 30 / settings 91 / bind 101 / run 113 / "
           "release 10, tool interop 0, widget 28 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

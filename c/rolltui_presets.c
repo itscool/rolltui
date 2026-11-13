@@ -1827,9 +1827,6 @@ int rolltui_theme_store_add(RolltuiThemeStore* s, const char* path, size_t path_
                             RolltuiStr* err) {
   return rolltui_preset_store_add((RolltuiPresetStore*)s, path, path_len, as, as_len, err);
 }
-void rolltui_theme_store_set_working(RolltuiThemeStore* s, RolltuiThemePresetValue* v, int persist) {
-  rolltui_preset_store_set_working((RolltuiPresetStore*)s, v, persist);
-}
 
 /* ---- the Layout domain ------------------------------------------------------------------- */
 
@@ -2101,18 +2098,7 @@ const RolltuiLayout* rolltui_layout_shipped(RolltuiContext* c, const char* name,
   return (const RolltuiLayout*)rolltui_preset_shipped(rolltui_preset_domain_layout(c), name, len);
 }
 
-/* ---- the layout store: SAVE and ADD (rolltui.h), in-place EDIT (rolltui_studio.h) -------- */
-typedef struct { RolltuiLayoutEditFn fn; void* ctx; } LayoutEditTrampoline;
-static void layout_edit_trampoline(void* value, void* ctx) {
-  const LayoutEditTrampoline* t = (const LayoutEditTrampoline*)ctx;
-  t->fn((RolltuiLayout*)value, t->ctx);
-}
-void rolltui_layout_store_edit(RolltuiLayoutStore* s, RolltuiLayoutEditFn fn, void* ctx, int persist) {
-  LayoutEditTrampoline t;
-  t.fn = fn;
-  t.ctx = ctx;
-  rolltui_preset_store_edit((RolltuiPresetStore*)s, layout_edit_trampoline, &t, persist);
-}
+/* ---- the layout store: SAVE and ADD (rolltui.h), REPLACE (rolltui_studio.h) -------------- */
 int rolltui_layout_store_save_as(RolltuiLayoutStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
   return rolltui_preset_store_save_as((RolltuiPresetStore*)s, name, len, overwrite, err);
 }
@@ -2394,18 +2380,7 @@ const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* n
   return (const RolltuiBindings*)rolltui_preset_shipped(rolltui_preset_domain_bindings(c), name, len);
 }
 
-/* ---- the bindings store: SAVE and ADD (rolltui.h), in-place EDIT (rolltui_studio.h) ------ */
-typedef struct { RolltuiBindingsEditFn fn; void* ctx; } BindingsEditTrampoline;
-static void bindings_edit_trampoline(void* value, void* ctx) {
-  const BindingsEditTrampoline* t = (const BindingsEditTrampoline*)ctx;
-  t->fn((RolltuiBindings*)value, t->ctx);
-}
-void rolltui_bindings_store_edit(RolltuiBindingsStore* s, RolltuiBindingsEditFn fn, void* ctx, int persist) {
-  BindingsEditTrampoline t;
-  t.fn = fn;
-  t.ctx = ctx;
-  rolltui_preset_store_edit((RolltuiPresetStore*)s, bindings_edit_trampoline, &t, persist);
-}
+/* ---- the bindings store: SAVE and ADD (rolltui.h), REPLACE (rolltui_studio.h) ------------ */
 int rolltui_bindings_store_save_as(RolltuiBindingsStore* s, const char* name, size_t len, int overwrite,
                                    RolltuiStr* err) {
   return rolltui_preset_store_save_as((RolltuiPresetStore*)s, name, len, overwrite, err);

@@ -1181,10 +1181,7 @@ ROLLTUI_API(rolltui_bindings_shipped, PUBLIC)
  * the same mechanism as an internal `c/` header's opt-in list), so nothing here is reached by
  * dirktui, paint or roll — only studio ever edits a preset's content in place. */
 ROLLTUI_API(rolltui_theme_store_edit, PUBLIC)
-ROLLTUI_API(rolltui_theme_store_set_working, PUBLIC)
-ROLLTUI_API(rolltui_layout_store_edit, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_set_working, PUBLIC)
-ROLLTUI_API(rolltui_bindings_store_edit, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_set_working, PUBLIC)
 
 /* ---- rolltui_settings.c — the keys a person changes; default PUBLIC ------------------------

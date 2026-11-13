@@ -21,7 +21,10 @@
 // because what follows them is still the file's own top level. Lived in
 // `public_header_test.cpp` until the duplicate-declaration check became its second consumer
 // (rule 5 again, the same way the strippers below got here).
-inline std::string depth0(const std::string& t) {
+// `inside` asks for the complement: only what is within counted braces, which in the public header is the C++ members'
+// bodies — where a method reaches the C function it wraps (section 6's reach). A body's close leaves a space, so two
+// bodies never run together into one identifier.
+inline std::string by_depth(const std::string& t, bool inside) {
   std::string out;
   std::vector<bool> counted;
   int depth = 0;
@@ -39,12 +42,14 @@ inline std::string depth0(const std::string& t) {
         if (counted.back()) --depth;
         counted.pop_back();
       }
+      if (inside) out += ' ';
       continue;
     }
-    if (depth == 0) out += ch;
+    if ((depth > 0) == inside) out += ch;
   }
   return out;
 }
+inline std::string depth0(const std::string& t) { return by_depth(t, false); }
 
 // ---- section 6's instruments: a literal-aware comment stripper, a recursive lister, and the
 // identifier scan the class table is checked against ---------------------------

@@ -8,10 +8,13 @@
  * bindings stores are the whole of what a host needs: create one, read what's loaded, switch to a
  * different existing preset by name, save the working copy under a new name, add a file someone
  * sent. What no host but `rolltui-studio` (and, through it, the theme/layout/keys editors) ever
- * does is change a preset's CONTENT in place, so the two functions that make it editable —
- * `_edit`, `_set_working` — live here instead, in a header an ordinary host never includes and
- * never needs to know exists. Saving and adding are not authoring in that sense — roll offers
- * both (`theme save`/`theme add`, a settings-menu save-as) — so they are `rolltui.h`'s.
+ * does is change a preset's CONTENT, so the functions that do it — the theme store's `_edit`,
+ * which changes the live value in place, and the layout and bindings stores' `_set_working`, which
+ * replace it with what their editor committed — live here instead, in a header an ordinary host
+ * never includes and never needs to know exists. Each store has the one form its editor uses: the
+ * other three were here once, called by nothing, and went when the census began asking. Saving
+ * and adding are not authoring in that sense — any host's settings menu may offer a save-as, or
+ * take a file someone sent — so they are `rolltui.h`'s.
  *
  * IT IS NOW THE WHOLE OF THE STUDIO'S CURATED REACH, not just that first tenant: everything the
  * studio and its five editor files call from the library's internal `c/` headers, moved or copied
@@ -40,25 +43,15 @@ extern "C" {
 typedef void (*RolltuiThemeEditFn)(RolltuiThemePresetValue* value, void* ctx);
 void rolltui_theme_store_edit(RolltuiThemeStore* s, RolltuiThemeEditFn fn, void* ctx, int persist);
 
-/* REPLACES the working value wholesale — the theme editor's own commit, when it has built a whole new value rather than changing
- * one field of the live one (`_edit` is for that). TAKES OWNERSHIP of `v`: it must be a fresh, independently-owned value (from
- * `rolltui_theme_store_get`, say, or built by hand), never a pointer this store already owns. */
-void rolltui_theme_store_set_working(RolltuiThemeStore* s, RolltuiThemePresetValue* v, int persist);
+/* ---- the layout and bindings stores' REPLACE surface ------------------------------------------- */
 
-/* ---- the layout store's in-place EDIT surface -------------------------------------------------- */
-
-typedef void (*RolltuiLayoutEditFn)(RolltuiLayout* value, void* ctx);
-void rolltui_layout_store_edit(RolltuiLayoutStore* s, RolltuiLayoutEditFn fn, void* ctx, int persist);
-
-/* REPLACES the working value wholesale, same as the theme store's. TAKES OWNERSHIP of `v`. */
+/* REPLACES the working value wholesale with what the layout editor committed. TAKES OWNERSHIP of `v`: it must be a fresh,
+ * independently-owned value (`rolltui_layout_clone` of the committed one), never a pointer this store already owns. `persist` 0
+ * is a preview, 1 a commit, as for the theme's `_edit`. */
 void rolltui_layout_store_set_working(RolltuiLayoutStore* s, RolltuiLayout* v, int persist);
 
-/* ---- the bindings store's in-place EDIT surface ------------------------------------------------ */
-
-typedef void (*RolltuiBindingsEditFn)(RolltuiBindings* value, void* ctx);
-void rolltui_bindings_store_edit(RolltuiBindingsStore* s, RolltuiBindingsEditFn fn, void* ctx, int persist);
-
-/* REPLACES the working table wholesale, same as the theme store's. TAKES OWNERSHIP of `v`. */
+/* REPLACES the working table wholesale with what the keys editor committed. TAKES OWNERSHIP of `v`, as above
+ * (`rolltui_bindings_clone`). */
 void rolltui_bindings_store_set_working(RolltuiBindingsStore* s, RolltuiBindings* v, int persist);
 
 /* ---- everything below: curated from the studio's own internal-header reach ------------------
