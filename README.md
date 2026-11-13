@@ -26,7 +26,7 @@ source drawn in box-drawing characters, and the C is coloured by a grammar file.
 | Theme contrast and colour-blindness checks | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Animation chosen by the theme | ✓ | in code | tachyonfx, in code | in code | in code | in code |
 | Column file browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Windows | ✗ | ✓ | ✓ | ✓ | partly | ✓ |
+| Runs on Microsoft Windows | ✗ | ✓ | ✓ | ✓ | partly | ✓ |
 | Images in the terminal | ✗ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
 
 | | |
