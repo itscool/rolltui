@@ -4,13 +4,11 @@ A small terminal-UI library in C, with a C++ shape for consumers who want one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dirktui-dark.png">
-  <img alt="dirktui, a directory browser built on rolltui, in a macOS Terminal window, previewing a project's README: a heading, a flowchart drawn in box-drawing characters, a block of colour-highlighted C, and a table" src="docs/images/dirktui-light.png">
+  <img alt="dirktui, a directory browser built on rolltui, previewing a project's README: a heading, a flowchart drawn in box-drawing characters, a block of colour-highlighted C, and a table" src="docs/images/dirktui-light.png">
 </picture>
 
-*dirktui, a directory browser built on rolltui, previewing a README in Apple's Terminal. The
-flowchart is Mermaid source drawn in box-drawing characters, and the C is coloured by a grammar
-file. Every picture on this page is a capture of the real program in a real terminal window, made
-by [`tools/readme_shots.sh`](tools/readme_shots.sh).*
+*dirktui, a directory browser built on rolltui, previewing a README. The flowchart is Mermaid
+source drawn in box-drawing characters, and the C is coloured by a grammar file.*
 
 ## What it does well
 
@@ -47,11 +45,10 @@ by [`tools/readme_shots.sh`](tools/readme_shots.sh).*
 | catppuccin, dark · Python | solarized, light · Rust |
 | ![dirktui in the ember theme, dark, previewing a Go file](docs/images/theme-ember.png) | ![dirktui in the orchard theme, light, previewing a TypeScript file](docs/images/theme-orchard.png) |
 | ember, dark · Go | orchard, light · TypeScript |
-| ![dirktui in the harbour theme, dark, previewing a YAML file](docs/images/theme-harbour.png) | ![dirktui in the mono theme on a light terminal, previewing a shell script](docs/images/theme-mono.png) |
+| ![dirktui in the harbour theme, dark, previewing a YAML file](docs/images/theme-harbour.png) | ![dirktui in the mono theme, previewing a shell script](docs/images/theme-mono.png) |
 | harbour, dark · YAML | mono · shell |
 
-*Six of the ten shipped themes and six of the 27 languages. `mono` has no colours of its own, only
-bold, dim, italic, underline and reverse, so it takes its light or dark from the terminal.*
+*Six of the ten shipped themes and six of the 27 languages.*
 
 ## What's in the repository
 
@@ -73,7 +70,7 @@ bold, dim, italic, underline and reverse, so it takes its light or dark from the
 ## Building
 
 Needs CMake 3.24 or later and a C++23 compiler; `rolltui-paint` also needs the system zlib for its
-PNG decoder. Developed on macOS; Linux builds are not yet checked by CI.
+PNG decoder.
 
 ```sh
 cmake -B build -S .
