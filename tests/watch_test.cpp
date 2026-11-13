@@ -43,7 +43,7 @@ void append_file(const fs::path& p, const std::string& t) {
   if (fd >= 0) { (void)!::write(fd, t.data(), t.size()); ::close(fd); }
 }
 // Every file and folder under `root`, and `root`, given a stamp an hour old: nothing is "written too lately to trust".
-// (The scratch root is aged too — it was made a moment ago, and it is one of the folders the picker is showing.)
+// (The scratch tree's own folders are aged too — they were made a moment ago, and they are folders the picker is showing.)
 fs::path g_scratch;
 void age(const fs::path&) {
   const fs::path root = g_scratch;
@@ -160,11 +160,17 @@ std::size_t live_bytes() {
 int main() {
   using testkit::check;
   const std::string tmp = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
-  const fs::path root = fs::path(tmp) / ("rolltui_watch_" + std::to_string(::getpid()));
+  // THE TEMPORARY DIRECTORY STAYS OFF SCREEN. The picker shows the folders above the one it is pointed at, and $TMPDIR is one
+  // every other suite writes into while this one runs beside them: on screen, its listing changes under a frame this file
+  // compares, and its thousands of entries are read again inside a look this file times. Nested this deep, every column the
+  // 110-wide rig shows is this file's own, so what it compares and times is the picker's doing alone.
+  const fs::path top = fs::path(tmp) / ("rolltui_watch_" + std::to_string(::getpid()));
+  fs::path root = top;
+  for (const char* level : {"a", "b", "c", "d", "e", "f", "g", "h"}) root /= level;
   std::error_code ec;
-  fs::remove_all(root, ec);
+  fs::remove_all(top, ec);
   fs::create_directories(root);
-  g_scratch = root;
+  g_scratch = top; /* aged whole, the nested folders above `root` with it: they are on screen too */
   const std::size_t base = live_bytes();
   {
     Rig r;
@@ -629,7 +635,7 @@ int main() {
       const double small_ms = unchanged_ms(small);
       const double big_ms = unchanged_ms(d);
       timespec t0{};
-      check(big_ms - small_ms < 25.0,
+      check(big_ms - small_ms < 25.0 * rolltui_test::kClockScale,
             "a look at a folder of twenty thousand entries that has not changed costs no more than one at a folder of ten: a stat and the rows on screen, "
             "not the folder (" + std::to_string(big_ms) + " ms against " + std::to_string(small_ms) + " ms)");
       r.go(d);
@@ -645,10 +651,10 @@ int main() {
       (void)r.frame();  // the look that reads all twenty thousand again
       const double reread_ms = ms_since(t0);
       RolltuiPickerStatus st = r.status();
-      check(has(r.frame(), "another.txt") && reread_ms < 2000.0, "…the folder is read again when it changed (" + std::to_string(reread_ms) + " ms)");
+      check(has(r.frame(), "another.txt") && reread_ms < 2000.0 * rolltui_test::kClockScale, "…the folder is read again when it changed (" + std::to_string(reread_ms) + " ms)");
       // (the interval is twenty times what the look itself took, and this timed the whole frame, so only the fact of the
       // back-off is asserted, and only when the read was slow enough to call for one)
-      check(st.wake_ms >= 500 && (reread_ms < 60.0 || st.wake_ms > 600),
+      check(st.wake_ms >= 500 && (reread_ms < 60.0 * rolltui_test::kClockScale || st.wake_ms > 600),
             "…and the next look is further off than the usual half second when that read was slow (asks for a wake in " + std::to_string(st.wake_ms) + " ms)");
       rolltui_picker_status_release(&st);
       rolltui_picker_set_now(r.p, 0);
@@ -744,7 +750,7 @@ int main() {
       check(r.columns() == cols, "(a look at a column that could not be read, when nothing has changed, changes nothing)");
     }
   }
-  fs::remove_all(root, ec);
+  fs::remove_all(top, ec);
   check(live_bytes() == base, "after every scenario, the picker freed, the library holds what it held before (" + std::to_string(live_bytes()) + " vs " + std::to_string(base) + ")");
   return testkit::report("rolltui_watch_test");
 }

@@ -11,6 +11,8 @@
       { "match": "/\\*", "class": "comment", "push": "block" },
       { "region": { "begin": "//", "class": "comment" } },
       { "match": "^\\s*#(?:if|elseif|else|endif|available|selector|keyPath|warning|error|sourceLocation|file|line|function)\\b[^\\n]*", "class": "preproc" },
+      { "match": "(?:#{64})+(?=#)" },
+      { "match": "#+(?![#\"])" },
       { "match": "#*\"\"\"", "class": "string", "push": "multi" },
       { "region": { "begin": "(#+)\"", "end": "\"\\1", "class": "string", "single_line": true } },
       { "match": "\"", "class": "string", "push": "str" },

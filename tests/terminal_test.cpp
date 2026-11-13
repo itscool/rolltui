@@ -564,7 +564,7 @@ int main() {
     const double cached_ms = g_new_ms;
     std::printf("  [time] terminal_new against a terminal that answers: fresh %.2f ms (one exchange), remembered %.2f ms\n", full_ms, cached_ms);
     check(!hb.asked_da() && !hb.asked("\x1bP$qm") && !hb.asked("\x1b[6n"), "a remembered terminal is asked NOTHING at entry");
-    check(cached_ms < 40, "…so entering it costs no wait at all (" + std::to_string(cached_ms) + " ms)");
+    check(cached_ms < 40 * rolltui_test::kClockScale, "…so entering it costs no wait at all (" + std::to_string(cached_ms) + " ms)");
     check(hb.asked("\x1b[>1u"), "…yet its keyboard protocol is enabled (it was remembered too)");
     check(hb.count("\x1b]11;?") == 1, "…and its background is re-checked once, at the first poll, after the first frame");
     check(b.remembered == 1 && b.depth == ROLLTUI_DEPTH_TRUECOLOR && b.depth_source == ROLLTUI_FACT_CACHE && b.keyboard == ROLLTUI_PROTOCOL_KITTY &&
@@ -720,7 +720,7 @@ int main() {
           "a terminal that answers nothing is unresponsive, and the environment's guess stands");
     check(first_ms >= 75, "…after waiting for it (" + std::to_string(first_ms) + " ms)");
     check(!h2.asked_da() && f2.remembered == 1 && !f2.responsive, "the next run does not ask a terminal it knows is silent");
-    check(second_ms < 20, "…so it does not wait for it either (" + std::to_string(second_ms) + " ms after " + std::to_string(first_ms) + ")");
+    check(second_ms < 20 * rolltui_test::kClockScale, "…so it does not wait for it either (" + std::to_string(second_ms) + " ms after " + std::to_string(first_ms) + ")");
   }
 
   // ---- Opting out, and the multiplexer that must not be trusted

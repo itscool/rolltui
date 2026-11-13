@@ -425,7 +425,7 @@ int main() {
     const auto t0 = std::chrono::steady_clock::now();
     const long lines = rolltui_highlight_run(h, s, lang_of(s, "T1"), big.data(), big.size());
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-    check(lines > 2000 && ms < 1500.0, "a quarter of a megabyte (" + std::to_string(lines) + " lines) is coloured in " + std::to_string(ms) + " ms");
+    check(lines > 2000 && ms < 1500.0 * rolltui_test::kClockScale, "a quarter of a megabyte (" + std::to_string(lines) + " lines) is coloured in " + std::to_string(ms) + " ms");
     rolltui_highlight_free(h);
     rolltui_syntax_free(s);
   }

@@ -133,7 +133,26 @@ const std::regex& pointer_decl() {
 // is a lifetime question; a pointer it is merely HANDED is not.** A member ends the statement
 // (`RolltuiStr* p;`); a declaration takes an argument list. That is the distinction, and it is
 // checkable rather than a matter of taste — the two controls below plant one of each.
-bool is_stored_pointer(const std::string& code) {
+//
+// A MEMBER'S DEFAULT IS NOT A CALL. `RolltuiStr* v ROLLTUI_DEFAULT(nullptr);` is a stored pointer
+// whose C++ build gives it an initialiser, and the parenthesis is the macro's, not an argument
+// list's — so every `ROLLTUI_DEFAULT(...)` (nesting-aware: `RolltuiDim::rel(1)` is a default
+// too) is removed before the parenthesis test. Without this, every defaulted pointer member in
+// the library went uncounted, and a new one arrived without anyone saying what it owned.
+std::string without_defaults(std::string code) {
+  static const std::string kMacro = "ROLLTUI_DEFAULT(";
+  for (std::size_t at = code.find(kMacro); at != std::string::npos; at = code.find(kMacro, at)) {
+    std::size_t i = at + kMacro.size();
+    for (int depth = 1; i < code.size() && depth > 0; ++i) {
+      if (code[i] == '(') ++depth;
+      else if (code[i] == ')') --depth;
+    }
+    code.erase(at, i - at);
+  }
+  return code;
+}
+bool is_stored_pointer(const std::string& line) {
+  const std::string code = without_defaults(line);
   if (!std::regex_search(code, pointer_decl())) return false;
   if (code.find('(') != std::string::npos) return false;  // a function declaration, not a member
   const std::size_t end = code.find_last_not_of(" \t");
@@ -274,7 +293,16 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 120}, /* -2: `RolltuiDocument::iterator`/`::const_iterator`'s own `p` pointer moved to `rolltui_cpp.h`
+        {"rolltui.h", 138}, /* +18, and NOT new members: every one is a defaulted member (`T* v ROLLTUI_DEFAULT(nullptr);`) the scanner
+                              skipped until it learned that ROLLTUI_DEFAULT's parenthesis is not an argument list. Fourteen OWN what
+                              they point at — the growing types' buffers (`RolltuiStr::p`; `RolltuiPtrVec::v`, an owned array whose
+                              elements are its user's to say; `RolltuiStrListRaw::v`, `RolltuiPresetListRaw::v`, `RolltuiDocumentRaw::v`,
+                              `RolltuiMenuItemList::v`, `RolltuiMenuActionListRaw::v`, `RolltuiRows::v`, `RolltuiGapReport::gaps`), the
+                              JSON tree (`RolltuiJsonMember::value`, `RolltuiJsonValue::arr`/`::obj`), `RolltuiThemePresetValue::colours`
+                              and `RolltuiEntryLayout::store`. Four BORROW, each as its own comment says: `RolltuiResolvedNode::node`
+                              (valid while its tree is not edited), `RolltuiTerminalOptions::app_key`/`::cache_dir` (for the
+                              `rolltui_terminal_new` call only) and `RolltuiRunApp::ctx` (the host's own state, for the run). Before that, 120:
+                              -2: `RolltuiDocument::iterator`/`::const_iterator`'s own `p` pointer moved to `rolltui_cpp.h`
                               beside the rest of `RolltuiDocument`'s C++ half, counted below. -10 before that:
                               `RolltuiPresetDomain`/`RolltuiPresetReportFns` — the generic engine's own descriptor structs,
                               carrying most of this header's stored function pointers plus its `theme_vocab`/`layout_hooks`/
@@ -316,7 +344,8 @@ int main() {
         {"c/rolltui_theme.h", 0},
         {"c/rolltui_undo.h", 0},
         {"c/rolltui_widget_menu.h", 0},
-        {"c/rolltui_theme_analysis.h", 0},
+        {"c/rolltui_theme_analysis.h", 2}, /* `RolltuiStrArray::v` and `RolltuiFixArray::v`: each a report's OWNED growing array.
+                                              Defaulted members, so uncounted until the scanner stopped reading ROLLTUI_DEFAULT as a call */
         {"c/rolltui_presets.h", 10}, /* `RolltuiPresetDomain`/`RolltuiPresetReportFns`, moved from rolltui.h above: `report`
                                        (a BORROW of a library static), `theme_vocab`/`layout_hooks`/`layout_actions` (BORROWED),
                                        `bindings_scope_ctx`/`bindings_reason_ctx` (a host's, borrowed for the process's life),
@@ -330,9 +359,13 @@ int main() {
         {"c/rolltui_render.h", 0},
         {"c/rolltui_wrap.h", 0},
         {"c/rolltui_frame_ops.h", 0},
-        {"c/rolltui_layout_tree.h", 4},
+        {"c/rolltui_layout_tree.h", 7}, /* +3, defaulted members the scanner skipped: `RolltuiNodeList::v` (an OWNED array of the
+                                           OWNED child nodes, laid out as `RolltuiPtrVec`), `RolltuiLayerList::v` and `RolltuiActionList::v`
+                                           (OWNED growing arrays) */
         {"c/rolltui_keys.h", 0},
-        {"c/rolltui_markdown.h", 0},
+        {"c/rolltui_markdown.h", 2}, /* `RolltuiMdRenderOptions::highlight_ctx` (the highlighter's own state, handed back to it) and
+                                        `::states` (the fold states): both BORROWED for the render call. Defaulted members, so
+                                        uncounted until the scanner stopped reading ROLLTUI_DEFAULT as a call */
         {"c/rolltui_widget_kinds.h", 0},
         {"c/rolltui_theme_gen.h", 0},
         {"c/rolltui_widget_transcript.h", 0},
@@ -408,7 +441,8 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 168, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above.
+    check(total == 193, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
@@ -420,6 +454,10 @@ int main() {
     check(!std::regex_search(std::string("  int n = a * b;"), pointer_decl()), "…and not a multiplication");
     // …and the STORED/HANDED split the census now turns on, planted both ways.
     check(is_stored_pointer("  RolltuiStr* notes;"), "a stored pointer is a member: it ends the statement");
+    check(is_stored_pointer("  RolltuiStr* v ROLLTUI_DEFAULT(nullptr);") &&
+              count_stored("typedef struct L {\n  RolltuiStr* v ROLLTUI_DEFAULT(nullptr);\n  size_t n ROLLTUI_DEFAULT(0);\n} L;\n") == 1 &&
+              is_stored_pointer("  const RolltuiDim* d ROLLTUI_DEFAULT(rolltui_dim_ptr(RolltuiDim::rel(1)));"),
+          "…and so is one with a default: ROLLTUI_DEFAULT's parenthesis is not an argument list, however deeply it nests");
     check(!is_stored_pointer("void f(const RolltuiDocument* doc);"), "…and a parameter is not one, however many it takes");
     check(!is_stored_pointer("  RolltuiStr* p = f(x);"), "…nor is a local initialised from a call");
     check(is_comment("  // const Document* doc"), "…and comment lines are skipped, so prose about a pointer is not a pointer");

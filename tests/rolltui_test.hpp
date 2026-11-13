@@ -31,6 +31,25 @@
 
 namespace rolltui_test {
 
+// A WALL-CLOCK BOUND IS SET FOR THE RELEASE BUILD. Under AddressSanitizer every memory access is checked, and the same run takes
+// seven to twelve times as long, the most when the suite runs in parallel — so a bound set for one build is noise in the other,
+// and the instrumented build failed checks the code passed. Every upper bound on elapsed time in a suite is written
+// `bound * kClockScale`: tight in Release, ten times looser under the sanitizer, where it still catches a runaway, which is what
+// it is for there. A LOWER bound (it waited at least this long) needs nothing: instrumentation only makes it easier to meet.
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define ROLLTUI_TEST_INSTRUMENTED 1
+#endif
+#endif
+#if defined(__SANITIZE_ADDRESS__) && !defined(ROLLTUI_TEST_INSTRUMENTED)
+#define ROLLTUI_TEST_INSTRUMENTED 1
+#endif
+#ifdef ROLLTUI_TEST_INSTRUMENTED
+inline constexpr double kClockScale = 10.0;
+#else
+inline constexpr double kClockScale = 1.0;
+#endif
+
 // ONE SESSION FOR A SUITE. A registry is a CONTEXT's now, so a suite that
 // registers a widget or effect kind needs a session to register it INTO. Two suites had
 // written the same wrapper, which is rule 5 firing, so it lives here once.
