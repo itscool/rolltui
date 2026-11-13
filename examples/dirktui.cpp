@@ -11,9 +11,9 @@
 // ============================================================================================
 // THE CONTRACT WITH THE SHELL, which is the whole reason it is a utility and not a demo
 //
-//   * It DRAWS on /dev/tty and ANSWERS on stdout, always. A shell function captures stdout with
-//     `$(dirktui)`, so no frame may ever reach it; the terminal is opened by name rather than
-//     inherited. fzf does the same, for the same reason.
+//   * It DRAWS on /dev/tty (on Windows, the console: CONIN$ and CONOUT$) and ANSWERS on stdout,
+//     always. A shell function captures stdout with `$(dirktui)`, so no frame may ever reach it;
+//     the terminal is opened by name rather than inherited. fzf does the same, for the same reason.
 //   * Enter on a FOLDER leaves with its path on stdout, one line, exit 0. Enter on a FILE does
 //     what the `file_enter` setting says: open it and stay (the default), open it and leave
 //     with nothing printed, leave with its path (exit 0: the shell lands in its folder), or
@@ -23,7 +23,8 @@
 //     "Nothing printed" and "exit 0" never coincide, because `cd ""` is `cd ~`, silently.
 //   * `dirktui init zsh|bash|fish` prints the shell integration: a `dirk` function that browses
 //     then goes where you chose, and a Right Arrow binding that opens the browser only when the
-//     cursor is already at the end of the line. Usage/no-terminal is exit 2.
+//     cursor is already at the end of the line. Usage/no-terminal is exit 2. On Windows
+//     `dirktui install` puts a `dirk` function into PowerShell's profile instead.
 //
 // ============================================================================================
 // WHAT IS THE APP'S AND WHAT IS THE SCREEN'S
@@ -38,6 +39,24 @@
 // sideways, a width that depends on its contents — which is the case a two-callback adapter
 // cannot serve. Every place the public header could not do something is a wall to record.
 //
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+// Windows Vista's API at least: SHGetKnownFolderPath and the inherited-handle list.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0600
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <fcntl.h>
+#include <io.h>
+#else
 #include <dirent.h>
 #include <limits.h>
 #ifdef __APPLE__
@@ -48,12 +67,14 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -64,7 +85,9 @@
 #include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
 
+#if !defined(_WIN32)
 extern char** environ;  // for posix_spawnp: not declared by any header on Darwin
+#endif
 
 // The two real targets (dirktui, dirktui-selftest) always define this; a fallback all the same,
 // so a build that somehow does not never reports an update rather than failing to compile.
@@ -88,6 +111,677 @@ using rolltui::StrVec;
 using rolltui::StrView;
 
 constexpr const char* kPicker = "filepicker";  // the library's column browser, the base window's content
+
+// ============================================================================================
+// THE PLATFORM. Each difference between macOS/Linux and Windows is one small function here, so
+// the code below reads the same on both. Text is UTF-8 everywhere; the Windows branches convert
+// to and from UTF-16 at the system call.
+
+#if defined(_WIN32)
+// UTF-8 to UTF-16, NUL-terminated.
+static std::vector<wchar_t> wide(StrView s) {
+  const int len = static_cast<int>(s.size());
+  const int n = len ? MultiByteToWideChar(CP_UTF8, 0, s.data(), len, nullptr, 0) : 0;
+  std::vector<wchar_t> w(static_cast<std::size_t>(n > 0 ? n : 0) + 1, L'\0');
+  if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s.data(), len, w.data(), n);
+  return w;
+}
+// UTF-16 to UTF-8.
+static RolltuiStr narrow(const wchar_t* w) {
+  RolltuiStr out;
+  const int n = w ? WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr) : 0;
+  if (n <= 1) return out;
+  std::vector<char> buf(static_cast<std::size_t>(n));
+  WideCharToMultiByte(CP_UTF8, 0, w, -1, buf.data(), n, nullptr, nullptr);
+  out.assign(buf.data(), static_cast<std::size_t>(n - 1));
+  return out;
+}
+static RolltuiStr lower(StrView s) {
+  RolltuiStr out = rolltui::own(s);
+  for (std::size_t i = 0; i < out.n; ++i) out.p[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out.p[i])));
+  return out;
+}
+// Backslashes as separators, for the system calls that want them (the shell's opener, cmd.exe).
+static void native_slashes(RolltuiStr& p) {
+  for (std::size_t i = 0; i < p.n; ++i)
+    if (p.p[i] == '/') p.p[i] = '\\';
+}
+#endif
+
+// An environment variable as UTF-8; empty when it is unset.
+static RolltuiStr env_var(const char* name) {
+#if defined(_WIN32)
+  const std::vector<wchar_t> wn = wide(name);
+  const DWORD n = GetEnvironmentVariableW(wn.data(), nullptr, 0);
+  if (n == 0) return RolltuiStr();
+  std::vector<wchar_t> buf(n);
+  const DWORD got = GetEnvironmentVariableW(wn.data(), buf.data(), n);
+  return got > 0 && got < n ? narrow(buf.data()) : RolltuiStr();
+#else
+  const char* v = std::getenv(name);
+  return RolltuiStr(v ? v : "");
+#endif
+}
+
+// The separator in a list of folders ($PATH, the applications directories): ':', and ';' on
+// Windows, where ':' follows a drive letter.
+#if defined(_WIN32)
+constexpr char kListSep = ';';
+#else
+constexpr char kListSep = ':';
+#endif
+// The non-empty fields of a list separated by `sep`, added to `into`.
+static void split_list(StrView s, char sep, StrVec& into) {
+  std::size_t at = 0;
+  for (;;) {
+    std::size_t end = s.find(sep, at);
+    if (end == StrView::npos) end = s.size();
+    if (end > at) into.add(s.substr(at, end - at));
+    if (end >= s.size()) break;
+    at = end + 1;
+  }
+}
+
+// ---- paths ----------------------------------------------------------------------------------
+// A path starts at `/` on macOS and Linux. On Windows it starts at a drive's root, `C:/` or `C:\`
+// (a bare `C:` is read as `C:/`, as the library's picker reads it), and `\` separates as `/` does.
+// Paths are JOINED with `/` on every platform; a path that comes in from outside (the command
+// line, the working directory, a typed path, the home folder) has its backslashes made slashes
+// first, which is the form the picker keeps.
+static void forward_slashes(RolltuiStr& p) {
+#if defined(_WIN32)
+  for (std::size_t i = 0; i < p.n; ++i)
+    if (p.p[i] == '\\') p.p[i] = '/';
+#else
+  (void)p;
+#endif
+}
+// Whether `c` separates the parts of a path: `/`, and `\` too on Windows.
+static bool is_separator(char c) {
+#if defined(_WIN32)
+  return c == '/' || c == '\\';
+#else
+  return c == '/';
+#endif
+}
+// How many bytes the root takes: 1 for `/`, 3 for `C:/`, 2 for a bare `C:`; 0 for a relative path.
+static std::size_t root_len(StrView p) {
+#if defined(_WIN32)
+  if (p.size() >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':')
+    return p.size() >= 3 && (p[2] == '/' || p[2] == '\\') ? 3 : 2;
+#endif
+  return !p.empty() && p[0] == '/' ? 1 : 0;
+}
+// The root `p` starts at, as the picker names it: `/`, or `C:/`. `/` for a relative path.
+static RolltuiStr root_of(StrView p) {
+  const std::size_t n = root_len(p);
+  if (n == 0) return RolltuiStr("/");
+  RolltuiStr r = rolltui::own(p.first(n));
+  forward_slashes(r);
+  if (r.p[r.n - 1] != '/') r += '/';
+  return r;
+}
+static bool is_root(StrView p) { return !p.empty() && root_len(p) == p.size(); }
+// Whether two absolute paths start at the same root: always on macOS and Linux; on Windows, on the same drive.
+static bool same_root(StrView a, StrView b) {
+#if defined(_WIN32)
+  const std::size_t na = root_len(a), nb = root_len(b);
+  if (na < 2 || nb < 2) return na == nb;
+  return std::tolower(static_cast<unsigned char>(a[0])) == std::tolower(static_cast<unsigned char>(b[0]));
+#else
+  (void)a;
+  (void)b;
+  return true;
+#endif
+}
+// Whether two names in a path are the same name: byte for byte, and without regard to ASCII case on Windows.
+static bool same_name(StrView a, StrView b) {
+#if defined(_WIN32)
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i)
+    if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) return false;
+  return true;
+#else
+  return a == b;
+#endif
+}
+
+// The working directory, absolute; "." when it cannot be read.
+static RolltuiStr current_folder() {
+#if defined(_WIN32)
+  const DWORD n = GetCurrentDirectoryW(0, nullptr);
+  if (n == 0) return RolltuiStr(".");
+  std::vector<wchar_t> w(n);
+  const DWORD got = GetCurrentDirectoryW(n, w.data());
+  if (got == 0 || got >= n) return RolltuiStr(".");
+  RolltuiStr out = narrow(w.data());
+  forward_slashes(out);
+  return out;
+#else
+  char cwd[4096];
+  return RolltuiStr(getcwd(cwd, sizeof cwd) ? cwd : ".");
+#endif
+}
+// The person's home folder, what a leading `~` means: $HOME; on Windows %USERPROFILE%, else $HOME.
+static RolltuiStr home_dir() {
+#if defined(_WIN32)
+  RolltuiStr h = env_var("USERPROFILE");
+  if (h.empty()) h = env_var("HOME");
+  forward_slashes(h);
+  return h;
+#else
+  return env_var("HOME");
+#endif
+}
+// Where a person's configuration lives when no variable names it, as the library reads it:
+// `$HOME/.config`, and `%APPDATA%` on Windows.
+static RolltuiStr config_home() {
+#if defined(_WIN32)
+  RolltuiStr d = env_var("APPDATA");
+  if (d.empty()) {
+    d = env_var("USERPROFILE");
+    if (!d.empty()) d += "\\AppData\\Roaming";
+  }
+  if (d.empty()) d = ".";
+  return d;
+#else
+  const char* home = std::getenv("HOME");
+  return RolltuiStr(home && *home ? home : ".") + "/.config";
+#endif
+}
+
+// ---- files ----------------------------------------------------------------------------------
+// What is at a path. `follow` false describes a link itself rather than what it points at. On
+// Windows a link is a symbolic link or a junction; a OneDrive placeholder is a reparse point too,
+// and is the file or folder it stands for.
+enum class PathKind { None, Folder, File, Link, Other };
+#if defined(_WIN32)
+static bool is_link_reparse(const std::vector<wchar_t>& w) {
+  WIN32_FIND_DATAW fd;
+  const HANDLE h = FindFirstFileW(w.data(), &fd);
+  if (h == INVALID_HANDLE_VALUE) return false;
+  FindClose(h);
+  return (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+         (fd.dwReserved0 == IO_REPARSE_TAG_SYMLINK || fd.dwReserved0 == IO_REPARSE_TAG_MOUNT_POINT);
+}
+#endif
+static PathKind path_kind(const char* path, bool follow) {
+#if defined(_WIN32)
+  const std::vector<wchar_t> w = wide(path);
+  DWORD attrs = GetFileAttributesW(w.data());
+  if (attrs == INVALID_FILE_ATTRIBUTES) return PathKind::None;
+  if ((attrs & FILE_ATTRIBUTE_REPARSE_POINT) && is_link_reparse(w)) {
+    if (!follow) return PathKind::Link;
+    const HANDLE h = CreateFileW(w.data(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                 FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return PathKind::None;
+    BY_HANDLE_FILE_INFORMATION fi;
+    const BOOL ok = GetFileInformationByHandle(h, &fi);
+    CloseHandle(h);
+    if (!ok) return PathKind::None;
+    attrs = fi.dwFileAttributes;
+  }
+  if (attrs & FILE_ATTRIBUTE_DIRECTORY) return PathKind::Folder;
+  if (attrs & FILE_ATTRIBUTE_DEVICE) return PathKind::Other;
+  return PathKind::File;
+#else
+  struct stat st {};
+  if ((follow ? stat(path, &st) : lstat(path, &st)) != 0) return PathKind::None;
+  if (S_ISDIR(st.st_mode)) return PathKind::Folder;
+  if (S_ISREG(st.st_mode)) return PathKind::File;
+  if (S_ISLNK(st.st_mode)) return PathKind::Link;
+  return PathKind::Other;
+#endif
+}
+// `std::fopen` with a UTF-8 path.
+static FILE* open_file(const char* path, const char* mode) {
+#if defined(_WIN32)
+  return _wfopen(wide(path).data(), wide(mode).data());
+#else
+  return std::fopen(path, mode);
+#endif
+}
+// One folder made; its parent must exist. Whether it worked is read back by the caller.
+static void make_dir(const char* path) {
+#if defined(_WIN32)
+  CreateDirectoryW(wide(path).data(), nullptr);
+#else
+  mkdir(path, 0755);
+#endif
+}
+// A folder's names, `.` and `..` included, in the order the system gives them.
+class DirScan {
+ public:
+  explicit DirScan(const RolltuiStr& dir) {
+#if defined(_WIN32)
+    const bool slash = !dir.empty() && is_separator(dir.p[dir.n - 1]);
+    h_ = FindFirstFileW(wide(dir + (slash ? "*" : "/*")).data(), &data_);
+#else
+    d_ = opendir(dir.c_str());
+#endif
+  }
+  ~DirScan() {
+#if defined(_WIN32)
+    if (h_ != INVALID_HANDLE_VALUE) FindClose(h_);
+#else
+    if (d_) closedir(d_);
+#endif
+  }
+  DirScan(const DirScan&) = delete;
+  DirScan& operator=(const DirScan&) = delete;
+  bool ok() const {
+#if defined(_WIN32)
+    return h_ != INVALID_HANDLE_VALUE;
+#else
+    return d_ != nullptr;
+#endif
+  }
+  // The next name, or NULL at the end; valid until the next call.
+  const char* next() {
+#if defined(_WIN32)
+    if (h_ == INVALID_HANDLE_VALUE || (!first_ && !FindNextFileW(h_, &data_))) return nullptr;
+    first_ = false;
+    name_ = narrow(data_.cFileName);
+    return name_.c_str();
+#else
+    const dirent* e = d_ ? readdir(d_) : nullptr;
+    return e ? e->d_name : nullptr;
+#endif
+  }
+
+ private:
+#if defined(_WIN32)
+  HANDLE h_ = INVALID_HANDLE_VALUE;
+  WIN32_FIND_DATAW data_{};
+  bool first_ = true;
+  RolltuiStr name_;
+#else
+  DIR* d_ = nullptr;
+#endif
+};
+
+// ---- programs -------------------------------------------------------------------------------
+#if defined(_WIN32)
+// PATHEXT's extensions, lower-case, each with its dot: what makes a file a program on Windows.
+static StrVec program_extensions() {
+  RolltuiStr list = env_var("PATHEXT");
+  if (list.empty()) list = ".com;.exe;.bat;.cmd";
+  StrVec out;
+  split_list(lower(list), ';', out);
+  return out;
+}
+static bool has_program_extension(StrView path) {
+  const RolltuiStr l = lower(path);
+  for (const RolltuiStr& ext : program_extensions())
+    if (StrView(l).ends_with(ext)) return true;
+  return false;
+}
+#endif
+// The program a shell runs for `stem` (a folder and a name): `stem` itself when it may be run;
+// on Windows, `stem` with the first of PATHEXT's extensions a file in that folder has. Empty when
+// there is none.
+static RolltuiStr program_file(const RolltuiStr& stem) {
+#if defined(_WIN32)
+  const StrVec exts = program_extensions();
+  if (has_program_extension(stem) && path_kind(stem.c_str(), true) == PathKind::File) return rolltui::own(stem);
+  // One look at the folder for `stem.*`, then the extensions in PATHEXT's order.
+  StrVec names;  // lower-case
+  WIN32_FIND_DATAW fd;
+  const HANDLE h = FindFirstFileW(wide(stem + ".*").data(), &fd);
+  if (h == INVALID_HANDLE_VALUE) return RolltuiStr();
+  do {
+    if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) names.add(lower(narrow(fd.cFileName)));
+  } while (FindNextFileW(h, &fd));
+  FindClose(h);
+  std::size_t cut = stem.size();
+  while (cut > 0 && !is_separator(stem.p[cut - 1])) --cut;
+  const RolltuiStr base = lower(StrView(stem).drop_front(cut));
+  for (const RolltuiStr& ext : exts)
+    if (names.contains(base + ext)) return stem + ext;
+  return RolltuiStr();
+#else
+  return access(stem.c_str(), X_OK) == 0 ? rolltui::own(stem) : RolltuiStr();
+#endif
+}
+// Whether a file may be run as a program: its execute permission; on Windows, an extension PATHEXT lists.
+static bool may_run(const RolltuiStr& file) {
+#if defined(_WIN32)
+  return has_program_extension(file);
+#else
+  return access(file.c_str(), X_OK) == 0;
+#endif
+}
+
+#if defined(_WIN32)
+// The file Windows runs for `name`: itself when it is a path, else the first folder on PATH that
+// has it, with PATHEXT's extensions tried. Empty when there is none.
+static RolltuiStr find_program(StrView name) {
+  if (root_len(name) != 0 || name.contains('/') || name.contains('\\')) {
+    RolltuiStr p = rolltui::own(name);
+    forward_slashes(p);
+    return program_file(p);
+  }
+  StrVec dirs;
+  split_list(env_var("PATH"), ';', dirs);
+  for (const RolltuiStr& d : dirs) {
+    RolltuiStr found = program_file(d + "/" + name);
+    if (!found.empty()) return found;
+  }
+  return RolltuiStr();
+}
+// `arg` appended to a command line the way the C runtime's parser reads it back: quoted when it
+// is empty or has a space, a tab or a quote (always, with `always`), each quote escaped, and the
+// backslashes before a quote or the closing quote doubled.
+static void append_quoted(RolltuiStr& line, StrView arg, bool always) {
+  if (!line.empty()) line += ' ';
+  bool plain = !always && !arg.empty();
+  for (char c : arg)
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '"') plain = false;
+  if (plain) {
+    line += arg;
+    return;
+  }
+  line += '"';
+  std::size_t slashes = 0;
+  for (char c : arg) {
+    if (c == '\\') {
+      ++slashes;
+      continue;
+    }
+    const std::size_t times = c == '"' ? slashes * 2 + 1 : slashes;
+    for (std::size_t i = 0; i < times; ++i) line += '\\';
+    slashes = 0;
+    line += c;
+  }
+  for (std::size_t i = 0; i < slashes * 2; ++i) line += '\\';
+  line += '"';
+}
+static RolltuiStr system_folder() {
+  wchar_t w[MAX_PATH + 1];
+  const UINT n = GetSystemDirectoryW(w, MAX_PATH + 1);
+  return n > 0 && n <= MAX_PATH ? narrow(w) : RolltuiStr("C:\\Windows\\System32");
+}
+#endif
+
+// Runs `argv` (its first word found on PATH) and waits for it to exit. With `tty` a terminal
+// descriptor, the program's three streams are that terminal; with -1 they are the null device.
+// Whether it started; `status`, when given, gets its exit status (-1 when it did not exit normally).
+// On Windows an .exe or a .com runs itself and anything else (a batch file, a script with an
+// association) runs through cmd.exe. The program inherits the three handles it is given and no
+// others: never the pipe a shell reads this program's answer from.
+static bool run_and_wait(const char* const* argv, int tty, int* status) {
+#if defined(_WIN32)
+  RolltuiStr program = find_program(argv[0]);
+  if (program.empty()) return false;
+  native_slashes(program);
+  const RolltuiStr low = lower(program);
+  const bool direct = StrView(low).ends_with(".exe") || StrView(low).ends_with(".com");
+  RolltuiStr app, line;
+  if (direct) {
+    app.assign(program);
+    append_quoted(line, program, false);
+    for (std::size_t i = 1; argv[i]; ++i) append_quoted(line, argv[i], false);
+  } else {
+    // cmd.exe reads `%` and `"` even inside quotes: an argument with either is refused.
+    RolltuiStr inner;
+    append_quoted(inner, program, true);
+    for (std::size_t i = 1; argv[i]; ++i) {
+      if (StrView(argv[i]).contains('%') || StrView(argv[i]).contains('"')) return false;
+      append_quoted(inner, argv[i], true);
+    }
+    app = system_folder() + "\\cmd.exe";
+    line = rolltui::format("\"%s\" /d /v:off /s /c \"%s\"", app.c_str(), inner.c_str());
+  }
+  SECURITY_ATTRIBUTES sa{};
+  sa.nLength = static_cast<DWORD>(sizeof sa);
+  sa.bInheritHandle = TRUE;
+  const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+  HANDLE in = INVALID_HANDLE_VALUE, out = INVALID_HANDLE_VALUE;
+  if (tty >= 0) {
+    in = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
+    out = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
+  } else {
+    in = out = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
+  }
+  bool started = false;
+  PROCESS_INFORMATION pi{};
+  if (in != INVALID_HANDLE_VALUE && out != INVALID_HANDLE_VALUE) {
+    HANDLE inherit[2] = {in, out};
+    const DWORD inherit_n = in == out ? 1 : 2;
+    SIZE_T size = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+    std::vector<unsigned char> attrs(size);
+    const LPPROC_THREAD_ATTRIBUTE_LIST list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrs.data());
+    if (size && InitializeProcThreadAttributeList(list, 1, 0, &size)) {
+      if (UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, inherit_n * sizeof(HANDLE), nullptr, nullptr)) {
+        STARTUPINFOEXW si{};
+        si.StartupInfo.cb = static_cast<DWORD>(sizeof si);
+        si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        si.StartupInfo.hStdInput = in;
+        si.StartupInfo.hStdOutput = out;
+        si.StartupInfo.hStdError = out;
+        si.lpAttributeList = list;
+        std::vector<wchar_t> wapp = wide(app), wline = wide(line);
+        // A program that does not take the terminal gets no console window of its own either.
+        const DWORD flags = EXTENDED_STARTUPINFO_PRESENT | (tty >= 0 ? 0 : static_cast<DWORD>(CREATE_NO_WINDOW));
+        started = CreateProcessW(wapp.data(), wline.data(), nullptr, nullptr, TRUE, flags, nullptr, nullptr, &si.StartupInfo, &pi) != 0;
+      }
+      DeleteProcThreadAttributeList(list);
+    }
+  }
+  if (in != INVALID_HANDLE_VALUE) CloseHandle(in);
+  if (out != INVALID_HANDLE_VALUE && out != in) CloseHandle(out);
+  if (!started) return false;
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  DWORD code = 0;
+  const bool exited = GetExitCodeProcess(pi.hProcess, &code) != 0;
+  if (status) *status = exited ? static_cast<int>(code) : -1;
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  return true;
+#else
+  posix_spawn_file_actions_t fa;
+  posix_spawn_file_actions_init(&fa);
+  if (tty >= 0) {
+    posix_spawn_file_actions_adddup2(&fa, tty, 0);
+    posix_spawn_file_actions_adddup2(&fa, tty, 1);
+    posix_spawn_file_actions_adddup2(&fa, tty, 2);
+  } else {
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+  }
+  pid_t pid = 0;
+  const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+  posix_spawn_file_actions_destroy(&fa);
+  int st = 0;
+  if (rc == 0) waitpid(pid, &st, 0);
+  if (status) *status = rc == 0 && WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+  return rc == 0;
+#endif
+}
+
+// UPDATES. On macOS and Linux dirktui asks its Homebrew tap for a newer version and updates
+// through brew. On Windows it does neither: its updates come from the package manager that
+// installed it, and the three functions below start nothing there.
+#if defined(_WIN32)
+constexpr bool kSelfUpdates = false;
+using ChildId = unsigned long;
+#else
+constexpr bool kSelfUpdates = true;
+using ChildId = pid_t;
+#endif
+constexpr const char* kUpdatesElsewhere = "Updates come from the package manager that installed dirktui";
+// Starts `argv` with its three streams on the null device and does not wait; 0 when it did not start.
+static ChildId start_quiet(const char* const* argv) {
+#if defined(_WIN32)
+  (void)argv;
+  return 0;
+#else
+  posix_spawn_file_actions_t fa;
+  posix_spawn_file_actions_init(&fa);
+  posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+  posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+  pid_t pid = 0;
+  const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+  posix_spawn_file_actions_destroy(&fa);
+  return rc == 0 ? pid : 0;
+#endif
+}
+// Whether a program `start_quiet` started has exited, asked without waiting.
+static bool child_exited(ChildId child) {
+#if defined(_WIN32)
+  (void)child;
+  return true;
+#else
+  int status = 0;
+  return waitpid(child, &status, WNOHANG) == child;
+#endif
+}
+// This program run again in its own place, as `argv` says; returns only when that fails.
+static void restart_self(char** argv) {
+#if defined(_WIN32)
+  (void)argv;
+#else
+  execvp(argv[0], argv);
+#endif
+}
+
+// `text` on the standard input of the shell command `cmd`; whether it ran and exited 0.
+static bool pipe_to(const char* cmd, StrView text) {
+#if defined(_WIN32)
+  FILE* p = _popen(cmd, "wb");
+  if (!p) return false;
+  std::fwrite(text.data(), 1, text.size(), p);
+  return _pclose(p) == 0;
+#else
+  FILE* p = popen(cmd, "w");
+  if (!p) return false;
+  std::fwrite(text.data(), 1, text.size(), p);
+  return pclose(p) == 0;
+#endif
+}
+// THE PLATFORM'S CLIPBOARD set to `text`: pbcopy on macOS, wl-copy or xclip on Linux, and on
+// Windows the clipboard itself as UTF-16 text (CF_UNICODETEXT), owned by a message-only window
+// made for the copy.
+static bool system_clipboard(StrView text) {
+#if defined(_WIN32)
+  const std::vector<wchar_t> w = wide(text);
+  const HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, w.size() * sizeof(wchar_t));
+  if (!mem) return false;
+  void* dst = GlobalLock(mem);
+  if (!dst) {
+    GlobalFree(mem);
+    return false;
+  }
+  std::memcpy(dst, w.data(), w.size() * sizeof(wchar_t));
+  GlobalUnlock(mem);
+  const HWND owner = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr);
+  bool open = OpenClipboard(owner) != 0;
+  for (int tries = 0; !open && tries < 10; ++tries) {  // another program may hold it for a moment
+    Sleep(10);
+    open = OpenClipboard(owner) != 0;
+  }
+  bool ok = false;
+  if (open) {
+    EmptyClipboard();
+    ok = SetClipboardData(CF_UNICODETEXT, mem) != nullptr;
+    CloseClipboard();
+  }
+  if (!ok) GlobalFree(mem);  // once set, the clipboard owns it
+  if (owner) DestroyWindow(owner);
+  return ok;
+#elif defined(__APPLE__)
+  return pipe_to("pbcopy", text);
+#else
+  return pipe_to("wl-copy 2>/dev/null || xclip -selection clipboard", text);
+#endif
+}
+
+// ---- the terminal -----------------------------------------------------------------------------
+// THE TERMINAL BY NAME, whatever stdin and stdout are: /dev/tty on macOS and Linux; on Windows the
+// console's own input and output, CONIN$ and CONOUT$, as C runtime descriptors (the library takes
+// descriptors and reads the handles back with `_get_osfhandle`).
+struct Tty {
+  int in = -1, out = -1;
+};
+#if defined(_WIN32)
+constexpr const char* kTerminalName = "console";
+#else
+constexpr const char* kTerminalName = "/dev/tty";
+#endif
+// False, with `errno` set, when there is no terminal.
+static bool open_tty(Tty& t) {
+#if defined(_WIN32)
+  const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+  const HANDLE in = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, share, nullptr, OPEN_EXISTING, 0, nullptr);
+  const HANDLE out = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, share, nullptr, OPEN_EXISTING, 0, nullptr);
+  t.in = in == INVALID_HANDLE_VALUE ? -1 : _open_osfhandle(reinterpret_cast<std::intptr_t>(in), _O_RDONLY);
+  t.out = out == INVALID_HANDLE_VALUE ? -1 : _open_osfhandle(reinterpret_cast<std::intptr_t>(out), 0);
+  if (t.in >= 0 && t.out >= 0) return true;
+  if (t.in >= 0) _close(t.in);
+  else if (in != INVALID_HANDLE_VALUE) CloseHandle(in);
+  if (t.out >= 0) _close(t.out);
+  else if (out != INVALID_HANDLE_VALUE) CloseHandle(out);
+  t = Tty{};
+  errno = ENXIO;
+  return false;
+#else
+  t.in = t.out = open("/dev/tty", O_RDWR | O_CLOEXEC);
+  return t.in >= 0;
+#endif
+}
+static void close_tty(Tty& t) {
+#if defined(_WIN32)
+  if (t.in >= 0) _close(t.in);
+  if (t.out >= 0) _close(t.out);
+#else
+  if (t.in >= 0) close(t.in);
+#endif
+  t = Tty{};
+}
+// Whether stdin is a terminal a person types at. On Windows: a console, which a pipe and the NUL
+// device are not.
+static bool stdin_is_terminal() {
+#if defined(_WIN32)
+  DWORD mode = 0;
+  return GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &mode) != 0;
+#else
+  return isatty(STDIN_FILENO) != 0;
+#endif
+}
+
+// ---- the process ------------------------------------------------------------------------------
+// The arguments as UTF-8. On Windows they are read again from the UTF-16 command line, since the
+// C runtime hands `main` the ANSI code page's spelling; elsewhere they already are UTF-8.
+static char** utf8_args(int& argc, char** argv) {
+#if defined(_WIN32)
+  int n = 0;
+  LPWSTR* w = CommandLineToArgvW(GetCommandLineW(), &n);
+  if (!w) return argv;
+  static StrVec owned;
+  static std::vector<char*> ptrs;
+  for (int i = 0; i < n; ++i) owned.add(narrow(w[i]));
+  LocalFree(w);
+  for (std::size_t i = 0; i < owned.size(); ++i) ptrs.push_back(const_cast<char*>(owned[i].c_str()));
+  ptrs.push_back(nullptr);
+  argc = n;
+  return ptrs.data();
+#else
+  (void)argc;
+  return argv;
+#endif
+}
+// Where application bundles are looked for: /Applications and ~/Applications. Nowhere on
+// Windows, where "Open with" offers the programs on PATH and the system opener.
+static RolltuiStr default_apps_dirs() {
+#if defined(_WIN32)
+  return RolltuiStr();
+#else
+  return RolltuiStr("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";
+#endif
+}
 
 // ---- what the host and the widget agree on ------------------------------------------------
 // One struct, owned by the app, BORROWED by the widget through its factory ctx. This is how a
@@ -209,8 +903,8 @@ static const TypeGroup* group_by_id(StrView id) {
   return nullptr;
 }
 // Which known programs are installed, and how: `on_path` for a command, `bundled` for an
-// application bundle under one of `apps_dirs` (colon-separated). Read once; the answer is the
-// menu's contents.
+// application bundle under one of `apps_dirs` (separated by `kListSep`). Read once; the answer is
+// the menu's contents.
 struct Installed {
   StrVec on_path, bundled;
   bool has(StrView id) const { return on_path.contains(id) || bundled.contains(id); }
@@ -218,27 +912,15 @@ struct Installed {
 static Installed detect_programs(StrView apps_dirs) {
   Installed out;
   StrVec path, apps;
-  auto split = [](StrView s, StrVec& into) {
-    std::size_t at = 0;
-    for (;;) {
-      std::size_t end = s.find(':', at);
-      if (end == StrView::npos) end = s.size();
-      if (end > at) into.add(s.substr(at, end - at));
-      if (end >= s.size()) break;
-      at = end + 1;
-    }
-  };
-  split(std::getenv("PATH"), path);
-  split(apps_dirs, apps);
+  split_list(env_var("PATH"), kListSep, path);
+  split_list(apps_dirs, kListSep, apps);
   for (const Program& p : kPrograms) {
     if (p.exe)
       for (const RolltuiStr& d : path)
-        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { out.on_path.add(p.id); break; }
+        if (!program_file(d + "/" + p.exe).empty()) { out.on_path.add(p.id); break; }
     if (p.bundle)
-      for (const RolltuiStr& d : apps) {
-        struct stat st{};
-        if (stat((d + "/" + p.bundle + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { out.bundled.add(p.id); break; }
-      }
+      for (const RolltuiStr& d : apps)
+        if (path_kind((d + "/" + p.bundle + ".app").c_str(), true) == PathKind::Folder) { out.bundled.add(p.id); break; }
   }
   return out;
 }
@@ -480,7 +1162,7 @@ struct App {
   unsigned long long update_since_ms = 0;   // when an update FIRST became known, so re-detecting it on a later
                                              // launch does not restart the corner's animation from zero
   bool update_state_loaded = false;         // the cache file is read lazily, once, on the first tick
-  pid_t update_check_pid = 0;               // the in-flight `curl`, or 0 when none is running
+  ChildId update_check_pid = 0;             // the in-flight `curl`, or 0 when none is running
   RolltuiStr update_check_out;              // where its stdout was redirected: read and removed once it exits
   static constexpr unsigned long long kUpdateCheckIntervalMs = 24ULL * 60 * 60 * 1000;  // don't ask more than once a day
   char** restart_argv = nullptr;            // BORROWED, main()'s own argv: how `do_update` re-execs after brew
@@ -509,11 +1191,12 @@ struct App {
   void build_crumbs(StrView path) {
     crumbs_for.assign(path.data(), path.size());
     rolltui_hint_bar_clear(crumbs);
-    rolltui_hint_bar_add(crumbs, "", 0, "/", 1, "crumb:0", 7);
+    const RolltuiStr top = root_of(path);  // "/", or a drive's "C:/"
+    rolltui_hint_bar_add(crumbs, "", 0, top.data(), top.size(), "crumb:0", 7);
     const RolltuiStr dir = current_dir();
-    const RolltuiStr prefix = dir == "/" ? RolltuiStr("/") : dir + "/";
+    const RolltuiStr prefix = is_root(dir) ? rolltui::own(dir) : dir + "/";
     const bool has_sel = path != dir && path.starts_with(prefix);
-    std::size_t at = 1, col = 1;
+    std::size_t at = std::max<std::size_t>(root_len(path), 1), col = 1;
     while (at < path.size()) {
       const std::size_t slash = path.find('/', at);
       const StrView part = path.substr(at, slash == StrView::npos ? StrView::npos : slash - at);
@@ -840,7 +1523,7 @@ struct App {
     }
     rolltui::appendf(out, "%s} }\n", first ? "" : " ");
     const RolltuiStr file = dir + "/settings.json";
-    FILE* f = std::fopen(file.c_str(), "wb");
+    FILE* f = open_file(file.c_str(), "wb");
     const bool ok = f && std::fwrite(out.data(), 1, out.size(), f) == out.size();
     if (f) std::fclose(f);
     if (!ok) hint = "could not write " + file;
@@ -862,12 +1545,12 @@ struct App {
     return 0;
   }
   bool update_available() const {
-    return !latest.empty() && compare_versions(StrView(DIRKTUI_VERSION), StrView(latest)) < 0;
+    return kSelfUpdates && !latest.empty() && compare_versions(StrView(DIRKTUI_VERSION), StrView(latest)) < 0;
   }
   static RolltuiStr update_cache_file() { return settings_dir() + "/update.json"; }
   void load_update_state() {
     RolltuiStr text{};
-    FILE* f = std::fopen(update_cache_file().c_str(), "rb");
+    FILE* f = open_file(update_cache_file().c_str(), "rb");
     if (f) {
       char buf[512];
       std::size_t n;
@@ -892,54 +1575,37 @@ struct App {
     RolltuiStr out;
     rolltui::appendf(out, "{ \"latest\": \"%.*s\", \"checked_ms\": %llu, \"update_since_ms\": %llu }\n",
                      static_cast<int>(latest.n), latest.p ? latest.p : "", checked_ms, update_since_ms);
-    FILE* f = std::fopen(update_cache_file().c_str(), "wb");
+    FILE* f = open_file(update_cache_file().c_str(), "wb");
     if (f) { std::fwrite(out.data(), 1, out.size(), f); std::fclose(f); }
   }
   static RolltuiStr update_check_tmp_file() { return settings_dir() + "/update_check.out"; }
-  // Quiet, `/dev/null`-redirected, non-blocking: the same file-actions shape the editor-open path
-  // uses for a program that should NOT take the terminal (`spawn_program`, above), just with
-  // stdout redirected to a file this reads back once the child has exited rather than to
-  // `/dev/null`. Never `waitpid`s here — `update_check_tick` polls it every frame instead, so a
-  // slow or hung network never costs the render loop a single frame.
+  // Quiet (`start_quiet`: every stream on the null device) and non-blocking, with curl writing to a
+  // file this reads back once the child has exited. Never waited for here — `update_check_tick`
+  // polls it every frame instead, so a slow or hung network never costs the render loop a single
+  // frame. Nothing is started where dirktui does not update itself (`kSelfUpdates`).
   void spawn_update_check() {
-    if (headless || update_check_pid) return;  // one at a time, and never a real network reach in a test/frame run
+    if (!kSelfUpdates || headless || update_check_pid) return;  // one at a time, and never a real network reach in a test/frame run
     mkdirs(settings_dir());
     const RolltuiStr out_path = update_check_tmp_file();
     const char* url = std::getenv("DIRKTUI_UPDATE_URL");
     if (!url || !*url) url = "https://raw.githubusercontent.com/itscool/homebrew-tap/main/Formula/dirktui.rb";
     const char* argv[] = {"curl", "-fsSL", "--max-time", "5", url, "-o", out_path.c_str(), nullptr};
-    posix_spawn_file_actions_t fa;
-    posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    pid_t pid = 0;
-    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
-    posix_spawn_file_actions_destroy(&fa);
-    if (rc == 0) update_check_pid = pid;
+    update_check_pid = start_quiet(argv);
   }
-  // Runs `brew update && brew upgrade dirktui` with the real terminal — the same terminal-taking
-  // shape `spawn_program` uses for an editor, above, so the person watches brew's own real output
-  // rather than a black box — then re-execs this program exactly as it was invoked. PATH
-  // resolution runs FRESH at that point, so it is whatever `brew upgrade` just put at the symlink,
-  // never a path resolved and cached before the upgrade. Only reached once `update_available()`
-  // is already true.
+  // Runs `brew update && brew upgrade dirktui` with the real terminal — `run_and_wait` on the tty,
+  // as `open_with` runs an editor, so the person watches brew's own real output rather than a
+  // black box — then re-execs this program exactly as it was invoked. PATH resolution runs FRESH
+  // at that point, so it is whatever `brew upgrade` just put at the symlink, never a path resolved
+  // and cached before the upgrade. Only reached once `update_available()` is already true, which
+  // it never is where dirktui does not update itself.
   void do_update_and_restart() {
+    if (!kSelfUpdates) { hint = kUpdatesElsewhere; return; }
     if (!run || tty_fd < 0 || !restart_argv) return;
     rolltui_run_suspend(run);
-    posix_spawn_file_actions_t fa;
-    posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_adddup2(&fa, tty_fd, 0);
-    posix_spawn_file_actions_adddup2(&fa, tty_fd, 1);
-    posix_spawn_file_actions_adddup2(&fa, tty_fd, 2);
     const char* argv[] = {"/bin/sh", "-c", "brew update && brew upgrade dirktui", nullptr};
-    pid_t pid = 0;
-    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
-    posix_spawn_file_actions_destroy(&fa);
-    int status = 0;
-    if (rc == 0) waitpid(pid, &status, 0);
-    const bool upgraded = rc == 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
-    if (upgraded) execvp(restart_argv[0], restart_argv);  // returns only on failure to launch
+    int status = -1;
+    const bool upgraded = run_and_wait(argv, tty_fd, &status) && status == 0;
+    if (upgraded) restart_self(restart_argv);  // returns only on failure to launch
     rolltui_run_resume(run);
     hint = upgraded ? "updated, but could not restart automatically \xE2\x80\x94 quit and run dirktui again"
                     : "brew upgrade dirktui failed; see your terminal history";
@@ -950,14 +1616,10 @@ struct App {
   void update_check_tick() {
     if (!update_state_loaded) { load_update_state(); update_state_loaded = true; }
     if (update_check_pid) {
-      int status = 0;
-      const pid_t r = waitpid(update_check_pid, &status, WNOHANG);
-      if (r == update_check_pid) {
-        const pid_t done_pid = update_check_pid;
+      if (child_exited(update_check_pid)) {
         update_check_pid = 0;
-        (void)done_pid;
         RolltuiStr text{};
-        FILE* f = std::fopen(update_check_tmp_file().c_str(), "rb");
+        FILE* f = open_file(update_check_tmp_file().c_str(), "rb");
         if (f) {
           char buf[512];
           std::size_t n;
@@ -998,6 +1660,11 @@ struct App {
     rolltui_menu_set_enabled(m, "do_update", 9, update_available() ? 1 : 0);
     if (update_available()) {
       if (RolltuiMenuItem* it = rolltui_menu_find(m, "do_update", 9)) it->label = "Update to " + latest + " and restart";
+    }
+    // Where dirktui does not update itself, the About section says where its updates come from.
+    if (!kSelfUpdates) {
+      rolltui_menu_set_enabled(m, "check_update", 12, 0);
+      if (RolltuiMenuItem* it = rolltui_menu_find(m, "check_update", 12)) it->label = kUpdatesElsewhere;
     }
     { const RolltuiStr sid = sort_id(opt.sort, opt.reversed); rolltui_menu_set_value(m, "sort", 4, sid.data(), sid.size()); }
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
@@ -1221,24 +1888,27 @@ struct App {
     trim_slashes(path);
     if (path.empty()) { a.hint = "a path, please"; return; }
     expand_home(path);
-    struct stat st {};
-    if (stat(path.c_str(), &st) != 0) { a.hint = "no such path: " + path; return; }
+    if (path_kind(path.c_str(), true) == PathKind::None) { a.hint = "no such path: " + path; return; }
     a.go_to_match(path);  // a folder is entered, a file selected in its folder; the focus goes back to the columns
   }
   static void on_find(void* ctx, const char* text, std::size_t len) {
     App& a = *static_cast<App*>(ctx);
     a.find(StrView(text, len));
   }
-  // A path typed or pasted: its trailing slashes off (a lone "/" stays), and a leading "~" as the home directory.
+  // A path typed or pasted: its backslashes made slashes on Windows, its trailing slashes off (a
+  // root stays whole: "/", "C:/"), and a leading "~" as the home directory.
   static void trim_slashes(RolltuiStr& path) {
-    while (path.n > 1 && path.p[path.n - 1] == '/') rolltui::pop_back(path);
+    forward_slashes(path);
+    while (path.n > std::max<std::size_t>(root_len(path), 1) && path.p[path.n - 1] == '/') rolltui::pop_back(path);
   }
   // An absolute path with its `.` parts dropped and each `..` folded into the part before it. Links are
-  // not resolved: the path keeps the names it was given.
+  // not resolved: the path keeps the names it was given. A `..` never climbs above the root.
   static void normalize(RolltuiStr& path) {
-    if (path.empty() || path.p[0] != '/') return;
+    const std::size_t top = root_len(path);
+    if (top == 0) return;
+    const RolltuiStr root_dir = root_of(path);  // "/", or "C:/"
     RolltuiStr out;
-    StrView rest(path);
+    StrView rest = StrView(path).drop_front(top);
     while (!rest.empty()) {
       const std::size_t slash = rest.find('/');
       const StrView part = slash == StrView::npos ? rest : rest.first(slash);
@@ -1252,12 +1922,12 @@ struct App {
       out += "/";
       out += part;
     }
-    path = out.empty() ? RolltuiStr("/") : std::move(out);
+    path = out.empty() ? rolltui::own(root_dir) : StrView(root_dir).drop_back(1) + out;
   }
   static void expand_home(RolltuiStr& path) {
     if (path.empty() || path.p[0] != '~') return;
-    const char* home = std::getenv("HOME");
-    RolltuiStr expanded = RolltuiStr(home ? home : "") + StrView(path).drop_front(1);
+    RolltuiStr expanded = home_dir() + StrView(path).drop_front(1);
+    forward_slashes(expanded);
     path = std::move(expanded);
   }
 
@@ -1277,9 +1947,9 @@ struct App {
     trim_slashes(path);
     if (path.empty()) { hint = "a path, please"; return false; }
     expand_home(path);
-    struct stat st {};
-    if (stat(path.c_str(), &st) != 0) { hint = "no such path: " + path; return false; }
-    if (!S_ISDIR(st.st_mode)) { hint = "not a directory: " + path; return false; }
+    const PathKind kind = path_kind(path.c_str(), true);
+    if (kind == PathKind::None) { hint = "no such path: " + path; return false; }
+    if (kind != PathKind::Folder) { hint = "not a directory: " + path; return false; }
     root.assign(path.data(), path.size());
     picker_go(path);
     hint.clear();  // the path line says where
@@ -1317,7 +1987,7 @@ struct App {
     RolltuiStr d{};
     if (rolltui_windows_picker_dir(windows, kPicker, 10, &d)) where.assign(d.p ? d.p : "", d.n);  // "" in the top column: the root's own place
     rolltui_str_free(&d);
-    if (where.empty()) where = "/";
+    if (where.empty()) where = root_of(root);
     return where;
   }
 
@@ -1345,24 +2015,24 @@ struct App {
   // followed, dotfiles as the setting says. A bound is what keeps a find at / a moment, not a wait.
   void walk(const RolltuiStr& under, const RolltuiStr& rel, int depth, std::size_t& budget, StrView q) {
     if (depth > 8 || budget == 0) return;
-    DIR* d = opendir(under.c_str());
-    if (!d) return;
     StrVec subs;
-    while (const dirent* e = readdir(d)) {
-      const StrView name(e->d_name);
-      if (name == "." || name == "..") continue;
-      if (!opt.hidden && name[0] == '.') continue;
-      if (budget == 0) break;
-      --budget;
-      RolltuiStr full = under + "/" + name;
-      RolltuiStr shown = rel.empty() ? rolltui::own(name) : rel + "/" + name;
-      struct stat st {};
-      const bool folder = lstat(full.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-      const int s = fuzzy(shown, q);
-      if (s >= 0) found.push_back(Match{std::move(full), std::move(shown), s, folder});
-      if (folder) subs.add(name);
+    {
+      DirScan d(under);  // closed before the walk goes deeper
+      if (!d.ok()) return;
+      while (const char* e = d.next()) {
+        const StrView name(e);
+        if (name == "." || name == "..") continue;
+        if (!opt.hidden && name[0] == '.') continue;
+        if (budget == 0) break;
+        --budget;
+        RolltuiStr full = under + "/" + name;
+        RolltuiStr shown = rel.empty() ? rolltui::own(name) : rel + "/" + name;
+        const bool folder = path_kind(full.c_str(), false) == PathKind::Folder;
+        const int s = fuzzy(shown, q);
+        if (s >= 0) found.push_back(Match{std::move(full), std::move(shown), s, folder});
+        if (folder) subs.add(name);
+      }
     }
-    closedir(d);
     for (const RolltuiStr& name : subs) walk(under + "/" + name, rel.empty() ? rolltui::own(name) : rel + "/" + name, depth + 1, budget, q);
   }
   void find(StrView query) {
@@ -1402,13 +2072,12 @@ struct App {
   // focus back.
   void go_to_match(StrView where) {
     const RolltuiStr path = rolltui::own(where);
-    struct stat st {};
-    const bool folder = stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    const bool folder = path_kind(path.c_str(), true) == PathKind::Folder;
     if (folder) { jump(path); }
     else {
       const std::size_t slash = StrView(path).rfind('/');
       if (slash == StrView::npos) root = "/";
-      else root.assign(path.data(), slash ? slash : 1);
+      else root.assign(path.data(), std::max(slash, root_len(path)));  // the folder, or the root itself
       picker_go(path);
       hint.clear();
     }
@@ -1488,8 +2157,7 @@ struct App {
     if (!rolltui_windows_picker_event(windows, kPicker, 10, &ev)) return;
     const RolltuiStr& path = ev.path;  // the event's own, NUL-terminated, alive until it is released below
     if (ev.kind == ROLLTUI_PICKER_EVENT_TAKEN) {
-      struct stat st {};
-      const bool folder = stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+      const bool folder = path_kind(path.c_str(), true) == PathKind::Folder;
       const std::size_t slash = StrView(path).rfind('/');
       const StrView name = StrView(path).substr(slash == StrView::npos ? 0 : slash + 1);
       // A BUNDLE is a directory to the file system and an application to a person: never
@@ -1534,8 +2202,7 @@ struct App {
   // by the program that was meant to show it — is decided by the file's own bit, not by a list
   // of names. What a document opens with is `group_of` + `program_for`.
   static bool is_executable(const RolltuiStr& path) {
-    struct stat st{};
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && access(path.c_str(), X_OK) == 0;
+    return path_kind(path.c_str(), true) == PathKind::File && may_run(path);
   }
   // A file to the command line: exit 3 with the path as the path setting says (from where dirk
   // started), or exit 4 with the file's absolute path for the shell to `cd` beside and type
@@ -1561,11 +2228,12 @@ struct App {
     return v;
   }
   // `path` as a relative path from `start_dir`, always with a leading `./` or `../` so it reads
-  // as a place and never as a command.
+  // as a place and never as a command. A path on another drive (Windows) stays absolute.
   RolltuiStr relative_to_start(StrView path) const {
+    if (!same_root(start_dir, path)) return rolltui::own(path);
     const std::vector<StrView> a = parts(start_dir), b = parts(path);
     std::size_t common = 0;
-    while (common < a.size() && common < b.size() && a[common] == b[common]) ++common;
+    while (common < a.size() && common < b.size() && same_name(a[common], b[common])) ++common;
     RolltuiStr out;
     for (std::size_t i = common; i < a.size(); ++i) out += out.empty() ? ".." : "/..";
     for (std::size_t i = common; i < b.size(); ++i) {
@@ -1578,12 +2246,32 @@ struct App {
   }
 
   // THE SYSTEM OPENER: the platform's. A stand-in (`$DIRK_OPEN`) is put in front of the whole
-  // command by `open_with`, never substituted here, so the stand-in sees "open <path>".
+  // command by `open_with`, never substituted here, so the stand-in sees "open <path>". Windows
+  // has no opener program: `system_open` asks the shell (ShellExecuteW), and a stand-in sees
+  // "start <path>".
   static const char* opener() {
 #ifdef __APPLE__
     return "open";
+#elif defined(_WIN32)
+    return "start";
 #else
     return "xdg-open";
+#endif
+  }
+  // `path` opened by the system opener, which returns at once; whether it started.
+  static bool system_open(StrView path) {
+#if defined(_WIN32)
+    RolltuiStr native = rolltui::own(path);
+    native_slashes(native);
+    // The shell may hand the file to a COM extension, so COM is set up for the call.
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const HINSTANCE r = ShellExecuteW(nullptr, L"open", wide(native).data(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (SUCCEEDED(com)) CoUninitialize();
+    return reinterpret_cast<INT_PTR>(r) > 32;
+#else
+    const RolltuiStr p = rolltui::own(path);
+    const char* argv[] = {opener(), p.c_str(), nullptr};
+    return run_and_wait(argv, -1, nullptr);
 #endif
   }
   // A HEADLESS RUN REACHES NO REAL OPENER AND NO REAL CLIPBOARD. A `--frame` run is a test, and
@@ -1604,6 +2292,7 @@ struct App {
     const char* stand_in = std::getenv("DIRK_OPEN");
     if (stand_in && !*stand_in) stand_in = nullptr;
     if (headless && !stand_in) return false;
+    if (id == kSystemProgram && !stand_in) return system_open(path);
     StrVec cmd;
     if (stand_in) cmd.add(stand_in);  // run INSTEAD, handed the command it would have been
     const Program* p = program_named(id);
@@ -1621,42 +2310,19 @@ struct App {
     std::vector<const char*> argv;
     for (const RolltuiStr& a : cmd) argv.push_back(a.c_str());
     argv.push_back(nullptr);
-    posix_spawn_file_actions_t fa;
-    posix_spawn_file_actions_init(&fa);
-    if (takes_terminal) {
-      // The editor gets the terminal itself, not the pipe `$(dirk)` is reading this process's
-      // stdout through: all three streams on the tty.
-      posix_spawn_file_actions_adddup2(&fa, tty_fd, 0);
-      posix_spawn_file_actions_adddup2(&fa, tty_fd, 1);
-      posix_spawn_file_actions_adddup2(&fa, tty_fd, 2);
-      rolltui_run_suspend(run);
-    } else {
-      posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-      posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-      posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    }
-    pid_t pid = 0;
-    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv.data()), environ);
-    posix_spawn_file_actions_destroy(&fa);
-    if (rc == 0) waitpid(pid, nullptr, 0);
+    // The editor gets the terminal itself, not the pipe `$(dirk)` is reading this process's
+    // stdout through: all three streams on the tty. Any other program gets the null device.
+    if (takes_terminal) rolltui_run_suspend(run);
+    const bool ran = run_and_wait(argv.data(), takes_terminal ? tty_fd : -1, nullptr);
     if (takes_terminal) rolltui_run_resume(run);  // the editor's screen is gone: ours is drawn whole
-    return rc == 0;
+    return ran;
   }
-  // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
+  // THE CLIPBOARD: `$DIRK_CLIPBOARD` fed the text on stdin, else the platform's (`system_clipboard`).
   static bool copy_to_clipboard(StrView text) {
     const char* cmd = std::getenv("DIRK_CLIPBOARD");
     if (headless && !cmd) return false;
-    if (!cmd || !*cmd) {
-#ifdef __APPLE__
-      cmd = "pbcopy";
-#else
-      cmd = "wl-copy 2>/dev/null || xclip -selection clipboard";
-#endif
-    }
-    FILE* p = popen(cmd, "w");
-    if (!p) return false;
-    std::fwrite(text.data(), 1, text.size(), p);
-    return pclose(p) == 0;
+    if (cmd && *cmd) return pipe_to(cmd, text);
+    return system_clipboard(text);
   }
 
   void toggle_popup(const char* id) {
@@ -1783,7 +2449,7 @@ struct App {
       rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
       const StrView id = ev.id;
       if (target == "matches") {
-        if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && !id.empty() && id[0] == '/') {
+        if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && !id.empty() && root_len(id) != 0) {
           rolltui_window_stack_pop(stack);
           go_to_match(id);
         }
@@ -1866,7 +2532,7 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "check_update") {
         spawn_update_check();
-        hint = "checking for an update\xE2\x80\xA6";
+        hint = kSelfUpdates ? "checking for an update\xE2\x80\xA6" : kUpdatesElsewhere;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "do_update") {
         if (update_available()) do_update_and_restart();
       }
@@ -2024,7 +2690,7 @@ bool App::headless = false;
 // The whole of a file, and whether it could be opened.
 RolltuiStr read_file(const RolltuiStr& path, bool& ok) {
   RolltuiStr out;
-  FILE* f = std::fopen(path.c_str(), "rb");
+  FILE* f = open_file(path.c_str(), "rb");
   ok = f != nullptr;
   if (!f) return out;
   char buf[4096];
@@ -2042,20 +2708,19 @@ extern const size_t dirktui_kAppFileCount;
 }
 
 // Where a person's own presets live, the same three rungs `rolltui_app_file` walks for an app's
-// own files: an explicit configuration directory, then the XDG one, then the home default.
+// own files: an explicit configuration directory, then the XDG one, then the home default
+// (`config_home`: ~/.config, and %APPDATA% on Windows).
 RolltuiStr user_presets_dir() {
   if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return RolltuiStr(d) + "/rolltui";
   if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return RolltuiStr(x) + "/roll/rolltui";
-  const char* home = std::getenv("HOME");
-  return RolltuiStr(home && *home ? home : ".") + "/.config/roll/rolltui";
+  return config_home() + "/roll/rolltui";
 }
 
-// `dir` and every folder above it made, and whether it is a folder now. Each prefix is a fresh copy: `mkdir` wants a C string.
+// `dir` and every folder above it made, and whether it is a folder now. Each prefix is a fresh copy: `make_dir` wants a C string.
 static bool mkdirs(const RolltuiStr& dir) {
   for (std::size_t i = 1; i <= dir.size(); ++i)
-    if (i == dir.size() || dir.p[i] == '/') mkdir(rolltui::own(StrView(dir).first(i)).c_str(), 0755);
-  struct stat st{};
-  return stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    if (i == dir.size() || is_separator(dir.p[i])) make_dir(rolltui::own(StrView(dir).first(i)).c_str());
+  return path_kind(dir.c_str(), true) == PathKind::Folder;
 }
 
 RolltuiLayout* load_layout_text(RolltuiContext* ctx, StrView text, RolltuiLayoutReport* rep) {
@@ -2087,9 +2752,15 @@ int usage() {
                "                                           exit 4: into the printed file's folder, then ./name\n"
                "                                           Esc prints nothing and exits 1\n"
                "       dirktui --version                   the version\n"
+#if defined(_WIN32)
+               "       dirktui install [powershell]        put a `dirk` function into PowerShell's profile\n"
+               "                                           (Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1);\n"
+               "                                           `dirktui uninstall` takes it out again\n"
+#else
                "       dirktui install [zsh|bash|fish]     link this binary into ~/.local/bin and put the shell\n"
                "                                           side into the shell's rc file ($SHELL's by default);\n"
                "                                           `dirktui uninstall` takes both out again\n"
+#endif
                "       dirktui check-terminal              asks this terminal again what it is (colours, light or\n"
                "                                           dark, glyph width), replaces what was remembered, and\n"
                "                                           says what it found and where each answer came from\n"
@@ -2347,7 +3018,15 @@ bind \eOC _dirk_forward_char
 //     edited). The block is found by its markers and replaced, so a second install writes it
 //     once. The shell is the one $SHELL names unless given.
 // `uninstall` removes the block and the link. Nothing else is touched.
+// On Windows the install is PowerShell's instead: see the Windows `install_command` below.
+// This very binary's full path.
 static RolltuiStr self_path(const char* argv0) {
+#if defined(_WIN32)
+  std::vector<wchar_t> buf(32768);
+  const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+  if (n > 0 && n < buf.size()) return narrow(buf.data());
+  return RolltuiStr(argv0);
+#else
   char real[PATH_MAX];
 #ifdef __APPLE__
   char buf[PATH_MAX];
@@ -2359,10 +3038,11 @@ static RolltuiStr self_path(const char* argv0) {
   if (n > 0) { buf[n] = '\0'; return RolltuiStr(buf); }
 #endif
   return RolltuiStr(realpath(argv0, real) ? real : argv0);
+#endif
 }
 static const char* kInstallBegin = "# >>> dirk (written by `dirktui install`; `dirktui uninstall` removes it) >>>";
 static const char* kInstallEnd = "# <<< dirk <<<";
-static RolltuiStr shell_of(int argc, char** argv) {
+[[maybe_unused]] static RolltuiStr shell_of(int argc, char** argv) {  // the POSIX install's
   if (argc >= 3) return RolltuiStr(argv[2]);
   const char* sh = std::getenv("SHELL");
   if (!sh) return RolltuiStr();
@@ -2416,21 +3096,22 @@ const char* depth_words(unsigned char d) {
   }
 }
 
-// A terminal on the controlling tty that draws NOTHING — no alternate screen, no mouse — so it can be
-// asked what it is and set down again, leaving the screen as it found it. NULL when there is none.
-RolltuiTerminal* open_probe_terminal(int* tty_out) {
-  const int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
-  if (tty < 0) return nullptr;
+// A terminal on the controlling tty (the console on Windows) that draws NOTHING — no alternate screen,
+// no mouse — so it can be asked what it is and set down again, leaving the screen as it found it. NULL
+// when there is none.
+RolltuiTerminal* open_probe_terminal(Tty* tty_out) {
+  Tty tty;
+  if (!open_tty(tty)) return nullptr;
   RolltuiTerminalOptions opts{};
   opts.alt_screen = 0;
   opts.mouse = 0;
   opts.bracketed_paste = 0;
   opts.hide_cursor = 0;
   opts.no_probe = 1;  // entry asks the keyboard only: the caller asks the rest itself, once, with `reprobe`
-  RolltuiTerminal* t = rolltui_terminal_new(tty, tty, opts);
+  RolltuiTerminal* t = rolltui_terminal_new(tty.in, tty.out, opts);
   if (!rolltui_terminal_is_tty(t)) {
     rolltui_terminal_free(t);
-    close(tty);
+    close_tty(tty);
     return nullptr;
   }
   *tty_out = tty;
@@ -2454,10 +3135,10 @@ int languages_command(int argc, char** argv) {
 // answers, and says what it found and where each answer came from. It is what to run when the
 // colours look wrong — the report names the terminal, how many colours it will be drawn to and why.
 int check_terminal_command() {
-  int tty = -1;
+  Tty tty;
   RolltuiTerminal* t = open_probe_terminal(&tty);
   if (!t) {
-    std::fprintf(stderr, "dirktui: no terminal to ask (no /dev/tty)\n");
+    std::fprintf(stderr, "dirktui: no terminal to ask (no %s)\n", kTerminalName);
     return 2;
   }
   const bool answered = rolltui_terminal_reprobe(t, 600) != 0;
@@ -2465,7 +3146,7 @@ int check_terminal_command() {
   rolltui_terminal_facts(t, &f);
   const RolltuiStr cache = rolltui_terminal_cache_path(t);  // copied: the terminal is freed just below
   rolltui_terminal_free(t);
-  close(tty);
+  close_tty(tty);
 
   auto env = [](const char* n) { const char* v = std::getenv(n); return v && *v ? v : "(unset)"; };
   std::printf("dirktui check-terminal — what this terminal is\n\n");
@@ -2496,18 +3177,115 @@ int check_terminal_command() {
 // fast as the second. One line, on stderr with the rest of install's words; silent when there is no
 // terminal to ask.
 void warm_terminal_cache() {
-  int tty = -1;
+  Tty tty;
   RolltuiTerminal* t = open_probe_terminal(&tty);
   if (!t) return;
   rolltui_terminal_reprobe(t, 600);
   RolltuiTermFacts f;
   rolltui_terminal_facts(t, &f);
   rolltui_terminal_free(t);
-  close(tty);
+  close_tty(tty);
   std::fprintf(stderr, "dirktui: this terminal: %s, %s, %s background\n", f.name[0] ? f.name : "unnamed", depth_words(f.depth),
                f.mode == ROLLTUI_MODE_LIGHT ? "light" : "dark");
 }
 
+#if defined(_WIN32)
+// ---- `dirktui install [powershell]` and `uninstall`, on Windows -------------------------------
+// PowerShell's own profile (Documents\PowerShell\Microsoft.PowerShell_profile.ps1 under the
+// person's Documents folder, the file $PROFILE names) gets one MARKED block: a `dirk` function
+// that runs this binary by its full path and then goes where it chose. No link is made: the
+// block names the binary where it is, and a second install after the binary moved names the new
+// place. The block is found by its markers and replaced, so a second install writes it once;
+// `uninstall` removes it and leaves the rest of the profile as it was.
+
+// The `dirk` function after its first line (`$exe`, the binary). The answer is read as UTF-8.
+// Exit 0: into the folder printed, or a file's folder; exit 4: into the file's folder, then its
+// `./name` shown; exit 3: the path shown, for the command line; anything else: nothing.
+constexpr const char* kPowerShellDirk = R"ps(
+  if ($args.Count -gt 0 -and @('init', 'install', 'uninstall') -contains $args[0]) { & $exe @args; return }
+  $encoding = [Console]::OutputEncoding
+  try {
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+    $out = & $exe @args
+    $rc = $LASTEXITCODE
+  } finally {
+    [Console]::OutputEncoding = $encoding
+  }
+  if ($rc -eq 4 -and $out) {
+    Set-Location -LiteralPath (Split-Path -Parent $out)
+    $out = './' + (Split-Path -Leaf $out)
+    $rc = 3
+  }
+  if ($rc -eq 3) { return $out }
+  if ($rc -ne 0 -or -not $out) { return }
+  if (Test-Path -LiteralPath $out -PathType Container) { Set-Location -LiteralPath $out }
+  else { Set-Location -LiteralPath (Split-Path -Parent $out) }
+}
+)ps";
+
+// `s` as a PowerShell single-quoted string: every quote doubled, the typographic ones PowerShell
+// also reads as quotes (U+2018 to U+201B) included.
+static RolltuiStr ps_quoted(StrView s) {
+  RolltuiStr out("'");
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    const auto at = [&](std::size_t k) { return static_cast<unsigned char>(s[k]); };
+    if (s[i] == '\'') {
+      out += "''";
+    } else if (at(i) == 0xE2 && i + 2 < s.size() && at(i + 1) == 0x80 && at(i + 2) >= 0x98 && at(i + 2) <= 0x9B) {
+      out += s.substr(i, 3);
+      out += s.substr(i, 3);
+      i += 2;
+    } else {
+      out += s[i];
+    }
+  }
+  out += '\'';
+  return out;
+}
+
+// The person's Documents folder (FOLDERID_Documents, wherever it was moved to); empty when there is none.
+static RolltuiStr documents_dir() {
+  static const GUID kDocuments = {0xFDD39AD0, 0x238F, 0x46AF, {0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7}};
+  PWSTR w = nullptr;
+  RolltuiStr out;
+  if (SUCCEEDED(SHGetKnownFolderPath(kDocuments, 0, nullptr, &w))) out = narrow(w);
+  CoTaskMemFree(w);
+  return out;
+}
+
+int install_command(int argc, char** argv, bool remove) {
+  const StrView shell(argc >= 3 ? argv[2] : "powershell");
+  const RolltuiStr docs = documents_dir();
+  if ((shell != "powershell" && shell != "pwsh") || docs.empty()) {
+    std::fprintf(stderr, "usage: dirktui %s [powershell]%s\n", remove ? "uninstall" : "install",
+                 docs.empty() ? "   (no Documents folder, where PowerShell's profile lives)" : "");
+    return 2;
+  }
+  const RolltuiStr profile_dir = docs + "\\PowerShell";
+  const RolltuiStr profile = profile_dir + "\\Microsoft.PowerShell_profile.ps1";
+  const RolltuiStr block = remove ? RolltuiStr()
+                                  : RolltuiStr(kInstallBegin) + "\nfunction dirk {\n  $exe = " + ps_quoted(self_path(argv[0])) +
+                                        kPowerShellDirk + kInstallEnd + "\n";
+  bool read_ok = false;
+  const RolltuiStr text = read_file(profile, read_ok);  // no profile yet is an empty one
+  const RolltuiStr next = with_block(text, block);
+  if (remove && next == text) {
+    std::fprintf(stderr, "dirktui: no dirk block in %s\n", profile.c_str());
+  } else if (next != text) {
+    if (!mkdirs(profile_dir)) { std::fprintf(stderr, "dirktui: cannot create %s\n", profile_dir.c_str()); return 1; }
+    FILE* out = open_file(profile.c_str(), "wb");
+    const bool wrote = out && std::fwrite(next.data(), 1, next.size(), out) == next.size();
+    if (out) std::fclose(out);
+    if (!wrote) { std::fprintf(stderr, "dirktui: cannot write %s\n", profile.c_str()); return 1; }
+    std::fprintf(stderr, "dirktui: %s the dirk block in %s\n", remove ? "removed" : (StrView(text).contains(kInstallBegin) ? "refreshed" : "wrote"), profile.c_str());
+  } else {
+    std::fprintf(stderr, "dirktui: %s already has the dirk block\n", profile.c_str());
+  }
+  if (!remove) std::fprintf(stderr, "dirktui: open a new PowerShell, or: . %s\n", ps_quoted(profile).c_str());
+  if (!remove && stdin_is_terminal()) warm_terminal_cache();
+  return 0;
+}
+#else
 int install_command(int argc, char** argv, bool remove) {
   const RolltuiStr shell = shell_of(argc, argv);
   const bool known = shell == "zsh" || shell == "bash" || shell == "fish";
@@ -2584,7 +3362,7 @@ int install_command(int argc, char** argv, bool remove) {
     std::fprintf(stderr, "dirktui: removed %s\n", rc.c_str());
   } else if (next != text) {
     if (!mkdirs(rolltui::own(rolltui::path_dir(rc)))) { std::fprintf(stderr, "dirktui: cannot create the directory of %s\n", rc.c_str()); return 1; }
-    FILE* out = std::fopen(rc.c_str(), "wb");
+    FILE* out = open_file(rc.c_str(), "wb");
     const bool wrote = out && std::fwrite(next.data(), 1, next.size(), out) == next.size();
     if (out) std::fclose(out);
     if (!wrote) { std::fprintf(stderr, "dirktui: cannot write %s\n", rc.c_str()); return 1; }
@@ -2615,9 +3393,10 @@ int install_command(int argc, char** argv, bool remove) {
       std::fprintf(stderr, "dirktui: note: a terminal here opens a LOGIN bash, which reads ~/.bash_profile and not ~/.bashrc — create it with:  [ -f ~/.bashrc ] && . ~/.bashrc\n");
   }
   if (!remove) std::fprintf(stderr, "dirktui: open a new shell, or: %s\n", shell == "fish" ? "source ~/.config/fish/conf.d/dirk.fish" : ("source " + rc).c_str());
-  if (!remove && isatty(STDIN_FILENO)) warm_terminal_cache();
+  if (!remove && stdin_is_terminal()) warm_terminal_cache();
   return 0;
 }
+#endif
 
 int init_command(int argc, char** argv) {
   const StrView shell(argc == 3 ? argv[2] : "");
@@ -2633,6 +3412,7 @@ int init_command(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  argv = utf8_args(argc, argv);
   // A subcommand is the FIRST word and nothing else: a directory literally called `init` is
   // still reachable as `dirktui ./init`.
   if (argc >= 2 && StrView(argv[1]) == "--version") {
@@ -2652,7 +3432,7 @@ int main(int argc, char** argv) {
   [[maybe_unused]] RolltuiStr presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] RolltuiStr frame_spec, keys_spec;
   [[maybe_unused]] bool frame_sgr = false;
-  RolltuiStr apps_dirs = RolltuiStr("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";  // where application bundles live
+  RolltuiStr apps_dirs = default_apps_dirs();  // where application bundles live
   for (int i = 1; i < argc; ++i) {
     const StrView a(argv[i]);
     [[maybe_unused]] auto next = [&]() -> RolltuiStr { return i + 1 < argc ? RolltuiStr(argv[++i]) : RolltuiStr(); };
@@ -2682,6 +3462,7 @@ int main(int argc, char** argv) {
     if (!a.empty() && a[0] != '-' && start.empty()) start = rolltui::own(a);
     else return usage();
   }
+  forward_slashes(start);
 
   App app;
   app.restart_argv = argv;  // for `execvp` after an in-app update: re-run exactly how this run was invoked,
@@ -2739,10 +3520,9 @@ int main(int argc, char** argv) {
   }
 
   {
-    char cwd[4096];
-    const RolltuiStr here = getcwd(cwd, sizeof cwd) ? cwd : ".";
+    const RolltuiStr here = current_folder();
     if (start.empty()) app.root = rolltui::own(here);
-    else if (start.p[0] == '/') app.root = rolltui::own(start);
+    else if (root_len(start) != 0) app.root = rolltui::own(start);
     else app.root = here + "/" + start;
     App::normalize(app.root);
     app.start_dir = rolltui::own(app.root);  // what a relative path is said from, for the whole session
@@ -2922,21 +3702,21 @@ int main(int argc, char** argv) {
   // a script, a test harness, `yes | dirk`. Refusing here is what keeps a headless run from
   // opening the controlling terminal and sitting in raw mode waiting for a key nobody will press.
   // The shell side redirects `< /dev/tty` for the same reason fzf's widget does.
-  if (!isatty(STDIN_FILENO)) {
+  if (!stdin_is_terminal()) {
     std::fprintf(stderr, "dirktui: stdin is not a terminal, and dirk takes its keys from the keyboard\n");
     return 2;
   }
-  // THE SCREEN IS /dev/tty, ALWAYS — not stdout when stdout happens to be a terminal. One
-  // behaviour, whether run bare or inside `$(dirk)`, and stdout carries nothing but the answer.
-  // No /dev/tty means nowhere to draw: said by name, exit 2, never a hang reading a pipe.
-  const int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
-  if (tty < 0) {
-    std::fprintf(stderr, "dirktui: cannot open /dev/tty (%s): no terminal to draw on\n", std::strerror(errno));
+  // THE SCREEN IS /dev/tty (the console on Windows), ALWAYS — not stdout when stdout happens to be
+  // a terminal. One behaviour, whether run bare or inside `$(dirk)`, and stdout carries nothing
+  // but the answer. No terminal means nowhere to draw: said by name, exit 2, never a hang reading a pipe.
+  Tty tty;
+  if (!open_tty(tty)) {
+    std::fprintf(stderr, "dirktui: cannot open %s (%s): no terminal to draw on\n", kTerminalName, std::strerror(errno));
     return 2;
   }
   // THE LOOP IS THE LIBRARY'S: the depth a frame is presented at, the copying of borrowed events, the
   // repaint after a resize or a child program. What is here is what only this program knows.
-  app.tty_fd = tty;
+  app.tty_fd = tty.out;
   RolltuiRunApp hooks;
   hooks.ctx = &app;
   hooks.start = [](void* c, RolltuiRun* run) {
@@ -2975,10 +3755,10 @@ int main(int argc, char** argv) {
     if (a.quit) rolltui_run_stop(run);
   };
   RolltuiTerminalOptions opts{};
-  const int ran = rolltui_run(tty, tty, opts, &hooks);
-  close(tty);  // the screen was put back before the loop returned: what follows lands on the person's own
+  const int ran = rolltui_run(tty.in, tty.out, opts, &hooks);
+  close_tty(tty);  // the screen was put back before the loop returned: what follows lands on the person's own
   if (ran == ROLLTUI_RUN_NOT_A_TERMINAL) {
-    std::fprintf(stderr, "dirktui: /dev/tty is not a terminal\n");
+    std::fprintf(stderr, "dirktui: %s is not a terminal\n", kTerminalName);
     return 2;
   }
   return app.finish();

@@ -683,6 +683,12 @@ target_link_libraries(dirktui-selftest PRIVATE rolltui)
 target_compile_definitions(dirktui-selftest PRIVATE ROLLTUI_SELFTEST=1 DIRKTUI_VERSION="${DIRKTUI_VERSION}")
 target_compile_options(dirktui-selftest PRIVATE ${ROLLTUI_WARNINGS})
 target_compile_options(dirktui PRIVATE ${ROLLTUI_WARNINGS})
+# On Windows dirktui calls the shell (ShellExecuteW, the Documents folder, the command line as
+# UTF-16), COM (its allocator, and set up for ShellExecuteW) and the clipboard.
+if(WIN32)
+  target_link_libraries(dirktui PRIVATE shell32 ole32 user32)
+  target_link_libraries(dirktui-selftest PRIVATE shell32 ole32 user32)
+endif()
 
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
 # cancel, undo/redo, the palette, the written-back pair object — driven without a
