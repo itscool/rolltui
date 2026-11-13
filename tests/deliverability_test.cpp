@@ -51,7 +51,11 @@
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
+#if defined(__APPLE__)
 #include <util.h>
+#else
+#include <pty.h>
+#endif
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */

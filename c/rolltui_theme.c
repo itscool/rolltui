@@ -949,7 +949,7 @@ static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* voc
       const size_t an = rolltui_json_array_size(x);
       size_t j;
       for (j = 0; j < an; ++j) {
-        char where2[ROLLTUI_THEME_WHERE_MAX];
+        char where2[ROLLTUI_THEME_WHERE_MAX + 24]; /* `where` and an index, whole */
         EffectDraft d;
         snprintf(where2, sizeof where2, "%s[%zu]", where, j);
         if (read_effect(rolltui_json_array_at(x, j), where2, vocab, scratch, report, &d)) commit_draft(map, state, &d);

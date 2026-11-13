@@ -341,7 +341,7 @@ static int jp_parse_string(JParser* p, RolltuiStr* out) {
         default: {
           char buf[32];
           const int k = snprintf(buf, sizeof buf, "unknown escape \\%c", e); /* what was written, not what would have been: snprintf answers the latter */
-          return jp_fail(p, buf, (size_t)(k > 0 && (size_t)k < sizeof buf ? k : sizeof buf - 1));
+          return jp_fail(p, buf, k > 0 && (size_t)k < sizeof buf ? (size_t)k : sizeof buf - 1);
         }
       }
     }

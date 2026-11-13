@@ -46,6 +46,9 @@ under __cplusplus every struct below gains constructors and every RolltuiStr gai
 which is precisely the padding this file exists to run without."
 #endif
 
+#if defined(__linux__)
+#define _POSIX_C_SOURCE 200809L /* glibc declares `mkdtemp` to strict C11 only on request */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

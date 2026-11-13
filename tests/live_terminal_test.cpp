@@ -20,7 +20,11 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#if defined(__APPLE__)
 #include <util.h>
+#else
+#include <pty.h>
+#endif
 
 #include <chrono>
 #include <cstdlib>

@@ -21,7 +21,13 @@
 #include <cerrno>
 #include <cstring>
 
+#if defined(__APPLE__)
 #include <crt_externs.h>
+#define TESTKIT_ENVIRON (*_NSGetEnviron())
+#else
+extern "C" char** environ;
+#define TESTKIT_ENVIRON environ
+#endif
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/file.h>
@@ -281,7 +287,7 @@ inline std::string run_roll(const char* bin, const RollScript& sc, int& exit_cod
   posix_spawn_file_actions_addchdir(&fa, sc.cwd.c_str());
 
   std::vector<std::string> env_store;
-  for (char** e = *_NSGetEnviron(); e && *e; ++e) {
+  for (char** e = TESTKIT_ENVIRON; e && *e; ++e) {
     const std::string entry(*e);
     if (entry.rfind("ROLL_", 0) == 0 || entry.rfind("ANTHROPIC_", 0) == 0 ||
         entry.rfind("TMPDIR=", 0) == 0)

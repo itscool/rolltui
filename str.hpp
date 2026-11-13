@@ -162,7 +162,10 @@ inline RolltuiStr operator+(S&& a, rolltui::StrView b) {
 
 namespace rolltui {
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__MINGW32__) && defined(__MINGW_PRINTF_FORMAT)
+// MinGW names the dialect its own vsnprintf speaks; plain `printf` there means the old Microsoft one.
+#define ROLLTUI_STR_PRINTF(fmt, first) __attribute__((format(__MINGW_PRINTF_FORMAT, fmt, first)))
+#elif defined(__GNUC__) || defined(__clang__)
 #define ROLLTUI_STR_PRINTF(fmt, first) __attribute__((format(printf, fmt, first)))
 #else
 #define ROLLTUI_STR_PRINTF(fmt, first)
