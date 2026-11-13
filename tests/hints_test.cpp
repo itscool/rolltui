@@ -99,6 +99,49 @@ int main() {
   check(hit && std::string(hit, n) == "picker.copy", "…and enabled again, it answers");
   rolltui_str_free(&dt);
   rolltui_frame_free(dz);
+  // A GAP IS NOT A KEY. A theme with no colour to spare tells a key by a mark — mono underlines
+  // its shortcuts — and the separator, drawn in the chord's style, carried that mark across the
+  // blank between two hints: `help__F2`, the gap reading as part of the key beside it. The gap
+  // keeps the chord's colours (a breadcrumb's " › " is drawn in them on purpose) but not the two
+  // marks a blank cell shows, underline and reverse.
+  {
+    RolltuiStyle key{};
+    key.fg.kind = RolltuiStyleColor::Kind::Rgb;
+    key.fg.r = 200;
+    key.underline = 1;
+    key.reverse = 1;
+    key.bold = 1;
+    rolltui_hint_bar_clear(bar);
+    rolltui_hint_bar_add(bar, "F1", 2, "help", 4, "app.help", 8);
+    rolltui_hint_bar_add(bar, "F2", 2, "settings", 8, "app.menu", 8);
+    RolltuiFrame* mk = rolltui_frame_new(40, 1, RolltuiStyle{});
+    rolltui_hint_bar_draw(bar, mk, s, 0, 0, 40, key, RolltuiStyle{}, RolltuiStyle{}, 0);  // "F1 help  F2 settings"
+    RolltuiCellRaw chord_cell{}, gap0{}, gap1{};
+    rolltui_frame_cell(mk, 0, 0, &chord_cell);
+    rolltui_frame_cell(mk, 7, 0, &gap0);
+    rolltui_frame_cell(mk, 8, 0, &gap1);
+    check(chord_cell.style.underline && chord_cell.style.reverse, "a chord wears its style's marks");
+    check(!gap0.style.underline && !gap1.style.underline && !gap0.style.reverse && !gap1.style.reverse,
+          "…and the gap after a hint wears neither underline nor reverse, so it is not read as part of a key");
+    check(gap0.style.fg.r == 200 && gap0.style.bold, "…but keeps the chord's colour and its other marks, which a blank does not show");
+    rolltui_frame_free(mk);
+    RolltuiHintBar* path = rolltui_hint_bar_new();
+    rolltui_hint_bar_set_separator(path, " \xE2\x80\xBA ", 5);
+    rolltui_hint_bar_set_keep_tail(path, 1);
+    rolltui_hint_bar_add(path, "", 0, "Users", 5, "c1", 2);
+    rolltui_hint_bar_add(path, "", 0, "scott", 5, "c2", 2);
+    rolltui_hint_bar_add(path, "", 0, "src", 3, "c3", 2);
+    rolltui_hint_bar_add(path, "", 0, "\xE2\x9C\x8E", 3, "edit", 4);
+    RolltuiFrame* mp = rolltui_frame_new(40, 1, RolltuiStyle{});
+    rolltui_hint_bar_draw(path, mp, s, 0, 0, 16, key, RolltuiStyle{}, RolltuiStyle{}, 0);  // "… › scott › src ✎"
+    RolltuiCellRaw lead{}, between{};
+    rolltui_frame_cell(mp, 1, 0, &lead);      // the blank after the ellipsis
+    rolltui_frame_cell(mp, 2 + 1 + 5 + 1 + 1, 0, &between);  // the blank before "src"
+    check(!lead.style.underline && !lead.style.reverse && !between.style.underline && !between.style.reverse,
+          "a breadcrumb's separators are gaps too, the one after the ellipsis included");
+    rolltui_frame_free(mp);
+    rolltui_hint_bar_free(path);
+  }
   rolltui_str_free(&text);
   rolltui_frame_free(g);
   rolltui_frame_free(f);

@@ -380,7 +380,9 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     const RolltuiRect row_rect{a.x, y + r, a.w, 1};
     if (m->vis[i] == kBackRow) {
       const RolltuiStyle back = i == m->sel ? style(m->roles.selected) : shortcut_style(ground);
-      rolltui_frame_fill(f, m->draw, row_rect, back, nullptr, 0);
+      RolltuiStyle blank = back;  // the row's blank is not part of the word: no underline or reverse unless it is the selection
+      if (i != m->sel) blank.underline = blank.reverse = 0;
+      rolltui_frame_fill(f, m->draw, row_rect, blank, nullptr, 0);
       put(a.x, y + r, "\xE2\x97\x82 Back", back, a.w);
       continue;
     }

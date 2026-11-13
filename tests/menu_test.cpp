@@ -838,6 +838,21 @@ int main() {
     check(row(f, 0) == "\xE2\x97\x82 Back", "the way back is the first row of a level below the root [" + row(f, 0) + "]");
     check(row(f, 1) == "stacked                               F2", "the one match is drawn with its shortcut right-aligned [" + row(f, 1) + "]");
     {
+      // THE ROW'S BLANK IS NOT PART OF THE WORD. The way back is drawn in the shortcut role, and a
+      // theme with no colour to spare marks that role (mono underlines it): filled across the row
+      // in it, every blank to the edge was underlined and the row read as a rule. The word keeps
+      // the mark; the blank keeps the colours and drops the two marks a blank shows.
+      Theme marked = theme;
+      marked.styles[static_cast<std::size_t>(Role::menu_shortcut)].underline = 1;
+      marked.styles[static_cast<std::size_t>(Role::menu_shortcut)].reverse = 1;
+      Frame g(40, 6);
+      m.draw(g, marked, true);
+      const RolltuiCell word = g.at(2, 0), blank = g.at(20, 0);
+      check(word.style.underline && word.style.reverse, "the way back's word wears the shortcut's marks");
+      check(!blank.style.underline && !blank.style.reverse && blank.style.bg == word.style.bg,
+            "…and the rest of its row wears neither underline nor reverse, on the same ground");
+    }
+    {
       RolltuiStr t{};
       rolltui_menu_title(m.raw(), "the window", 10, &t);
       check(std::string(t.p, t.n) == "the window \xE2\x80\xBA Layout", "the title rooted at the window's own name carries the level's path [" + std::string(t.p, t.n) + "]");

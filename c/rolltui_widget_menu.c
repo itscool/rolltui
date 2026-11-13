@@ -2254,13 +2254,19 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     }
     if (m->vis[i] == BACK_ROW) {
       RolltuiRect back_rect;
-      RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut];
+      RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut], blank;
       rolltui_style_on(&back, ground);
+      /* THE ROW'S BLANK IS NOT PART OF THE WORD. Unselected, the way back is drawn in the shortcut
+       * role, which a theme with no colour to spare marks (mono underlines it): the blank to the
+       * row's edge keeps the colours and drops the two marks a blank shows, or the whole row reads
+       * as a rule. Selected, the bar across the row IS the selection, as on every other row. */
+      blank = back;
+      if (i != m->sel) blank.underline = blank.reverse = 0;
       back_rect.x = x0;
       back_rect.y = y + r;
       back_rect.w = w;
       back_rect.h = 1;
-      rolltui_frame_fill(f, draw, back_rect, back, NULL, 0);
+      rolltui_frame_fill(f, draw, back_rect, blank, NULL, 0);
       /* The mirror of the submenu marker one column over, so descending and returning read as
        * one pair. A left-pointing triangle is East Asian ambiguous exactly as that one is, and
        * `put_text` handles the width the same way for both. */

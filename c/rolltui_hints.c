@@ -81,6 +81,13 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
   int used = 0;
   size_t i, first = 0;
   const int sep_w = rolltui_u_display_width(b->u, b->separator.p ? b->separator.p : "", b->separator.n, ambiguous_wide);
+  /* A GAP IS NOT A KEY. The separator is drawn in the chord's colours (a breadcrumb's " › " is
+   * drawn in them on purpose) but without the two marks a blank cell shows: a theme with no colour
+   * to spare tells a key by a mark (mono underlines its shortcuts), and an underlined or reversed
+   * gap reads as part of the key beside it — `help__F2`. */
+  RolltuiStyle gap_style = chord_style;
+  gap_style.underline = 0;
+  gap_style.reverse = 0;
   for (i = 0; i < b->n; ++i) b->v[i].w = 0;
   if (b->keep_tail && b->n) {
     /* A BREADCRUMB KEEPS ITS TAIL: the last hint is the place the eye is at and the pencil after
@@ -99,7 +106,7 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
     }
     if (first > 0) {
       rolltui_frame_put_text(f, s, x, y, "\xE2\x80\xA6", 3, chord_style, 1, ambiguous_wide, 0);
-      rolltui_frame_put_text(f, s, x + 1, y, b->separator.p ? b->separator.p : "", b->separator.n, chord_style, sep_w, ambiguous_wide, 0);
+      rolltui_frame_put_text(f, s, x + 1, y, b->separator.p ? b->separator.p : "", b->separator.n, gap_style, sep_w, ambiguous_wide, 0);
       used = 1 + sep_w;
     }
   }
@@ -112,7 +119,7 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
     const int cl = cw ? cw + 1 : 0;
     /* WHOLE OR NOT AT ALL: a hint cut in half reads as a different key. */
     if (used + gap + hw > width) { if (b->keep_tail) break; continue; }
-    if (gap && !tail) rolltui_frame_put_text(f, s, x + used, y, b->separator.p ? b->separator.p : "", b->separator.n, chord_style, sep_w, ambiguous_wide, 0);
+    if (gap && !tail) rolltui_frame_put_text(f, s, x + used, y, b->separator.p ? b->separator.p : "", b->separator.n, gap_style, sep_w, ambiguous_wide, 0);
     h->x = x + used + gap;
     h->y = y;
     h->w = hw;
