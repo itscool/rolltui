@@ -33,8 +33,9 @@
 
 using namespace testkit;
 
-#if !defined(ROLLTUI_STUDIO_PRODUCT_BIN) || !defined(ROLLTUI_PAINT_PRODUCT_BIN) || !defined(DIRKTUI_PRODUCT_BIN)
-#error "the three product binaries must be named"
+#if !defined(ROLLTUI_STUDIO_PRODUCT_BIN) || !defined(ROLLTUI_PAINT_PRODUCT_BIN) || !defined(DIRKTUI_PRODUCT_BIN) || \
+    !defined(ROLLTUI_CHAT_PRODUCT_BIN)
+#error "the four product binaries must be named"
 #endif
 
 namespace {
@@ -54,12 +55,20 @@ struct Capture {
   std::string bytes;
   bool started = false;      // it entered the alternate screen
   std::string after_probe;   // everything written AFTER the first Primary DA question: the frames, not the questions
+  std::vector<std::size_t> sent_at;  // where in `bytes` each step's keys were sent
+  std::size_t answered = 0;          // how many steps the program answered, in order
+};
+
+// What a person types once the screen is up, and what the program must then draw before the next is typed.
+struct Step {
+  std::string keys;
+  const char* wait_for;
 };
 
 // Runs until `wait_for` has been drawn (then a short settle, so the whole frame is there) or `max_ms` passes: a fixed
 // window is a race against however loaded the machine running the suite is, and this suite runs eight tests at once.
 Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& args, const Env& env, const Terminal& term, int max_ms,
-                        const char* wait_for) {
+                        const char* wait_for, const std::vector<Step>& steps = {}) {
   Capture cap;
   int master = -1, slave = -1;
   winsize ws{};
@@ -88,6 +97,8 @@ Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& 
   ::close(slave);
 
   std::size_t processed = 0;
+  std::size_t step = 0;
+  bool sent = false;
   const long long deadline = now_ms() + max_ms;
   long long settle_until = 0;
   while (now_ms() < deadline && (settle_until == 0 || now_ms() < settle_until)) {
@@ -112,6 +123,11 @@ Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& 
         } else if (starts("\x1b[c")) {
           out += "\x1b[?1;2c";
           at += 3;
+        } else if (starts("\x1b[6n")) {
+          // Where the cursor is, which every terminal answers: the width question draws one ambiguous glyph at the
+          // top left and asks, and column 2 is a terminal that drew it one cell wide.
+          out += "\x1b[1;2R";
+          at += 4;
         } else {
           ++at;
         }
@@ -120,7 +136,18 @@ Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& 
       if (!out.empty()) (void)!::write(master, out.data(), out.size());
       if (settle_until == 0) {
         const std::size_t da = cap.bytes.find("\x1b[c");
-        if (da != std::string::npos && cap.bytes.find(wait_for, da) != std::string::npos) settle_until = now_ms() + 300;
+        // The screen is up when `wait_for` has been drawn; then each step's keys, each sent once the step
+        // before it has been answered, and the settle once the last one has.
+        bool up = da != std::string::npos && cap.bytes.find(wait_for, da) != std::string::npos;
+        while (up && step < steps.size()) {
+          if (sent && cap.bytes.find(steps[step].wait_for, cap.sent_at.back()) == std::string::npos) { up = false; break; }
+          if (sent) { ++step; cap.answered = step; sent = false; continue; }
+          cap.sent_at.push_back(cap.bytes.size());
+          (void)!::write(master, steps[step].keys.data(), steps[step].keys.size());
+          sent = true;
+          up = false;
+        }
+        if (up) settle_until = now_ms() + 300;
       }
     }
   }
@@ -199,6 +226,7 @@ int main() {
       {"dirktui", DIRKTUI_PRODUCT_BIN, {scratch_files}, "alpha.txt"},
       {"rolltui-paint", ROLLTUI_PAINT_PRODUCT_BIN, {}, "ink"},
       {"rolltui-studio", ROLLTUI_STUDIO_PRODUCT_BIN, {}, "transcript"},
+      {"rolltui-chat", ROLLTUI_CHAT_PRODUCT_BIN, {}, "pretend assistant"},
   };
 
   for (const Program& p : programs) {
@@ -233,6 +261,84 @@ int main() {
           "…its second launch asks it NOTHING: the answers were remembered");
     check(second.started && (has(second.bytes, "38;5;") || has(second.bytes, "48;5;")) && !has(second.bytes, "38;2;") && !has(second.bytes, "48;2;"),
           "…and still draws in palette colour, from what was remembered");
+  }
+
+  // ---- rolltui-chat's OWN LOOP, which is the only one in this tree not written by `rolltui_run` -----------------
+  // Four things only a live terminal shows. The reply is made on ANOTHER THREAD while the loop sleeps. The window's
+  // title is the app's, and a reply that tries to set it does not. The terminal is handed to $EDITOR and taken back
+  // (`_suspend`/`_resume`), and what the editor wrote becomes the message. `/terminal` asks the terminal again, live.
+  //
+  // WHY A THEME OF ITS OWN: every shipped theme animates `waiting`, and a frame with motion in it sets the loop's
+  // timeout, so a loop on one of them wakes by itself and a reply arriving would prove nothing about the wake.
+  // `still` is the shipped default with its effects removed, installed as the person's own: nothing on screen
+  // moves, the loop sleeps with NO timeout, and a reply that arrives at all arrived through `rolltui_terminal_wake`.
+  //
+  // The waits are on what the renderer writes WHOLE: the title (one OSC), and text drawn by a repaint of the whole
+  // screen. A diff frame writes only the cells that changed, so a phrase in one is split by cursor moves.
+  {
+    const std::string cfg = make_dir("chat");
+    const std::string editor = cfg + "/editor.sh";
+    if (FILE* fp = std::fopen(editor.c_str(), "w")) {
+      std::fputs("#!/bin/sh\nprintf 'edited-by-editor' > \"$1\"\n", fp);
+      std::fclose(fp);
+      ::chmod(editor.c_str(), 0755);
+    }
+    bool still = false;
+    {
+      std::string text;
+      if (FILE* fp = std::fopen(ROLLTUI_SOURCE_DIR "/presets/themes/default.json", "rb")) {
+        char b[4096];
+        for (std::size_t n; (n = std::fread(b, 1, sizeof b, fp)) > 0;) text.append(b, n);
+        std::fclose(fp);
+      }
+      RolltuiJsonValue* root = rolltui_json_parse(text.data(), text.size(), nullptr);
+      // `get` lends a const view; the tree is this test's own, parsed a line above, so changing it is ours to do.
+      RolltuiJsonValue* colours = const_cast<RolltuiJsonValue*>(rolltui_json_get(root, "colours", 7));
+      still = root && rolltui_json_object_erase(colours, "effects", 7) == 1;
+      RolltuiStr out;
+      rolltui_json_dump(root, 2, &out);
+      rolltui_json_free(root);
+      ::mkdir((cfg + "/rolltui").c_str(), 0755);
+      ::mkdir((cfg + "/rolltui/themes").c_str(), 0755);
+      if (FILE* fp = std::fopen((cfg + "/rolltui/themes/still.json").c_str(), "wb")) {
+        std::fwrite(out.data(), 1, out.size(), fp);
+        std::fclose(fp);
+      }
+    }
+    check(still, "[rolltui-chat] the `still` theme is the shipped default with its effects removed");
+    Env env = ghostty(cfg);
+    env.push_back({"CHAT_THEME", "still"});
+    env.push_back({"EDITOR", editor});
+    env.push_back({"VISUAL", ""});
+    const std::vector<Step> steps = {
+        {"hello\r", "\x1b]0;rolltui-chat \xC2\xB7 2 messages"},
+        {"colour\r", "\x1b]0;rolltui-chat \xC2\xB7 4 messages"},
+        {"\x18", "edited-by-editor"},                 // Ctrl-X: $EDITOR, and the whole screen redrawn after
+        {"\x15/terminal\r", "ambiguous glyphs 1 cell"},  // Ctrl-U clears what the editor left; the question redraws whole
+    };
+    const Capture c = run_on_terminal(ROLLTUI_CHAT_PRODUCT_BIN, {}, env, Terminal{true}, 15000, "pretend assistant", steps);
+    check(c.started && c.answered == steps.size(),
+          "[rolltui-chat] answered every step (" + std::to_string(c.answered) + " of " + std::to_string(steps.size()) + ")");
+    // The wake claim stands on `still` being what is drawn: the app says at start which theme the environment chose.
+    const bool on_still = has(c.after_probe, "'still'");
+    check(on_still, "[rolltui-chat] the run is on `still`: the app said the environment chose it");
+    check(on_still && c.answered >= 1,
+          "[rolltui-chat] a reply made on another thread reached a loop asleep with no timeout: the worker WOKE it");
+    check(has(c.bytes, "\x1b]0;rolltui-chat \xC2\xB7 replying"), "[rolltui-chat] the window's title follows the conversation (OSC 0)");
+    check(c.answered >= 2 && !has(c.bytes.substr(c.sent_at[1]), "pwned"),
+          "[rolltui-chat] a reply carrying a title-setting sequence set nothing and drew none of it: 'pwned' never reached the terminal");
+    if (c.answered >= 3) {
+      const std::string during = c.bytes.substr(c.sent_at[2]);
+      const std::size_t left = during.find("\x1b[?1049l");
+      const std::size_t back = left == std::string::npos ? left : during.find("\x1b[?1049h", left);
+      check(back != std::string::npos && during.find("edited-by-editor", back) != std::string::npos,
+            "[rolltui-chat] Ctrl-X left the alternate screen for $EDITOR, came back to it, and drew what the editor wrote");
+    } else {
+      check(false, "[rolltui-chat] Ctrl-X reached $EDITOR and came back");
+    }
+    const std::string asked = c.answered >= 4 ? c.bytes.substr(c.sent_at[3]) : std::string();
+    check(has(asked, "now: background #1e1e2e, dark (agrees)") && has(asked, "now: ambiguous glyphs 1 cell (agrees)"),
+          "[rolltui-chat] /terminal asked the terminal live, and named the background and the glyph width it answered with");
   }
 
   for (const std::string& d : g_scratch_dirs) {

@@ -31,8 +31,12 @@
 // same way, and so does one that failed to start. So each product is first shown to ACCEPT a
 // command line it legitimately has, and only then shown to refuse the ones it must not.
 //
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -42,8 +46,8 @@ using namespace rolltui_test;
 using namespace testkit;
 
 #if !defined(ROLLTUI_STUDIO_PRODUCT_BIN) || !defined(ROLLTUI_PAINT_PRODUCT_BIN) || \
-    !defined(DIRKTUI_PRODUCT_BIN)
-#error "the three product binaries must be named"
+    !defined(DIRKTUI_PRODUCT_BIN) || !defined(ROLLTUI_CHAT_PRODUCT_BIN)
+#error "the four product binaries must be named"
 #endif
 
 namespace {
@@ -74,6 +78,13 @@ bool refuses(const std::string& bin, const std::string& flag, std::string& why) 
 }  // namespace
 
 int main() {
+  // A CONFIGURATION DIRECTORY OF THE RUN'S OWN. A bare run gets as far as the terminal check, and a product that
+  // opens its preset stores first reads the person's — this suite once reported a roll-era layout found there.
+  const char* tmp = std::getenv("TMPDIR");
+  const std::filesystem::path home =
+      std::filesystem::path(tmp && *tmp ? tmp : "/tmp") / ("rolltui_product_flags_test_" + std::to_string(::getpid()));
+  std::filesystem::create_directories(home);
+  ::setenv("ROLL_CONFIG_DIR", home.c_str(), 1);
   struct Product {
     const char* name;
     const char* bin;
@@ -82,12 +93,13 @@ int main() {
     const char* shows;    // and what taking it prints: reaching this means argv was accepted
   };
   // The studio keeps `--check`, which is category 2 and asserted with the real features below; dirktui keeps
-  // `--version`; paint takes no flag at all, and its control is that a bare run gets past argv to the terminal
-  // check. These are the control, not the subject.
+  // `--version`; paint and rolltui-chat take no flag at all, and their control is that a bare run gets past argv to
+  // the terminal check. These are the control, not the subject.
   const std::vector<Product> products = {
       {"rolltui-studio", ROLLTUI_STUDIO_PRODUCT_BIN, "--check", nullptr, nullptr},
       {"rolltui-paint", ROLLTUI_PAINT_PRODUCT_BIN, "", "", "terminal"},
       {"dirktui", DIRKTUI_PRODUCT_BIN, "--version", "--version", "dirktui"},
+      {"rolltui-chat", ROLLTUI_CHAT_PRODUCT_BIN, "", "", "terminal"},
   };
 
   // ---- the control: the usage line IS an inventory, and the search finds what is in it -----
@@ -163,5 +175,6 @@ int main() {
               (why.empty() ? "" : " — " + why));
   }
 
+  std::filesystem::remove_all(home);
   return report("rolltui_product_flags_test");
 }

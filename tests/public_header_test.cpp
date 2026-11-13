@@ -264,8 +264,8 @@ int main() {
     std::vector<std::string> files;
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tools", {".cpp", ".hpp"}, files);
     // `rolltui/examples/` is scanned too, and NOTHING in it may opt in. It holds the
-    // two CONSUMERS — `rolltui-paint` (moved here from `tools/` when the directory's name
-    // finally misled someone) and `dirktui` — and a consumer that reaches past the
+    // CONSUMERS — `rolltui-paint` (moved here from `tools/` when the directory's name
+    // finally misled someone), `dirktui` and `rolltui-chat` — and a consumer that reaches past the
     // definition is what makes this zero worth asserting.
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/examples", {".cpp", ".hpp"}, files);
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tests", {".cpp", ".hpp", ".c"}, files);
@@ -391,8 +391,8 @@ int main() {
   // `api_classes.inc` gives every function the library declares a class, PUBLIC or INTERNAL, and this holds the table and the
   // headers to each other, standing alone: a function added without a row fails, a row whose function is gone fails, a PUBLIC
   // row must be declared in a public header (rolltui.h, or rolltui_studio.h for the studio's tier) and an INTERNAL one never in
-  // rolltui.h (the studio's header carries curated copies of some). And a CONSUMER in this tree — the examples, dirktui and
-  // paint — never reaches an INTERNAL function. What a host OUTSIDE this tree needs no scan can see, which is why a PUBLIC
+  // rolltui.h (the studio's header carries curated copies of some). And a CONSUMER in this tree — the examples, dirktui,
+  // paint and chat — never reaches an INTERNAL function. What a host OUTSIDE this tree needs no scan can see, which is why a PUBLIC
   // function no consumer here reaches says why on its row (KEPT, or the host it is for).
   {
     struct Row { const char* fn; const char* cls; };
@@ -439,7 +439,7 @@ int main() {
     }
     {
       static const std::regex use_re(R"(\b(rolltui_[a-z0-9_]+)\b)");
-      for (const char* f : {"/examples/dirktui.cpp", "/examples/paint.cpp"}) {
+      for (const char* f : {"/examples/dirktui.cpp", "/examples/paint.cpp", "/examples/chat.cpp"}) {
         const std::string t = strip_all_comments(read(root + f));
         std::set<std::string> seen;
         for (std::sregex_iterator it(t.begin(), t.end(), use_re), end; it != end; ++it) {
@@ -454,7 +454,7 @@ int main() {
     check(unclassified.empty(), "every declared function has a class in api_classes.inc — a new one is a DECISION, not an arrival" + join(unclassified));
     check(stale.empty(), "every row of api_classes.inc names a declared function (a deleted one takes its row with it)" + join(stale));
     check(misplaced.empty(), "THE HEADERS ARE WRITTEN FROM THE TABLE: PUBLIC in a public header, INTERNAL never in rolltui.h" + join(misplaced));
-    check(consumer_internal.empty(), "a consumer in this tree (dirktui, paint) reaches no INTERNAL function" + join(consumer_internal));
+    check(consumer_internal.empty(), "a consumer in this tree (dirktui, paint, chat) reaches no INTERNAL function" + join(consumer_internal));
     check(unrowed({"rolltui_planted_without_a_row"}).size() == 1, "…and the completeness rule is armed: a declaration with no row is caught");
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];

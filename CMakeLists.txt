@@ -596,6 +596,20 @@ target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
 
+# THE CHAT-SHAPED HOST — a conversation with a pretend assistant on the shipped `default` screen. It
+# is the program in this tree that calls what only a router outside it used to: the settings layer
+# with a host's own environment prefix, a loop of its own built from the terminal primitives, a
+# worker thread that wakes it, the terminal handed to $EDITOR and taken back, and the two kinds the
+# `default` screen names that only a host can draw. `--frame WxH --keys "…"` in the self-test build.
+find_package(Threads REQUIRED)
+add_executable(rolltui-chat examples/chat.cpp)
+target_link_libraries(rolltui-chat PRIVATE rolltui Threads::Threads)
+add_executable(rolltui-chat-selftest ${ROLLTUI_TEST_EXCLUDE} examples/chat.cpp)
+target_link_libraries(rolltui-chat-selftest PRIVATE rolltui Threads::Threads)
+target_compile_definitions(rolltui-chat-selftest PRIVATE ROLLTUI_SELFTEST=1)
+target_compile_options(rolltui-chat-selftest PRIVATE -Wall -Wextra)
+target_compile_options(rolltui-chat PRIVATE -Wall -Wextra)
+
 # `dirktui` — a shell directory picker: a read-only column-view browser that prints the chosen
 # path on stdout and draws on /dev/tty, so a shell function can `cd "$(dirktui)"`. Its widget
 # has INTERNAL STRUCTURE the library does not model (children of its own, a selection that
@@ -725,8 +739,9 @@ add_rolltui_test(rolltui-product-flags-test tests/product_flags_test.cpp)
 target_compile_definitions(rolltui-product-flags-test PRIVATE
   ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
-  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
-add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint dirktui)
+  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
+  ROLLTUI_CHAT_PRODUCT_BIN="$<TARGET_FILE:rolltui-chat>")
+add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint dirktui rolltui-chat)
 
 # THE SHIPPED PROGRAMS' LIVE LOOPS, on a terminal that cannot draw 24-bit colour (Apple's, on macOS 15) and
 # on one that can. Nothing else runs a program's own event loop, which is where the depth was hard-coded.
@@ -734,8 +749,9 @@ add_rolltui_test(rolltui-live-terminal-test tests/live_terminal_test.cpp)
 target_compile_definitions(rolltui-live-terminal-test PRIVATE
   ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
-  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
-add_dependencies(rolltui-live-terminal-test rolltui-studio rolltui-paint dirktui)
+  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
+  ROLLTUI_CHAT_PRODUCT_BIN="$<TARGET_FILE:rolltui-chat>")
+add_dependencies(rolltui-live-terminal-test rolltui-studio rolltui-paint dirktui rolltui-chat)
 if(ROLLTUI_BUILD_TESTS)
   set_tests_properties(rolltui-live-terminal-test PROPERTIES TIMEOUT 90)
 endif()
@@ -761,6 +777,13 @@ target_compile_definitions(rolltui-dirktui-test PRIVATE
   DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
   ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
 add_dependencies(rolltui-dirktui-test dirktui dirktui-selftest)
+
+# THE CHAT-SHAPED HOST, whole: a reply on the script's clock, the settings layer with the host's
+# prefix, the stores read for a listing, the two registered kinds, a reply's escapes stripped.
+add_rolltui_test(rolltui-chat-test tests/chat_test.cpp)
+target_compile_definitions(rolltui-chat-test PRIVATE
+  ROLLTUI_CHAT_BIN="$<TARGET_FILE:rolltui-chat-selftest>")
+add_dependencies(rolltui-chat-test rolltui-chat-selftest)
 
 # THE `theme` KIND'S OWN PROOF: a screen that names it in a layout gets a working editor in a
 # binary that has never heard of the screen, and a commit lands where the app said it should.
