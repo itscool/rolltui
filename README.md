@@ -1,67 +1,71 @@
 # rolltui
 
-A small terminal-UI library in C, with a C++ shape for consumers who want one.
+A terminal UI library in C, with a C++ API on top.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dirktui-dark.png">
   <img alt="dirktui, a directory browser built on rolltui, previewing a project's README: a heading, a flowchart drawn in box-drawing characters, a block of colour-highlighted C, and a table" src="docs/images/dirktui-light.png">
 </picture>
 
-*dirktui, a directory browser built on rolltui, previewing a README. The flowchart is Mermaid
-source drawn in box-drawing characters, and the C is coloured by a grammar file.*
+*dirktui previewing a README: a Mermaid flowchart, highlighted C, and a table.*
 
 ## How it compares (November 2026)
 
 | | rolltui | Textual | ratatui | Bubble Tea | notcurses | FTXUI |
 |---|---|---|---|---|---|---|
-| Language | C, with a C++ layer | Python | Rust | Go | C | C++ |
-| Dependencies | none | rich, Pygments, markdown-it, … | crossterm and ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
-| Screens, themes and keys as files a person edits | ✓ | stylesheets, keymaps | ✗ | ✗ | ✗ | ✗ |
-| An editor app for them | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Platforms | 🍎 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
+| Language | C, C++ API | Python | Rust | Go | C | C++ |
+| Dependencies | none | rich, Pygments, markdown-it, … | crossterm, ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
+| **Configuration** | | | | | | |
+| Layouts, themes and menus as files | ✓ | stylesheets | ✗ | ✗ | ✗ | ✗ |
+| Key bindings changeable without code | ✓ | ✓ | ✗ | partial | ✗ | ✗ |
+| Editor app for all of it | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Theme contrast and colour-blindness checks | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Animation chosen by the theme | ✓ | in code | tachyonfx, in code | in code | in code | in code |
+| **Content** | | | | | | |
 | Markdown | ✓ | ✓ | ✗ | Glamour | ✗ | ✗ |
 | Mermaid diagrams | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Syntax highlighting | ✓ | ✓ | ✗ | in Glamour | ✗ | ✗ |
-| Line breaking tested against Unicode's own test files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Terminal probed, answers remembered per terminal | ✓ | ✗ | ✗ | probed, not kept | probed, not kept | ✗ |
-| Theme contrast and colour-blindness checks | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Animation chosen by the theme | ✓ | in code | tachyonfx, in code | in code | in code | in code |
-| Column file browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Runs on Microsoft Windows | ✗ | ✓ | ✓ | ✓ | partly | ✓ |
-| Images in the terminal | ✗ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
+| File browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Images | ✗ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
+| **Widgets** | | | | | | |
+| Data table | partial | ✓ | ✓ | ✓ | ✗ | partial |
+| Tree | ✗ | ✓ | ✗ | ✓ | ✓ | partial |
+| Tabs | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
+| Charts | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
+| Multi-line text editor | partial | ✓ | ratatui-textarea | ✓ | ✓ | partial |
+| Command palette | ✓ | ✓ | ✗ | partial | ✗ | ✗ |
+| **Terminal** | | | | | | |
+| Capabilities probed and remembered per terminal | ✓ | ✗ | ✗ | probed | probed | ✗ |
+| Line breaking tested against Unicode's test files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Synchronized output | ✗ | ✓ | ✗ | ✓ | ✓ | ✗ |
+| Inline mode | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Hyperlinks | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ |
+
+🍎 macOS · 🐧 Linux · 🪟 Windows · 🌐 browser · (🪟) partial
 
 | | |
 |---|---|
-| ![dirktui in the catppuccin theme, dark, previewing a Python file](docs/images/theme-catppuccin.png) | ![dirktui in the solarized theme, light, previewing a Rust file](docs/images/theme-solarized.png) |
-| catppuccin, dark · Python | solarized, light · Rust |
-| ![dirktui in the ember theme, dark, previewing a Go file](docs/images/theme-ember.png) | ![dirktui in the orchard theme, light, previewing a TypeScript file](docs/images/theme-orchard.png) |
-| ember, dark · Go | orchard, light · TypeScript |
-| ![dirktui in the harbour theme, dark, previewing a YAML file](docs/images/theme-harbour.png) | ![dirktui in the mono theme, previewing a shell script](docs/images/theme-mono.png) |
-| harbour, dark · YAML | mono · shell |
-
-*Six of the ten shipped themes and six of the 27 languages.*
+| ![rolltui-chat: a conversation with Markdown, a quoted message and a code block](docs/images/chat.png) | ![dirktui: the settings menu with the theme list open over it](docs/images/settings.png) |
+| rolltui-chat · catppuccin | dirktui settings · solarized, light |
+| ![dirktui: the key table over the browser](docs/images/help.png) | ![rolltui-studio: the theme editor beside a rendered document](docs/images/studio.png) |
+| dirktui keys · ember | rolltui-studio theme editor · orchard |
+| ![dirktui previewing a Python file](docs/images/code.png) | ![rolltui-chat: the command palette filtering for "theme"](docs/images/palette.png) |
+| dirktui code preview · harbour, light | rolltui-chat command palette · mono |
 
 ## What's in the repository
 
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under
-  `c/` is internal. `rolltui_studio.h` adds the authoring calls only the studio needs. Every pointer
-  is OWNED, BORROWED or a plain VALUE, and there is no `shared_ptr`.
-- **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell, in the spirit of
-  `zoxide` or `atuin`. `dirk` browses, prints the chosen path, and a shell function does the rest.
-  Signed, notarized, and on Homebrew: `brew install itscool/tap/dirktui`.
-- **rolltui-studio** (`tools/studio.cpp`): edits rolltui's own screens (themes, layouts, key
-  bindings and menus) live.
-- **rolltui-chat** (`examples/chat.cpp`): a chat screen with a pretend assistant whose replies
-  stream in from another thread. It writes its own loop from the terminal primitives, so it is the
-  example to start from for an app with threads of its own.
-- **rolltui-paint** (`examples/paint.cpp`): a text-mode painting app, proof that the library serves
-  apps that are not shaped like a chat.
-- **tests/**: the suite, including `c_consumer_test.c`, a program compiled as plain C to prove the
-  public header needs nothing else.
+  `c/` is internal. Every pointer is OWNED, BORROWED or a plain VALUE, and there is no `shared_ptr`.
+- **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell. `dirk` browses, prints
+  the chosen path, and a shell function does the rest. `brew install itscool/tap/dirktui`
+- **rolltui-studio** (`tools/studio.cpp`, `rolltui_studio.h`): edits themes, layouts, key bindings
+  and menus live.
+- **Examples**: `rolltui-chat` (`examples/chat.cpp`), `rolltui-paint` (`examples/paint.cpp`).
 
 ## Building
 
-Needs CMake 3.24 or later and a C++23 compiler; `rolltui-paint` also needs the system zlib for its
-PNG decoder.
+Requires CMake 3.24 or later and a C++23 compiler.
 
 ```sh
 cmake -B build -S .
@@ -76,13 +80,12 @@ ctest --test-dir build
 ./build/rolltui-paint            # the text-mode painting app
 ```
 
-## Going further
+## Documentation
 
-[docs/guide.md](docs/guide.md) covers how each part works: the string type, how the terminal is
-found out, the run loop, how the file browser watches the disk, previews and diagrams, source
-colouring and writing a grammar of your own, ownership, and embedding rolltui in another project.
+[docs/guide.md](docs/guide.md): strings, terminal detection, the run loop, file watching,
+previews, Mermaid diagrams, syntax highlighting and grammar files, ownership, and embedding.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Vendored under `third_party/`, each with its own licence: md4c, the
-Markdown parser, and the Catppuccin and Solarized palettes two of the themes are built on.
+MIT. See [LICENSE](LICENSE). Vendored under `third_party/`, each under its own licence: md4c
+(Markdown), stb_image (PNG decoding in rolltui-paint), and the Catppuccin and Solarized palettes.

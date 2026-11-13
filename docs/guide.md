@@ -1,125 +1,162 @@
-# rolltui in depth
+# rolltui guide
 
-The [README](../README.md) says what rolltui is good at. This page says how each part works and
-what it promises, for someone building on it.
+- [Strings](#strings)
+- [Terminal detection](#terminal-detection)
+- [The run loop](#the-run-loop)
+- [File watching](#file-watching)
+- [Previews](#previews)
+- [Mermaid diagrams](#mermaid-diagrams)
+- [File info row](#file-info-row)
+- [Syntax highlighting](#syntax-highlighting)
+- [Ownership](#ownership)
+- [Embedding rolltui](#embedding-rolltui)
 
-- [One kind of string](#one-kind-of-string)
-- [What the terminal is, so no host has to ask](#what-the-terminal-is-so-no-host-has-to-ask)
-- [The loop, so no host has to write it](#the-loop-so-no-host-has-to-write-it)
-- [What is shown is watched](#what-is-shown-is-watched)
-- [What a file looks like, and what a diagram in it looks like](#what-a-file-looks-like-and-what-a-diagram-in-it-looks-like)
-- [What the cursor is on, said without asking](#what-the-cursor-is-on-said-without-asking)
-- [Source colour](#source-colour)
-- [Ownership, in three shapes and no fourth](#ownership-in-three-shapes-and-no-fourth)
-- [Using this inside another project](#using-this-inside-another-project)
+## Strings
 
-## One kind of string
+`RolltuiStr` is the library's string type: owned, NUL-terminated, allocated by the library's
+allocator. `clear()` keeps the buffer for the next fill.
 
-`RolltuiStr` is the library's string: owned, NUL-terminated, in the library's allocator, and `clear()` keeps its buffer for the
-next fill. A C++ host does its string work with it and with `rolltui/str.hpp` beside it, and never converts to `std::string`
-and back: a borrowed `StrView` (find, rfind, substr, starts_with, ends_with, compare), `a + b + c` that builds one buffer, `appendf`
-for numbers, `StrVec` for a growing list, and `path_base` / `path_dir`. It is header-only over the string's own fields and adds no
-function to `rolltui.h`. `dirktui` is written this way, and `tests/str_hpp_test.cpp` checks the view against `std::string` as an oracle.
+`rolltui/str.hpp` is the C++ toolkit over it. It is header-only and adds nothing to `rolltui.h`.
 
-## What the terminal is, so no host has to ask
+| | |
+|---|---|
+| `StrView` | a borrowed view: `find`, `rfind`, `substr`, `starts_with`, `ends_with`, `compare` |
+| `a + b + c` | concatenation into one buffer |
+| `appendf` | formatted append |
+| `StrVec` | a growing list |
+| `path_base`, `path_dir` | path parts |
 
-A terminal is not what its environment says it is. Apple's Terminal on macOS 15 cannot draw
-24-bit colour and is sent it anyway by any program that trusts `COLORTERM`, which a shell rc
-file may export for every terminal it ever meets; the colours come out as nonsense.
-`rolltui_terminal_new` therefore finds out what the terminal is — how many colours it draws,
-whether its background is light or dark, how wide it draws an ambiguous-width glyph — in the
-same round trip that negotiates the keyboard, remembers the answers per terminal, and applies
-them itself:
+Use these rather than converting to and from `std::string`.
 
-- **the depth** `rolltui_swap_present` draws at is a request, never more than the terminal has;
-- **the width** of every glyph is measured the way this terminal draws it;
-- **a mode of `auto`** follows the terminal's own light or dark. Every theme has both a light and a dark side, and the
-  mode (auto, dark or light) and the colour depth are the person's own settings, remembered beside whichever theme they
-  pick and kept when they change it; a theme never carries either, so none can force one.
+## Terminal detection
 
-A host does nothing. The answers are filed under the terminal's names and versions, the
-operating system, the program's own build, and whether the session came over ssh or a
-multiplexer, so a new terminal, release or machine asks again; a remembered answer is asked
-about nothing at entry and re-checked after the first frame. Measured, a terminal that answers
-costs 0.6 ms fresh and 0.2 ms remembered; one that answers nothing costs 80 ms once.
+`rolltui_terminal_new` asks the terminal, in the same round trip that sets up the keyboard, how
+many colours it draws, whether its background is light or dark, and how wide it draws
+ambiguous-width characters. The library applies the answers:
 
-When it is wrong, say so: `ROLL_COLOR_DEPTH=truecolor|256|16|mono`, `ROLL_AMBIGUOUS_WIDE=1`,
-`ROLL_TERM_PROBE=0` (ask only the keyboard question). `dirktui check-terminal` asks the terminal again
-and says what it found and where each answer came from.
+- `rolltui_swap_present` never draws at more colour depth than the terminal has.
+- Every character is measured at the width the terminal draws it.
+- A theme in `auto` mode follows the terminal's background.
 
-## The loop, so no host has to write it
+Answers are cached per terminal, keyed by terminal name and version, operating system, program
+build, and whether the session runs over ssh or inside a multiplexer. A cached answer is used at
+startup and checked again after the first frame. A probe costs 0.6 ms fresh and 0.2 ms from the
+cache; a terminal that does not answer costs 80 ms, once.
 
-`rolltui_run` is the loop every terminal app used to write for itself. It enters the terminal, draws each frame at
-the depth the terminal has, waits for input, copies out what arrived (the terminal's events are borrowed, and
-handling one can resize the app), repaints whole after a resize or a stale fact, repaints whole when a child program
-such as an editor hands the terminal back, and puts the terminal back before it returns, so what the app prints
-next lands on the person's own screen. An app supplies callbacks: `render` and `event` are required; `start`,
-`ground`, `resized`, `facts_changed` and `settle` are not. `dirktui`, `rolltui-paint` and `rolltui-studio` all run
-this way, and `rolltui-run-test` drives it on a real pty. A host of a different shape, with its own threads say,
-still has `rolltui_terminal_poll` and `rolltui_terminal_present` underneath.
+| Variable | Effect |
+|---|---|
+| `ROLL_COLOR_DEPTH` | `truecolor`, `256`, `16` or `mono` |
+| `ROLL_AMBIGUOUS_WIDE=1` | ambiguous-width characters take two cells |
+| `ROLL_TERM_PROBE=0` | probe only the keyboard |
 
-## What is shown is watched
+`dirktui check-terminal` probes again and reports each answer and where it came from.
 
-Every folder that has its insides on screen, and the file being previewed, is looked at again about twice a second, so
-the screen keeps up with the disk without a keypress. A file that is added, grows, is removed or renamed is on screen
-within the interval; the cursor and the scroll stay where they were (by name — a selection that is gone falls to the entry
-now in its place, and a reader at the top of a list stays at the top); a folder that goes takes the columns that listed it,
-and the eye comes back to the deepest folder still there; a file replaced by a folder, or the other way, is followed; a
-preview keeps the same line at the top even when the head of the file changes, and a reader at the foot of a log follows it
-as it grows. The look is a `stat` of each folder and of the rows on screen, no descriptor held, so it costs nothing when
-nothing changed (a folder of twenty thousand entries: about a tenth of a millisecond), and a folder that keeps changing
-backs the interval off rather than eating the frame. It is on unless `RolltuiPickerOptions.no_watch` says otherwise, and
-it needs a frame clock, so a golden frame stays a still.
+Every theme has a light and a dark side. Mode (auto, dark or light) and colour depth are the
+person's settings, stored beside the chosen theme and kept when the theme changes.
 
-## What a file looks like, and what a diagram in it looks like
+## The run loop
 
-The column browser can show the file under the cursor in the right half (`RolltuiPickerOptions.preview`; in
-dirktui, Settings → General → Preview). A text file is its lines, read whole up to 256 KB; a Markdown file is
-*rendered* — headings, lists, tables, code boxes; a binary file is offsets, byte pairs and an ASCII gutter, read a
-screenful at a time so any size scrolls at once. Nothing a file holds reaches the terminal as itself: a control
-character is drawn as its picture (`␛`), a stray byte as `�`.
+`rolltui_run(in_fd, out_fd, options, app)`:
 
-A ```` ```mermaid ```` block in Markdown — in a preview, in a transcript, anywhere the library renders Markdown — is
-drawn as the diagram it describes, in the theme's own colours, from box-drawing glyphs (or `+ - | > v` where an
-ambiguous glyph is two cells). Flowcharts (all four directions, every node shape and edge style, subgraphs as
-frames), sequence diagrams (with their loop / alt / opt frames, notes and activations), state diagrams, class and
-ER diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts are drawn; one that is not (a git
-graph, say), or is wider than the room it has, is shown as its source with a line saying why. A diagram that is
-too wide as written is first drawn with its nodes a column closer, then with its labels wrapped (as Mermaid wraps
-its own) to a narrower and narrower width; nothing a label says is dropped, and a diagram that fits as written is
-never touched.
+1. enters the terminal;
+2. draws each frame at the terminal's colour depth;
+3. waits for input and copies each event before passing it to the app;
+4. repaints in full after a resize, after a cached terminal answer proves stale, and when a child
+   program such as an editor returns the terminal;
+5. restores the terminal before returning.
 
-## What the cursor is on, said without asking
+The app is a `RolltuiRunApp`: `render` and `event` are required; `start`, `ground`, `resized`,
+`facts_changed` and `settle` are optional. `rolltui_run` returns `ROLLTUI_RUN_STOPPED`,
+`ROLLTUI_RUN_NOT_A_TERMINAL` or `ROLLTUI_RUN_BAD_APP`.
 
-`RolltuiPickerOptions.info` (dirktui: Settings → General, on by default) adds a second row to the title band, and in it, at
-the head of whatever is right of the cursor, the entry's mode and when it was last written: a folder's own over the column
-that lists it (`drwxr-x--- 2026-06-01 12:34`), a file's under the head of its preview. With no preview the slot right of a
-file is a small pane of its own: the file's name, its size (unless a size column already says it) and that same row. The
-time is local, to the minute. It comes from what the listing already read, so it costs no `stat`, and the watcher keeps it
-current. The columns lose one row for it, and a picker too short to spare one shows none. A slot is kept right of the focus
-whatever is under the cursor, so nothing moves as the cursor passes from a file to a folder.
+An app with threads of its own builds its loop from `rolltui_terminal_new`,
+`rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and
+`rolltui_terminal_suspend` / `_resume`. `examples/chat.cpp` does this.
 
-## Source colour
+## File watching
 
-A file in the preview that is in a language the library knows is drawn with its keywords, strings, comments, numbers,
-functions and so on in the theme's colours, and the head of the preview names the language (`Python · 27 lines · 722 B`
-instead of `text · …`). A fenced block in a Markdown document is coloured by its tag (```` ```rust ````, ```` ```yaml ````).
-It is on unless `RolltuiPickerOptions.no_syntax` says otherwise (dirktui: Settings → Look → Colour source code in the preview).
+The column browser re-reads every folder on screen, and the previewed file, about twice a second.
 
-**What ships:** C, C++, C#, Java, JavaScript, TypeScript, Python, Rust, Go, Swift, Lua, Luau, shell (sh, bash, zsh), Windows
-batch, PowerShell, CMake, HTML, CSS, XML, JSON, YAML, INI, TOML, the ignore files (`.gitignore` and its family:
-`.dockerignore`, `.npmignore`, …) `.gitattributes`, and mother's own DagOnC (`.jc`) and shader (`.shader`) files. A file is found by its whole name (`CMakeLists.txt`, `.bashrc`), then
-by its longest extension (`.d.ts` before `.ts`), then by its first line (a `#!` shebang, `<?xml`, `<!DOCTYPE html`).
+- Files that are added, grow, are removed or are renamed appear within that interval.
+- The cursor and scroll position are kept by name. If the selected entry is gone, the cursor moves
+  to the entry now in its place.
+- A removed folder closes its columns, and focus returns to the deepest folder that still exists.
+- A file replaced by a folder, or the reverse, is followed.
+- The preview keeps its top line when the start of the file changes, and follows the end of a
+  growing file when it is scrolled to the bottom.
 
-**How it looks is the theme's.** Every kind of text (keyword, type, function, string, escape, number, constant, comment,
-documentation, punctuation, preprocessor line, variable, attribute, tag, property, section) is drawn in a role the theme
-already has, so every theme colours code and no theme had to change. On top of the role a keyword asks for **bold** and a
-comment or annotation for *italic*, so a theme with no attributes of its own still has weight and slant in its code, and
-`mono`, which has no colour at all, tells the kinds apart by bold, italic, underline and dim alone.
+Each check is one `stat` per folder and per visible row; no file descriptors are held. An
+unchanged folder of 20,000 entries costs about 0.1 ms. A folder that keeps changing is checked
+less often. `RolltuiPickerOptions.no_watch` turns watching off.
 
-**Your own languages are files.** A language is a JSON file; the shipped ones are in `presets/syntax/` and are the best
-examples. Put yours in `<config>/rolltui/syntax/` (one with the name of a shipped language replaces it, and every language
-that includes it follows), and it is read when the browser starts:
+## Previews
+
+`RolltuiPickerOptions.preview` shows the file under the cursor in the right half of the browser
+(dirktui: Settings › General › Preview).
+
+| File | Preview |
+|---|---|
+| Text | its lines, read whole up to 256 KB |
+| Markdown | rendered: headings, lists, tables, code blocks |
+| Binary | offsets, hex byte pairs and an ASCII column, read one screen at a time |
+
+Control characters are drawn as their symbols (`␛`) and invalid bytes as `�`.
+
+## Mermaid diagrams
+
+A ```` ```mermaid ```` block is drawn as a diagram wherever Markdown is rendered: previews,
+transcripts, documents. Diagrams use box-drawing characters in the theme's colours, or
+`+ - | > v` where the terminal draws ambiguous-width characters two cells wide.
+
+Supported: flowcharts (all four directions, every node shape and edge style, subgraphs), sequence
+diagrams (loop, alt and opt frames, notes, activations), state diagrams, class diagrams, ER
+diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts. Other diagram types
+are shown as source, with a line naming the reason.
+
+A diagram wider than its space is drawn with its nodes one column closer, then with its labels
+wrapped to narrower and narrower widths. Labels are never cut. A diagram that still does not fit
+is shown as source.
+
+## File info row
+
+`RolltuiPickerOptions.info` (dirktui: Settings › General, on by default) adds a row under the
+column headings showing the mode and modification time, local and to the minute, of the entry to
+the right of the cursor: a folder's above its column (`drwxr-x--- 2026-06-01 12:34`), a file's
+under its preview heading. With no preview, a file gets a small pane with its name, its size
+(unless a size column shows it) and the same row.
+
+The values come from the directory listing, with no extra `stat`, and the watcher keeps them
+current. The row takes one line from the columns and is left out when the browser is too short.
+
+## Syntax highlighting
+
+A previewed file in a known language is highlighted, and the preview heading names the language
+(`Python · 27 lines · 722 B`). A fenced block in Markdown is highlighted by its tag (```` ```rust ````,
+```` ```yaml ````). `RolltuiPickerOptions.no_syntax` turns highlighting off (dirktui: Settings ›
+Look › Colour source code in the preview).
+
+### Languages
+
+C, C++, C#, Java, JavaScript, TypeScript, Python, Rust, Go, Swift, Lua, Luau, shell (sh, bash,
+zsh), Windows batch, PowerShell, CMake, HTML, CSS, XML, JSON, YAML, INI, TOML, ignore files
+(`.gitignore`, `.dockerignore`, `.npmignore` and the rest), `.gitattributes`, DagOnC (`.jc`) and
+shader (`.shader`) files.
+
+A file's language is found by its whole name (`CMakeLists.txt`, `.bashrc`), then its longest
+extension (`.d.ts` before `.ts`), then its first line (a `#!` line, `<?xml`, `<!DOCTYPE html`).
+
+### Styles
+
+Each token class (keyword, type, function, string, escape, number, constant, comment,
+documentation, punctuation, preprocessor, variable, attribute, tag, property, section) is drawn
+in an existing theme role, so every theme highlights code. Keywords are bold and comments italic
+on top of their role. `mono` tells classes apart by bold, italic, underline and dim.
+
+### Grammar files
+
+A language is a JSON file. The shipped grammars are in `presets/syntax/`. Your own go in
+`<config>/rolltui/syntax/` and are read when the browser starts. A file with the name of a
+shipped language replaces it, and every language that includes it follows.
 
 ```json
 {
@@ -138,54 +175,58 @@ that includes it follows), and it is read when the browser starts:
 }
 ```
 
-Rules are tried in order at each position, and the first that matches takes it. A rule is a `match` (a pattern, with
-`captures` to colour groups differently, and `push` / `pop` / `set` to move between contexts), a set of whole `words`, a
-`region` (begin to end, with an `escape` and nested `rules`; `\\1` in `end` is what `begin` captured, which is how a
-here-document and a Lua long bracket end), or an `include` of another context or another language. A context may be given a
-`class` of its own (`"block": { "class": "comment", "rules": [...] }`): text no rule takes is drawn in it. The patterns are a
-small, safe subset (classes, groups, `* + ? {n,m}`, lazy forms, `^ $ \\b`, look-ahead, back-references; **no** look-behind, and
-a pattern that would run away is stopped, not waited for). A backslash in a pattern is written twice in JSON.
+Rules are tried in order at each position; the first that matches wins.
 
-`dirktui languages` is how you find out a file of yours did not load (a language with a mistake in it is skipped without a
-word on the screen): it lists what is shipped and what of yours loaded, and for each file that did not, its language, the rule
-and the reason; `dirktui languages my.json` checks a file you are still writing, and it exits 1 when anything did not load.
-The library's own function for it is `rolltui_syntax_check`.
+| Rule | |
+|---|---|
+| `match` | a pattern; `captures` colours groups separately; `push`, `pop` and `set` change context |
+| `words` | a set of whole words |
+| `region` | from `begin` to `end`, with an optional `escape` and nested `rules`; `\\1` in `end` is what `begin` captured (here-documents, Lua long brackets) |
+| `include` | another context, or another language |
 
-**Limits, said plainly.** It is a highlighter, not a parser: it follows one line at a time from the state the last one left
-(a comment or string that spans lines, a here-document), so it is right for the code people write and can be wrong for the
-odd construct (a YAML block scalar's body is drawn as keys if it looks like keys). A line is coloured for its first 4000
-bytes and plain after, a file is read for colour up to the same 256 KB the preview reads, and coloured text is exactly the
-same characters in the same cells as plain text: colour changes a style, never a glyph.
+A context can carry its own `class` (`"block": { "class": "comment", "rules": [...] }`), used for
+text no rule matches.
 
-## Ownership, in three shapes and no fourth
+Patterns support character classes, groups, `* + ? {n,m}`, lazy quantifiers, `^ $ \\b`,
+look-ahead and back-references. Look-behind is not supported. A pattern that runs away is
+stopped. Backslashes are doubled in JSON.
 
-Every pointer in this library is one of three things, and `rolltui-ownership-test` checks it:
+### Checking a grammar
 
-- **OWNED** — one owner, freed by a named `_free` function.
-- **BORROWED** — a raw pointer or a view crossing an API, which never owns and never frees.
-- **VALUE** — everything else, copied.
+A grammar with an error is skipped. `dirktui languages` lists the shipped languages and yours,
+and for each file that failed to load, its language, the rule and the reason.
+`dirktui languages my.json` checks one file and exits 1 if anything failed. The library function
+is `rolltui_syntax_check`.
 
-No `shared_ptr` anywhere in this library: a shared owner makes a lifetime a runtime question,
-and every lifetime here is structural. A `shared_ptr` belongs to whichever host consumes this
-library, never to the library itself.
+### Limits
 
-## Using this inside another project
+Highlighting works line by line, carrying state from one line to the next (multi-line comments
+and strings, here-documents). It is not a parser, so an unusual construct can be miscoloured: a
+YAML block scalar whose body looks like keys is drawn as keys. Highlighting covers the first
+4,000 bytes of a line and the first 256 KB of a file. It changes styles only, never characters or
+their positions.
 
-This repository's own `CMakeLists.txt` doubles as the file a parent `add_subdirectory()`s:
-`if(NOT PROJECT_NAME)` guards the `project()` call and the C++ standard, so the same file works
-whether it is the top of the build or one level under someone else's. Put the repository in a
-folder named `rolltui` (a git submodule, or a copy) and a consumer writes
-`#include "rolltui/rolltui.h"`; standing alone, a self-referential symlink named `rolltui`
-(pointing at `.`) supplies the same prefix.
+## Ownership
 
-Every include inside the library is spelled `rolltui/...`, the one spelling that resolves in every
-host, because the folder the library sits in is named `rolltui` in all of them.
-`rolltui-boundary-test` checks that the library includes only itself, so it never leans on a
-header that only some host happens to keep.
+Every pointer in the library is one of three kinds:
 
-The library links nothing but the platform's C and C++ libraries. Beyond itself it compiles
-against one thing, `testkit/`, a small test harness with switchable checks that other projects
-share. A copy ships in this repository: a host that already defines a `testkit` target is
-assumed to have it right, and any other build uses the copy here. Nested inside another build, rolltui registers none of its
-own tests (`ROLLTUI_BUILD_TESTS` is on only when it is the top of the build), so the host's
-`ctest` runs the host's suite.
+- **OWNED**: one owner, freed by a named `_free` function.
+- **BORROWED**: a raw pointer or view passed across the API; it never owns and never frees.
+- **VALUE**: copied.
+
+The library has no `shared_ptr`. `rolltui-ownership-test` enforces these rules.
+
+## Embedding rolltui
+
+Add the repository with `add_subdirectory()`. Its `CMakeLists.txt` guards `project()` and the
+C++ standard with `if(NOT PROJECT_NAME)`, so it works standalone or nested.
+
+Place the repository in a folder named `rolltui` (a submodule or a copy) and include
+`rolltui/rolltui.h`. Built standalone, CMake creates the `rolltui/` prefix in the build directory.
+Every include inside the library is spelled `rolltui/...`; `rolltui-boundary-test` checks that the
+library includes only its own headers.
+
+The library links only the platform's C and C++ libraries. It compiles against `testkit/`, a
+small test harness shipped in this repository; a host that already defines a `testkit` target
+uses its own. Nested inside another build, rolltui registers no tests (`ROLLTUI_BUILD_TESTS` is on
+only at the top level).
