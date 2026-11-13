@@ -27,13 +27,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rolltui/c/rolltui_os.h"
+
 /* GROWING HEAP, short-lived: one path and one file body per call, freed before return. */
 static void path_join(char* out, size_t cap, const char* a, const char* b) {
   snprintf(out, cap, "%s%s%s", a, (a[0] && a[strlen(a) - 1] != '/') ? "/" : "", b);
 }
 
 static int read_whole(const char* path, RolltuiStr* out) {
-  FILE* f = fopen(path, "rb");
+  FILE* f = rolltui_os_fopen(path, "rb");
   long n;
   char* buf;
   if (!f) return 0;
@@ -60,12 +62,12 @@ static void note_tried(RolltuiStr* tried, const char* path, int hit) {
 static void config_root(char* out, size_t cap) {
   const char* d = getenv("ROLL_CONFIG_DIR");
   const char* x;
-  const char* home;
+  char home[1024];
   if (d && *d) { snprintf(out, cap, "%s", d); return; }
   x = getenv("XDG_CONFIG_HOME");
   if (x && *x) { snprintf(out, cap, "%s/roll", x); return; }
-  home = getenv("HOME");
-  snprintf(out, cap, "%s/.config/roll", (home && *home) ? home : ".");
+  if (rolltui_os_config_home(home, sizeof home) != 0) snprintf(home, sizeof home, ".");
+  snprintf(out, cap, "%s/roll", home);
 }
 
 int rolltui_app_file(const char* argv0, const char* app, const char* kind,

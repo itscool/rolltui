@@ -4,9 +4,9 @@
 
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_os.h"
 
 /* One event of a wake, copied out of the terminal's borrowed buffers. */
 typedef struct RunEvent {
@@ -34,11 +34,7 @@ struct RolltuiRun {
   RolltuiStr out;    /* the bytes of a present, kept between frames */
 };
 
-static unsigned long long steady_ms(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (unsigned long long)ts.tv_sec * 1000ULL + (unsigned long long)(ts.tv_nsec / 1000000L);
-}
+static unsigned long long steady_ms(void) { return rolltui_os_monotonic_ms(); }
 
 static void collect(void* vctx, const RolltuiTermEvent* te) {
   RolltuiRun* r = (RolltuiRun*)vctx;
@@ -78,7 +74,7 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
   /* ASKED BEFORE THE TERMINAL IS MADE, of both descriptors. Making it enters: the alternate screen, the modes, the
    * questions, and the leaving again at free, all WRITTEN — so a refusal decided afterwards has already sent all of
    * that into a pipe or a file, which is the one place a program refusing to draw must leave untouched. */
-  if (!isatty(in_fd) || !isatty(out_fd)) return ROLLTUI_RUN_NOT_A_TERMINAL;
+  if (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd)) return ROLLTUI_RUN_NOT_A_TERMINAL;
   memset(&r, 0, sizeof r);
   r.app = app;
   opts.facts_events = 1; /* the loop is what listens for them */

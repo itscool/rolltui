@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/rolltui.h"
@@ -21,6 +20,18 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/third_party/md4c/md4c.h"
 #include "rolltui/testkit/testctl.h"
+
+/* The first `n` bytes of `a` and `b` equal, ASCII letters compared without case. */
+static int ascii_ieq(const char* a, const char* b, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    char x = a[i], y = b[i];
+    if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+    if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+    if (x != y) return 0;
+  }
+  return 1;
+}
 
 #define NONE ((size_t)-1)
 
@@ -1295,7 +1306,7 @@ static void render_code(State* st, const char* code, size_t code_n, const char* 
   wo.tab_width = st->tab_width;
   split_lines(w, code, code_n);
   src_n = w->code_lines_n;
-  if (highlightable && lang_n == 7 && strncasecmp(label, "mermaid", 7) == 0 && ctx->width >= 12) {
+  if (highlightable && lang_n == 7 && ascii_ieq(label, "mermaid", 7) && ctx->width >= 12) {
     if (!w->mmd) w->mmd = rolltui_mermaid_new();
     mermaid_ok = rolltui_mermaid_render(w->mmd, code, code_n, ctx->width, st->ambiguous, &w->mmd_reason);
     if (!mermaid_ok) mermaid_say_why = 1;

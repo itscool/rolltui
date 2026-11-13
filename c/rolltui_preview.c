@@ -2,17 +2,15 @@
 #include "rolltui/c/rolltui_preview.h"
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_md_lines.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_syntax.h"
@@ -81,7 +79,7 @@ RolltuiPreview* rolltui_preview_new(void) {
 }
 
 static void release_content(RolltuiPreview* pv) {
-  if (pv->fd >= 0) close(pv->fd);
+  if (pv->fd >= 0) rolltui_os_close(pv->fd);
   pv->fd = -1;
   pv->kind = ROLLTUI_PREVIEW_NONE;
   pv->size = 0;
@@ -137,7 +135,7 @@ void rolltui_fileinfo_size_text(long long bytes, char* out, size_t cap) { human_
 
 void rolltui_fileinfo_mode_text(unsigned int mode, char out[11]) {
   static const char* const rwx[] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
-  out[0] = S_ISDIR(mode) ? 'd' : S_ISLNK(mode) ? 'l' : '-';
+  out[0] = ROLLTUI_OS_IS_DIR(mode) ? 'd' : ROLLTUI_OS_IS_LINK(mode) ? 'l' : '-';
   memcpy(out + 1, rwx[(mode >> 6) & 7], 3);
   memcpy(out + 4, rwx[(mode >> 3) & 7], 3);
   memcpy(out + 7, rwx[mode & 7], 3);
@@ -145,10 +143,9 @@ void rolltui_fileinfo_mode_text(unsigned int mode, char out[11]) {
 }
 
 void rolltui_fileinfo_when_text(long long secs, int date_only, char* out, size_t cap) {
-  time_t t = (time_t)secs;
   struct tm tm;
   if (cap == 0) return;
-  if (secs <= 0 || !localtime_r(&t, &tm) || strftime(out, cap, date_only ? "%Y-%m-%d" : "%Y-%m-%d %H:%M", &tm) == 0) {
+  if (secs <= 0 || !rolltui_os_localtime(secs, &tm) || strftime(out, cap, date_only ? "%Y-%m-%d" : "%Y-%m-%d %H:%M", &tm) == 0) {
     snprintf(out, cap, "-");
   }
 }
@@ -164,9 +161,8 @@ void rolltui_preview_set_info(RolltuiPreview* pv, const char* text, size_t len) 
 static size_t read_upto(int fd, unsigned char* buf, size_t want) {
   size_t got = 0;
   while (got < want) {
-    const ssize_t r = read(fd, buf + got, want - got);
+    const long r = rolltui_os_read(fd, (char*)buf + got, want - got);
     if (r > 0) got += (size_t)r;
-    else if (r < 0 && errno == EINTR) continue;
     else break;
   }
   return got;
@@ -358,27 +354,20 @@ static void fail(RolltuiPreview* pv, const char* why) {
 }
 
 /* ---- a file as it was ------------------------------------------------------------------------ */
-#if defined(__APPLE__)
-#define SIG_MTIME_NS(st) ((long long)(st).st_mtimespec.tv_sec * 1000000000LL + (long long)(st).st_mtimespec.tv_nsec)
-#define SIG_CTIME_NS(st) ((long long)(st).st_ctimespec.tv_sec * 1000000000LL + (long long)(st).st_ctimespec.tv_nsec)
-#else
-#define SIG_MTIME_NS(st) ((long long)(st).st_mtim.tv_sec * 1000000000LL + (long long)(st).st_mtim.tv_nsec)
-#define SIG_CTIME_NS(st) ((long long)(st).st_ctim.tv_sec * 1000000000LL + (long long)(st).st_ctim.tv_nsec)
-#endif
 
 int rolltui_filesig_read(const char* path, RolltuiFileSig* sig) {
-  struct stat st;
+  RolltuiOsStat st;
   memset(sig, 0, sizeof *sig);
-  if (!path || stat(path, &st) != 0) {
+  if (!path || rolltui_os_stat(path, 1, &st) != 0) {
     sig->err = errno ? errno : ENOENT;
     return 0;
   }
   sig->ok = 1;
-  sig->dev = (unsigned long long)st.st_dev;
-  sig->ino = (unsigned long long)st.st_ino;
-  sig->size = (long long)st.st_size;
-  sig->mtime_ns = SIG_MTIME_NS(st);
-  sig->ctime_ns = SIG_CTIME_NS(st);
+  sig->dev = st.dev;
+  sig->ino = st.ino;
+  sig->size = st.size;
+  sig->mtime_ns = st.mtime_ns;
+  sig->ctime_ns = st.ctime_ns;
   return 1;
 }
 
@@ -396,7 +385,7 @@ int rolltui_filesig_racy(const RolltuiFileSig* sig, long long read_at_secs) {
 }
 
 static void load(RolltuiPreview* pv) {
-  struct stat st;
+  RolltuiOsStat st;
   unsigned char sniff[SNIFF_BYTES];
   size_t got;
   int fd;
@@ -404,27 +393,27 @@ static void load(RolltuiPreview* pv) {
    * reads again, where the other order would trust content it never read. */
   pv->sig_read_secs = (long long)time(NULL);
   rolltui_filesig_read(pv->path.p, &pv->sig);
-  fd = open(pv->path.p, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+  fd = rolltui_os_open_read(pv->path.p);
   if (fd < 0) {
     fail(pv, strerror(errno));
     return;
   }
-  if (fstat(fd, &st) != 0) {
+  if (rolltui_os_fstat(fd, &st) != 0) {
     fail(pv, strerror(errno));
-    close(fd);
+    rolltui_os_close(fd);
     return;
   }
   /* A pipe, a socket, a device: opening was already a risk (NONBLOCK spares a FIFO), reading is not one to take. */
-  if (!S_ISREG(st.st_mode)) {
-    fail(pv, S_ISDIR(st.st_mode) ? "a folder" : "not a regular file");
-    close(fd);
+  if (!ROLLTUI_OS_IS_FILE(st.mode)) {
+    fail(pv, ROLLTUI_OS_IS_DIR(st.mode) ? "a folder" : "not a regular file");
+    rolltui_os_close(fd);
     return;
   }
-  pv->size = (long long)st.st_size;
+  pv->size = st.size;
   got = read_upto(fd, sniff, SNIFF_BYTES);
   if (got == 0) {
     pv->kind = ROLLTUI_PREVIEW_EMPTY;
-    close(fd);
+    rolltui_os_close(fd);
     return;
   }
   if (looks_binary(sniff, got)) {
@@ -444,7 +433,7 @@ static void load(RolltuiPreview* pv) {
       unsigned char probe;
       if (read_upto(fd, &probe, 1) == 1) pv->truncated = 1;
     }
-    close(fd);
+    rolltui_os_close(fd);
     if (pv->truncated) {
       /* Cut where a line ends, or failing that where a character does: never through the middle of one. */
       size_t cut = have;
@@ -645,7 +634,7 @@ static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, Roll
   const size_t old_per = (size_t)(pv->hex_per_row > 0 ? pv->hex_per_row : 16);
   int r;
   size_t first_byte, want;
-  ssize_t got = 0;
+  long got = 0;
   unsigned char* buf;
   if ((size_t)per != old_per) {
     pv->top = (pv->top * old_per) / (size_t)per;
@@ -660,7 +649,7 @@ static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, Roll
   if (first_byte + want > (size_t)pv->size) want = (size_t)pv->size > first_byte ? (size_t)pv->size - first_byte : 0;
   if (want == 0) return;
   buf = (unsigned char*)rolltui_mem_alloc(want);
-  got = pread(pv->fd, buf, want, (off_t)first_byte);
+  got = rolltui_os_pread(pv->fd, (char*)buf, want, (long long)first_byte);
   if (got <= 0) { rolltui_mem_free(buf); return; }
   for (r = 0; r < body.h; ++r) {
     const size_t row_at = (size_t)r * (size_t)per;

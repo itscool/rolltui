@@ -7,17 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/utsname.h>
 #include <time.h>
-#include <unistd.h>
 
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
 
 /* ---- the environment ------------------------------------------------------------------------ */
@@ -26,7 +21,6 @@ static const char* nz(const char* s) { return s && *s ? s : NULL; }
 static int eq(const char* a, const char* b) { return a && b && strcmp(a, b) == 0; }
 
 void rolltui_termenv_read(RolltuiTermEnv* e) {
-  struct utsname u;
   memset(e, 0, sizeof *e);
   e->colorterm = nz(getenv("COLORTERM"));
   e->term = nz(getenv("TERM"));
@@ -44,8 +38,8 @@ void rolltui_termenv_read(RolltuiTermEnv* e) {
   e->locale = nz(getenv("LC_ALL"));
   if (!e->locale) e->locale = nz(getenv("LC_CTYPE"));
   if (!e->locale) e->locale = nz(getenv("LANG"));
-  if (uname(&u) == 0) snprintf(e->os_release, sizeof e->os_release, "%s", u.release);
-  if (gethostname(e->host, sizeof e->host - 1) != 0) e->host[0] = '\0';
+  if (rolltui_os_release(e->os_release, sizeof e->os_release) != 0) e->os_release[0] = '\0';
+  if (rolltui_os_host_name(e->host, sizeof e->host) != 0) e->host[0] = '\0';
 }
 
 int rolltui_termenv_multiplexed(const RolltuiTermEnv* e) { return e->tmux != NULL || e->sty != NULL; }
@@ -66,6 +60,12 @@ static int known_truecolor(const RolltuiTermEnv* e) {
     if (eq(e->term, kTerms[i])) return 1;
   for (i = 0; i < sizeof kPrograms / sizeof kPrograms[0]; ++i)
     if (eq(e->term_program, kPrograms[i])) return 1;
+#if defined(_WIN32)
+  /* Windows' own console, conhost and Windows Terminal alike, draws 24-bit colour in the VT mode
+   * the terminal turns on, and sets no TERM. A TERM there is a Unix-style terminal (mintty, an SSH
+   * session) and is read as it is everywhere else. */
+  if (!e->term) return 1;
+#endif
   return eq(e->lc_terminal, "iTerm2");
 }
 
@@ -177,27 +177,19 @@ size_t rolltui_termfacts_fingerprint(const RolltuiTermEnv* e, const char* app_ke
 
 size_t rolltui_termfacts_exe_identity(char* out, size_t cap) {
   char path[1024];
-  struct stat st;
+  RolltuiOsStat st;
   const char* base;
+  const char* back;
   int n;
   if (!cap) return 0;
   out[0] = '\0';
-#ifdef __APPLE__
-  {
-    uint32_t size = (uint32_t)sizeof path;
-    if (_NSGetExecutablePath(path, &size) != 0) return 0;
-  }
-#else
-  {
-    const ssize_t k = readlink("/proc/self/exe", path, sizeof path - 1);
-    if (k <= 0) return 0;
-    path[k] = '\0';
-  }
-#endif
-  if (stat(path, &st) != 0) return 0; /* follows a symlink: it is the FILE that was rebuilt */
+  if (rolltui_os_exe_path(path, sizeof path) != 0) return 0;
+  if (rolltui_os_stat(path, 1, &st) != 0) return 0; /* follows a symlink: it is the FILE that was rebuilt */
   base = strrchr(path, '/');
+  back = strrchr(path, '\\');
+  if (back && (!base || back > base)) base = back;
   base = base ? base + 1 : path;
-  n = snprintf(out, cap, "%s:%lld:%lld", base, (long long)st.st_mtime, (long long)st.st_size);
+  n = snprintf(out, cap, "%s:%lld:%lld", base, st.mtime, st.size);
   if (n < 0) {
     out[0] = '\0';
     return 0;
@@ -485,6 +477,7 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
 
 void rolltui_termcache_path(const char* dir, RolltuiStr* out) {
   const char* d;
+  char home[1024];
   rolltui_str_clear(out);
   if (dir && *dir) {
     rolltui_str_append(out, dir, strlen(dir));
@@ -494,9 +487,9 @@ void rolltui_termcache_path(const char* dir, RolltuiStr* out) {
   } else if ((d = nz(getenv("XDG_CONFIG_HOME")))) {
     rolltui_str_append(out, d, strlen(d));
     rolltui_str_append(out, "/roll/rolltui", 13);
-  } else if ((d = nz(getenv("HOME")))) {
-    rolltui_str_append(out, d, strlen(d));
-    rolltui_str_append(out, "/.config/roll/rolltui", 21);
+  } else if (rolltui_os_config_home(home, sizeof home) == 0) {
+    rolltui_str_append(out, home, strlen(home));
+    rolltui_str_append(out, "/roll/rolltui", 13);
   } else {
     return;
   }
@@ -506,7 +499,7 @@ void rolltui_termcache_path(const char* dir, RolltuiStr* out) {
 /* The whole file, or 0. Refuses a file that is not a plausible size: this is a cache of a dozen
  * short entries, and a megabyte is something else. */
 static int read_file(const char* path, char** out, size_t* out_len) {
-  FILE* f = fopen(path, "rb");
+  FILE* f = rolltui_os_fopen(path, "rb");
   char* buf = NULL;
   size_t len = 0, cap = 0;
   if (!f) return 0;

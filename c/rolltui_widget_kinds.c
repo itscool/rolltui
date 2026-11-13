@@ -5,11 +5,11 @@
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
 #include "rolltui/c/rolltui_widget_kinds.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_widget_picker.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_context.h"
@@ -330,20 +330,15 @@ static void file_ctx_path(const RolltuiFileCtx* fc, RolltuiStr* out) {
  * someone iterating on one does. Shared by `file` below and by the `menu` kind further down:
  * one definition of "has this path changed" for both re-read rules. */
 static long long file_ctx_stamp(const char* path) {
-  struct stat st;
-  if (stat(path, &st) != 0) return -1;
-#if defined(__APPLE__)
-  return (long long)st.st_mtimespec.tv_sec * 1000000000LL + (long long)st.st_mtimespec.tv_nsec +
-         (long long)st.st_size;
-#else
-  return (long long)st.st_mtim.tv_sec * 1000000000LL + (long long)st.st_mtim.tv_nsec + (long long)st.st_size;
-#endif
+  RolltuiOsStat st;
+  if (rolltui_os_stat(path, 1, &st) != 0) return -1;
+  return st.mtime_ns + st.size;
 }
 
 /* Appends the whole file at `path` to `out` (which the caller has already cleared); 1 when it
  * could be opened. Shared by `file_ctx_refresh` below and the `menu` kind's own re-read. */
 static int read_whole_file(const char* path, RolltuiStr* out) {
-  FILE* fh = fopen(path, "rb");
+  FILE* fh = rolltui_os_fopen(path, "rb");
   char buf[4096];
   size_t got;
   if (!fh) return 0;

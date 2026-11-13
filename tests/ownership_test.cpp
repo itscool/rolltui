@@ -378,6 +378,7 @@ int main() {
         {"c/rolltui_map.h", 2},
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
+        {"c/rolltui_os.h", 1},  /* `RolltuiMutex.lock` on Windows: an SRWLOCK, one pointer-sized value the system owns and nothing here follows */
         {"c/rolltui_termfacts.h", 13},  /* `RolltuiTermEnv`: twelve `const char*` that BORROW from `getenv` (NULL when unset) and the thirteenth, the ssh string, the same — read once into a struct so a test can BE the environment; nothing here owns or outlives the call */
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_widget_menu_tree.h", 0},
@@ -444,8 +445,8 @@ int main() {
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
     // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above. 193 -> 195: a menu
-    // table's two lists.
-    check(total == 195, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // table's two lists. 195 -> 196: rolltui_os.h's Windows lock.
+    check(total == 196, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
@@ -584,9 +585,10 @@ int main() {
     //
     // What the 16 are: the terminal (7), the allocator counters (6), a thread's scratch and a
     // host's shutdown-hook list (2), and the keyboard protocol the TTY negotiated (1). Four
-    // things that are genuinely the process's, and no registry among them.
-    check(ctx == 0 && proc == 20,
-          "the boundary is 0 CONTEXT + 20 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // things that are genuinely the process's, and no registry among them. 20 -> 31: the terminal's
+    // Windows set (11, rolltui_os_win32.c), which a build compiles instead of the POSIX one.
+    check(ctx == 0 && proc == 31,
+          "the boundary is 0 CONTEXT + 31 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

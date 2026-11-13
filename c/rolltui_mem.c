@@ -25,8 +25,14 @@
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
 #define ROLLTUI_USABLE_SIZE(p) malloc_size(p)
-#elif defined(__GLIBC__)
+#elif defined(_WIN32)
 #include <malloc.h>
+#define ROLLTUI_USABLE_SIZE(p) _msize(p)
+#elif defined(__linux__)
+#include <malloc.h> /* glibc and musl */
+#define ROLLTUI_USABLE_SIZE(p) malloc_usable_size(p)
+#elif defined(__FreeBSD__)
+#include <malloc_np.h>
 #define ROLLTUI_USABLE_SIZE(p) malloc_usable_size(p)
 #else
 #error "rolltui_mem needs a usable-size function to report live_bytes; add one for this libc"

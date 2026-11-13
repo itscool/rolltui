@@ -124,13 +124,26 @@ ROLLTUI_GLOBAL("rolltui_mem.c", "g_peak_bytes", PROCESS)
  * one saved mode and one signal disposition, so **only one context may DRIVE a terminal** — a
  * second can still build screens, compose and render to text, which is what every test and every
  * `--frame` run already does. */
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_out_fd", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_wake_fd", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_leave", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_leave_len", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_saved_tio", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_have_tio", PROCESS)
-ROLLTUI_GLOBAL("rolltui_terminal.c", "g_handlers_installed", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_out_fd", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_wake_fd", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_leave", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_leave_len", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_saved_tio", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_have_tio", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_handlers_installed", PROCESS)
+/* The same terminal on Windows: the console handles and modes to restore, the leave sequence, whether the
+ * console control handler is installed, and the performance counter's frequency, read once. */
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_in", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_out", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_leave", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_leave_len", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_in", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_out", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_in_cp", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_out_cp", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_have_mode", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_handlers_installed", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "freq", PROCESS)
 
 /* THE DEPTH OF THE TERMINAL THIS PROCESS DRAWS TO, published so that `rolltui_swap_present` can hold
  * every host to it (a depth handed to `present` is a request, not a fact). Like the keyboard

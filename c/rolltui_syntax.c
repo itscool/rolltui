@@ -1,5 +1,6 @@
 /* rolltui/c/rolltui_syntax.c — languages as data, and the engine that runs them. The contract is in the header. */
 #include "rolltui/c/rolltui_syntax.h"
+#include "rolltui/c/rolltui_os.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -1048,7 +1049,7 @@ static size_t active_count(const RolltuiSyntax* s) {
 
 /* One language file by its path: 1 when it loaded, else 0 with the reason in `why` (unreadable, empty, too big, or not a language). */
 static int load_language_file(RolltuiSyntax* s, const char* path, RolltuiStr* why) {
-  FILE* f = fopen(path, "rb");
+  FILE* f = rolltui_os_fopen(path, "rb");
   char* buf;
   size_t got;
   int ok;

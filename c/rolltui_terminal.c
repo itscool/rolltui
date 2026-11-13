@@ -10,89 +10,19 @@
  */
 #include "rolltui/c/rolltui_terminal.h"
 
-#include <errno.h>
-#include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-
-#include <fcntl.h>
-#include <poll.h>
-#include <sys/ioctl.h>
-#include <termios.h>
-#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
 
-/* ---- process-wide restore state, readable from a signal handler -----------------------------
- *
- * WHY `_Atomic` AND NOT `volatile sig_atomic_t` FOR THE SCALARS: both are C11-conforming
- * ways to touch a static object from `on_fatal_signal`/`on_winch` (the standard's signal
- * clause permits a lock-free atomic object exactly as it permits `volatile sig_atomic_t`,
- * and every scalar below is lock-free on any toolchain this builds on — the same fact
- * `rolltui_keys.c`'s `g_protocol` already leans on). Two things tip it to `_Atomic` here
- * rather than splitting the choice per variable:
- *   1. `g_handlers_installed` needs an atomic READ-MODIFY-WRITE (test-and-set, so two
- *      Terminals entering back to back install the signal handlers exactly once between
- *      them), and `sig_atomic_t` guarantees plain loads/stores only — no exchange. One
- *      mechanism for every variable in this block is simpler to read than two.
- *   2. `g_have_tio`'s SEQ_CST store is what makes the plain write to `g_saved_tio` just
- *      above it visible-before a reader that observes `g_have_tio` true — a real
- *      happens-before edge in the C11 memory model. `volatile` alone promises no such
- *      ordering; it only forbids the compiler from eliding or reordering the volatile
- *      access itself.
- * `g_leave` (the buffer) stays a plain array: it is fully overwritten by memcpy before
- * `g_leave_len` publishes the new length, so `rolltui_terminal_restore_now` — which only
- * ever reads bytes `[0, g_leave_len)` — can never observe a torn write, whichever length
- * (old or new) it happens to read. */
-static _Atomic int g_out_fd = -1;
-static _Atomic int g_wake_fd = -1;
-static char g_leave[256];
-static _Atomic size_t g_leave_len = 0;
-static struct termios g_saved_tio;
-static _Atomic int g_have_tio = 0;
-static _Atomic int g_handlers_installed = 0;
-
-static void write_all_fd(int fd, const char* p, size_t n) {
-  while (n > 0) {
-    ssize_t k = write(fd, p, n);
-    if (k < 0) {
-      if (errno == EINTR) continue;
-      return;
-    }
-    p += k;
-    n -= (size_t)k;
-  }
-}
-
-static void on_fatal_signal(int sig) {
-  rolltui_terminal_restore_now();
-  signal(sig, SIG_DFL);
-  raise(sig);
-}
-
-static void on_winch(int sig) {
-  (void)sig;
-  int fd = g_wake_fd;
-  if (fd >= 0) {
-    char c = 'w';
-    ssize_t r = write(fd, &c, 1);
-    (void)r;
-  }
-}
-
-void rolltui_terminal_restore_now(void) {
-  int fd = g_out_fd;
-  if (fd < 0) return;
-  write_all_fd(fd, g_leave, g_leave_len);
-  if (g_have_tio) tcsetattr(fd, TCSANOW, &g_saved_tio);
-  g_out_fd = -1;
-}
+/* The process-wide restore, which a fatal signal reaches, lives with the operating system's side
+ * (rolltui_os.h): the terminal it names and the bytes that leave it are published at each entry. */
+void rolltui_terminal_restore_now(void) { rolltui_os_tty_restore_now(); }
 
 /* ---- the handle -----------------------------------------------------------------------------
  *
@@ -116,8 +46,7 @@ typedef struct QueuedEvent {
 struct RolltuiTerminal {
   int last_press_x, last_press_y, last_press_button; /* the press a second one is paired with */
   unsigned long long last_press_ms;                   /* 0: none */
-  int in_fd, out_fd;
-  int owned_fd; /* a reopened terminal (see reopen_if_unpollable), closed at free; else -1 */
+  RolltuiOsTty* os; /* the input, the output, the saved mode and the wake channel */
   int tty;
   int entered;
   int w, h;
@@ -130,10 +59,8 @@ struct RolltuiTerminal {
   size_t queued_len, queued_cap;
   char* queued_text;
   size_t queued_text_len, queued_text_cap;
-  int wake_r, wake_w; /* self-pipe: SIGWINCH handler writes, poll() reads */
   unsigned char protocol;
   int have_tio;
-  struct termios saved_tio;
   /* ---- what the terminal is (rolltui_termfacts.h) ---- */
   RolltuiTermFacts facts;
   RolltuiTermEnv env;
@@ -164,14 +91,8 @@ static void seq_append(char* seq, size_t* len, const char* lit) {
   *len += n;
 }
 
-/* Publishes `t`'s CURRENT leave sequence to the signal-safe restore path: memcpy first, THEN
- * the length, so a fatal signal landing between the two still sees a complete (if shorter)
- * sequence rather than a torn one — see the comment on the globals above. */
-static void publish_leave(const RolltuiTerminal* t) {
-  size_t n = t->leave_len < sizeof g_leave ? t->leave_len : sizeof g_leave;
-  memcpy(g_leave, t->leave_seq, n);
-  g_leave_len = n;
-}
+/* Publishes `t`'s CURRENT leave sequence to the signal-safe restore path. */
+static void publish_leave(const RolltuiTerminal* t) { rolltui_os_tty_publish(t->os, t->leave_seq, t->leave_len); }
 
 /* ---- queuing leftover bytes from negotiate_keyboard/query_background --------------------- */
 
@@ -207,12 +128,6 @@ typedef struct EmitCtx {
   RolltuiTerminal* t; /* for the double-click pairing; NULL where there is no terminal */
 } EmitCtx;
 
-static unsigned long long monotonic_ms(void) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (unsigned long long)now.tv_sec * 1000ULL + (unsigned long long)now.tv_nsec / 1000000ULL;
-}
-
 /* A DOUBLE-CLICK IS MADE HERE, from two presses. The decoder sees bytes and knows no clock; this
  * is the one place that has both the event and the time. The press itself is delivered first,
  * as it arrives; the DoubleClick follows it. Pairing is by button and cell, within
@@ -229,7 +144,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ec->fn(ec->ctx, &ev);
   if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
     RolltuiTerminal* t = ec->t;
-    const unsigned long long now = monotonic_ms();
+    const unsigned long long now = rolltui_os_monotonic_ms();
     const int same = t->last_press_ms != 0 && e->mouse.x == t->last_press_x && e->mouse.y == t->last_press_y &&
                      e->mouse.button == t->last_press_button && now - t->last_press_ms <= ROLLTUI_DOUBLE_CLICK_MS;
     if (same) {
@@ -255,100 +170,32 @@ static void on_reply(void* ctx, const char* bytes, size_t len);
 static void term_enter(RolltuiTerminal* t, int handle_signals) {
   if (t->entered) return;
   t->entered = 1;
-  if (t->tty && tcgetattr(t->out_fd, &t->saved_tio) == 0) {
-    t->have_tio = 1;
-    struct termios raw = t->saved_tio;
-    cfmakeraw(&raw);
-    raw.c_cc[VMIN] = 1;
-    raw.c_cc[VTIME] = 0;
-    tcsetattr(t->out_fd, TCSANOW, &raw);
-    g_saved_tio = t->saved_tio; /* plain struct copy, ordered before the flag below */
-    g_have_tio = 1;
-  }
+  t->have_tio = rolltui_os_tty_raw(t->os);
   publish_leave(t);
-  g_out_fd = t->out_fd;
-  g_wake_fd = t->wake_w;
+  rolltui_os_tty_listen_resize(t->os);
   rolltui_terminal_write(t, t->enter_seq, t->enter_len);
   run_negotiation(t); /* ask the terminal what it can deliver and what it is, before anything is typed */
-  if (handle_signals && !atomic_exchange(&g_handlers_installed, 1)) {
-    signal(SIGINT, on_fatal_signal);
-    signal(SIGTERM, on_fatal_signal);
-    signal(SIGHUP, on_fatal_signal);
-    signal(SIGQUIT, on_fatal_signal);
-  }
-  struct sigaction sa;
-  memset(&sa, 0, sizeof sa);
-  sa.sa_handler = on_winch;
-  sa.sa_flags = SA_RESTART;
-  sigemptyset(&sa.sa_mask);
-  sigaction(SIGWINCH, &sa, NULL);
+  if (handle_signals) rolltui_os_tty_install_handlers();
 }
 
 static void term_leave(RolltuiTerminal* t) {
   if (!t->entered) return;
   t->entered = 0;
   rolltui_terminal_write(t, t->leave_seq, t->leave_len);
-  if (t->have_tio) tcsetattr(t->out_fd, TCSANOW, &t->saved_tio);
+  if (t->have_tio) rolltui_os_tty_restore(t->os);
   t->protocol_on = 0; /* the pop just went down: a resume enables it again */
-  g_out_fd = -1;
-  g_wake_fd = -1;
-  g_have_tio = 0;
+  rolltui_os_tty_withdraw();
 }
 
 /* ---- lifetime ---------------------------------------------------------------------------- */
 
-/* A DESCRIPTOR THAT CANNOT BE POLLED IS REOPENED BY ITS REAL NAME. On Darwin, poll(2) on a
- * descriptor opened from the `/dev/tty` alias answers POLLNVAL every time, while read(2) on
- * it works — so a host that opened `/dev/tty` (the ordinary way to draw on the terminal while
- * stdout carries an answer) gets a loop that never sees a key and a negotiation that blocks
- * in read until one arrives by luck. The same device reached through its own name
- * (`/dev/ttys003`, what ttyname(3) gives for the alias) polls normally. Detected rather than
- * assumed, with a zero-timeout poll, so a descriptor that polls is never touched; the
- * reopened one is OWNED here and closed at `rolltui_terminal_free`. */
-static int reopen_if_unpollable(int fd) {
-  struct pollfd p;
-  int std_fd;
-  p.fd = fd;
-  p.events = POLLIN;
-  p.revents = 0;
-  if (poll(&p, 1, 0) < 0 || !(p.revents & POLLNVAL)) return -1;
-  if (!isatty(fd)) return -1;
-  /* ttyname(3) of the alias answers "/dev/tty" again, so the real name has to come from a
-   * descriptor that was opened by it: the controlling terminal is the one the standard
-   * descriptors sit on, whichever of them is still a terminal. */
-  for (std_fd = 0; std_fd < 3; ++std_fd) {
-    const char* name = isatty(std_fd) ? ttyname(std_fd) : NULL;
-    if (name && strcmp(name, "/dev/tty") != 0) return open(name, O_RDWR | O_CLOEXEC);
-  }
-  return -1;
-}
-
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts) {
   RolltuiTerminal* t = (RolltuiTerminal*)rolltui_mem_alloc(sizeof *t);
   memset(t, 0, sizeof *t);
-  t->in_fd = in_fd;
-  t->out_fd = out_fd;
-  {
-    const int r = reopen_if_unpollable(in_fd);
-    if (r >= 0) {
-      t->owned_fd = r;
-      t->in_fd = r;
-      if (out_fd == in_fd) t->out_fd = r;
-    } else {
-      t->owned_fd = -1;
-    }
-  }
-  t->tty = isatty(out_fd) != 0;
+  t->os = rolltui_os_tty_open(in_fd, out_fd);
+  t->tty = rolltui_os_tty_is_tty(t->os);
   t->w = 80;
   t->h = 24;
-  t->wake_r = t->wake_w = -1;
-  int wake[2];
-  if (pipe(wake) == 0) {
-    fcntl(wake[0], F_SETFL, O_NONBLOCK);
-    fcntl(wake[1], F_SETFL, O_NONBLOCK);
-    t->wake_r = wake[0];
-    t->wake_w = wake[1];
-  }
   /* Built in the SAME final byte order the C++ `insert(0, ...)` chain produced: enter_seq
    * appends in option order; leave_seq is attributes-off first, then each mode's "off" in
    * the REVERSE of enter_seq's order — undo last-enabled-first, with attributes-off always
@@ -378,9 +225,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
     rolltui_termfacts_set_active_wide(-1);
     rolltui_termfacts_set_active_mode(-1);
   }
-  if (t->owned_fd >= 0) close(t->owned_fd); /* after leave: the restore bytes went down it */
-  if (t->wake_r >= 0) close(t->wake_r);
-  if (t->wake_w >= 0) close(t->wake_w);
+  rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
   rolltui_key_decoder_free(t->decoder);
   rolltui_str_free(&t->cache_path);
   rolltui_mem_free(t->queued);
@@ -395,22 +240,16 @@ int rolltui_terminal_width(const RolltuiTerminal* t) { return t->w; }
 int rolltui_terminal_height(const RolltuiTerminal* t) { return t->h; }
 
 void rolltui_terminal_refresh_size(RolltuiTerminal* t) {
-  struct winsize ws;
-  memset(&ws, 0, sizeof ws);
-  if (ioctl(t->out_fd, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0) {
-    t->w = ws.ws_col;
-    t->h = ws.ws_row;
+  int w = 0, h = 0;
+  if (rolltui_os_tty_size(t->os, &w, &h)) {
+    t->w = w;
+    t->h = h;
   }
 }
 
-void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { write_all_fd(t->out_fd, bytes, len); }
+void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { rolltui_os_tty_write(t->os, bytes, len); }
 
-void rolltui_terminal_wake(RolltuiTerminal* t) {
-  if (t->wake_w < 0) return;
-  char c = 'k';
-  ssize_t r = write(t->wake_w, &c, 1); /* non-blocking; a full pipe already wakes */
-  (void)r;
-}
+void rolltui_terminal_wake(RolltuiTerminal* t) { rolltui_os_tty_wake(t->os); }
 
 void rolltui_terminal_suspend(RolltuiTerminal* t) { term_leave(t); }
 void rolltui_terminal_resume(RolltuiTerminal* t) { term_enter(t, 0); /* the handlers, if asked for, are installed */ }
@@ -426,23 +265,22 @@ const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* le
 
 /* ---- keyboard protocol negotiation ------------------------------------------------------- */
 
-/* now-to-deadline in milliseconds, CLOCK_MONOTONIC — the same clock std::chrono::steady_clock
- * maps to on Darwin, and for the same reason: immune to a wall-clock step. */
-static struct timespec deadline_from(int timeout_ms) {
-  struct timespec d;
-  clock_gettime(CLOCK_MONOTONIC, &d);
-  d.tv_sec += timeout_ms / 1000;
-  d.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
-  if (d.tv_nsec >= 1000000000L) {
-    d.tv_sec += 1;
-    d.tv_nsec -= 1000000000L;
-  }
-  return d;
+/* A deadline on the steady clock, and the milliseconds left until it. */
+static unsigned long long deadline_from(int timeout_ms) { return rolltui_os_monotonic_ms() + (unsigned long long)timeout_ms; }
+static long ms_until(const unsigned long long* deadline) {
+  const unsigned long long now = rolltui_os_monotonic_ms();
+  return now >= *deadline ? 0 : (long)(*deadline - now);
 }
-static long ms_until(const struct timespec* deadline) {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return (long)((deadline->tv_sec - now.tv_sec) * 1000 + (deadline->tv_nsec - now.tv_nsec) / 1000000);
+
+/* Waits for input until `left` runs out and reads it: bytes read, 0 to try again, -1 to stop. */
+static long read_until(RolltuiTerminal* t, long left, char* b, size_t cap) {
+  const int r = rolltui_os_tty_wait(t->os, (int)left, 0);
+  if (r == ROLLTUI_OS_TTY_AGAIN) return 0;
+  if (r <= 0) return -1;
+  {
+    const long k = rolltui_os_tty_read(t->os, b, cap);
+    return k > 0 ? k : -1;
+  }
 }
 
 /* ---- what the terminal is: the facts, remembered ------------------------------------------- */
@@ -608,26 +446,16 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
     const size_t qlen = rolltui_termprobe_queries(asked, q, sizeof q);
     char* buf = NULL;
     size_t buf_len = 0, buf_cap = 0;
-    struct timespec deadline = deadline_from(timeout_ms);
+    unsigned long long deadline = deadline_from(timeout_ms);
     rolltui_terminal_write(t, q, qlen);
     while (!rep.da1) {
       long left = ms_until(&deadline);
-      struct pollfd one;
       char b[512];
-      ssize_t k;
-      int n;
+      long k;
       if (left <= 0) break;
-      one.fd = t->in_fd;
-      one.events = POLLIN;
-      one.revents = 0;
-      n = poll(&one, 1, (int)left);
-      if (n < 0) {
-        if (errno == EINTR) continue;
-        break;
-      }
-      if (n == 0) break;
-      k = read(t->in_fd, b, sizeof b);
-      if (k <= 0) break;
+      k = read_until(t, left, b, sizeof b);
+      if (k == 0) continue;
+      if (k < 0) break;
       buf = (char*)rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
       memcpy(buf + buf_len, b, (size_t)k);
       buf_len += (size_t)k;
@@ -783,30 +611,20 @@ int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, in
   char* buf = NULL;
   size_t buf_len = 0, buf_cap = 0;
   int found = 0;
-  struct timespec deadline;
+  unsigned long long deadline;
   if (!t->tty || !out) return 0;
   /* DECSC, home, one ambiguous glyph (U+2588), CPR, erase the line, DECRC. */
   rolltui_terminal_write(t, "\x1b" "7\x1b[1;1H\xE2\x96\x88\x1b[6n\x1b[1;1H\x1b[K\x1b" "8", 20);
   deadline = deadline_from(timeout_ms);
   for (;;) {
     long left = ms_until(&deadline);
-    struct pollfd one;
-    int n;
-    ssize_t k;
+    long k;
     char b[512];
     size_t at, end, i;
     if (left <= 0) break;
-    one.fd = t->in_fd;
-    one.events = POLLIN;
-    one.revents = 0;
-    n = poll(&one, 1, (int)left);
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      break;
-    }
-    if (n == 0) break;
-    k = read(t->in_fd, b, sizeof b);
-    if (k <= 0) break;
+    k = read_until(t, left, b, sizeof b);
+    if (k == 0) continue;
+    if (k < 0) break;
     buf = rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
     memcpy(buf + buf_len, b, (size_t)k);
     buf_len += (size_t)k;
@@ -852,23 +670,14 @@ int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, Rolltu
   char* buf = NULL;
   size_t buf_len = 0, buf_cap = 0;
   int found = 0;
-  struct timespec deadline = deadline_from(timeout_ms);
+  unsigned long long deadline = deadline_from(timeout_ms);
   for (;;) {
     long left = ms_until(&deadline);
     if (left <= 0) break;
-    struct pollfd one;
-    one.fd = t->in_fd;
-    one.events = POLLIN;
-    one.revents = 0;
-    int n = poll(&one, 1, (int)left);
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      break;
-    }
-    if (n == 0) break;
     char b[512];
-    ssize_t k = read(t->in_fd, b, sizeof b);
-    if (k <= 0) break;
+    long k = read_until(t, left, b, sizeof b);
+    if (k == 0) continue;
+    if (k < 0) break;
     buf = rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
     memcpy(buf + buf_len, b, (size_t)k);
     buf_len += (size_t)k;
@@ -924,15 +733,8 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
     t->queued_text_len = 0;
     timeout_ms = 0; /* deliver now; pick up anything else already waiting */
   }
-  struct pollfd fds[2];
-  fds[0].fd = t->in_fd;
-  fds[0].events = POLLIN;
-  fds[0].revents = 0;
-  fds[1].fd = t->wake_r;
-  fds[1].events = POLLIN;
-  fds[1].revents = 0;
-  int n = poll(fds, t->wake_r >= 0 ? 2 : 1, timeout_ms);
-  if (n < 0) return; /* EINTR or otherwise: whatever was queued is already reported above */
+  const int n = rolltui_os_tty_wait(t->os, timeout_ms, 1);
+  if (n < 0) return; /* interrupted or failed: whatever was queued is already reported above */
   if (n == 0) {       /* timeout: a pending ESC is the Escape key */
     if (rolltui_key_decoder_pending(t->decoder)) {
       EmitCtx ec;
@@ -943,15 +745,10 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
     }
     return;
   }
-  if (fds[1].revents & POLLIN) {
-    char buf[64];
-    int winch = 0;
-    ssize_t k;
-    while ((k = read(t->wake_r, buf, sizeof buf)) > 0)
-      for (ssize_t i = 0; i < k; ++i) winch |= (buf[i] == 'w'); /* 'k' is a plain wake() */
-    /* Every SIGWINCH is reported, even when the size reads back the same: the frame may
-     * still need a full repaint (some terminals clear on a font change). */
-    if (winch) {
+  {
+    /* Every resize is reported, even when the size reads back the same: the frame may still need
+     * a full repaint (some terminals clear on a font change). A plain wake reports nothing. */
+    if (n & ROLLTUI_OS_TTY_RESIZED) {
       rolltui_terminal_refresh_size(t);
       RolltuiTermEvent ev;
       memset(&ev, 0, sizeof ev);
@@ -961,9 +758,9 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
       emit(ctx, &ev);
     }
   }
-  if (fds[0].revents & (POLLIN | POLLHUP)) {
+  if (n & ROLLTUI_OS_TTY_INPUT) {
     char buf[4096];
-    ssize_t k = read(t->in_fd, buf, sizeof buf);
+    const long k = rolltui_os_tty_read(t->os, buf, sizeof buf);
     if (k > 0) {
       EmitCtx ec;
       ec.fn = emit;
@@ -973,12 +770,8 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
       /* A lone ESC (or a sequence cut by the read boundary) waits for the next read, but
        * not forever: give it 30 ms and then resolve it. */
       if (rolltui_key_decoder_pending(t->decoder)) {
-        struct pollfd one;
-        one.fd = t->in_fd;
-        one.events = POLLIN;
-        one.revents = 0;
-        if (poll(&one, 1, 30) > 0 && (one.revents & POLLIN)) {
-          ssize_t k2 = read(t->in_fd, buf, sizeof buf);
+        if (rolltui_os_tty_wait(t->os, 30, 0) & ROLLTUI_OS_TTY_INPUT) {
+          const long k2 = rolltui_os_tty_read(t->os, buf, sizeof buf);
           if (k2 > 0) rolltui_key_decoder_feed(t->decoder, buf, (size_t)k2, emit_from_decoder, &ec);
         }
         if (rolltui_key_decoder_pending(t->decoder)) rolltui_key_decoder_flush(t->decoder, emit_from_decoder, &ec);

@@ -13,11 +13,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_unicode.h"
+
+/* The first `n` bytes of `a` and `b` equal, ASCII letters compared without case. */
+static int ascii_ieq(const char* a, const char* b, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    char x = a[i], y = b[i];
+    if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+    if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+    if (x != y) return 0;
+  }
+  return 1;
+}
 
 #define MAX_NODES 240
 #define MAX_EDGES 480
@@ -815,7 +826,7 @@ static int seq_parse(Seq* s, const Source* src, size_t first, int* autonumber, R
       trim(&t);
       e = seq_event(s, SEQ_BLOCK);
       rolltui_str_set(&e->keyword, l.p, kn);
-      e->dashed = kn == 4 && strncasecmp(l.p, "rect", 4) == 0; /* a highlight: takes no row and draws no frame */
+      e->dashed = kn == 4 && ascii_ieq(l.p, "rect", 4); /* a highlight: takes no row and draws no frame */
       clean_label(t, &e->text);
       e->depth = depth;
       if (open_n < 32) open[open_n++] = (int)s->ne - 1;

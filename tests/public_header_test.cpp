@@ -137,7 +137,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 42; /* +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 43; /* +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -489,8 +489,8 @@ int main() {
     // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. 413/712 on 2026-11-13, when the 94 functions the
     // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC). 410 the same day, when
     // the reach rule found three studio-tier functions nothing called, not even a test (`rolltui_theme_store_set_working`,
-    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went.
-    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 712 && totals.size() == 2,
+    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went. INTERNAL 755 with rolltui_os.h's 43.
+    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 755 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

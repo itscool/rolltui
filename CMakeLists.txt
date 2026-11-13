@@ -158,9 +158,11 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   width of an ambiguous glyph — as pure functions over
                                          #   an environment and a buffer, plus the file that
                                          #   remembers the answers. No tty in it: that is below.
-                  c/rolltui_terminal.c)  # the one unit that touches a file
-                                         #   descriptor — 43 POSIX calls that were wrapped in
-                                         #   C++, which is the strongest argument FOR C here.
+                  c/rolltui_terminal.c   # the terminal protocol: entering, negotiating, decoding.
+                  c/rolltui_os_posix.c c/rolltui_os_win32.c)
+                                         # THE OPERATING SYSTEM (rolltui_os.h): files, time, locks
+                                         #   and the terminal device. Each file compiles to nothing
+                                         #   on the other platform.
 
 # THE SHIPPED LANGUAGES (presets/syntax/*.json), embedded like the presets: a language is a file a person can read, copy and
 # change, and the same table is what the highlighter loads.
@@ -294,7 +296,12 @@ target_compile_options(rolltui_embedded PRIVATE -Wall -Wextra)
 # 13.3 s is those binaries, the apps and roll.
 add_library(rolltui STATIC ${ROLLTUI_SOURCES} $<TARGET_OBJECTS:rolltui_embedded>)
 add_library(rolltui_ctl STATIC ${ROLLTUI_SOURCES} $<TARGET_OBJECTS:rolltui_embedded>)
+# The library's locks are pthreads on macOS and Linux (SRWLOCKs on Windows, in the system).
+find_package(Threads REQUIRED)
 foreach(lib rolltui rolltui_ctl)
+  if(NOT WIN32)
+    target_link_libraries(${lib} PUBLIC Threads::Threads)
+  endif()
   target_include_directories(${lib} PUBLIC ${ROLLTUI_INCLUDE_ROOT})
   target_compile_features(${lib} PUBLIC cxx_std_23)
   target_compile_options(${lib} PRIVATE -Wall -Wextra)

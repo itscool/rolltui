@@ -17,16 +17,13 @@ static const char kModifiedSuffix[] = " (modified)";
 #define ROLLTUI_MODIFIED_SUFFIX_LEN (sizeof kModifiedSuffix - 1)
 
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_json.h"
@@ -88,7 +85,7 @@ int rolltui_preset_read_file(const char* path, size_t path_len, RolltuiPutFn put
   char chunk[4096];
   size_t n;
   buf_add(&p, path, path_len);
-  f = fopen(cstr(&p), "rb");
+  f = rolltui_os_fopen(cstr(&p), "rb");
   buf_free(&p);
   if (!f) return 0;
   while ((n = fread(chunk, 1, sizeof chunk, f)) > 0) put(ctx, chunk, n);
@@ -106,11 +103,12 @@ static int make_parents(const char* path, size_t len, RolltuiPutFn err, void* er
   if (cut == 0) return 1;
   buf_add(&dir, path, cut);
   for (i = 1; i <= dir.len && ok; ++i) {
-    if (i != dir.len && dir.p[i] != '/') continue;
+    if (i != dir.len && dir.p[i] != '/' && dir.p[i] != '\\') continue;
+    if (i >= 1 && dir.p[i - 1] == ':') continue; /* a drive, `C:` */
     {
       const char saved = dir.p[i];
       dir.p[i] = '\0';
-      if (mkdir(dir.p, 0777) != 0 && errno != EEXIST) {
+      if (rolltui_os_mkdir(dir.p) != 0) {
         err(err_ctx, "cannot create ", 14);
         err(err_ctx, dir.p, strlen(dir.p));
         err(err_ctx, ": ", 2);
@@ -133,9 +131,9 @@ static int write_file_atomic_put(const char* path, size_t path_len, const char* 
   if (!make_parents(path, path_len, err, err_ctx)) return 0;
   buf_add(&p, path, path_len);
   buf_add(&tmp, path, path_len);
-  snprintf(pid, sizeof pid, ".tmp.%d", (int)getpid());
+  snprintf(pid, sizeof pid, ".tmp.%d", rolltui_os_pid());
   buf_add(&tmp, pid, strlen(pid));
-  f = fopen(cstr(&tmp), "wb");
+  f = rolltui_os_fopen(cstr(&tmp), "wb");
   if (!f) {
     err(err_ctx, "cannot write ", 13);
     err(err_ctx, tmp.p, tmp.len);
@@ -153,7 +151,7 @@ static int write_file_atomic_put(const char* path, size_t path_len, const char* 
       err(err_ctx, tmp.p, tmp.len);
       ok = 0;
     }
-    if (ok && rename(cstr(&tmp), cstr(&p)) != 0) {
+    if (ok && rolltui_os_rename_replace(cstr(&tmp), cstr(&p)) != 0) {
       err(err_ctx, "cannot rename ", 14);
       err(err_ctx, tmp.p, tmp.len);
       err(err_ctx, " to ", 4);
@@ -204,22 +202,22 @@ static void name_list_free(NameList* l) {
  * so handing them over one at a time would mean keeping them anyway. */
 static void collect_json_names(const char* dir, size_t dir_len, NameList* out) {
   Buf path = {NULL, 0, 0};
-  DIR* d;
-  struct dirent* e;
+  RolltuiOsDir* d;
+  const char* name;
   buf_add(&path, dir, dir_len);
-  d = opendir(cstr(&path));
+  d = rolltui_os_dir_open(cstr(&path));
   buf_free(&path);
   if (!d) return;
-  while ((e = readdir(d)) != NULL) {
-    const size_t n = strlen(e->d_name);
-    if (n <= 5 || memcmp(e->d_name + n - 5, ".json", 5) != 0) continue;
-    if (e->d_name[0] == '.') continue;
+  while ((name = rolltui_os_dir_next(d)) != NULL) {
+    const size_t n = strlen(name);
+    if (n <= 5 || memcmp(name + n - 5, ".json", 5) != 0) continue;
+    if (name[0] == '.') continue;
     out->names = (Buf*)rolltui_grow_zeroed(out->names, &out->cap, out->count + 1, sizeof *out->names);
     memset(&out->names[out->count], 0, sizeof(Buf));
-    buf_set(&out->names[out->count], e->d_name, n - 5); /* the stem */
+    buf_set(&out->names[out->count], name, n - 5); /* the stem */
     ++out->count;
   }
-  closedir(d);
+  rolltui_os_dir_close(d);
   if (out->count > 1) qsort(out->names, out->count, sizeof *out->names, name_cmp);
 }
 
@@ -441,7 +439,7 @@ struct RolltuiPresetStore {
   Buf dir, shipped_dir;
   int may_write_shipped;
 
-  pthread_mutex_t mu;
+  RolltuiMutex mu;
   void* working;
   void* origin_content;
   Buf origin;
@@ -491,7 +489,7 @@ RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const char*
   buf_set(&s->dir, dir, dir_len);
   buf_set(&s->shipped_dir, shipped_dir, shipped_dir_len);
   s->may_write_shipped = may_write_shipped;
-  pthread_mutex_init(&s->mu, NULL);
+  rolltui_mutex_init(&s->mu);
   s->version = 1;
   def = rolltui_preset_shipped(d, "default", 7);
   s->working = d->clone(def);
@@ -508,7 +506,7 @@ void rolltui_preset_store_free(RolltuiPresetStore* s) {
   buf_free(&s->shipped_dir);
   buf_free(&s->origin);
   buf_free(&s->last_error);
-  pthread_mutex_destroy(&s->mu);
+  rolltui_mutex_destroy(&s->mu);
   rolltui_mem_free(s);
 }
 
@@ -710,7 +708,7 @@ void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v) {
 void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
   Buf path = {NULL, 0, 0}, text = {NULL, 0, 0}, msg = {NULL, 0, 0};
   void* parsed;
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   s->rep->reset(report);
   store_working_path(s, &path);
   if (!rolltui_preset_read_file(path.p, path.len, buf_put, &text)) {
@@ -721,7 +719,7 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
     buf_free(&path);
     buf_free(&text);
     buf_free(&msg);
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     return;
   }
   /* A FILE THAT FOLLOWS ITS ORIGIN carries no content to parse: read which preset it names and
@@ -754,7 +752,7 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
     buf_free(&path);
     buf_free(&text);
     buf_free(&msg);
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     return;
   }
   parsed = s->d->parse(s->d, text.p, text.len, report);
@@ -771,7 +769,7 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
     buf_free(&path);
     buf_free(&text);
     buf_free(&msg);
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     return;
   }
   s->d->destroy(s->working);
@@ -808,14 +806,14 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
   buf_free(&path);
   buf_free(&text);
   buf_free(&msg);
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
 }
 
 void* rolltui_preset_store_working(const RolltuiPresetStore* s) {
   void* v;
-  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&s->mu);
   v = s->d->clone(s->working);
-  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
   return v;
 }
 
@@ -831,33 +829,33 @@ const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t*
 
 int rolltui_preset_store_modified(const RolltuiPresetStore* s) {
   int m;
-  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&s->mu);
   m = s->modified;
-  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
   return m;
 }
 
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s) {
   unsigned long long v;
-  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&s->mu);
   v = s->version;
-  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
   return v;
 }
 
 void rolltui_preset_store_set_working(RolltuiPresetStore* s, void* v, int persist) {
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   s->d->destroy(s->working);
   s->working = v;
   touch_locked(s, persist);
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
 }
 
 void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist) {
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   fn(s->working, ctx);
   touch_locked(s, persist);
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
 }
 
 void rolltui_preset_list_release(RolltuiPresetListRaw* l) {
@@ -937,9 +935,9 @@ void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetListRaw
 
 void* rolltui_preset_store_get(const RolltuiPresetStore* s, const char* name, size_t len, void* report) {
   void* v;
-  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&s->mu);
   v = get_locked(s, name, len, report, NULL);
-  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
   return v;
 }
 
@@ -956,10 +954,10 @@ static void stem_of(const char* p, size_t len, Buf* out) {
 int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t len, void* report, int persist) {
   int partial = 0;
   void* v;
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   v = get_locked(s, name, len, report, &partial);
   if (!v) {
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     return 0;
   }
   /* CHOOSING A PRESET KEEPS THE PERSON'S OWN SETTINGS (light, dark or auto; colour depth): they are not the preset's to change.
@@ -974,7 +972,7 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
     s->origin_content = s->d->clone(s->working);
   }
   touch_locked(s, persist);
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
   return 1;
 }
 
@@ -1011,7 +1009,7 @@ int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t pat
   void* parsed;
   void* report;
   int result = ROLLTUI_SAVE_SAVED;
-  struct stat st;
+  RolltuiOsStat st;
   if (!s || !path || path_len == 0) return save_result(ROLLTUI_SAVE_BAD_NAME, err);
   if (err) rolltui_str_clear(err);
   if (!rolltui_preset_read_file(path, path_len, buf_put, &text)) {
@@ -1043,14 +1041,14 @@ int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t pat
     buf_free(&text);
     return save_result(ROLLTUI_SAVE_BAD_NAME, err);
   }
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   if (rolltui_preset_is_shipped(s->d, name, name_len)) {
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     buf_free(&text);
     return save_result(ROLLTUI_SAVE_REFUSED_SHIPPED, err);
   }
   store_preset_path(s, name, name_len, &dest);
-  if (stat(cstr(&dest), &st) == 0) {
+  if (rolltui_os_stat(cstr(&dest), 1, &st) == 0) {
     /* Its OWN sentence, not `save_as`'s. That one offers an overwrite, and adding never overwrites
      * — a message naming a way out that does not exist is worse than a short one. */
     if (err) {
@@ -1058,7 +1056,7 @@ int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t pat
       rolltui_str_append(err, name, name_len);
       rolltui_str_append(err, "' is already here", 17);
     }
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     buf_free(&text);
     buf_free(&dest);
     return ROLLTUI_SAVE_EXISTS_ASK;
@@ -1078,7 +1076,7 @@ int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t pat
     }
     buf_free(&why);
     s->rep->destroy(report);
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     buf_free(&text);
     buf_free(&dest);
     return ROLLTUI_SAVE_BAD_NAME;
@@ -1089,7 +1087,7 @@ int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t pat
     result = ROLLTUI_SAVE_WRITE_FAILED;
   else
     ++s->version; /* the chooser rebuilds on a version change, so the new name appears */
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
   buf_free(&text);
   buf_free(&dest);
   return result;
@@ -1099,14 +1097,14 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
   Buf path = {NULL, 0, 0}, bytes = {NULL, 0, 0};
   int result = ROLLTUI_SAVE_SAVED;
   if (err) rolltui_str_clear(err);
-  pthread_mutex_lock(&s->mu);
+  rolltui_mutex_lock(&s->mu);
   if (!rolltui_preset_valid_name(name, len)) {
-    pthread_mutex_unlock(&s->mu);
+    rolltui_mutex_unlock(&s->mu);
     return save_result(ROLLTUI_SAVE_BAD_NAME, err);
   }
   if (rolltui_preset_is_shipped(s->d, name, len)) {
     if (!s->may_write_shipped) {
-      pthread_mutex_unlock(&s->mu);
+      rolltui_mutex_unlock(&s->mu);
       return save_result(ROLLTUI_SAVE_REFUSED_SHIPPED, err);
     }
     buf_add(&path, s->shipped_dir.p, s->shipped_dir.len);
@@ -1114,11 +1112,11 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
     buf_add(&path, name, len);
     buf_add(&path, ".json", 5);
   } else {
-    struct stat st;
+    RolltuiOsStat st;
     store_preset_path(s, name, len, &path);
-    if (!overwrite && stat(cstr(&path), &st) == 0) {
+    if (!overwrite && rolltui_os_stat(cstr(&path), 1, &st) == 0) {
       buf_free(&path);
-      pthread_mutex_unlock(&s->mu);
+      rolltui_mutex_unlock(&s->mu);
       return save_result(ROLLTUI_SAVE_EXISTS_ASK, err);
     }
   }
@@ -1138,7 +1136,7 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
   }
   buf_free(&path);
   buf_free(&bytes);
-  pthread_mutex_unlock(&s->mu);
+  rolltui_mutex_unlock(&s->mu);
   return result;
 }
 
@@ -1740,9 +1738,9 @@ const RolltuiThemePresetValue* rolltui_theme_store_working(const RolltuiThemeSto
   const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
   void* v;
   if (!ps) return NULL;
-  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&ps->mu);
   v = ps->working;
-  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&ps->mu);
   return (const RolltuiThemePresetValue*)v;
 }
 RolltuiThemePresetValue* rolltui_theme_store_copy_working(const RolltuiThemeStore* s) {
@@ -2055,9 +2053,9 @@ const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s) {
   const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
   void* v;
   if (!ps) return NULL;
-  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&ps->mu);
   v = ps->working;
-  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&ps->mu);
   return (const RolltuiLayout*)v;
 }
 RolltuiLayout* rolltui_layout_store_copy_working(const RolltuiLayoutStore* s) {
@@ -2337,9 +2335,9 @@ const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore
   const RolltuiPresetStore* ps = (const RolltuiPresetStore*)s;
   void* v;
   if (!ps) return NULL;
-  pthread_mutex_lock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&ps->mu);
   v = ps->working;
-  pthread_mutex_unlock((pthread_mutex_t*)&ps->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&ps->mu);
   return (const RolltuiBindings*)v;
 }
 RolltuiBindings* rolltui_bindings_store_copy_working(const RolltuiBindingsStore* s) {
@@ -2535,10 +2533,10 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   rolltui_str_clear(out); /* REPLACES; the buffer is kept for the next frame */
   /* ONE LOCK over both reads, because a frame calls this on the thread that renders while another may be loading: `origin` is a
    * buffer a load rewrites, and reading it unlocked is reading memory another thread may be reallocating. */
-  pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_lock((RolltuiMutex*)&s->mu);
   rolltui_str_append(out, s->origin.p ? s->origin.p : "", s->origin.len);
   if (s->modified) rolltui_str_append(out, kModifiedSuffix, ROLLTUI_MODIFIED_SUFFIX_LEN);
-  pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+  rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
 }
 
 /* ============================================================================================
@@ -2563,7 +2561,7 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
     /* Read in place, under the lock. Cloning the working theme — a JSON tree — to read one
      * short string and then freeing it is a copy that exists for no reason. */
     const RolltuiThemePresetValue* w;
-    pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+    rolltui_mutex_lock((RolltuiMutex*)&s->mu);
     w = (const RolltuiThemePresetValue*)s->working;
     if (w != NULL) {
       if (key_len == 10 && memcmp(key, "theme_mode", 10) == 0)
@@ -2571,7 +2569,7 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
       else if (key_len == 11 && memcmp(key, "color_depth", 11) == 0)
         rolltui_str_append(out, w->depth.p ? w->depth.p : "", w->depth.n);
     }
-    pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
+    rolltui_mutex_unlock((RolltuiMutex*)&s->mu);
   }
 }
 

@@ -1,11 +1,10 @@
 #include "rolltui/rolltui.h"
 
-#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_os.h"
 
 void rolltui_dir_list_release(RolltuiDirList* l) {
   size_t i;
@@ -47,8 +46,8 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiD
   const int hidden = (flags & ROLLTUI_DIR_HIDDEN) != 0;
   const int links = (flags & ROLLTUI_DIR_LINKS) != 0;
   char* dir;
-  DIR* d;
-  struct dirent* e;
+  RolltuiOsDir* d;
+  const char* name;
   if (!out) return 0;
   for (size_t i = 0; i < out->n; ++i) rolltui_str_free(&out->v[i].name);
   out->n = 0;
@@ -58,7 +57,7 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiD
   dir = (char*)rolltui_mem_alloc(len + 1);
   memcpy(dir, path ? path : "", len);
   dir[len] = 0;
-  d = opendir(dir);
+  d = rolltui_os_dir_open(dir);
   if (!d) {
     if (err) {
       rolltui_str_set(err, "cannot open ", 12);
@@ -67,31 +66,25 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiD
     rolltui_mem_free(dir);
     return 0;
   }
-  while ((e = readdir(d)) != NULL) {
-    const size_t nlen = strlen(e->d_name);
-    struct stat st;
-    char* full;
+  while ((name = rolltui_os_dir_next(d)) != NULL) {
+    const size_t nlen = strlen(name);
+    RolltuiOsStat st;
     RolltuiDirEntry* slot;
     if (nlen == 0) continue;
     /* `.` and `..` are never entries: they are the same directory and its parent, and a browser
      * walks out by its own means. A dotfile is hidden unless asked for. */
-    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-    if (!hidden && e->d_name[0] == '.') { ++out->hidden_n; continue; }
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    if (!hidden && (name[0] == '.' || rolltui_os_dir_hidden(d))) { ++out->hidden_n; continue; }
     out->v = (RolltuiDirEntry*)rolltui_grow_zeroed(out->v, &out->cap, out->n + 1, sizeof *out->v);
     slot = &out->v[out->n];
-    rolltui_str_set(&slot->name, e->d_name, nlen);
-    /* Never `d_type`: it says LNK for a symlink and answers neither question. `stat` follows the
-     * link, `lstat` describes it, and which one a caller wants is the whole reason for the flag. */
-    full = (char*)rolltui_mem_alloc(len + 1 + nlen + 1);
-    memcpy(full, dir, len);
-    full[len] = '/';
-    memcpy(full + len + 1, e->d_name, nlen);
-    full[len + 1 + nlen] = 0;
-    if ((links ? lstat(full, &st) : stat(full, &st)) == 0) {
-      slot->is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
-      slot->size = slot->is_dir ? 0 : (long long)st.st_size;
-      slot->modified = (long long)st.st_mtime;
-      slot->mode = (unsigned int)st.st_mode;
+    rolltui_str_set(&slot->name, name, nlen);
+    /* Never `d_type`: it says LNK for a symlink and answers neither question. Following the link
+     * or describing it is the caller's choice, and the whole reason for the flag. */
+    if (rolltui_os_dir_stat(d, !links, &st) == 0) {
+      slot->is_dir = ROLLTUI_OS_IS_DIR(st.mode) ? 1 : 0;
+      slot->size = slot->is_dir ? 0 : st.size;
+      slot->modified = st.mtime;
+      slot->mode = st.mode;
       slot->unreadable = 0;
     } else {
       /* THE ENTRY IS STILL THERE. A broken link is a thing on disk that cannot be described, and
@@ -102,10 +95,9 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiD
       slot->mode = 0;
       slot->unreadable = 1;
     }
-    rolltui_mem_free(full);
     ++out->n;
   }
-  closedir(d);
+  rolltui_os_dir_close(d);
   rolltui_mem_free(dir);
   if (out->n > 1)
     qsort(out->v, out->n, sizeof *out->v,

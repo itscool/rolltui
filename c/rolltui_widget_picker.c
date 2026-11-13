@@ -7,11 +7,10 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_map.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_preview.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
@@ -148,11 +147,21 @@ static int rows_visible(const RolltuiPicker* p) {
   return p->inner.h > hr ? p->inner.h - hr : (p->inner.h > 0 ? p->inner.h : 0);
 }
 
+/* PATHS. On macOS and Linux a path starts at `/`. On Windows it starts at a drive's root, `C:/`;
+ * a path is normalised to forward slashes on the way in (rolltui_picker_go_to). */
+static size_t root_len(const char* p, size_t n) {
+#if defined(_WIN32)
+  if (n >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':') return n >= 3 && p[2] == '/' ? 3 : 2;
+#endif
+  return n >= 1 && p[0] == '/' ? 1 : 0;
+}
+static int is_root(const char* p, size_t n) { return p && n > 0 && root_len(p, n) == n; }
+
 /* `dir` + "/" + `name`, with the root's slash not doubled. */
 static void join(const RolltuiStr* dir, const RolltuiStr* name, RolltuiStr* out) {
   if (dir->n == 0) { rolltui_str_set(out, name->p ? name->p : "", name->n); return; } /* the top: its one entry is the root itself */
   rolltui_str_set(out, dir->p ? dir->p : "", dir->n);
-  if (!(dir->n == 1 && dir->p && dir->p[0] == '/')) rolltui_str_append(out, "/", 1);
+  if (!is_root(dir->p, dir->n)) rolltui_str_append(out, "/", 1);
   rolltui_str_append(out, name->p ? name->p : "", name->n);
 }
 
@@ -166,12 +175,12 @@ static int is_bundle(const RolltuiDirEntry* e) {
   return e->is_dir && e->name.n > 4 && e->name.p && memcmp(e->name.p + e->name.n - 4, ".app", 4) == 0;
 }
 static int folder_like(RolltuiPicker* p, const Column* c, const RolltuiDirEntry* e) {
-  struct stat st;
+  RolltuiOsStat st;
   if (is_bundle(e)) return 0;
   if (e->is_dir) return 1;
-  if (!S_ISLNK(e->mode)) return 0;
+  if (!ROLLTUI_OS_IS_LINK(e->mode)) return 0;
   join(&c->dir, &e->name, &p->s3);
-  return stat(p->s3.p, &st) == 0 && S_ISDIR(st.st_mode);
+  return rolltui_os_stat(p->s3.p, 1, &st) == 0 && ROLLTUI_OS_IS_DIR(st.mode);
 }
 static int selected_is_folder(RolltuiPicker* p) {
   Column* c = focused(p);
@@ -247,15 +256,15 @@ static void size_text(long long n, char* out, size_t cap) {
   else snprintf(out, cap, "%.0f%s", v, unit);
 }
 static void modified_text(long long when, char* out, size_t cap) {
-  time_t t = (time_t)when, now = time(NULL);
   struct tm tm_when, tm_now;
-  if (when <= 0) { snprintf(out, cap, "-"); return; }
-  localtime_r(&t, &tm_when);
-  localtime_r(&now, &tm_now);
-  if (tm_when.tm_year == tm_now.tm_year) strftime(out, cap, "%e %b", &tm_when);
+  if (when <= 0 || !rolltui_os_localtime(when, &tm_when) || !rolltui_os_localtime((long long)time(NULL), &tm_now)) {
+    snprintf(out, cap, "-");
+    return;
+  }
+  if (tm_when.tm_year == tm_now.tm_year) strftime(out, cap, "%d %b", &tm_when);
   else strftime(out, cap, "%b %Y", &tm_when);
-  /* `%e` pads with a space: the column is right-aligned, so the pad is dropped */
-  if (out[0] == ' ') memmove(out, out + 1, strlen(out));
+  /* the day without its leading zero: the column is right-aligned */
+  if (out[0] == '0') memmove(out, out + 1, strlen(out));
 }
 
 static void measure_width(RolltuiPicker* p, Column* c) {
@@ -480,12 +489,12 @@ static void out(RolltuiPicker* p) {
   }
   /* At the leftmost column, going out means the parent directory becomes the new root — the one
    * place a path is followed upward, and it never leaves the file system's root. */
-  if (p->root.n <= 1 || !p->root.p) return;
+  if (!p->root.p || p->root.n == 0 || is_root(p->root.p, p->root.n)) return;
   slash = p->root.n;
   while (slash > 0 && p->root.p[slash - 1] != '/') --slash;
   if (slash == 0) return;
   rolltui_str_set(&p->s2, p->root.p + slash, p->root.n - slash); /* the child's name */
-  if (slash == 1) rolltui_str_set(&p->s1, "/", 1);
+  if (slash <= root_len(p->root.p, p->root.n)) rolltui_str_set(&p->s1, p->root.p, root_len(p->root.p, p->root.n));
   else rolltui_str_set(&p->s1, p->root.p, slash - 1);
   set_root(p, p->s1.p, p->s1.n);
   c = focused(p);
@@ -511,12 +520,12 @@ static void out(RolltuiPicker* p) {
 /* Whether a row is other than it was when its folder was read: gone, a different kind of thing, another size, another
  * date or mode. The reader describes the LINK and so does this. */
 static int entry_moved(RolltuiPicker* p, const Column* c, const RolltuiDirEntry* e) {
-  struct stat st;
+  RolltuiOsStat st;
   join(&c->dir, &e->name, &p->s3);
-  if (lstat(p->s3.p, &st) != 0) return !e->unreadable;
+  if (rolltui_os_stat(p->s3.p, 0, &st) != 0) return !e->unreadable;
   if (e->unreadable) return 1;
-  return (S_ISDIR(st.st_mode) ? 1 : 0) != e->is_dir || (long long)(S_ISDIR(st.st_mode) ? 0 : st.st_size) != e->size ||
-         (long long)st.st_mtime != e->modified || (unsigned int)st.st_mode != e->mode;
+  return (ROLLTUI_OS_IS_DIR(st.mode) ? 1 : 0) != e->is_dir || (ROLLTUI_OS_IS_DIR(st.mode) ? 0 : st.size) != e->size ||
+         st.mtime != e->modified || st.mode != e->mode;
 }
 
 /* Whether a column needs reading again. The folder first (a file added, removed or renamed in it moves its stamp), then
@@ -636,11 +645,7 @@ int rolltui_picker_refresh(RolltuiPicker* p) {
 /* The look, on a clock: at most every WATCH_MS, and never spending more than a twentieth of the time looking, so a
  * slow disk or a huge folder backs the interval off rather than eating the frame. Nothing runs headless (the clock is 0):
  * a frame that is a golden is a still. */
-static unsigned long long mono_ms(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (unsigned long long)ts.tv_sec * 1000ULL + (unsigned long long)(ts.tv_nsec / 1000000L);
-}
+static unsigned long long mono_ms(void) { return rolltui_os_monotonic_ms(); }
 static void watch_tick(RolltuiPicker* p) {
   unsigned long long began, spent, wait;
   if (p->opt.no_watch || p->now_ms == 0 || p->n == 0) return;
@@ -797,18 +802,34 @@ void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len) {
   size_t at;
   RolltuiStr full;
   memset(&full, 0, sizeof full);
-  if (len == 0 || path[0] != '/') {
+  if (len == 0 || root_len(path, len) == 0) {
     /* relative: from the working directory, which is where "." means */
     char cwd[4096];
-    if (getcwd(cwd, sizeof cwd)) rolltui_str_set(&full, cwd, strlen(cwd));
+    if (rolltui_os_getcwd(cwd, sizeof cwd) == 0) rolltui_str_set(&full, cwd, strlen(cwd));
     else rolltui_str_set(&full, "/", 1);
     if (len && !(len == 1 && path[0] == '.')) { rolltui_str_append(&full, "/", 1); rolltui_str_append(&full, path, len); }
   } else {
     rolltui_str_set(&full, path, len);
   }
-  while (full.n > 1 && full.p[full.n - 1] == '/') full.p[--full.n] = '\0';
-  set_root(p, "/", 1);
-  at = 1;
+#if defined(_WIN32)
+  {
+    size_t k;
+    for (k = 0; k < full.n; ++k)
+      if (full.p[k] == '\\') full.p[k] = '/';
+    if (root_len(full.p, full.n) == 2) { /* `C:` alone: its root is `C:/` */
+      RolltuiStr fixed;
+      memset(&fixed, 0, sizeof fixed);
+      rolltui_str_set(&fixed, full.p, 2);
+      rolltui_str_append(&fixed, "/", 1);
+      rolltui_str_append(&fixed, full.p + 2, full.n - 2);
+      rolltui_str_free(&full);
+      full = fixed;
+    }
+  }
+#endif
+  while (full.n > root_len(full.p, full.n) && full.p[full.n - 1] == '/') full.p[--full.n] = '\0';
+  set_root(p, full.p, root_len(full.p, full.n) ? root_len(full.p, full.n) : 1);
+  at = root_len(full.p, full.n) ? root_len(full.p, full.n) : 1;
   while (at <= full.n) {
     const char* rest = full.p + at;
     const char* slash = memchr(rest, '/', full.n - at);
@@ -1110,7 +1131,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
     slash = c->dir.n;
     while (slash > 0 && c->dir.p[slash - 1] != '/') --slash;
     if (c->dir.n == 0) rolltui_str_clear(&p->s1); /* the top: unnamed, uncounted */
-    else if (c->dir.n == 1 && c->dir.p[0] == '/') fit_into(p, "/", 1, cw - 1, &p->s1);
+    else if (is_root(c->dir.p, c->dir.n)) fit_into(p, c->dir.p, c->dir.n, cw - 1, &p->s1);
     else fit_into(p, c->dir.p + slash, c->dir.n - slash, cw - 1, &p->s1);
     put_clipped(&d, x + 1, d.r.y, p->s1.p ? p->s1.p : "", p->s1.n, head, cw - 1);
     /* THE COUNT, right-aligned on the head: how many entries this column holds (dotfiles as the

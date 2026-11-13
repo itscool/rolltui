@@ -2,6 +2,7 @@
  * rolltui_widget_transcript.h; the rules are rolltui/Transcript.hpp's. */
 #include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_os.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -860,11 +861,7 @@ int rolltui_transcript_find_prev(RolltuiTranscript* t) {
 
 /* ---- layout ------------------------------------------------------------------------------ */
 
-static unsigned long long now_us(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)(ts.tv_nsec / 1000);
-}
+static unsigned long long now_us(void) { return rolltui_os_monotonic_us(); }
 
 void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, RolltuiRect area,
                                const RolltuiTranscriptOptions* opt) {
