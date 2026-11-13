@@ -49,7 +49,18 @@
 //      depending on the parser, which is what happens the moment a library hands something
 //      back as a tree instead of as text.
 //
+#if defined(_WIN32)
+#include <direct.h>
+#include <io.h>
+#include <process.h>
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#ifndef R_OK
+#define R_OK 4
+#endif
+#else
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -985,7 +996,7 @@ int main(int argc, char** argv) {
   struct ScriptStep { RolltuiStr flag, val; };
   std::vector<ScriptStep> script;
   for (int i = 1; i < argc; ++i) {
-    const StrView a = argv[i];
+    [[maybe_unused]] const StrView a = argv[i];
     [[maybe_unused]] auto next = [&]() -> RolltuiStr { return i + 1 < argc ? RolltuiStr(argv[++i]) : RolltuiStr(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `rolltui-paint-selftest`, which is this same

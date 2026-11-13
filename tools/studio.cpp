@@ -193,7 +193,18 @@
 #include <vector>
 
 #include <sys/stat.h>
+#if defined(_WIN32)
+#include <direct.h>
+#include <io.h>
+#include <process.h>
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#ifndef R_OK
+#define R_OK 4
+#endif
+#else
 #include <unistd.h>
+#endif
 
 #include "rolltui/rolltui.h"
 #include "rolltui/rolltui_cpp.h"
@@ -405,7 +416,7 @@ RolltuiDocument parse_fixture(StrView text) {
       const std::size_t sp = spec.find(' ');
       const StrView name = spec.substr(0, sp);
       const int st = rolltui_effect_state_from_name(name.data(), name.size());
-      state = st < 0 ? ROLLTUI_EFFECT_STATE_NONE : static_cast<unsigned char>(st);
+      state = static_cast<unsigned char>(st < 0 ? static_cast<int>(ROLLTUI_EFFECT_STATE_NONE) : st);
       fraction = sp == StrView::npos ? 0 : std::strtod(rolltui::own(spec.drop_front(sp + 1)).c_str(), nullptr);
       continue;
     }

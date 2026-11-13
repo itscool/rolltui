@@ -34,7 +34,18 @@
 // `selftest/script.hpp`'s); the reply then streams on the SCRIPT'S clock, so `Enter Tick:5000` is a
 // finished reply and `Enter` alone is one that has not started.
 //
+#if defined(_WIN32)
+#include <direct.h>
+#include <io.h>
+#include <process.h>
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#ifndef R_OK
+#define R_OK 4
+#endif
+#else
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -1383,18 +1394,32 @@ struct App {
   void run_editor() {
     editor_wanted = false;
     if (!term) { hint = "no terminal to hand to an editor"; return; }
+    const StrView d = draft();
+#if defined(_WIN32)
+    static unsigned drafts = 0;
+    const char* tmp = std::getenv("TEMP");
+    RolltuiStr path = rolltui::format("%s\\rolltui-chat-%d-%u.md", tmp && *tmp ? tmp : ".", _getpid(), ++drafts);
+    FILE* out = std::fopen(path.c_str(), "wb");
+    if (!out) { hint = "could not make a file for the editor"; return; }
+    const bool wrote = std::fwrite(d.data(), 1, d.size(), out) == d.size();
+    std::fclose(out);
+    const char* fallback = "notepad";
+    const char quote = '"';
+#else
     const char* tmp = std::getenv("TMPDIR");
     RolltuiStr path = rolltui::format("%s/rolltui-chat-XXXXXX.md", tmp && *tmp ? tmp : "/tmp");
     const int fd = mkstemps(path.p, 3);
     if (fd < 0) { hint = "could not make a file for the editor"; return; }
-    const StrView d = draft();
     const bool wrote = ::write(fd, d.data(), d.size()) == static_cast<ssize_t>(d.size());
     ::close(fd);
+    const char* fallback = "vi";
+    const char quote = '\'';
+#endif
     const char* ed = std::getenv("VISUAL");
     if (!ed || !*ed) ed = std::getenv("EDITOR");
-    if (!ed || !*ed) ed = "vi";
-    if (wrote && !StrView(path).contains('\'')) {
-      const RolltuiStr cmd = rolltui::format("%s '%s'", ed, path.c_str());
+    if (!ed || !*ed) ed = fallback;
+    if (wrote && !StrView(path).contains(quote)) {
+      const RolltuiStr cmd = rolltui::format("%s %c%s%c", ed, quote, path.c_str(), quote);
       // THE TERMINAL IS THE EDITOR'S until it exits: its own modes, the main screen, no raw input.
       rolltui_terminal_suspend(term);
       const int rc = std::system(cmd.c_str());
