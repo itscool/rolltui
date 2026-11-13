@@ -9,7 +9,7 @@
       { "match": "^\\s*#.*$", "class": "comment" },
       { "match": "^\\s*!", "class": "keyword" },
       { "match": "\\\\.", "class": "escape" },
-      { "match": "\\*\\*|\\*|\\?|\\[[^\\]\\n]{0,64}\\]", "class": "constant" },
+      { "match": "\\*\\*|\\*|\\?|\\[[^\\]\\n]*\\]", "class": "constant" },
       { "match": "/", "class": "punct" }
     ]
   }

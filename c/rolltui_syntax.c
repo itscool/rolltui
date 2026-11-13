@@ -92,6 +92,7 @@ typedef struct Rule {
   char** not_after;             /* a word after one of these is a member, not a keyword */
   size_t n_not_after;
   unsigned char wc[32];         /* words rule: the language's extra word bytes (`-` in a shell) */
+  size_t memo_base;             /* after link: where this rule's regex memo slots begin in a highlighter's memo */
 } Rule;
 
 typedef struct Ctx {
@@ -124,6 +125,7 @@ struct RolltuiSyntax {
   size_t nlangs, langs_cap;
   Ctx* ctxs;
   size_t nctxs, ctxs_cap;
+  size_t memo_total;  /* after link: every rule's regex memo slots, end to end */
   int dirty;
 };
 
@@ -661,6 +663,14 @@ static void link_all(RolltuiSyntax* s) {
     c->flat = NULL;
     c->nflat = 0;
   }
+  s->memo_total = 0;
+  for (i = 0; i < s->nctxs; ++i) {
+    Ctx* c = &s->ctxs[i];
+    for (k = 0; k < c->nrules; ++k) {
+      c->rules[k].memo_base = s->memo_total;
+      s->memo_total += c->rules[k].re ? rolltui_regex_memo_slots(c->rules[k].re) : 0;
+    }
+  }
   for (i = 0; i < s->nctxs; ++i) {
     Ctx* c = &s->ctxs[i];
     size_t cap = 0;
@@ -733,6 +743,9 @@ struct RolltuiHighlight {
   size_t n, cap;
   size_t* first;       /* first[i]: the index of line i's first run; first[nlines] == n */
   size_t nlines, first_cap;
+  RolltuiRegexSlot* memo; /* what each rule's regex proved earlier on the line in hand (rolltui_regex_match_memo) */
+  size_t memo_cap;
+  unsigned memo_gen;      /* the line's number for the memo: a new one per line, so nothing is ever cleared */
 };
 
 RolltuiHighlight* rolltui_highlight_new(void) {
@@ -745,6 +758,7 @@ void rolltui_highlight_free(RolltuiHighlight* h) {
   if (!h) return;
   rolltui_mem_free(h->runs);
   rolltui_mem_free(h->first);
+  rolltui_mem_free(h->memo);
   rolltui_mem_free(h);
 }
 
@@ -887,6 +901,11 @@ static void run_line(Runner* R, const char* line, size_t len) {
   while (limit > 0 && limit < len && ((unsigned char)line[limit] & 0xC0) == 0x80) --limit; /* not in the middle of a character */
   R->line = line;
   R->lim = limit;
+  /* a new number for the memo: what was proved on the line before says nothing about this one */
+  if (++R->out->memo_gen == 0) {
+    if (R->out->memo) memset(R->out->memo, 0, R->out->memo_cap * sizeof *R->out->memo);
+    R->out->memo_gen = 1;
+  }
   while (pos < limit) {
     Frame* fr = &R->stack[R->sp - 1];
     const Ctx* c = &R->s->ctxs[fr->ctx];
@@ -930,7 +949,9 @@ static void run_line(Runner* R, const char* line, size_t len) {
           memset(&refs, 0, sizeof refs);
           for (g = 1; g < 10; ++g) { refs.p[g] = fr->buf[g]; refs.n[g] = fr->len[g]; }
         }
-        if (!rolltui_regex_match_at(r->re, line, limit, pos, rolltui_regex_uses_refs(r->re) ? &refs : NULL, &m)) continue;
+        if (!rolltui_regex_match_memo(r->re, line, limit, pos, rolltui_regex_uses_refs(r->re) ? &refs : NULL, &m,
+                                      R->out->memo + r->memo_base, R->out->memo_gen))
+          continue;
         end = (size_t)m.end[0];
         if (end == pos && r->action == A_NONE) continue; /* a match of nothing that does nothing would never move */
         if (r->has_caps) {
@@ -969,6 +990,11 @@ long rolltui_highlight_run(RolltuiHighlight* h, RolltuiSyntax* s, int lang, cons
   link_all(s);
   h->n = 0;
   h->nlines = 0;
+  if (s->memo_total > h->memo_cap) {
+    /* the grown part is zero, which no line's number ever is; the number itself only rises, so a slot stamped on an earlier line
+     * — this run's or another's — never reads as this line's */
+    h->memo = (RolltuiRegexSlot*)rolltui_grow_zeroed(h->memo, &h->memo_cap, s->memo_total, sizeof *h->memo);
+  }
   R = (Runner*)rolltui_mem_alloc(sizeof *R);
   memset(R, 0, sizeof *R);
   R->s = s;

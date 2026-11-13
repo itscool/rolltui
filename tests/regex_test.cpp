@@ -3,8 +3,13 @@
 // What is held to account: every construct it takes does what its name says, every construct it does not take is
 // REFUSED WITH A REASON (a language file with a typo must say so, not colour nothing), and it cannot be made to hang or
 // crash — by a pattern that loops on nothing, by one that backtracks without end, by random bytes.
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <fstream>
 #include <string>
 #include <vector>
 #include "rolltui/rolltui.h"
@@ -281,6 +286,172 @@ int main() {
     }
     rolltui_regex_free(re);
     check(true, "four thousand random bytes through a loopy pattern: it returned");
+  }
+
+  // ---- THE MATCHER AGAINST ITS REFERENCE: same answers, everywhere --------------------------------------------------------
+  // A loop over one byte is one OP_STAR, and a line's later calls skip what its earlier ones proved fails. Both are only
+  // allowed to change how long an answer takes, never the answer, so every pattern is compiled twice — as it is, and
+  // ROLLTUI_REGEX_PLAIN, every loop a branch per turn and nothing remembered, which is how the matcher worked before — and asked
+  // at EVERY position of every line three ways: the plain one; the real one with no memo; the real one with a memo, walking the
+  // line forwards (as the highlighter does), backwards, and in a shuffled order. Whether it matched, where it ended and every
+  // group must agree. Lines stay short enough that the plain one's per-turn frames never run out, which is where it differs.
+  {
+    struct Corpus { std::string pat; bool icase; std::string lang; };
+    std::vector<Corpus> pats;
+    // every pattern in every shipped language file
+    {
+      namespace fs = std::filesystem;
+      std::string lang;
+      std::function<void(const RolltuiJsonValue*)> walk = [&](const RolltuiJsonValue* v) {
+        if (!v) return;
+        if (v->kind == ROLLTUI_JSON_OBJECT) {
+          for (std::size_t i = 0; i < v->obj_n; ++i) {
+            const RolltuiJsonMember* mb = v->obj[i];
+            const std::string key(mb->key.p ? mb->key.p : "", mb->key.n);
+            if ((key == "match" || key == "begin" || key == "end") && mb->value->kind == ROLLTUI_JSON_STRING) {
+              const std::string pat(mb->value->str.p ? mb->value->str.p : "", mb->value->str.n);
+              pats.push_back({pat, false, lang});
+              pats.push_back({pat, true, lang});
+            }
+            walk(mb->value);
+          }
+        } else if (v->kind == ROLLTUI_JSON_ARRAY) {
+          for (std::size_t i = 0; i < v->arr_n; ++i) walk(v->arr[i]);
+        }
+      };
+      for (const auto& e : fs::directory_iterator(fs::path(ROLLTUI_SOURCE_DIR) / "presets" / "syntax")) {
+        std::ifstream in(e.path(), std::ios::binary);
+        const std::string t((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        RolltuiJsonValue* root = rolltui_json_parse(t.data(), t.size(), nullptr);
+        lang = e.path().stem().string();
+        walk(root);
+        rolltui_json_free(root);
+      }
+    }
+    const std::size_t shipped = pats.size();
+    // and random ones, from a grammar that reaches every construct a loop can sit next to
+    std::uint32_t seed = 0x5eed1234u;
+    auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return seed >> 8; };
+    const char* atoms[] = {"a", "b", "#", "\\[", "\\]", "\"", ".", "[ab]", "[^a]", "[^\\]\"]", "\\w", "\\s", "x", "(a|b)", "(?:ab|a)",
+                           "(?=a)", "(?!b)", "\\b", "^", "$", "(#)"};
+    const char* quants[] = {"", "", "*", "+", "?", "*?", "+?", "{2,}", "{0,3}", "*", "+"};
+    for (int i = 0; i < 600; ++i) {
+      std::string pat;
+      const int k = 1 + static_cast<int>(rnd() % 5);
+      for (int j = 0; j < k; ++j) {
+        std::string a = atoms[rnd() % (sizeof atoms / sizeof *atoms)];
+        if (rnd() % 7 == 0) a = "(?:" + a + std::string(atoms[rnd() % (sizeof atoms / sizeof *atoms)]) + ")";
+        pat += a;
+        pat += quants[rnd() % (sizeof quants / sizeof *quants)];
+      }
+      pats.push_back({pat, (rnd() & 7) == 0, ""});
+    }
+    // the lines: every sample's lines, and the hated runs, at most 200 bytes
+    // a shipped pattern meets its own language's sample; every pattern meets the hated runs and random lines
+    std::map<std::string, std::vector<std::string>> samples;
+    std::vector<std::string> lines;
+    {
+      namespace fs = std::filesystem;
+      for (const auto& e : fs::directory_iterator(fs::path(ROLLTUI_SOURCE_DIR) / "tests" / "fixtures" / "syntax")) {
+        if (e.path().extension() != ".sample") continue;
+        std::ifstream in(e.path(), std::ios::binary);
+        std::string l;
+        while (std::getline(in, l)) samples[e.path().stem().string()].push_back(l.substr(0, 200));
+      }
+      for (const char* unit : {"#", "[[=", "$", "${", "<a", "a<", "#[", "\"", "\\\"", "- ", "ab", "]["}) {
+        std::string r;
+        while (r.size() < 160) r += unit;
+        lines.push_back(r);
+      }
+      for (int i = 0; i < 60; ++i) {
+        std::string r;
+        const int n = static_cast<int>(rnd() % 40);
+        for (int j = 0; j < n; ++j) r.push_back("ab#[]\" x"[rnd() % 8]);
+        lines.push_back(r);
+      }
+    }
+    RolltuiRegexRefs refs{};
+    refs.p[1] = "#";
+    refs.n[1] = 1;
+    long asked = 0, differ = 0, compiled = 0;
+    std::string first;
+    unsigned gen = 0;
+    auto same = [](int a, const RolltuiRegexMatch& x, int b, const RolltuiRegexMatch& y) {
+      if ((a != 0) != (b != 0)) return false;
+      if (!a) return true;
+      for (int g = 0; g < 10; ++g)
+        if (x.start[g] != y.start[g] || x.end[g] != y.end[g]) return false;
+      return true;
+    };
+    for (const Corpus& c : pats) {
+      RolltuiRegex* plain = rolltui_regex_compile_flags(c.pat.data(), c.pat.size(), c.icase ? 1 : 0,
+                                                        ROLLTUI_REGEX_PLAIN | ROLLTUI_REGEX_UNBOUNDED, nullptr);
+      RolltuiRegex* real = rolltui_regex_compile_flags(c.pat.data(), c.pat.size(), c.icase ? 1 : 0, ROLLTUI_REGEX_UNBOUNDED, nullptr);
+      if ((plain == nullptr) != (real == nullptr)) { ++differ; if (first.empty()) first = "/" + c.pat + "/ compiles one way only"; }
+      if (!plain || !real) { rolltui_regex_free(plain); rolltui_regex_free(real); continue; }
+      ++compiled;
+      std::vector<RolltuiRegexSlot> memo(rolltui_regex_memo_slots(real));
+      std::vector<const std::string*> mine;
+      for (const std::string& l : lines) mine.push_back(&l);
+      if (samples.count(c.lang)) for (const std::string& l : samples[c.lang]) mine.push_back(&l);
+      for (const std::string* lp : mine) {
+        const std::string& line = *lp;
+        const std::size_t len = line.size();
+        std::vector<std::size_t> order(len + 1);
+        for (std::size_t i = 0; i <= len; ++i) order[i] = i;
+        for (int pass = 0; pass < 3; ++pass) {
+          if (pass == 1) std::reverse(order.begin(), order.end());
+          if (pass == 2) for (std::size_t i = len; i > 0; --i) std::swap(order[i], order[rnd() % (i + 1)]);
+          ++gen;
+          for (std::size_t at : order) {
+            RolltuiRegexMatch a{}, b{}, m{};
+            const int ra = rolltui_regex_match_at(plain, line.data(), len, at, &refs, &a);
+            const int rm = rolltui_regex_match_memo(real, line.data(), len, at, &refs, &m, memo.data(), gen);
+            ++asked;
+            bool ok = same(ra, a, rm, m);
+            if (pass == 0) {
+              const int rb = rolltui_regex_match_at(real, line.data(), len, at, &refs, &b);
+              ok = ok && same(ra, a, rb, b);
+            }
+            if (!ok) {
+              ++differ;
+              if (first.empty())
+                first = "/" + c.pat + "/" + (c.icase ? "i" : "") + " at " + std::to_string(at) + " of '" + line + "' (pass " +
+                        std::to_string(pass) + "): reference " + (ra ? std::to_string(a.end[0]) : std::string("no")) + ", now " +
+                        (rm ? std::to_string(m.end[0]) : std::string("no"));
+            }
+          }
+        }
+      }
+      rolltui_regex_free(plain);
+      rolltui_regex_free(real);
+    }
+    check(shipped > 400 && compiled > 1500,
+          "the reference comparison reads every shipped language's patterns (" + std::to_string(shipped) + ") and random ones (" +
+              std::to_string(compiled) + " compiled in all)");
+    check(differ == 0, "the matcher answers exactly as its reference at every position, with and without a memo, in any order: " +
+                           std::to_string(asked) + " questions, " + std::to_string(differ) + " different" +
+                           (first.empty() ? "" : " — first: " + first));
+  }
+
+  // ---- A TOKEN LONGER THAN A THOUSAND TURNS IS STILL ONE TOKEN ------------------------------------------------------------
+  // The backtracking stack was a fixed thousand frames and a loop leaves one a turn, so a comment or a dotted number longer than
+  // that failed to match at all, and then failed again from every later position of the line. A loop over one byte is one frame
+  // now (OP_STAR), and any other loop's frames grow onto the heap, bounded by the step budget as every match already was.
+  {
+    const std::string comment = "# " + std::string(3000, 'z');
+    std::string dotted = "1";
+    for (int i = 0; i < 1500; ++i) dotted += ".2";
+    const std::string pc = "#.*$", pd = "\\d+(?:\\.\\d+)*";
+    RolltuiRegex* rc = rolltui_regex_compile(pc.data(), pc.size(), 0, nullptr);
+    RolltuiRegex* rd = rolltui_regex_compile(pd.data(), pd.size(), 0, nullptr);
+    RolltuiRegexMatch m{};
+    check(rolltui_regex_match_at(rc, comment.data(), comment.size(), 0, nullptr, &m) && m.end[0] == static_cast<int>(comment.size()),
+          "a comment of 3002 bytes is one match of #.*$, end to end");
+    check(rolltui_regex_match_at(rd, dotted.data(), dotted.size(), 0, nullptr, &m) && m.end[0] == static_cast<int>(dotted.size()),
+          "…and 1.2.2. ... of 3001 bytes is one match of \\d+(?:\\.\\d+)*: a group loop's 1500 turns, past the first thousand frames");
+    rolltui_regex_free(rc);
+    rolltui_regex_free(rd);
   }
 
   check(live_bytes() == base, "every pattern compiled and freed: the library holds what it held before (" + std::to_string(live_bytes()) + " vs " + std::to_string(base) + ")");

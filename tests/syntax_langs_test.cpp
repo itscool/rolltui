@@ -333,13 +333,21 @@ int main(int argc, char** argv) {
       for (const Fixture& fx : kFixtures) {
         const int lang = lang_of(s, fx.language);
         for (const Hate& hate : hates) {
-          const auto t0 = std::chrono::steady_clock::now();
-          rolltui_highlight_run(h, s, lang, hate.text.data(), hate.text.size());
-          const double ms = ms_since(t0);
+          // the faster of two runs: a line that is slow is slow every time, a scheduling hiccup is not
+          double ms = 1e9;
+          for (int k = 0; k < 2; ++k) {
+            const auto t0 = std::chrono::steady_clock::now();
+            rolltui_highlight_run(h, s, lang, hate.text.data(), hate.text.size());
+            ms = std::min(ms, ms_since(t0));
+          }
           if (ms > worst) { worst = ms; worst_case = std::string(fx.language) + " on " + hate.name; }
         }
       }
-      check(worst < 800.0 * kClockScale, "no language is slow on a line it hates: the worst is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_case + ")");
+      // 40 ms: every language costs a few on its worst line since the matcher stopped re-proving, at each position, what it had
+      // just proved fails (rolltui_regex_match_memo) and stopped running out of stack on a long token. The bound sits well above
+      // that and well below what either flaw cost — 57 ms for JSON on a run of `$`, 128 ms for Swift on one of `#` — so a matcher
+      // that lost either would fail here, which the 800 ms this was before could not see.
+      check(worst < 40.0 * kClockScale, "no language is slow on a line it hates: the worst is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_case + ")");
       rolltui_highlight_free(h);
     }
 

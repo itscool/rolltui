@@ -55,6 +55,32 @@ void rolltui_regex_free(RolltuiRegex* re); /* a no-op on NULL */
 int rolltui_regex_match_at(const RolltuiRegex* re, const char* line, size_t len, size_t at, const RolltuiRegexRefs* refs,
                            RolltuiRegexMatch* m);
 
+/* THE SAME QUESTION ASKED ALONG A LINE, remembering what earlier answers proved. A highlighter asks a rule at every position of a
+ * line in turn, and a pattern like `\[[^\]]*\]` on a line with no `]` spends the rest of the line failing at EVERY `[`: the
+ * square of the line's length. With a memo, a loop over one byte that has failed from one place records the range it covers, and
+ * a later call entering that loop inside the range fails at once — so a line costs what one pass over it costs. The answers are
+ * exactly those of `rolltui_regex_match_at`: only work known to fail is skipped.
+ *
+ * `memo`: `rolltui_regex_memo_slots(re)` slots the CALLER owns and keeps for this regex, zeroed once. `gen`: the caller's number
+ * for the line; every call with the same `gen` must ask about the same `line`, `len` and `refs`, so a caller moves to a new
+ * number for each line (a slot stamped with another number is empty, so nothing need be cleared). `gen` 0 is never valid, and
+ * `memo` NULL remembers nothing. */
+typedef struct RolltuiRegexSlot {
+  unsigned gen;
+  int lo, hi;
+} RolltuiRegexSlot;
+size_t rolltui_regex_memo_slots(const RolltuiRegex* re); /* 0 for a pattern with a back-reference: it keeps nothing */
+int rolltui_regex_match_memo(const RolltuiRegex* re, const char* line, size_t len, size_t at, const RolltuiRegexRefs* refs,
+                             RolltuiRegexMatch* m, RolltuiRegexSlot* memo, unsigned gen);
+
+/* THE REFERENCE: every loop compiled as a branch per turn, as before OP_STAR, with nothing remembered — what the differential test
+ * in regex_test.cpp holds the matcher to. Not for a highlighter: it fails on a run longer than its backtracking stack. */
+#define ROLLTUI_REGEX_PLAIN 1
+/* No step budget and a stack sixty-four times as deep, so that two matchers are compared on their ANSWERS and never on where
+ * each gives up. The differential test's alone: a highlighter needs the budget that keeps a careless pattern from hanging it. */
+#define ROLLTUI_REGEX_UNBOUNDED 2
+RolltuiRegex* rolltui_regex_compile_flags(const char* pat, size_t n, int icase, int flags, RolltuiStr* err);
+
 /* Whether a match could BEGIN with byte `b`. Conservative: true whenever the pattern can match empty or starts by
  * looking around, so a false answer is always safe to act on. */
 int rolltui_regex_first_byte(const RolltuiRegex* re, unsigned char b);

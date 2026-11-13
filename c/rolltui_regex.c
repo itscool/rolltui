@@ -9,16 +9,20 @@
 #define MAX_SETS 256
 #define MAX_REPEAT 64       /* {n,m}: each copy is compiled, so the count is capped */
 #define MAX_STEPS 20000     /* per match: past this it fails rather than hangs */
-#define MAX_STACK 1024
+#define MAX_STACK 1024      /* frames on the C stack; a match that needs more grows onto the heap, bounded by the steps */
 #define MAX_DEPTH 24        /* nesting of groups in a pattern */
 
 enum { OP_CHAR, OP_ANY, OP_SET, OP_SPLIT, OP_JMP, OP_SAVE, OP_BOL, OP_EOL, OP_WORDB, OP_NWORDB, OP_LOOK, OP_LOOKEND,
-       OP_BACKREF, OP_LOOPSET, OP_LOOPCHK, OP_MATCH };
+       OP_BACKREF, OP_LOOPSET, OP_LOOPCHK, OP_MATCH, OP_STAR };
+
+/* OP_STAR — `x*` / `x*?` over ONE byte-matcher (a letter, `.`, a class): c/x as that matcher's OP_CHAR/OP_SET would have them,
+ * y the matcher (STAR_CHAR/_ANY/_SET) with STAR_LAZY or'd in, z the memo slot or -1. See `run` for why it exists. */
+enum { STAR_CHAR = 0, STAR_ANY = 1, STAR_SET = 2, STAR_LAZY = 16 };
 
 typedef struct Inst {
   unsigned char op;
   unsigned char c;
-  int x, y;
+  int x, y, z;
 } Inst;
 
 typedef unsigned char Set[32];
@@ -30,6 +34,8 @@ struct RolltuiRegex {
   size_t nsets, sets_cap;
   int ngroups;
   int nloops;
+  int nslots;   /* OP_STARs that may remember a failure across calls on one line (rolltui_regex_memo_slots) */
+  int unbounded; /* ROLLTUI_REGEX_UNBOUNDED: no step budget, a deep stack — the differential test's, never a highlighter's */
   int uses_refs;
   int nullable;
   int icase;
@@ -350,6 +356,8 @@ static int parse_alt(Parser* p) {
 typedef struct Gen {
   Parser* p;
   RolltuiRegex* re;
+  int plain;          /* ROLLTUI_REGEX_PLAIN: every loop as SPLIT/JMP, the reference the differential test compares against */
+  int nullable_loop;  /* inside the body of a loop that can match nothing: an OP_STAR here may not remember (see `run`) */
 } Gen;
 
 static int emit(Gen* g, int op, int c, int x, int y) {
@@ -360,6 +368,7 @@ static int emit(Gen* g, int op, int c, int x, int y) {
   re->prog[re->n].c = (unsigned char)c;
   re->prog[re->n].x = x;
   re->prog[re->n].y = y;
+  re->prog[re->n].z = -1;
   return (int)re->n++;
 }
 
@@ -385,8 +394,17 @@ static void gen(Gen* g, int nd);
 
 static void gen_rep(Gen* g, const Node* n) {
   const int lo = n->a, hi = n->b, kid = n->kid;
+  const Node* k = &g->p->nodes[kid];
   int i;
   for (i = 0; i < lo; ++i) gen(g, kid);
+  if (hi < 0 && !g->plain && (k->type == N_CHAR || k->type == N_ANY || k->type == N_SET)) {
+    /* an unbounded loop over one byte-matcher: one OP_STAR (see `run`) */
+    const int kind = k->type == N_CHAR ? STAR_CHAR : k->type == N_ANY ? STAR_ANY : STAR_SET;
+    const int st = emit(g, OP_STAR, k->ch, k->a, kind | (n->lazy ? STAR_LAZY : 0)); /* a: a letter's case flag, a set's index */
+    if (g->p->failed) return;
+    if (!g->nullable_loop) g->re->prog[st].z = g->re->nslots++;
+    return;
+  }
   if (hi < 0) {
     /* L1: split L2, L3;  L2: kid; jmp L1;  L3: — and, when the kid can match nothing, a check that each turn moved */
     const int nullable = can_be_empty(g->p, kid);
@@ -400,7 +418,9 @@ static void gen_rep(Gen* g, const Node* n) {
     if (g->p->failed) return;
     g->re->prog[sp].x = sp + 1;
     if (nullable) emit(g, OP_LOOPSET, 0, reg, 0);
+    if (nullable) ++g->nullable_loop;
     gen(g, kid);
+    if (nullable) --g->nullable_loop;
     if (nullable) emit(g, OP_LOOPCHK, 0, reg, 0);
     emit(g, OP_JMP, 0, l1, 0);
     if (g->p->failed) return;
@@ -489,6 +509,12 @@ static void first_walk(RolltuiRegex* re, int pc, unsigned char* seen, Set out, i
       case OP_CHAR: set_add(out, I->c); if (I->x) set_add(out, I->c - 32u); return;
       case OP_ANY: for (c = 0; c < 256; ++c) if (c != '\n') set_add(out, c); return;
       case OP_SET: for (c = 0; c < 32; ++c) out[c] = (unsigned char)(out[c] | re->sets[I->x][c]); return;
+      case OP_STAR:  /* the byte it repeats may begin the match, and so may whatever follows it, since it can match nothing */
+        if ((I->y & 15) == STAR_CHAR) { set_add(out, I->c); if (I->x) set_add(out, I->c - 32u); }
+        else if ((I->y & 15) == STAR_ANY) { for (c = 0; c < 256; ++c) if (c != '\n') set_add(out, c); }
+        else for (c = 0; c < 32; ++c) out[c] = (unsigned char)(out[c] | re->sets[I->x][c]);
+        ++pc;
+        continue;
       case OP_SPLIT: first_walk(re, I->x, seen, out, all); pc = I->y; continue;
       case OP_JMP: pc = I->x; continue;
       case OP_LOOK: pc = I->x; continue;  /* it constrains, and consumes nothing: what follows still begins the match */
@@ -503,6 +529,10 @@ static void first_walk(RolltuiRegex* re, int pc, unsigned char* seen, Set out, i
 
 /* ---- compile ------------------------------------------------------------------------------------------ */
 RolltuiRegex* rolltui_regex_compile(const char* pat, size_t n, int icase, RolltuiStr* err) {
+  return rolltui_regex_compile_flags(pat, n, icase, 0, err);
+}
+
+RolltuiRegex* rolltui_regex_compile_flags(const char* pat, size_t n, int icase, int flags, RolltuiStr* err) {
   Parser p;
   Gen g;
   RolltuiRegex* re = (RolltuiRegex*)rolltui_mem_alloc(sizeof *re);
@@ -520,6 +550,9 @@ RolltuiRegex* rolltui_regex_compile(const char* pat, size_t n, int icase, Rolltu
   if (!p.failed) {
     g.p = &p;
     g.re = re;
+    g.plain = (flags & ROLLTUI_REGEX_PLAIN) != 0;
+    re->unbounded = (flags & ROLLTUI_REGEX_UNBOUNDED) != 0;
+    g.nullable_loop = 0;
     emit(&g, OP_SAVE, 0, 0, 0);
     gen(&g, root);
     emit(&g, OP_SAVE, 0, 1, 0);
@@ -551,11 +584,13 @@ int rolltui_regex_first_byte(const RolltuiRegex* re, unsigned char b) { return r
 int rolltui_regex_groups(const RolltuiRegex* re) { return re ? re->ngroups : 0; }
 int rolltui_regex_uses_refs(const RolltuiRegex* re) { return re ? re->uses_refs : 0; }
 int rolltui_regex_can_be_empty(const RolltuiRegex* re) { return re ? re->nullable : 0; }
+size_t rolltui_regex_memo_slots(const RolltuiRegex* re) { return re && !re->uses_refs ? (size_t)re->nslots : 0; }
 
 /* ---- the matcher -------------------------------------------------------------------------------------- */
-enum { K_BRANCH, K_CAP, K_REG };
+enum { K_BRANCH, K_CAP, K_REG, K_STAR };
+/* K_STAR: a = the OP_STAR's pc, b = where it began, c = where the try in hand ends, d = (greedy) the run's end */
 typedef struct Frame {
-  int kind, a, b;
+  int kind, a, b, c, d;
 } Frame;
 
 typedef struct Vm {
@@ -566,9 +601,51 @@ typedef struct Vm {
   int caps[20];
   int regs[16];
   Frame* stack;
-  int sp;
-  int steps;
+  int sp, stack_cap;
+  int stack_max;    /* the most it may grow to */
+  int stack_owned;  /* the stack is the heap's: freed at the end of the call */
+  int steps, max_steps;
+  RolltuiRegexSlot* memo; /* NULL: remember nothing */
+  unsigned gen;
 } Vm;
+
+static int star_byte(const RolltuiRegex* re, const Inst* I, unsigned char b) {
+  switch (I->y & 15) {
+    case STAR_CHAR: return b == I->c || (I->x && (b | 0x20u) == I->c);
+    case STAR_ANY: return 1;
+    default: return set_has(re->sets[I->x], b);
+  }
+}
+
+/* ROOM FOR ONE MORE FRAME. Every frame costs a step to push, so the step budget already bounds how deep a match goes; a fixed
+ * stack below that bound only made a long token — `1.2.3. ...` as a number, a run of words in a group loop — fail outright once it
+ * passed a thousand turns, and then fail again from every later position. Starts on the C stack and moves to the heap only when a
+ * match needs more, which no ordinary line does. 0: the most it may hold is reached (the match fails, as a step overrun does). */
+static int room(Vm* vm) {
+  Frame* bigger;
+  int cap;
+  if (vm->sp < vm->stack_cap) return 1;
+  if (vm->stack_cap >= vm->stack_max) return 0;
+  cap = vm->stack_cap * 2 < vm->stack_max ? vm->stack_cap * 2 : vm->stack_max;
+  bigger = (Frame*)rolltui_mem_alloc((size_t)cap * sizeof *bigger);
+  memcpy(bigger, vm->stack, (size_t)vm->sp * sizeof *bigger);
+  if (vm->stack_owned) rolltui_mem_free(vm->stack);
+  vm->stack = bigger;
+  vm->stack_cap = cap;
+  vm->stack_owned = 1;
+  return 1;
+}
+
+/* What a loop over one byte proved when every way on from it failed: entering it ANYWHERE in [from, to] fails. From any `p` in
+ * that range the run it can take ends at the same `to`, so what follows is tried at a subset of the places already tried, and
+ * nothing that decides it depends on more than the place: no back-reference (a pattern with one keeps no slots) and no
+ * empty-turn check of an enclosing loop (an OP_STAR inside such a loop has no slot). Kept for the later calls on the same line. */
+static void star_failed(Vm* vm, const Inst* I, int from, int to) {
+  if (!vm->memo || I->z < 0 || vm->re->uses_refs) return;
+  vm->memo[I->z].gen = vm->gen;
+  vm->memo[I->z].lo = from;
+  vm->memo[I->z].hi = to;
+}
 
 /* Runs from `pc` at `pos` until OP_MATCH or OP_LOOKEND. Returns the end position or -1. Leaves the stack as it found it. */
 static int run(Vm* vm, int pc, int pos) {
@@ -578,7 +655,7 @@ static int run(Vm* vm, int pc, int pos) {
   for (;;) {
     const Inst* I;
     int fail = 0;
-    if (++vm->steps > MAX_STEPS) { result = -1; break; }
+    if (++vm->steps > vm->max_steps) { result = -1; break; }
     I = &re->prog[pc];
     switch (I->op) {
       case OP_CHAR:
@@ -590,24 +667,43 @@ static int run(Vm* vm, int pc, int pos) {
         if (pos < vm->len && set_has(re->sets[I->x], (unsigned char)vm->text[pos])) { ++pos; ++pc; } else fail = 1;
         break;
       case OP_SPLIT:
-        if (vm->sp >= MAX_STACK) { result = -1; goto done; }
+        if (!room(vm)) { result = -1; goto done; }
         vm->stack[vm->sp].kind = K_BRANCH; vm->stack[vm->sp].a = I->y; vm->stack[vm->sp].b = pos; ++vm->sp;
         pc = I->x;
         break;
       case OP_JMP: pc = I->x; break;
       case OP_SAVE:
-        if (vm->sp >= MAX_STACK) { result = -1; goto done; }
+        if (!room(vm)) { result = -1; goto done; }
         vm->stack[vm->sp].kind = K_CAP; vm->stack[vm->sp].a = I->x; vm->stack[vm->sp].b = vm->caps[I->x]; ++vm->sp;
         vm->caps[I->x] = pos;
         ++pc;
         break;
       case OP_LOOPSET:
-        if (vm->sp >= MAX_STACK) { result = -1; goto done; }
+        if (!room(vm)) { result = -1; goto done; }
         vm->stack[vm->sp].kind = K_REG; vm->stack[vm->sp].a = I->x; vm->stack[vm->sp].b = vm->regs[I->x]; ++vm->sp;
         vm->regs[I->x] = pos;
         ++pc;
         break;
       case OP_LOOPCHK: if (vm->regs[I->x] == pos) fail = 1; else ++pc; break;
+      case OP_STAR: {
+        /* ONE FRAME FOR THE WHOLE RUN. A SPLIT/JMP loop leaves a frame per byte it takes, so a run longer than the stack is
+         * deep failed outright (a comment of two thousand characters was no comment at all), and every byte cost three steps. */
+        const RolltuiRegexSlot* sl = vm->memo && I->z >= 0 && !re->uses_refs ? &vm->memo[I->z] : NULL;
+        int end = pos;
+        if (sl && sl->gen == vm->gen && sl->lo <= pos && pos <= sl->hi) { fail = 1; break; } /* already shown to fail from here */
+        if (!room(vm)) { result = -1; goto done; }
+        if (!(I->y & STAR_LAZY)) {
+          while (end < vm->len && star_byte(re, I, (unsigned char)vm->text[end])) {
+            ++end;
+            if (++vm->steps > vm->max_steps) { result = -1; goto done; }
+          }
+        }
+        vm->stack[vm->sp].kind = K_STAR; vm->stack[vm->sp].a = pc; vm->stack[vm->sp].b = pos;
+        vm->stack[vm->sp].c = end; vm->stack[vm->sp].d = end; ++vm->sp;
+        pos = end; /* greedy: the whole run first; lazy: none of it */
+        ++pc;
+        break;
+      }
       case OP_BOL: if (pos == 0) ++pc; else fail = 1; break;
       case OP_EOL: if (pos == vm->len) ++pc; else fail = 1; break;
       case OP_WORDB: case OP_NWORDB: {
@@ -637,8 +733,9 @@ static int run(Vm* vm, int pc, int pos) {
           --vm->sp;
           if (vm->stack[vm->sp].kind == K_CAP) vm->caps[vm->stack[vm->sp].a] = vm->stack[vm->sp].b;
           else if (vm->stack[vm->sp].kind == K_REG) vm->regs[vm->stack[vm->sp].a] = vm->stack[vm->sp].b;
+          /* a K_STAR or K_BRANCH frame is simply dropped: what the look-around found is not kept, and proved nothing failed */
         }
-        if (vm->steps > MAX_STEPS) { result = -1; goto done; }
+        if (vm->steps > vm->max_steps) { result = -1; goto done; }
         if ((end >= 0) != (I->y != 0)) pc = I->x; else fail = 1;
         break;
       }
@@ -652,6 +749,20 @@ static int run(Vm* vm, int pc, int pos) {
         if (vm->sp <= base) { result = -1; goto done; }
         f = &vm->stack[--vm->sp];
         if (f->kind == K_BRANCH) { pc = f->a; pos = f->b; break; }
+        if (f->kind == K_STAR) {
+          const Inst* S = &re->prog[f->a];
+          if (!(S->y & STAR_LAZY) ? f->c > f->b
+                                  : f->c < vm->len && star_byte(re, S, (unsigned char)vm->text[f->c])) {
+            f->c += (S->y & STAR_LAZY) ? 1 : -1; /* give back one byte, or take one more */
+            if (++vm->steps > vm->max_steps) { result = -1; goto done; }
+            pc = f->a + 1;
+            pos = f->c;
+            ++vm->sp; /* the frame stays: there may be more to try */
+            break;
+          }
+          star_failed(vm, S, f->b, (S->y & STAR_LAZY) ? f->c : f->d);
+          continue;
+        }
         if (f->kind == K_CAP) vm->caps[f->a] = f->b;
         else vm->regs[f->a] = f->b;
       }
@@ -674,6 +785,11 @@ done:
 
 int rolltui_regex_match_at(const RolltuiRegex* re, const char* line, size_t len, size_t at, const RolltuiRegexRefs* refs,
                            RolltuiRegexMatch* m) {
+  return rolltui_regex_match_memo(re, line, len, at, refs, m, NULL, 0);
+}
+
+int rolltui_regex_match_memo(const RolltuiRegex* re, const char* line, size_t len, size_t at, const RolltuiRegexRefs* refs,
+                             RolltuiRegexMatch* m, RolltuiRegexSlot* memo, unsigned gen) {
   Vm vm;
   Frame stack[MAX_STACK];
   int end, g;
@@ -684,11 +800,18 @@ int rolltui_regex_match_at(const RolltuiRegex* re, const char* line, size_t len,
   vm.len = (int)len;
   vm.refs = refs;
   vm.stack = stack;
+  vm.stack_cap = MAX_STACK;
+  vm.stack_owned = 0;
+  vm.max_steps = re->unbounded ? 1 << 30 : MAX_STEPS;
+  vm.stack_max = re->unbounded ? 1 << 20 : MAX_STEPS + 1;
   vm.sp = 0;
   vm.steps = 0;
+  vm.memo = memo;
+  vm.gen = gen;
   for (g = 0; g < 20; ++g) vm.caps[g] = -1;
   for (g = 0; g < 16; ++g) vm.regs[g] = -1;
   end = run(&vm, 0, (int)at);
+  if (vm.stack_owned) rolltui_mem_free(vm.stack);
   if (end < 0) return 0;
   if (m) {
     for (g = 0; g < 10; ++g) {
