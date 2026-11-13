@@ -1,6 +1,6 @@
 #!/bin/sh
 # fetch_ucd.sh — download the pinned Unicode Character Database files that
-# tools/gen_unicode_tables.cpp reads and rolltui/tests/ replay, into rolltui/ucd/.
+# tools/gen_unicode_tables.cpp reads and tests/ replay, into ucd/.
 #
 # The files are checked in (they are the generator's inputs AND the conformance
 # suites, so a clone must be able to regenerate and re-verify offline); this script
@@ -11,7 +11,7 @@
 # never tolerates.
 #
 # Bumping Unicode: change UNICODE_VERSION, run with --refresh-hashes to print the new
-# digests, paste them below, re-run, then `gen_unicode_tables rolltui/ucd` and re-run
+# digests, paste them below, re-run, then `gen_unicode_tables ucd` and re-run
 # ctest — the two conformance suites are the verification that the new tables and the
 # unchanged algorithm still agree with Unicode.
 set -eu

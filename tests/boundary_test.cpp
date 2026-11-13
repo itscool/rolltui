@@ -130,17 +130,31 @@ int main() {
 
   // ---- 1. THE INCLUDE PATH -----------------------------------------------------------------------------------------------------------
   auto inside = [&](const fs::path& d) { return fs::weakly_canonical(d) == fs::weakly_canonical(root) || under(d, root); };
+  // The standalone build's include root: a directory whose one entry is a link named `rolltui` to this repository.
+  auto prefix_dir = [&](const fs::path& d) {
+    std::error_code ec;
+    int entries = 0;
+    for (const fs::directory_entry& e : fs::directory_iterator(d, ec)) {
+      (void)e;
+      ++entries;
+    }
+    const fs::path link = d / "rolltui";
+    return !ec && entries == 1 && fs::is_symlink(fs::symlink_status(link, ec)) &&
+           fs::weakly_canonical(link) == fs::weakly_canonical(root);
+  };
   const std::string dirs_text = read_file(ROLLTUI_TARGET_INCLUDES_FILE);
   check(!dirs_text.empty(), "the build system's include list was written and read — an empty one would make the next check pass on nothing");
   std::vector<std::string> outside;
   for (std::string d : split(dirs_text, '\n')) {
     while (!d.empty() && (d.back() == '\r' || d.back() == ' ')) d.pop_back();
-    if (!d.empty() && !inside(fs::path(d))) outside.push_back(d);
+    if (!d.empty() && !inside(fs::path(d)) && !prefix_dir(fs::path(d))) outside.push_back(d);
   }
-  check(outside.empty(), "every directory on the library's include path is inside this repository" +
+  check(outside.empty(), "every directory on the library's include path is inside this repository, or is the `rolltui/` prefix that links to it" +
                              (outside.empty() ? "" : " — " + outside.front()));
   check(!inside(root.parent_path() / "include") && inside(root / "c"),
         "…and the rule can tell: a host's include/ beside this repository is outside it, the library's c/ is inside");
+  check(!prefix_dir(root.parent_path()) && !prefix_dir(root / "c"),
+        "…and only a directory holding nothing but the `rolltui` link counts as the prefix");
 
   // ---- 2. THE INCLUDE GRAPH ----------------------------------------------------------------------------------------------------------
   std::vector<std::string> bad;

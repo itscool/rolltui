@@ -9,14 +9,9 @@ cmake_minimum_required(VERSION 3.24)
 # consumes it — see testkit/CMakeLists.txt and rolltui/tests/boundary_test.cpp), is vendored
 # here only when nobody has already defined that target.
 #
-# THE SYMLINK named `rolltui`, pointing at `.`, is what makes `#include "rolltui/rolltui.h"` —
-# used throughout this library's own sources, and by every consumer — resolve when this
-# repository IS the include root, the same way it already does for free when roll copies this
-# repository into a directory it names `rolltui/`: that directory's name supplies the prefix;
-# standing alone, this repository has to supply that prefix for itself, and a self-reference is
-# the smallest way to say "the same directory, one name over." A vendored copy therefore leaves
-# the symlink out — its mount point already is the prefix, and a directory that contains itself
-# is a loop for anything that walks the tree.
+# THE `rolltui/` PREFIX. Every include is spelled `rolltui/...`. A host that vendors this repository
+# into a folder named `rolltui/` gets the prefix from that folder. Built standalone, the prefix is a
+# link created in the build directory (see ROLLTUI_INCLUDE_ROOT below).
 if(NOT PROJECT_NAME)
   project(rolltui LANGUAGES C CXX)
   set(CMAKE_CXX_STANDARD 23)
@@ -54,14 +49,13 @@ add_compile_options(
   -Werror=delete-non-virtual-dtor
 )
 
-# THE INCLUDE ROOT — what a consumer's `#include "rolltui/rolltui.h"` resolves against — is the
-# directory THIS repository's `rolltui/` prefix lives one level under: roll's own root, when
-# this file runs `add_subdirectory()`d from there (CMAKE_CURRENT_SOURCE_DIR is roll's own
-# rolltui/ mount point, and `..` is roll's root); this repository's own root, when this file
-# IS the top-level project (there is no directory "one level up" that means anything — the
-# self-referential `rolltui` symlink at this root is what supplies the prefix instead).
+# THE INCLUDE ROOT: the directory `#include "rolltui/rolltui.h"` resolves against. Nested in a host,
+# it is the parent of the host's `rolltui/` folder. Standalone, it is `build/include`, holding a link
+# named `rolltui` to this repository.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(ROLLTUI_INCLUDE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+  set(ROLLTUI_INCLUDE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/include)
+  file(MAKE_DIRECTORY ${ROLLTUI_INCLUDE_ROOT})
+  file(CREATE_LINK ${CMAKE_CURRENT_SOURCE_DIR} ${ROLLTUI_INCLUDE_ROOT}/rolltui SYMBOLIC)
   set(_rolltui_top_level ON)
 else()
   set(ROLLTUI_INCLUDE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
