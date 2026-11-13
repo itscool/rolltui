@@ -1183,7 +1183,7 @@ int main(int argc, char** argv) {
     if (!present_depth.empty()) {
       const int d = rolltui_color_depth_from_name(present_depth.data(), present_depth.size());
       RolltuiStr bytes{};
-      rolltui_swap_present(swap, d < 0 ? ROLLTUI_DEPTH_TRUECOLOR : static_cast<unsigned char>(d), &bytes);
+      rolltui_swap_present(swap, static_cast<unsigned char>(d < 0 ? static_cast<int>(ROLLTUI_DEPTH_TRUECOLOR) : d), &bytes);
       std::fwrite(bytes.p ? bytes.p : "", 1, bytes.n, stdout);
       rolltui_str_free(&bytes);
       rolltui_swap_free(swap);
