@@ -1736,8 +1736,8 @@ int main() {
     check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0 && rep.bad_values_n == 0 && rep.unknown_keys_n == 0,
           "a level's columns and its rows' cells read, with nothing reported");
     rolltui_menu_load_report_release(&rep);
-    check(root.column_count == 2 && root.columns[0].width == 8 && root.columns[1].align == ROLLTUI_MENU_ALIGN_LEFT &&
-              root.children.v[1]->cell_count == 2 && str_of(root.children.v[1]->cells[0]) == "ready",
+    check(root.columns.n == 2 && root.columns.v[0].width == 8 && root.columns.v[1].align == ROLLTUI_MENU_ALIGN_LEFT &&
+              root.children.v[1]->cells.n == 2 && str_of(root.children.v[1]->cells.v[0]) == "ready",
           "…into the level's columns and each row's cells");
     RolltuiMenu* m = rolltui_menu_new();
     rolltui_menu_set_root(m, &root);
@@ -1800,7 +1800,9 @@ int main() {
     rolltui_menu_item_init(&copy);
     rolltui_menu_item_copy(&copy, &root);
     check(rolltui_menu_item_equal(&copy, &root), "a copy carries its cells and columns");
-    rolltui_str_set(&copy.children.v[1]->cells[1], "3 GB", 4);
+    rolltui_menu_cells_release(&copy.children.v[1]->cells);
+    rolltui_menu_item_add_cell(copy.children.v[1], "ready", 5);
+    rolltui_menu_item_add_cell(copy.children.v[1], "3 GB", 4);
     check(!rolltui_menu_item_equal(&copy, &root), "…and a cell told apart is a different item");
     rolltui_menu_item_release(&copy);
     rolltui_str_free(&dumped);
@@ -1817,6 +1819,63 @@ int main() {
       check(rep.bad_values_n != 0, std::string("a column or a cell said wrong is reported: ") + bad);
       rolltui_menu_load_report_release(&rep);
       rolltui_menu_item_release(&it);
+    }
+
+    // ---- THE SETTERS HOLD WHAT A TABLE MAY BE, the same rules a file is held to ----------------------------------------------
+    {
+      RolltuiMenuItem level;
+      rolltui_menu_item_init(&level);
+      const RolltuiMenuColumn two[] = {{8, ROLLTUI_MENU_ALIGN_RIGHT}, {6, ROLLTUI_MENU_ALIGN_LEFT}};
+      check(rolltui_menu_item_set_columns(&level, two, 2) == 1 && level.columns.n == 2 && level.columns.v[1].width == 6,
+            "a level takes its columns by copy");
+      const RolltuiMenuColumn zero[] = {{0, ROLLTUI_MENU_ALIGN_RIGHT}};
+      const RolltuiMenuColumn wide[] = {{1001, ROLLTUI_MENU_ALIGN_RIGHT}};
+      const RolltuiMenuColumn odd[] = {{4, 2}};
+      RolltuiMenuColumn nine[ROLLTUI_MENU_COLUMNS + 1];
+      for (RolltuiMenuColumn& c : nine) c = {4, ROLLTUI_MENU_ALIGN_RIGHT};
+      check(rolltui_menu_item_set_columns(&level, zero, 1) == 0 && rolltui_menu_item_set_columns(&level, wide, 1) == 0 &&
+                rolltui_menu_item_set_columns(&level, odd, 1) == 0 &&
+                rolltui_menu_item_set_columns(&level, nine, ROLLTUI_MENU_COLUMNS + 1) == 0,
+            "…and refuses a width of 0 or over 1000, an alignment that is neither, and more than ROLLTUI_MENU_COLUMNS");
+      check(level.columns.n == 2 && level.columns.v[0].width == 8, "…each refusal leaving the level's columns as they were");
+      check(rolltui_menu_item_set_columns(&level, level.columns.v, level.columns.n) == 1 && level.columns.n == 2 &&
+                level.columns.v[1].align == ROLLTUI_MENU_ALIGN_LEFT,
+            "…a level handed its own columns keeps them");
+      check(rolltui_menu_item_set_columns(&level, nullptr, 0) == 1 && level.columns.n == 0 && level.columns.v == nullptr,
+            "…and none makes it a list again");
+      int added = 0;
+      for (int i = 0; i < ROLLTUI_MENU_COLUMNS + 1; ++i) added += rolltui_menu_item_add_cell(&level, "x", 1);
+      check(added == ROLLTUI_MENU_COLUMNS && level.cells.n == ROLLTUI_MENU_COLUMNS,
+            "a row takes cells up to ROLLTUI_MENU_COLUMNS, and the next is refused");
+      rolltui_menu_item_release(&level);
+    }
+
+    // ---- A TABLE IS STORED ONLY WHERE THERE IS ONE, AND FREES ITSELF IN C++ -------------------------------------------------
+    // An item that is no table allocates nothing for it; one that is lets go of it when it goes out of scope, and when it moves
+    // into a list the list owns it: the live bytes come back to where they started.
+    {
+      std::size_t before = 0, after = 0, mid = 0;
+      rolltui_mem_stats(nullptr, nullptr, nullptr, &before, nullptr, nullptr);
+      {
+        RolltuiMenuItem plain = RolltuiMenuItem::action("plain", "a row", "");
+        check(plain.cells.v == nullptr && plain.columns.v == nullptr, "an item that is no table holds no table storage");
+        RolltuiMenuItem row = RolltuiMenuItem::action("row", "a build", "");
+        rolltui_menu_item_add_cell(&row, "ready", 5);
+        rolltui_menu_item_add_cell(&row, "2 GB", 4);
+        RolltuiMenuItem moved = RolltuiMenuItem::action("moved", "another", "");
+        rolltui_menu_item_add_cell(&moved, "stale", 5);
+        RolltuiMenuItem level = RolltuiMenuItem::submenu("builds", "builds");
+        const RolltuiMenuColumn cols[] = {{8, ROLLTUI_MENU_ALIGN_RIGHT}};
+        rolltui_menu_item_set_columns(&level, cols, 1);
+        level.children.push_back(std::move(moved));
+        check(moved.cells.v == nullptr && level.children.back().cells.n == 1,
+              "a row moved into a list takes its cells with it");
+        rolltui_mem_stats(nullptr, nullptr, nullptr, &mid, nullptr, nullptr);
+      }
+      rolltui_mem_stats(nullptr, nullptr, nullptr, &after, nullptr, nullptr);
+      check(mid > before && after == before, "…and every cell and column is freed when the items go out of scope (" +
+                                                 std::to_string(before) + " -> " + std::to_string(mid) + " -> " +
+                                                 std::to_string(after) + " live bytes)");
     }
   }
   return report("rolltui_menu_test");

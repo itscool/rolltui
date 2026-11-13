@@ -80,6 +80,54 @@ void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* 
   for (i = 0; i < from->n; ++i) rolltui_menu_item_copy(rolltui_menu_list_add(to), from->v[i]);
 }
 
+/* ---- a table's cells and columns (rolltui.h, RolltuiMenuCells) ---------------------------- */
+
+void rolltui_menu_cells_release(RolltuiMenuCells* c) {
+  size_t i;
+  if (!c) return;
+  for (i = 0; i < c->n; ++i) rolltui_str_free(&c->v[i]); /* past `n` is unused: every slot is filled as it is added */
+  rolltui_mem_free(c->v);
+  c->v = NULL;
+  c->n = c->cap = 0;
+}
+
+void rolltui_menu_columns_release(RolltuiMenuColumns* c) {
+  if (!c) return;
+  rolltui_mem_free(c->v);
+  c->v = NULL;
+  c->n = 0;
+}
+
+int rolltui_menu_item_add_cell(RolltuiMenuItem* it, const char* text, size_t len) {
+  RolltuiMenuCells* c;
+  if (!it || it->cells.n >= ROLLTUI_MENU_COLUMNS) return 0;
+  c = &it->cells;
+  /* ZEROED: a slot holds an owned string, and garbage there would be freed as if it were one */
+  c->v = (RolltuiStr*)rolltui_grow_zeroed(c->v, &c->cap, c->n + 1, sizeof *c->v);
+  rolltui_str_set(&c->v[c->n], text, len);
+  ++c->n;
+  return 1;
+}
+
+int rolltui_menu_item_set_columns(RolltuiMenuItem* level, const RolltuiMenuColumn* columns, size_t n) {
+  RolltuiMenuColumn* v = NULL;
+  size_t i;
+  if (!level || n > ROLLTUI_MENU_COLUMNS || (n != 0 && !columns)) return 0;
+  for (i = 0; i < n; ++i)
+    if (columns[i].width < 1 || columns[i].width > 1000 ||
+        (columns[i].align != ROLLTUI_MENU_ALIGN_LEFT && columns[i].align != ROLLTUI_MENU_ALIGN_RIGHT))
+      return 0;
+  /* the copy is made BEFORE the old array goes, so a level handed its own columns keeps them */
+  if (n != 0) {
+    v = (RolltuiMenuColumn*)rolltui_mem_alloc(n * sizeof *v);
+    memcpy(v, columns, n * sizeof *v);
+  }
+  rolltui_menu_columns_release(&level->columns);
+  level->columns.v = v;
+  level->columns.n = n;
+  return 1;
+}
+
 /* ---- the item ---------------------------------------------------------------------------- */
 
 void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
@@ -112,10 +160,8 @@ void rolltui_menu_item_release(RolltuiMenuItem* it) {
   rolltui_str_free(&it->value);
   rolltui_input_spec_release(&it->spec);
   rolltui_menu_list_release(&it->children);
-  {
-    size_t i;
-    for (i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) rolltui_str_free(&it->cells[i]);
-  }
+  rolltui_menu_cells_release(&it->cells);
+  rolltui_menu_columns_release(&it->columns);
   rolltui_menu_item_init(it);
 }
 
@@ -143,12 +189,9 @@ void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from) {
   rolltui_menu_list_copy(&to->children, &from->children);
   {
     size_t i;
-    for (i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) {
-      rolltui_str_set(&to->cells[i], from->cells[i].p, from->cells[i].n);
-      to->columns[i] = from->columns[i];
-    }
-    to->cell_count = from->cell_count;
-    to->column_count = from->column_count;
+    rolltui_menu_cells_release(&to->cells);
+    for (i = 0; i < from->cells.n; ++i) rolltui_menu_item_add_cell(to, from->cells.v[i].p, from->cells.v[i].n);
+    rolltui_menu_item_set_columns(to, from->columns.v, from->columns.n);
   }
 }
 
@@ -165,11 +208,11 @@ int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b) 
       !rolltui_str_eq(&a->value, b->value.p, b->value.n))
     return 0;
   if (!rolltui_input_spec_equal(&a->spec, &b->spec)) return 0;
-  if (a->cell_count != b->cell_count || a->column_count != b->column_count) return 0;
-  for (i = 0; i < a->cell_count; ++i)
-    if (!rolltui_str_eq(&a->cells[i], b->cells[i].p, b->cells[i].n)) return 0;
-  for (i = 0; i < a->column_count; ++i)
-    if (a->columns[i].width != b->columns[i].width || a->columns[i].align != b->columns[i].align) return 0;
+  if (a->cells.n != b->cells.n || a->columns.n != b->columns.n) return 0;
+  for (i = 0; i < a->cells.n; ++i)
+    if (!rolltui_str_eq(&a->cells.v[i], b->cells.v[i].p, b->cells.v[i].n)) return 0;
+  for (i = 0; i < a->columns.n; ++i)
+    if (a->columns.v[i].width != b->columns.v[i].width || a->columns.v[i].align != b->columns.v[i].align) return 0;
   if (a->children.n != b->children.n) return 0;
   for (i = 0; i < a->children.n; ++i)
     if (!rolltui_menu_item_equal(a->children.v[i], b->children.v[i])) return 0;

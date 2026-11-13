@@ -852,6 +852,36 @@ int main(void) {
           "reachable from C at last");
   }
 
+  /* ---- 4d. A TABLE A C CONSUMER BUILDS, THROUGH THE TWO SETTERS -------------------------- *
+   * A level's columns and a row's cells are written only through `rolltui_menu_item_set_columns`
+   * and `rolltui_menu_item_add_cell`, so the proof is that C reaches both, is refused by both
+   * where a file would be, and that `rolltui_menu_item_release` frees what they built. */
+  {
+    const size_t before = live_bytes();
+    RolltuiMenuItem level;
+    RolltuiMenuItem* row;
+    RolltuiMenuColumn cols[2];
+    RolltuiMenuColumn bad[1];
+    rolltui_menu_item_init(&level);
+    rolltui_menu_item_set(&level, ROLLTUI_MENU_SUBMENU, "builds", 6, "builds", 6, NULL, 0);
+    cols[0].width = 11;
+    cols[0].align = ROLLTUI_MENU_ALIGN_RIGHT;
+    cols[1].width = 6;
+    cols[1].align = ROLLTUI_MENU_ALIGN_LEFT;
+    bad[0].width = 0;
+    bad[0].align = ROLLTUI_MENU_ALIGN_RIGHT;
+    check(rolltui_menu_item_set_columns(&level, cols, 2) == 1 && level.columns.n == 2 &&
+              rolltui_menu_item_set_columns(&level, bad, 1) == 0 && level.columns.n == 2,
+          "a C consumer makes a level a table, and a zero-width column is refused with the level unchanged");
+    row = rolltui_menu_list_add(&level.children);
+    rolltui_menu_item_set(row, ROLLTUI_MENU_ACTION, "release", 7, "release", 7, NULL, 0);
+    check(rolltui_menu_item_add_cell(row, "ready", 5) == 1 && rolltui_menu_item_add_cell(row, "2 GB", 4) == 1 &&
+              row->cells.n == 2 && rolltui_str_eq(&row->cells.v[1], "2 GB", 4) != 0,
+          "…fills a row's cells from C, and reads them back");
+    rolltui_menu_item_release(&level);
+    check(live_bytes() == before, "…and `rolltui_menu_item_release` frees the columns and every row's cells");
+  }
+
   /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT ------------------ */
   rolltui_context_free(app.ctx);
   rolltui_compose_scratch_free(app.compose_scratch);

@@ -1485,13 +1485,13 @@ typedef struct TableLayout {
 /* A table's columns in `w` cells, the last kept for the scroll markers. Narrower than they need, the label keeps TABLE_LABEL_MIN
  * cells and the columns go from the right; every row of the level and its head are laid out alike, so their columns line up. */
 static void table_layout(const RolltuiMenuItem* lvl, int w, TableLayout* out) {
-  int k = lvl->column_count, used = 0, i, x;
+  int k = (int)lvl->columns.n, used = 0, i, x;
   /* the last cell is the scroll markers' (a list longer than its rows draws its ▲ and ▼ there), kept whether or not it
    * scrolls, so a right-aligned cell never sits under one and the columns never move as the list grows */
   w = imax(w - 1, 0);
   for (;;) {
     used = 0;
-    for (i = 0; i < k; ++i) used += TABLE_GAP + lvl->columns[i].width;
+    for (i = 0; i < k; ++i) used += TABLE_GAP + lvl->columns.v[i].width;
     if (k == 0 || w - used >= TABLE_LABEL_MIN) break;
     --k;
   }
@@ -1501,7 +1501,7 @@ static void table_layout(const RolltuiMenuItem* lvl, int w, TableLayout* out) {
   for (i = 0; i < k; ++i) {
     x += TABLE_GAP;
     out->x[i] = x;
-    x += lvl->columns[i].width;
+    x += lvl->columns.v[i].width;
   }
 }
 
@@ -1510,11 +1510,11 @@ static void table_layout(const RolltuiMenuItem* lvl, int w, TableLayout* out) {
 static void table_cells(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw, int x0, int y,
                         const RolltuiMenuItem* lvl, const TableLayout* t, const RolltuiMenuItem* it, RolltuiStyle st) {
   int i;
-  for (i = 0; i < t->shown && i < (int)it->cell_count; ++i) {
-    const RolltuiStr* c = &it->cells[i];
-    const int cw = lvl->columns[i].width;
+  for (i = 0; i < t->shown && i < (int)it->cells.n; ++i) {
+    const RolltuiStr* c = &it->cells.v[i];
+    const int cw = lvl->columns.v[i].width;
     const int dw = rolltui_u_display_width(m->u, c->p ? c->p : "", c->n, m->opt.ambiguous_wide);
-    const int at = lvl->columns[i].align == ROLLTUI_MENU_ALIGN_LEFT || dw >= cw ? 0 : cw - dw;
+    const int at = lvl->columns.v[i].align == ROLLTUI_MENU_ALIGN_LEFT || dw >= cw ? 0 : cw - dw;
     put_text_ellipsis(m, f, draw, x0 + t->x[i] + at, y, c->p, c->n, st, cw - at);
   }
 }
@@ -1558,9 +1558,9 @@ static int popup_level_box(const RolltuiMenu* m, RolltuiRect* box) {
     const RolltuiMenuItem* c = level->children.v[i];
     const RolltuiStr* l = c->label.n ? &c->label : &c->id;
     int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide);
-    if (level->column_count) {
-      int k; /* a table's row: its label, every column, and the scroll markers' cell */
-      for (k = 0; k < level->column_count; ++k) lw += TABLE_GAP + level->columns[k].width;
+    if (level->columns.n) {
+      size_t k; /* a table's row: its label, every column, and the scroll markers' cell */
+      for (k = 0; k < level->columns.n; ++k) lw += TABLE_GAP + level->columns.v[k].width;
       lw += 1;
     } else if (c->shortcut.n) {
       lw += 1 + rolltui_u_display_width(m->u, c->shortcut.p, c->shortcut.n, m->opt.ambiguous_wide);
@@ -2287,7 +2287,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       head.bold = 1;
       /* A TABLE'S HEAD is a section with cells: its label over column 0 and each cell over its column, aligned as the rows are, with
        * no rule - the columns are the line it draws. */
-      if (it->kind == ROLLTUI_MENU_SECTION && it->cell_count && !m->palette && rolltui_menu_level(m)->column_count) {
+      if (it->kind == ROLLTUI_MENU_SECTION && it->cells.n && !m->palette && rolltui_menu_level(m)->columns.n) {
         const RolltuiMenuItem* lvl = rolltui_menu_level(m);
         TableLayout t;
         table_layout(lvl, w, &t);
@@ -2365,7 +2365,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
                            (it->kind == ROLLTUI_MENU_INPUT || it->kind == ROLLTUI_MENU_CHOICE);
       /* A ROW OF A TABLE draws its cells where another row draws its shortcut, its answer or its marker, so every row's columns
        * line up with the head's, whatever kind of item it is. */
-      const int table = !m->palette && rolltui_menu_level(m)->column_count != 0;
+      const int table = !m->palette && rolltui_menu_level(m)->columns.n != 0;
       RolltuiStyle name_style = base;
       RolltuiStyle value_style = styles[roles->value];
       name_style.bg = base.bg;
@@ -2689,6 +2689,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       /* A row of a table: what it says in each column after its label (rolltui.h, ROLLTUI_MENU_COLUMNS). */
       const size_t cn = rolltui_json_is_array(x) ? rolltui_json_array_size(x) : 0;
       size_t ci;
+      rolltui_menu_cells_release(&it->cells);
       if (!rolltui_json_is_array(x) || cn > ROLLTUI_MENU_COLUMNS) {
         bad_value_at(rep, at.p, at.n, K(": expected an array of at most 8 strings"));
       } else {
@@ -2700,14 +2701,15 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
             bad_value_at(rep, at.p, at.n, K(": expected an array of at most 8 strings"));
             break;
           }
-          rolltui_str_set(&it->cells[ci], s, slen);
-          it->cell_count = (unsigned char)(ci + 1);
+          rolltui_menu_item_add_cell(it, s, slen);
         }
       }
     } else if (streq(k, klen, "columns")) {
-      /* A level that is a table: its columns after the label, each a width in cells and an alignment, right unless it says left. */
+      /* A level that is a table: its columns after the label, each a width in cells and an alignment, right unless it says left.
+       * The ones before a bad entry are kept, as a bad cell keeps the cells before it. */
       const size_t cn = rolltui_json_is_array(x) ? rolltui_json_array_size(x) : 0;
-      size_t ci;
+      RolltuiMenuColumn read[ROLLTUI_MENU_COLUMNS];
+      size_t ci, good = 0;
       if (!rolltui_json_is_array(x) || cn > ROLLTUI_MENU_COLUMNS) {
         bad_value_at(rep, at.p, at.n, K(": expected an array of at most 8 columns, each {\"width\": N, \"align\": \"left\" | \"right\"}"));
       } else {
@@ -2724,10 +2726,11 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
             bad_value_at(rep, at.p, at.n, K(": each column is {\"width\": a whole number of cells, at least 1, \"align\": \"left\" | \"right\"}"));
             break;
           }
-          it->columns[ci].width = (unsigned short)width;
-          it->columns[ci].align = streq(align, alen, "left") ? ROLLTUI_MENU_ALIGN_LEFT : ROLLTUI_MENU_ALIGN_RIGHT;
-          it->column_count = (unsigned char)(ci + 1);
+          read[good].width = (unsigned short)width;
+          read[good].align = streq(align, alen, "left") ? ROLLTUI_MENU_ALIGN_LEFT : ROLLTUI_MENU_ALIGN_RIGHT;
+          ++good;
         }
+        rolltui_menu_item_set_columns(it, read, good);
       }
     } else if (streq(k, klen, "type") || streq(k, klen, "min") || streq(k, klen, "max") || streq(k, klen, "step") ||
                streq(k, klen, "precision") || streq(k, klen, "max_len") || streq(k, klen, "min_len") ||
@@ -2892,17 +2895,17 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
   if (it->popup) rolltui_json_set(o, K("popup"), rolltui_json_bool(1));
   if (it->swatch) rolltui_json_set(o, K("swatch"), rolltui_json_bool(1));
   if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
-  if (it->cell_count != 0) {
+  if (it->cells.n != 0) {
     RolltuiJsonValue* arr = rolltui_json_array();
-    for (i = 0; i < it->cell_count; ++i) rolltui_json_array_push(arr, rolltui_json_string(it->cells[i].p, it->cells[i].n));
+    for (i = 0; i < it->cells.n; ++i) rolltui_json_array_push(arr, rolltui_json_string(it->cells.v[i].p, it->cells.v[i].n));
     rolltui_json_set(o, K("cells"), arr);
   }
-  if (it->column_count != 0) {
+  if (it->columns.n != 0) {
     RolltuiJsonValue* arr = rolltui_json_array();
-    for (i = 0; i < it->column_count; ++i) {
+    for (i = 0; i < it->columns.n; ++i) {
       RolltuiJsonValue* c = rolltui_json_object();
-      rolltui_json_set(c, K("width"), rolltui_json_number((double)it->columns[i].width));
-      if (it->columns[i].align == ROLLTUI_MENU_ALIGN_LEFT) rolltui_json_set(c, K("align"), rolltui_json_string(K("left")));
+      rolltui_json_set(c, K("width"), rolltui_json_number((double)it->columns.v[i].width));
+      if (it->columns.v[i].align == ROLLTUI_MENU_ALIGN_LEFT) rolltui_json_set(c, K("align"), rolltui_json_string(K("left")));
       rolltui_json_array_push(arr, c);
     }
     rolltui_json_set(o, K("columns"), arr);

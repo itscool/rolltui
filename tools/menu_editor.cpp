@@ -66,9 +66,9 @@ RolltuiStr num_text(double v) { return rolltui::format("%g", v); }
 // A table row's cells as one field's text, between bars, "ready | 2 GB", and back: each cell trimmed of the spaces round it.
 RolltuiStr cells_text(const MenuItem* it) {
   RolltuiStr out;
-  for (unsigned i = 0; i < it->cell_count; ++i) {
+  for (std::size_t i = 0; i < it->cells.n; ++i) {
     if (i) out += " | ";
-    out.append(it->cells[i]);
+    out.append(it->cells.v[i]);
   }
   return out;
 }
@@ -91,17 +91,17 @@ bool pieces(const RolltuiStr& text, char sep, std::vector<std::string>* out) {
 bool set_cells(MenuItem* it, const RolltuiStr& text) {
   std::vector<std::string> cells;
   if (!pieces(text, '|', &cells)) return false;
-  for (unsigned i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) it->cells[i].assign(i < cells.size() ? cells[i].c_str() : "");
-  it->cell_count = static_cast<unsigned char>(cells.size());
+  rolltui_menu_cells_release(&it->cells);
+  for (const std::string& c : cells) rolltui_menu_item_add_cell(it, c.data(), c.size());
   return true;
 }
 // A level's columns as one field's text, "8, 6L": each column's width in cells, an L after one aligned left; and back.
 RolltuiStr columns_text(const MenuItem* it) {
   RolltuiStr out;
-  for (unsigned i = 0; i < it->column_count; ++i) {
+  for (std::size_t i = 0; i < it->columns.n; ++i) {
     if (i) out += ", ";
-    out += rolltui::format("%u%s", static_cast<unsigned>(it->columns[i].width),
-                           it->columns[i].align == ROLLTUI_MENU_ALIGN_LEFT ? "L" : "");
+    out += rolltui::format("%u%s", static_cast<unsigned>(it->columns.v[i].width),
+                           it->columns.v[i].align == ROLLTUI_MENU_ALIGN_LEFT ? "L" : "");
   }
   return out;
 }
@@ -119,9 +119,7 @@ bool set_columns(MenuItem* it, const RolltuiStr& text) {
     read[i].width = static_cast<unsigned short>(width);
     read[i].align = left ? ROLLTUI_MENU_ALIGN_LEFT : ROLLTUI_MENU_ALIGN_RIGHT;
   }
-  for (unsigned i = 0; i < ROLLTUI_MENU_COLUMNS; ++i) it->columns[i] = read[i];
-  it->column_count = static_cast<unsigned char>(cols.size());
-  return true;
+  return rolltui_menu_item_set_columns(it, read, cols.size()) != 0;
 }
 // The offered names as one line, for a field's hint — layout_editor.cpp's `joined`, and every
 // list here is short enough that a plain join is the whole of it.

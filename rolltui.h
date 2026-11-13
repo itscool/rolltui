@@ -2266,9 +2266,46 @@ typedef struct RolltuiMenuItemList {
 #define ROLLTUI_MENU_ALIGN_LEFT 1
 
 typedef struct RolltuiMenuColumn {
-  unsigned short width ROLLTUI_DEFAULT(0); /* in cells, at least 1 */
+  unsigned short width ROLLTUI_DEFAULT(0); /* in cells, 1 to 1000 */
   unsigned char align ROLLTUI_DEFAULT(ROLLTUI_MENU_ALIGN_RIGHT);
 } RolltuiMenuColumn;
+
+/* A TABLE IS STORED ONLY WHERE THERE IS ONE: a row's cells and a level's columns are two lists that allocate nothing while empty, so
+ * a menu that draws no table pays two empty lists per item and nothing more. READ them freely; WRITE them only through
+ * `rolltui_menu_item_add_cell` / `rolltui_menu_item_set_columns`, which hold what a table may be. Each frees itself in C++ and moves;
+ * in C, `rolltui_menu_item_release` frees both, as it frees the rest of an item. */
+typedef struct RolltuiMenuCells {
+  RolltuiStr* v ROLLTUI_DEFAULT(nullptr); /* OWNED */
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+#ifdef __cplusplus
+  RolltuiMenuCells() = default;
+  RolltuiMenuCells(const RolltuiMenuCells&) = delete; /* `rolltui_menu_item_copy` copies a whole item */
+  RolltuiMenuCells(RolltuiMenuCells&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  RolltuiMenuCells& operator=(const RolltuiMenuCells&) = delete;
+  RolltuiMenuCells& operator=(RolltuiMenuCells&& o) noexcept;
+  ~RolltuiMenuCells();
+#endif
+} RolltuiMenuCells;
+
+typedef struct RolltuiMenuColumns {
+  RolltuiMenuColumn* v ROLLTUI_DEFAULT(nullptr); /* OWNED, exactly `n` long */
+  size_t n ROLLTUI_DEFAULT(0);
+#ifdef __cplusplus
+  RolltuiMenuColumns() = default;
+  RolltuiMenuColumns(const RolltuiMenuColumns&) = delete;
+  RolltuiMenuColumns(RolltuiMenuColumns&& o) noexcept : v(o.v), n(o.n) {
+    o.v = nullptr;
+    o.n = 0;
+  }
+  RolltuiMenuColumns& operator=(const RolltuiMenuColumns&) = delete;
+  RolltuiMenuColumns& operator=(RolltuiMenuColumns&& o) noexcept;
+  ~RolltuiMenuColumns();
+#endif
+} RolltuiMenuColumns;
 
 typedef struct RolltuiMenuItem {
 #ifdef __cplusplus
@@ -2300,12 +2337,8 @@ typedef struct RolltuiMenuItem {
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpecRaw spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
-  /* A row of a table (its level's `columns`, above): what it says in each column after its label, the first `cell_count`. */
-  RolltuiStr cells[ROLLTUI_MENU_COLUMNS];
-  unsigned char cell_count ROLLTUI_DEFAULT(0);
-  /* A level that is a table (the root, or a Submenu): its columns after the label, the first `column_count`. */
-  RolltuiMenuColumn columns[ROLLTUI_MENU_COLUMNS];
-  unsigned char column_count ROLLTUI_DEFAULT(0);
+  RolltuiMenuCells cells;     /* a row of a table: what it says in each of its level's columns after its label */
+  RolltuiMenuColumns columns; /* a level that is a table (the root, or a Submenu): its columns after the label */
 
 #ifdef __cplusplus
   RolltuiMenuItem();
@@ -2331,6 +2364,9 @@ void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* 
 RolltuiMenuItem* rolltui_menu_list_add(RolltuiMenuItemList* l);
 void rolltui_menu_list_clear(RolltuiMenuItemList* l);
 void rolltui_menu_list_release(RolltuiMenuItemList* l);
+/* Frees what a row's cells or a level's columns hold and empties them: a row's cells refill from here. */
+void rolltui_menu_cells_release(RolltuiMenuCells* c);
+void rolltui_menu_columns_release(RolltuiMenuColumns* c);
 
 #ifdef __cplusplus
 /* ---- the C++ special members of the structs above -----------------------------------------
@@ -2359,6 +2395,30 @@ inline bool RolltuiMenuItemList::operator==(const RolltuiMenuItemList& o) const 
   for (std::size_t i = 0; i < n; ++i)
     if (!rolltui_menu_item_equal(v[i], o.v[i])) return false;
   return true;
+}
+
+inline RolltuiMenuCells::~RolltuiMenuCells() { rolltui_menu_cells_release(this); }
+inline RolltuiMenuCells& RolltuiMenuCells::operator=(RolltuiMenuCells&& o) noexcept {
+  if (this != &o) {
+    rolltui_menu_cells_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+inline RolltuiMenuColumns::~RolltuiMenuColumns() { rolltui_menu_columns_release(this); }
+inline RolltuiMenuColumns& RolltuiMenuColumns::operator=(RolltuiMenuColumns&& o) noexcept {
+  if (this != &o) {
+    rolltui_menu_columns_release(this);
+    v = o.v;
+    n = o.n;
+    o.v = nullptr;
+    o.n = 0;
+  }
+  return *this;
 }
 
 inline RolltuiMenuItem::RolltuiMenuItem() = default;
@@ -2525,6 +2585,15 @@ void rolltui_menu_item_init(RolltuiMenuItem* it);
 /* Frees everything below and inside `it` and leaves it clean: the pair to `_init`, and to the parser that FILLS a caller-owned item.
  * Without it a C consumer can build one and cannot free it. */
 void rolltui_menu_item_release(RolltuiMenuItem* it);
+
+/* A ROW'S NEXT CELL, after those it has: 1, or 0 with nothing added once the row has ROLLTUI_MENU_COLUMNS. To give a row new cells,
+ * `rolltui_menu_cells_release(&it->cells)` first. */
+int rolltui_menu_item_add_cell(RolltuiMenuItem* it, const char* text, size_t len);
+
+/* A LEVEL'S COLUMNS, REPLACED by a copy of `columns[0..n)`; `n` 0 makes it a list again. 1, or 0 with the level unchanged when `n`
+ * exceeds ROLLTUI_MENU_COLUMNS, a width is outside 1..1000, or an alignment is neither ROLLTUI_MENU_ALIGN_LEFT nor _RIGHT: the
+ * same rules a menu file's `columns` are held to. */
+int rolltui_menu_item_set_columns(RolltuiMenuItem* level, const RolltuiMenuColumn* columns, size_t n);
 
 /* ---- unicode -------------------------------------------------------------------------------*/
 
