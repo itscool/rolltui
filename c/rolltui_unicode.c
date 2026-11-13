@@ -253,6 +253,10 @@ int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous
   int vs16 = 0, keycap = 0, zwj = 0;
   size_t i;
   if (n == 0) return 0;
+  /* A terminal that splits clusters is sent each cluster as its first code point alone
+   * (rolltui_frame_put), so the cluster is that code point's width. One that begins with a
+   * zero-width code point is not drawn. */
+  if (rolltui_termfacts_active_split()) return rolltui_u_codepoint_width(cps[0], ambiguous_wide);
   for (i = 0; i < n; ++i) {
     RolltuiCodepoint cp = cps[i];
     unsigned char gb = gb_class(cp);

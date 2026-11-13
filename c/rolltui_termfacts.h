@@ -108,6 +108,15 @@ unsigned char rolltui_termfacts_clamp_depth(unsigned char requested);
  * -1 withdraws either: no terminal is entered. */
 void rolltui_termfacts_set_active_wide(int wide);
 int rolltui_termfacts_active_wide(void); /* 1 only when a terminal measured (or was told) two cells */
+/* SPLIT CLUSTERS: a terminal that gives every code point cells of its own (Windows' console host)
+ * is never sent a zero-width code point. Its pseudo console re-draws its own buffer for whatever
+ * terminal reads it, and that terminal joins an accent to its letter where the console gave it a
+ * cell, so a zero-width code point in the stream puts the two a cell apart for the rest of the line.
+ * Each cluster is sent as its first code point alone (`rolltui_frame_put`) and measured at that
+ * code point's width (`rolltui_u_cluster_width`): every terminal in the chain then counts the same
+ * cells. -1 withdraws it. */
+void rolltui_termfacts_set_active_split(int split);
+int rolltui_termfacts_active_split(void); /* 1 only when a terminal measured it */
 void rolltui_termfacts_set_active_mode(int mode);
 int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no terminal is entered */
 
@@ -116,7 +125,8 @@ int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no termin
 #define ROLLTUI_TERMQ_BACKGROUND 2 /* OSC 11 */
 #define ROLLTUI_TERMQ_SGR 4        /* set a 24-bit background, then ask the terminal what it is set to */
 #define ROLLTUI_TERMQ_VERSION 8    /* XTVERSION */
-#define ROLLTUI_TERMQ_WIDTH 16     /* draw one ambiguous glyph, ask where the cursor is, put it back */
+#define ROLLTUI_TERMQ_WIDTH 16     /* draw one ambiguous glyph, then `e` and a combining accent, asking where
+                                    * the cursor is after each; put the line back */
 #define ROLLTUI_TERMQ_ALL 31
 
 /* The bytes that ask the questions in `want`, in ONE write, ending in Primary DA — the question
@@ -139,6 +149,8 @@ typedef struct RolltuiTermReplies {
   RolltuiStyleColorRaw bg;
   int cpr;          /* `CSI row ; col R`, only when the caller said one was expected */
   int cpr_row, cpr_col;
+  int cpr2;         /* a SECOND cursor report: where `e` and a combining accent left the cursor */
+  int cpr2_col;
   int sgr;          /* ROLLTUI_TERMR_SGR_* */
   char version[64]; /* XTVERSION: "ghostty 1.1.3" */
 } RolltuiTermReplies;
@@ -161,6 +173,8 @@ typedef struct RolltuiTermCacheEntry {
   unsigned char keyboard;        /* ROLLTUI_PROTOCOL_* */
   unsigned char has_wide;        /* `ambiguous_wide` was asked and answered */
   unsigned char ambiguous_wide;
+  unsigned char has_split;       /* `split_clusters` was asked and answered */
+  unsigned char split_clusters;
   unsigned char has_depth;       /* the terminal CONFIRMED its depth (not merely the environment) */
   unsigned char depth;
   unsigned char answers_background; /* it answered OSC 11: worth re-checking each run */

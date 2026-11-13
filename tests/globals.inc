@@ -152,7 +152,9 @@ ROLLTUI_GLOBAL("rolltui_os_win32.c", "freq", PROCESS)
  * owns the terminal, read by whichever thread presents. */
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_depth", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_forced", PROCESS)
-/* …and the same terminal's glyph width and light-or-dark: what every width the library computes is
- * ORed with, and what a theme that says `auto` follows. Both -1 when no terminal is entered. */
+/* …and the same terminal's glyph width, whether it splits clusters, and light-or-dark: what every
+ * width the library computes is ORed with, how text is segmented for it, and what a theme that says
+ * `auto` follows. Each -1 when no terminal is entered. */
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_wide", PROCESS)
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_split", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_mode", PROCESS)

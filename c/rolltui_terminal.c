@@ -223,6 +223,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   if (t->publishing) { /* nothing is being drawn to any more */
     rolltui_termfacts_set_active(-1, 0);
     rolltui_termfacts_set_active_wide(-1);
+    rolltui_termfacts_set_active_split(-1);
     rolltui_termfacts_set_active_mode(-1);
   }
   rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
@@ -299,6 +300,7 @@ static void publish_depth(RolltuiTerminal* t) {
   forced = t->depth_override >= 0 || t->facts.depth_source == ROLLTUI_FACT_FORCED;
   rolltui_termfacts_set_active(t->depth_override >= 0 ? t->depth_override : t->facts.depth, forced);
   rolltui_termfacts_set_active_wide(t->facts.ambiguous_wide);
+  rolltui_termfacts_set_active_split(t->facts.split_clusters);
   rolltui_termfacts_set_active_mode(t->facts.mode);
   t->publishing = 1;
 }
@@ -352,6 +354,7 @@ static void adopt_cache(RolltuiTerminal* t) {
     f->ambiguous_wide = e->ambiguous_wide;
     f->ambiguous_source = ROLLTUI_FACT_CACHE;
   }
+  if (e->has_split) f->split_clusters = e->split_clusters;
   if (e->has_depth && f->depth_source != ROLLTUI_FACT_FORCED) {
     f->depth = e->depth;
     f->depth_source = ROLLTUI_FACT_CACHE;
@@ -377,6 +380,10 @@ static void remember(RolltuiTerminal* t, const RolltuiTermReplies* rep) {
   if (rep->cpr && rep->cpr_col >= 2) {
     e.has_wide = 1;
     e.ambiguous_wide = t->facts.ambiguous_wide;
+  }
+  if (rep->cpr2 && rep->cpr2_col >= 2) {
+    e.has_split = 1;
+    e.split_clusters = t->facts.split_clusters;
   }
   if (t->facts.depth_source == ROLLTUI_FACT_PROBE) {
     e.has_depth = 1;

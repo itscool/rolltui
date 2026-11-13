@@ -586,9 +586,10 @@ int main() {
     // What the 16 are: the terminal (7), the allocator counters (6), a thread's scratch and a
     // host's shutdown-hook list (2), and the keyboard protocol the TTY negotiated (1). Four
     // things that are genuinely the process's, and no registry among them. 20 -> 31: the terminal's
-    // Windows set (11, rolltui_os_win32.c), which a build compiles instead of the POSIX one.
-    check(ctx == 0 && proc == 31,
-          "the boundary is 0 CONTEXT + 31 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // Windows set (11, rolltui_os_win32.c), which a build compiles instead of the POSIX one. 32: whether
+    // the terminal splits grapheme clusters, beside its glyph width.
+    check(ctx == 0 && proc == 32,
+          "the boundary is 0 CONTEXT + 32 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

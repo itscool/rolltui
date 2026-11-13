@@ -3167,6 +3167,8 @@ int check_terminal_command() {
     std::printf("  background   %s   (%s)\n", f.mode == ROLLTUI_MODE_LIGHT ? "light" : "dark", fact_source(f.mode_source));
   }
   std::printf("  glyph width  an ambiguous-width glyph takes %d cell%s   (%s)\n", f.ambiguous_wide ? 2 : 1, f.ambiguous_wide ? "s" : "", fact_source(f.ambiguous_source));
+  std::printf("  clusters     %s\n", f.split_clusters ? "split: each code point takes cells of its own, an accent one cell"
+                                                     : "joined: an accent shares its letter's cell");
   std::printf("  keyboard     %s\n", f.keyboard == ROLLTUI_PROTOCOL_KITTY ? "kitty" : f.keyboard == ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS ? "modifyOtherKeys" : "legacy");
   std::printf("  remembered   %s\n", cache.empty() ? "nowhere (no configuration directory)" : cache.c_str());
   std::printf("\nOverride any of it:  ROLL_COLOR_DEPTH=truecolor|256|16|mono   ROLL_AMBIGUOUS_WIDE=1\n");

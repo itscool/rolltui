@@ -25,6 +25,8 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_screen.h"  /* INTERNAL: a frame's glyph, as the terminal is sent it */
+#include "rolltui/c/rolltui_termfacts.h"  /* INTERNAL: the active terminal's split-cluster fact */
 #include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/unicode_tables.h"  // ROLLTUI_GENERALCATEGORY_Cn: the C constants, not the C++ enum
 #include "rolltui_test.hpp"
@@ -201,6 +203,40 @@ int main() {
   for (std::size_t i = 0; i < known.size(); ++i)
     check(claimed[i] > 0, "known entry still applies (" + std::to_string(claimed[i]) +
                               " code points): " + known[i].why);
+
+  // ---- A TERMINAL THAT SPLITS CLUSTERS: Windows' console host gives every code point cells of its own, and its pseudo
+  // console re-draws them for a terminal that joins them again. Such a terminal is sent each cluster's first code point
+  // alone, so a cluster is measured at that code point's width.
+  {
+    auto cells = [&](const std::string& s) {
+      std::vector<RolltuiUnicodeGrapheme> g(s.size() + 1);
+      const std::size_t n = rolltui_u_graphemes(scratch, s.data(), s.size(), 0, g.data());
+      std::string out;
+      for (std::size_t i = 0; i < n; ++i) out += std::to_string(g[i].width);
+      return out;
+    };
+    const std::string cafe = "cafe\xCC\x81", keycap = "1\xEF\xB8\x8F\xE2\x83\xA3", flag = "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8",
+                      heart = "\xE2\x9D\xA4\xEF\xB8\x8F", thumb = "\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD", mark = "\xCC\x81x";
+    check(cells(cafe) == "1111" && cells(keycap) == "2" && cells(flag) == "2" && cells(heart) == "2" && cells(mark) == "01",
+          "a terminal that joins clusters: a keycap, a flag and an emoji heart are two cells; a lone accent none");
+    rolltui_termfacts_set_active_split(1);
+    check(cells(cafe) == "1111" && cells(thumb) == "2", "split: the clusters stay whole, `e` and its accent one cell, as `e` alone is");
+    check(cells(keycap) == "1" && cells(flag) == "1" && cells(heart) == "1",
+          "split: a keycap, a flag and an emoji heart are their first code point's width [" + cells(keycap) + cells(flag) + cells(heart) + "]");
+    check(cells(mark) == "01", "split: a cluster that begins with an accent is still drawn nowhere");
+    RolltuiFrame* fr = rolltui_frame_new(4, 1, RolltuiStyle{});
+    RolltuiDrawScratch* ds = rolltui_draw_scratch_new();
+    rolltui_frame_put_text(fr, ds, 0, 0, cafe.data(), cafe.size(), RolltuiStyle{}, 4, 0, 0);
+    std::size_t glen = 0;
+    const char* last = rolltui_frame_glyph(fr, 3, 0, &glen);
+    check(std::string(last, glen) == "e", "split: the frame holds the cluster's first code point alone, so no accent reaches the terminal");
+    rolltui_termfacts_set_active_split(-1);
+    rolltui_frame_put_text(fr, ds, 0, 0, cafe.data(), cafe.size(), RolltuiStyle{}, 4, 0, 0);
+    last = rolltui_frame_glyph(fr, 3, 0, &glen);
+    check(std::string(last, glen) == "e\xCC\x81" && cells(keycap) == "2", "withdrawn: the accent is drawn with its letter again");
+    rolltui_draw_scratch_free(ds);
+    rolltui_frame_free(fr);
+  }
 
   rolltui_u_scratch_free(scratch);
   return report("rolltui_width_test");

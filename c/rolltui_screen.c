@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_terminal.h"
 
 /* ---- an owned byte string that reuses its buffer ----------------------------------------- */
@@ -223,6 +224,12 @@ int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t g
   RolltuiCellRaw* c;
   if (y < 0 || y >= f->h || x < 0 || x >= f->w || cells <= 0) return 0;
   if (cells > 2) cells = 2;
+  /* A terminal that splits clusters is sent a cluster's first code point alone (rolltui_termfacts.h). */
+  if (glyph_len > 1 && rolltui_termfacts_active_split()) {
+    const unsigned char lead = (unsigned char)glyph[0];
+    const size_t first = lead < 0x80 ? 1 : lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+    if (first < glyph_len) glyph_len = first;
+  }
   /* Overwriting half of an existing wide glyph: blank the other half so no orphan
    * continuation cell survives. */
   if (at_mut(f, x, y)->continuation && x > 0) {

@@ -209,6 +209,10 @@ static _Atomic int g_active_mode = -1;
 
 void rolltui_termfacts_set_active_wide(int wide) { g_active_wide = wide < 0 ? -1 : (wide ? 1 : 0); }
 int rolltui_termfacts_active_wide(void) { return g_active_wide == 1; }
+
+static _Atomic int g_active_split = -1;
+void rolltui_termfacts_set_active_split(int split) { g_active_split = split < 0 ? -1 : (split ? 1 : 0); }
+int rolltui_termfacts_active_split(void) { return g_active_split == 1; }
 void rolltui_termfacts_set_active_mode(int mode) { g_active_mode = (mode >= 0 && mode < ROLLTUI_MODE_COUNT) ? mode : -1; }
 int rolltui_termfacts_active_mode(void) { return g_active_mode; }
 
@@ -254,10 +258,13 @@ size_t rolltui_termprobe_queries(unsigned want, char* out, size_t cap) {
     ROLLTUI_TERMQ_ADD("\x1bP$qm\x1b\\" "\x1b[0m");
   }
   if (want & ROLLTUI_TERMQ_VERSION) ROLLTUI_TERMQ_ADD("\x1b[>0q"); /* XTVERSION */
-  /* DECSC, home, one ambiguous glyph (U+2588), CPR, home, erase the line, DECRC — the same
-   * exchange `rolltui_terminal_query_ambiguous_wide` makes, now in the same round trip. */
+  /* DECSC, home, one ambiguous glyph (U+2588), CPR; home, `e` and a combining acute (U+0301), CPR;
+   * home, erase the line, DECRC. The first is the exchange `rolltui_terminal_query_ambiguous_wide`
+   * makes, now in the same round trip; the second finds a terminal that gives the accent a cell of
+   * its own (column 3) rather than joining it to the `e` (column 2). */
   if (want & ROLLTUI_TERMQ_WIDTH)
-    ROLLTUI_TERMQ_ADD("\x1b" "7" "\x1b[1;1H" "\xE2\x96\x88" "\x1b[6n" "\x1b[1;1H" "\x1b[K" "\x1b" "8");
+    ROLLTUI_TERMQ_ADD("\x1b" "7" "\x1b[1;1H" "\xE2\x96\x88" "\x1b[6n" "\x1b[1;1H" "e\xCC\x81" "\x1b[6n"
+                      "\x1b[1;1H" "\x1b[K" "\x1b" "8");
   ROLLTUI_TERMQ_ADD("\x1b[c"); /* Primary DA: the terminator every terminal answers */
 #undef ROLLTUI_TERMQ_ADD
   if (n < cap) out[n] = '\0';
@@ -329,9 +336,14 @@ static size_t take_csi(const char* p, size_t n, int expect_cpr, RolltuiTermRepli
     if (semi) {
       const int row = digits_at(p, 2, semi), col = digits_at(p, semi + 1, params_end);
       if (row >= 1 && col >= 1) {
-        r->cpr = 1;
-        r->cpr_row = row;
-        r->cpr_col = col;
+        if (r->cpr) { /* the second report, after the accent */
+          r->cpr2 = 1;
+          r->cpr2_col = col;
+        } else {
+          r->cpr = 1;
+          r->cpr_row = row;
+          r->cpr_col = col;
+        }
         return total;
       }
     }
@@ -448,6 +460,7 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
     f->ambiguous_wide = r->cpr_col >= 3;
     f->ambiguous_source = ROLLTUI_FACT_PROBE;
   }
+  if ((asked & ROLLTUI_TERMQ_WIDTH) && r->cpr2 && r->cpr2_col >= 2) f->split_clusters = r->cpr2_col >= 3;
   if ((asked & ROLLTUI_TERMQ_SGR) && f->depth_source != ROLLTUI_FACT_FORCED) {
     if (r->sgr == ROLLTUI_TERMR_SGR_TRUE) {
       f->depth = ROLLTUI_DEPTH_TRUECOLOR;
@@ -554,6 +567,11 @@ int rolltui_termcache_load(const char* path, const char* key, RolltuiTermCacheEn
       out->has_wide = 1;
       out->ambiguous_wide = rolltui_json_as_number(v, 0) != 0;
     }
+    v = rolltui_json_get(e, "split", 5);
+    if (rolltui_json_is_number(v)) {
+      out->has_split = 1;
+      out->split_clusters = rolltui_json_as_number(v, 0) != 0;
+    }
     s = rolltui_json_as_string(rolltui_json_get(e, "depth", 5), "", 0, &n);
     if (n) {
       const int d = rolltui_color_depth_from_name(s, n);
@@ -583,6 +601,7 @@ static RolltuiJsonValue* entry_to_json(const RolltuiTermCacheEntry* e) {
   rolltui_json_set(o, "responsive", 10, rolltui_json_bool(e->responsive));
   rolltui_json_set(o, "keyboard", 8, rolltui_json_number(e->keyboard));
   if (e->has_wide) rolltui_json_set(o, "wide", 4, rolltui_json_number(e->ambiguous_wide ? 1 : 0));
+  if (e->has_split) rolltui_json_set(o, "split", 5, rolltui_json_number(e->split_clusters ? 1 : 0));
   if (e->has_depth && e->depth < ROLLTUI_DEPTH_COUNT)
     rolltui_json_set(o, "depth", 5, rolltui_json_string(kDepthNames[e->depth], strlen(kDepthNames[e->depth])));
   rolltui_json_set(o, "answers_background", 18, rolltui_json_bool(e->answers_background));

@@ -370,6 +370,27 @@ int main() {
     take_all("\x1b[1;2R\x1b[?1;2c", true, rep);
     rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_WIDTH);
     check(f.ambiguous_wide == 0, "…and at column 2 a one-cell one");
+    // The second report is where `e` and a combining accent left the cursor.
+    {
+      char q[256];
+      const std::string asked(q, rolltui_termprobe_queries(ROLLTUI_TERMQ_WIDTH, q, sizeof q));
+      const std::size_t glyph = asked.find("\xE2\x96\x88\x1b[6n"), accent = asked.find("e\xCC\x81\x1b[6n");
+      check(glyph != std::string::npos && accent != std::string::npos && glyph < accent && asked.rfind("\x1b[K") > accent,
+            "the width question draws the ambiguous glyph, then `e` and a combining accent, asks after each, and erases the line");
+      f = facts_of({});
+      take_all("\x1b[1;2R\x1b[1;3R\x1b[?1;2c", true, rep);
+      check(rep.cpr == 1 && rep.cpr_col == 2 && rep.cpr2 == 1 && rep.cpr2_col == 3, "two cursor reports are read in the order they were asked");
+      rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_WIDTH);
+      check(f.ambiguous_wide == 0 && f.split_clusters == 1,
+            "the accent at column 3 took a cell of its own: this terminal splits clusters (Windows' console host)");
+      take_all("\x1b[1;2R\x1b[1;2R\x1b[?1;2c", true, rep);
+      rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_WIDTH);
+      check(f.split_clusters == 0, "…and at column 2 it joined the `e`");
+      f.split_clusters = 1;
+      take_all("\x1b[1;2R\x1b[?1;2c", true, rep);
+      rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_WIDTH);
+      check(f.split_clusters == 1 && rep.cpr2 == 0, "one report alone says nothing about the accent");
+    }
     // Asked about one thing, nothing else moves: a background reply not asked for is not applied.
     f = facts_of({});
     take_all("\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[?1;2c", false, rep);
@@ -463,6 +484,8 @@ int main() {
     w.keyboard = ROLLTUI_PROTOCOL_KITTY;
     w.has_wide = 1;
     w.ambiguous_wide = 1;
+    w.has_split = 1;
+    w.split_clusters = 1;
     w.has_depth = 1;
     w.depth = ROLLTUI_DEPTH_TRUECOLOR;
     w.answers_background = 1;
@@ -476,6 +499,7 @@ int main() {
     RolltuiTermCacheEntry r{};
     check(rolltui_termcache_load(path.c_str(), "k1", &r) == 1, "…and read back");
     check(r.probed == 1000000 && r.responsive == 1 && r.keyboard == ROLLTUI_PROTOCOL_KITTY && r.has_wide == 1 && r.ambiguous_wide == 1 &&
+              r.has_split == 1 && r.split_clusters == 1 &&
               r.has_depth == 1 && r.depth == ROLLTUI_DEPTH_TRUECOLOR && r.answers_background == 1 && r.has_background == 1 &&
               r.background.kind == RolltuiStyleColor::Kind::Rgb && r.background.r == 0x1e && r.background.b == 0x2e &&
               std::string(r.name) == "ghostty 1.1.3",

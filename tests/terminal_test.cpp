@@ -137,6 +137,7 @@ struct Script {
   std::string sgr;                           // the DCS reply to DECRQSS
   std::string version;                       // the DCS reply to XTVERSION
   int cpr_col = 2;                           // where the cursor is after the glyph; 0: no answer
+  int mark_col = 2;                          // ...after `e` and a combining accent (3: the accent took a cell of its own)
   std::string da1 = "\x1b[?1;2c";
   std::string after;                         // written on its own 150 ms after the first DA1 is answered (a LATE reply)
   int idle_ms = 350;                         // how long the terminal lingers once nothing more is coming
@@ -221,7 +222,12 @@ void fake_serve(int master, int report_fd, const Script& sc) {
           case 2: out += (++osc11_queries >= 2 && !sc.bg_later.empty()) ? sc.bg_later : sc.bg; break;
           case 3: out += sc.sgr; break;
           case 4: out += sc.version; break;
-          case 5: if (sc.cpr_col > 0) out += "\x1b[1;" + std::to_string(sc.cpr_col) + "R"; break;
+          case 5: {  // which question: the one after `e` and an accent, or the one after the ambiguous glyph
+            const bool after_accent = f.first >= 3 && seen.compare(f.first - 3, 3, "e\xCC\x81") == 0;
+            const int col = after_accent ? sc.mark_col : sc.cpr_col;
+            if (sc.cpr_col > 0) out += "\x1b[1;" + std::to_string(col) + "R";
+            break;
+          }
           case 6:
             out += sc.da1;
             if (!first_da_answered) {
@@ -778,6 +784,28 @@ int main() {
     check(while_alive_width == 2, "a glyph the terminal draws two cells wide is measured as two, though the host never asked and passed zero");
     check(while_alive_mode == ROLLTUI_MODE_LIGHT, "…and a theme that says auto follows the terminal's light background, though the host never asked");
     check(rolltui_u_codepoint_width(0x2588, 0) == 1 && rolltui_termfacts_active_mode() == -1, "…and both are withdrawn when the terminal is freed");
+  }
+
+  // ---- A terminal that gives a combining accent a cell of its own (Windows' console host)
+  {
+    Script split = kGhostty;
+    split.mark_col = 3;
+    const std::string dir = make_dir("split");
+    RolltuiTerminalOptions o;
+    o.cache_dir = dir.c_str();
+    const RolltuiCodepoint heart[] = {0x2764, 0xFE0F};  // an emoji heart: two cells where clusters join
+    int while_alive = -1;
+    unsigned char measured = 0;
+    with_terminal(split, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      measured = facts_of(t).split_clusters;
+      while_alive = rolltui_u_cluster_width(heart, 2, 0);
+    });
+    check(measured == 1, "a terminal that put the accent at column 3 splits clusters, and the facts say so");
+    check(while_alive == 1, "…and while it is entered, an emoji heart is sent as its first code point and measured as one cell, though the host never asked");
+    check(rolltui_u_cluster_width(heart, 2, 0) == 2, "…and the fact is withdrawn when the terminal is freed");
+    unsigned char remembered = 0;
+    const Heard again = with_terminal(split, kGhosttyEnv, o, [&](RolltuiTerminal* t) { remembered = facts_of(t).split_clusters; });
+    check(!again.asked("\x1b[6n") && remembered == 1, "…and the next run remembers it without asking");
   }
 
   // ---- ROLL_TERM_PROBE=0: the escape hatch for a terminal that mishandles a question

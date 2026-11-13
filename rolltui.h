@@ -3775,6 +3775,12 @@ typedef struct RolltuiTermFacts {
   RolltuiStyleColorRaw background;
   unsigned char ambiguous_wide; /* 1: an ambiguous-width glyph takes two cells */
   unsigned char ambiguous_source;
+  /* 1: the terminal gives every code point cells of its own, a zero-width one (a combining accent, a joiner, a variation
+   * selector) one cell: Windows' console host. The library then sends each grapheme cluster as its first code point alone and
+   * measures it at that code point's width, so the console and any terminal reading it count the same cells: `e` and a
+   * combining accent is drawn `e`, a skin-toned emoji its emoji. 0: a cluster shares the cells of its first character.
+   * Measured with `ambiguous_wide`, in the same exchange. */
+  unsigned char split_clusters;
   unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
   unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
   unsigned char remembered;     /* this run used remembered answers rather than asking */
