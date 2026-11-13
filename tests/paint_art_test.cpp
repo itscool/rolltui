@@ -107,8 +107,8 @@ int main() {
   }
 
   // ---- 0c. A PNG BECOMES ASCII ART ---------------------------------------------------------
-  // Pure app-side code over a documented format and a system zlib, so nothing is vendored and no
-  // licence question arises. The fixture is a radial blob: bright in the middle, dark at the rim.
+  // Decoded by the vendored stb_image (third_party/stb). The fixture is a radial blob: bright in the
+  // middle, dark at the rim.
   {
     int prc = 0;
     const std::string pic = std::string(ROLLTUI_FIXTURE_DIR) + "/blob.png";

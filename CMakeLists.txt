@@ -584,14 +584,12 @@ target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SHIPPED_DIR="
 # synthesises a press, the drags between and a release, so a canvas can be shown to
 # receive them with no terminal.
 add_executable(rolltui-paint examples/paint.cpp)
-# zlib is a SYSTEM library on every platform this builds on, so the PNG decoder needs nothing
-# vendored and raises no licence question. PNG is a documented format; the decoder is ours.
-find_package(ZLIB REQUIRED)
-target_link_libraries(rolltui-paint PRIVATE rolltui ZLIB::ZLIB)
+# PNG decoding is stb_image's (third_party/stb), compiled into paint.cpp alone.
+target_link_libraries(rolltui-paint PRIVATE rolltui)
 
 # The SELF-TEST build: the same source plus its scripted strokes and headless frame.
 add_executable(rolltui-paint-selftest ${ROLLTUI_TEST_EXCLUDE} examples/paint.cpp)
-target_link_libraries(rolltui-paint-selftest PRIVATE rolltui ZLIB::ZLIB)
+target_link_libraries(rolltui-paint-selftest PRIVATE rolltui)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)

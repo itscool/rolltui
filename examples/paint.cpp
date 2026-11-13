@@ -53,6 +53,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -61,11 +62,15 @@
 #include <utility>
 #include <vector>
 
-#include <zlib.h>
-
 #include "rolltui/rolltui.h"
 #include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
+
+// PNG decoding: stb_image (third_party/stb), PNG only, reading from memory.
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#define STB_IMAGE_IMPLEMENTATION
+#include "rolltui/third_party/stb/stb_image.h"
 
 // ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the
 // same one the studio and the explorer use, so one spelling drives all three.
@@ -216,11 +221,8 @@ constexpr const char* kCanvasDescribes = "a sheet the app paints on";
 RolltuiStr read_file(const RolltuiStr& path, bool& ok);
 
 // ---- a PNG, as ASCII ------------------------------------------------------------------------
-// PNG is a documented format and zlib is a system library, so this needs nothing vendored and
-// answers no licence question. Deliberately NARROW: 8-bit non-interlaced truecolour, with or
-// without alpha, which is what almost every screenshot and export is. Anything else is REFUSED
-// BY NAME rather than half-decoded — a picture that comes out wrong is worse than one that does
-// not come out, and "unsupported" is a sentence a person can act on.
+// Any PNG (palette, grey, 16-bit, interlaced, with or without alpha) is decoded to 8-bit RGB;
+// alpha is dropped. A file stb_image cannot read is refused with its reason.
 struct Image {
   int w = 0, h = 0;
   std::vector<unsigned char> rgb;  // GROWING HEAP, one per load: w*h*3, freed with the vector
@@ -231,80 +233,15 @@ RolltuiStr load_png(const RolltuiStr& path, Image& out) {
   const RolltuiStr bytes = read_file(path, ok);
   if (!ok) return RolltuiStr("cannot open ") + path;
   if (bytes.size() < 8 || std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) != 0) return RolltuiStr("not a PNG: ") + path;
-  const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes.data());
-  const std::size_t n = bytes.size();
-  auto be32 = [](const unsigned char* q) {
-    return (static_cast<unsigned long>(q[0]) << 24) | (static_cast<unsigned long>(q[1]) << 16) |
-           (static_cast<unsigned long>(q[2]) << 8) | static_cast<unsigned long>(q[3]);
-  };
-  int depth = 0, colour = 0, interlace = 0;
-  RolltuiStr idat;
-  for (std::size_t at = 8; at + 8 <= n;) {
-    const unsigned long len = be32(p + at);
-    if (at + 12 + len > n) break;
-    const char* type = bytes.data() + at + 4;
-    const unsigned char* data = p + at + 8;
-    if (std::memcmp(type, "IHDR", 4) == 0 && len >= 13) {
-      out.w = static_cast<int>(be32(data));
-      out.h = static_cast<int>(be32(data + 4));
-      depth = data[8];
-      colour = data[9];
-      interlace = data[12];
-    } else if (std::memcmp(type, "IDAT", 4) == 0) {
-      idat.append(reinterpret_cast<const char*>(data), len);
-    } else if (std::memcmp(type, "IEND", 4) == 0) {
-      break;
-    }
-    at += 12 + len;
-  }
-  if (out.w <= 0 || out.h <= 0) return RolltuiStr("no image header in ") + path;
-  if (depth != 8) return rolltui::format("only 8-bit PNGs are supported (this one is %d-bit)", depth);
-  if (colour != 2 && colour != 6) return rolltui::format("only truecolour PNGs are supported (colour type %d)", colour);
-  if (interlace != 0) return "interlaced PNGs are not supported";
-  if (idat.empty()) return RolltuiStr("no image data in ") + path;
-
-  const int chan = colour == 6 ? 4 : 3;
-  const std::size_t stride = static_cast<std::size_t>(out.w) * chan;
-  std::vector<unsigned char> raw((stride + 1) * static_cast<std::size_t>(out.h));
-  uLongf got = static_cast<uLongf>(raw.size());
-  if (uncompress(raw.data(), &got, reinterpret_cast<const Bytef*>(idat.data()),
-                 static_cast<uLong>(idat.size())) != Z_OK || got != raw.size())
-    return RolltuiStr("the image data in ") + path + " did not decompress";
-
-  // UN-FILTER, in place, row by row. Each scanline states its own filter in its first byte and
-  // refers to the row above, so this cannot be done per row in isolation.
-  out.rgb.assign(static_cast<std::size_t>(out.w) * out.h * 3, 0);
-  std::vector<unsigned char> prev(stride, 0), cur(stride, 0);
-  for (int y = 0; y < out.h; ++y) {
-    const unsigned char f = raw[(stride + 1) * static_cast<std::size_t>(y)];
-    const unsigned char* src = raw.data() + (stride + 1) * static_cast<std::size_t>(y) + 1;
-    for (std::size_t i = 0; i < stride; ++i) {
-      const int a = i >= static_cast<std::size_t>(chan) ? cur[i - chan] : 0;
-      const int b = prev[i];
-      const int c = i >= static_cast<std::size_t>(chan) ? prev[i - chan] : 0;
-      int v = src[i];
-      switch (f) {
-        case 0: break;
-        case 1: v += a; break;
-        case 2: v += b; break;
-        case 3: v += (a + b) / 2; break;
-        case 4: {
-          const int pa = std::abs(b - c), pb = std::abs(a - c), pc = std::abs(a + b - 2 * c);
-          v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
-          break;
-        }
-        default: return RolltuiStr("unknown scanline filter in ") + path;
-      }
-      cur[i] = static_cast<unsigned char>(v & 0xff);
-    }
-    for (int x = 0; x < out.w; ++x) {
-      const std::size_t s = static_cast<std::size_t>(x) * chan, d = (static_cast<std::size_t>(y) * out.w + x) * 3;
-      out.rgb[d] = cur[s];
-      out.rgb[d + 1] = cur[s + 1];
-      out.rgb[d + 2] = cur[s + 2];
-    }
-    prev = cur;
-  }
+  if (bytes.size() > static_cast<std::size_t>(INT_MAX)) return RolltuiStr("too large to open: ") + path;
+  int w = 0, h = 0, channels = 0;
+  stbi_uc* px = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()), &w, &h,
+                                      &channels, 3);
+  if (!px) return RolltuiStr("cannot read ") + path + ": " + stbi_failure_reason();
+  out.w = w;
+  out.h = h;
+  out.rgb.assign(px, px + static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 3);
+  stbi_image_free(px);
   return {};
 }
 
