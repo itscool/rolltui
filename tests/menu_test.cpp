@@ -1333,7 +1333,7 @@ int main() {
     const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
     const RolltuiMenuActions* A = rolltui_menu_default_actions();
     RolltuiMenuEvent ev{};
-    RolltuiEvent down = key(Key::Down), up = key(Key::Up), home = key(Key::Home), end = key(Key::End), enter = key(Key::Enter);
+    RolltuiEvent down = key(Key::Down), up = key(Key::Up), home = key(Key::Home), end = key(Key::End);
     check(rolltui_menu_selected(m) == 1, "a level that opens under a heading puts the cursor on the first row below it (" + std::to_string(rolltui_menu_selected(m)) + ")");
     rolltui_menu_handle(m, &down, b, A, &ev);
     rolltui_menu_handle(m, &down, b, A, &ev);

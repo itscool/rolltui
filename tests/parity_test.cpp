@@ -1,7 +1,7 @@
 // rolltui/tests/parity_test.cpp — CAN A HOST BUILD WHAT THE LIBRARY BUILDS?
 //
 // The library writes its own widget kinds inside itself, against every header it has. A host
-// writes one against nine vtable slots and `rolltui/rolltui.h`. Nothing else in this tree asks
+// writes one against the plugin's slots and `rolltui/rolltui.h`. Nothing else in this tree asks
 // whether those two are equally expressive, and the asymmetry is invisible until someone tries.
 //
 // THE PROBE: `menu` is reimplemented here as a HOST kind — `hostmenu` — through the public API
@@ -71,7 +71,7 @@ const std::string& fixture_dir() {
 constexpr std::size_t kBackRow = static_cast<std::size_t>(-1);
 
 // Which slot is disabled for a control run. NONE is the real widget.
-enum class Cripple { None, ScrollExtent, Draw, Handle, Layout, Problem, NoteAt };
+enum class Cripple { None, ScrollExtent, Draw, Handle, Layout, Problem, NoteAt, Back };
 
 // The seven roles a menu draw needs, plus the two a name/value row splits into. A host cannot
 // ASK which roles the library's menu draws with — `rolltui_windows_menu_roles` is internal — so
@@ -747,6 +747,16 @@ int host_handle(void* ctx, const RolltuiEvent* e) {
   return 0;
 }
 
+// THE WAY BACK: the slot the window stack asks before it closes a popup (the close key, a press
+// outside), so a level closes before the popup does. One level up and 1, or 0 at the top. The
+// library's menu closes a dropdown and abandons an edit first; this copy has no dropdown, and
+// editing is one of the walls asserted below, so ascending is the whole of it.
+int host_back(void* ctx) {
+  HostMenu* m = static_cast<HostMenu*>(ctx);
+  if (m->cripple == Cripple::Back) return 0;
+  return ascend(m) ? 1 : 0;
+}
+
 constexpr RolltuiWidgetPlugin kHostMenuPlugin = {
     /*destroy=*/host_destroy,
     /*layout=*/host_layout,
@@ -758,6 +768,7 @@ constexpr RolltuiWidgetPlugin kHostMenuPlugin = {
     /*scroll_extent=*/host_scroll_extent,
     /*scroll_to=*/nullptr,  // a menu's scroll follows its selection: an accurate bar, not a handle
     /*title=*/host_title,
+    /*back=*/host_back,
 };
 
 struct HostFactoryCtx {
@@ -898,6 +909,10 @@ struct Side {
     }
   }
 
+  // THE STACK'S QUESTION, asked the way the stack asks it — by the focused window's id, through
+  // the window table — so each side answers with its own kind's `back` slot.
+  void back() { outcomes.push_back("back " + std::to_string(rolltui_windows_back(windows, kWindow, std::strlen(kWindow)))); }
+
   static void draw_slot(void* c, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     Side* s = static_cast<Side*>(c);
     rolltui_windows_draw(s->windows, rn, f, s->styles, rolltui_windows_default_roles());
@@ -987,6 +1002,7 @@ struct Step {
   const char* what;
   RolltuiEvent e;
   bool sends = true;
+  bool backs = false;  // no event: the window stack's own question, "close one level?"
 };
 
 // EVERY SHAPE THE WIDGET HAS, in one pass: moving, paging, the ends, a filter and its erase, a
@@ -1026,6 +1042,9 @@ std::vector<Step> script() {
   step("down inside the submenu", key(ROLLTUI_KEY_DOWN));
   step("a click on the last row", click(4, 4));  // items start on the area's first row
   step("left ascends", key(ROLLTUI_KEY_LEFT));
+  step("enter descends again", key(ROLLTUI_KEY_ENTER));
+  s.push_back({"the stack's back slot closes the level", RolltuiEvent{}, /*sends=*/false, /*backs=*/true});
+  s.push_back({"…and at the top it answers that nothing is open", RolltuiEvent{}, /*sends=*/false, /*backs=*/true});
   step("page down", key(ROLLTUI_KEY_PAGEDOWN));
   step("page down again", key(ROLLTUI_KEY_PAGEDOWN));
   step("home", key(ROLLTUI_KEY_HOME));
@@ -1072,6 +1091,10 @@ Run drive(Cripple cripple, int amb = 0, int width = kW, int height = kH) {
     if (s.sends) {
       lib.send(s.e);
       host.send(s.e);
+    }
+    if (s.backs) {
+      lib.back();
+      host.back();
     }
     const std::string a = lib.present();
     const std::string b = host.present();
@@ -1137,13 +1160,14 @@ int main() {
         {Cripple::Layout, "layout"},
         {Cripple::Handle, "handle"},
         {Cripple::ScrollExtent, "scroll_extent"},
+        {Cripple::Back, "back"},
     };
     for (const Case& k : cases) {
       const Run r = drive(k.c);
       check(r.matched < steps, std::string("CONTROL: with `") + k.slot + "` crippled the frames diverge (" +
                                    std::to_string(r.matched) + "/" + std::to_string(steps) + " still matched)");
     }
-    // …and `scroll_extent` is the sharpest of the four, because it changes nothing the widget
+    // …and `scroll_extent` is the sharpest of these, because it changes nothing the widget
     // draws: the WINDOW stops drawing a scrollbar. A slot answered wrongly shows up even where the
     // widget's own cells are byte-identical.
     const Run r = drive(Cripple::ScrollExtent);

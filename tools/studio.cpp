@@ -2364,6 +2364,11 @@ constexpr RolltuiWidgetPlugin kEditorPlugin = {
     /*destroy=*/editor_destroy, /*layout=*/editor_layout, /*draw=*/editor_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
     /*handle=*/editor_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, /*title=*/editor_title,
+    // No `back`, and the editors still close one level at a time: the close key never reaches the
+    // stack while an editor has focus (`App::handle` gives it to the editor, which abandons an edit,
+    // then ascends, and asks to close only from its top level), and a press outside does not
+    // dismiss this pane. The theme editor is the library's `theme` kind, which has its own.
+    /*back=*/nullptr,
 };
 RolltuiWidget editor_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
 
@@ -2440,7 +2445,7 @@ RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* conten
   return RolltuiWidget{&kPlaceholderPlugin, pc};
 }
 
-bool parse_size(const RolltuiStr& s, int& w, int& h) {
+[[maybe_unused]] bool parse_size(const RolltuiStr& s, int& w, int& h) {
   const std::size_t x = StrView(s).find('x');
   if (x == StrView::npos) return false;
   w = std::atoi(s.c_str());
@@ -2473,7 +2478,7 @@ void run_steps(App& app, std::vector<Step>& steps) {
 }
 #endif
 
-void print_frame_plain(const RolltuiFrame* f) {
+[[maybe_unused]] void print_frame_plain(const RolltuiFrame* f) {
   RolltuiStr text{};
   rolltui_frame_to_text(f, &text);
   std::fwrite(text.p ? text.p : "", 1, text.n, stdout);
@@ -2501,7 +2506,7 @@ RolltuiStr default_presets_dir() {
   return RolltuiStr(home && *home ? home : ".") + "/.config/roll/rolltui";
 }
 
-RolltuiStr style_dump(StrView role, const RolltuiStyle& s) {
+[[maybe_unused]] RolltuiStr style_dump(StrView role, const RolltuiStyle& s) {
   RolltuiStr out = rolltui::own(role) + " fg=" + color_to_string(s.fg) + " bg=" + color_to_string(s.bg);
   if (s.bold) out += " bold";
   if (s.italic) out += " italic";
@@ -2550,10 +2555,10 @@ int main(int argc, char** argv) {
   App app;
   app.depth = rolltui_detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
   RolltuiStr frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
-  std::uint64_t tick_ms = 0;   // milestone 6: the elapsed time --frame renders at
-  bool dump_tick = false;
+  [[maybe_unused]] std::uint64_t tick_ms = 0;   // milestone 6: the elapsed time --frame renders at
+  [[maybe_unused]] bool dump_tick = false;
   RolltuiStr presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
-  bool frame_sgr = false;
+  [[maybe_unused]] bool frame_sgr = false;  // these three are the selftest's flags
   for (int i = 1; i < argc; ++i) {
     const StrView a = argv[i];
     auto next = [&]() -> RolltuiStr { return (i + 1 < argc) ? RolltuiStr(argv[++i]) : RolltuiStr(); };

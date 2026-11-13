@@ -1041,7 +1041,7 @@ int usage() {
 int main(int argc, char** argv) {
   RolltuiStr presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec, open_path;
   bool ambiguous = false;
-  unsigned long long painted_before = 0;
+  [[maybe_unused]] unsigned long long painted_before = 0;  // the selftest's script, below
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
   // flags and the strokes are collected as an ordered list and replayed after the app is built.
