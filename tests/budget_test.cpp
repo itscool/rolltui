@@ -505,7 +505,7 @@ int main() {
   check(resize.allocs > steady.allocs * 10, "…and it is an order of magnitude more than a steady frame, not a rounding error");
   // Wall-clock, gated only where a catastrophe lives — see the header for why this is not
   // a tight assertion.
-  check(steady.micros < 20000,
+  check(steady.micros < 20000 * rolltui_test::kClockScale,
         "a steady-state frame is far inside a terminal's ~16 ms budget [" + std::to_string(steady.micros) + " us]");
 
   // ---- THE LIVE NEGATIVE CONTROL -----------------------------------------------------

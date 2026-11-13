@@ -38,6 +38,8 @@ using syntest::lang_of;
 using syntest::live_bytes;
 using syntest::marked;
 
+using rolltui_test::kClockScale;
+
 namespace {
 
 struct Fixture {
@@ -337,7 +339,7 @@ int main(int argc, char** argv) {
           if (ms > worst) { worst = ms; worst_case = std::string(fx.language) + " on " + hate.name; }
         }
       }
-      check(worst < 800.0, "no language is slow on a line it hates: the worst is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_case + ")");
+      check(worst < 800.0 * kClockScale, "no language is slow on a line it hates: the worst is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_case + ")");
       rolltui_highlight_free(h);
     }
 
@@ -355,7 +357,7 @@ int main(int argc, char** argv) {
         const double ms = ms_since(t0);
         if (ms > worst) { worst = ms; worst_lang = fx.language; }
       }
-      check(worst < 1500.0, "a quarter of a megabyte of code in each language: the slowest is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_lang + ")");
+      check(worst < 1500.0 * kClockScale, "a quarter of a megabyte of code in each language: the slowest is " + std::to_string(static_cast<int>(worst)) + " ms (" + worst_lang + ")");
       rolltui_highlight_free(h);
     }
 
