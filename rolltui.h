@@ -418,7 +418,7 @@ typedef struct RolltuiStyleColorRaw {
 ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyleColorRaw) == 5, "RolltuiStyleColorRaw must be five bytes in both languages");
 
 typedef struct RolltuiStyle {
-  RolltuiStyleColorRaw fg, bg;
+  RolltuiStyleColorRaw fg ROLLTUI_DEFAULT({}), bg ROLLTUI_DEFAULT({});
   unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0), underline ROLLTUI_DEFAULT(0),
       dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
 } RolltuiStyle;

@@ -284,7 +284,11 @@ inline std::string run_roll(const char* bin, const RollScript& sc, int& exit_cod
   posix_spawn_file_actions_adddup2(&fa, in[0], STDIN_FILENO);
   posix_spawn_file_actions_adddup2(&fa, out[1], STDOUT_FILENO);
   for (int fd : {in[0], in[1], out[0], out[1]}) posix_spawn_file_actions_addclose(&fa, fd);
-  posix_spawn_file_actions_addchdir(&fa, sc.cwd.c_str());
+#if defined(__APPLE__)
+  posix_spawn_file_actions_addchdir(&fa, sc.cwd.c_str());     // POSIX 2024
+#else
+  posix_spawn_file_actions_addchdir_np(&fa, sc.cwd.c_str());  // glibc, musl and the BSDs
+#endif
 
   std::vector<std::string> env_store;
   for (char** e = TESTKIT_ENVIRON; e && *e; ++e) {

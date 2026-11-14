@@ -46,7 +46,19 @@ int cw(std::vector<char32_t> cps, bool amb = false) { return rolltui_u_cluster_w
 
 // One explained disagreement: which code points it covers (by predicate over the
 // code point and the two answers) and why.
+// Which C library an entry is about: each one's table is its own, and an entry that says how
+// Apple's older table differs claims nothing against glibc's.
+enum Libc : unsigned { kApple = 1, kGlibc = 2, kBoth = 3 };
+#if defined(__APPLE__)
+constexpr unsigned kThisLibc = kApple;
+#elif defined(__GLIBC__)
+constexpr unsigned kThisLibc = kGlibc;
+#else
+constexpr unsigned kThisLibc = 0;  // a libc whose disagreements are not listed: the cross-check is skipped
+#endif
+
 struct Known {
+  unsigned libc;
   const char* why;
   std::function<bool(char32_t cp, int ours, int libc)> claims;
 };
@@ -128,11 +140,11 @@ int main() {
   check(wcwidth(L'\x4E2D') == 2 && wcwidth(L'\x0301') == 0,
         "libc wcwidth is live under C.UTF-8 (中 = 2, U+0301 = 0)");
 
-  const std::vector<Known> known = {
-      {"unassigned code points: we follow East_Asian_Width (1, or 2 inside the CJK "
+  const std::vector<Known> all_known = {
+      {kBoth, "unassigned code points: we follow East_Asian_Width (1, or 2 inside the CJK "
        "blocks); libc returns 0 for anything its table does not know",
        [](char32_t cp, int, int libc) { return rolltui_u_general_category(cp) == ROLLTUI_GENERALCATEGORY_Cn && libc == 0; }},
-      {"assigned after libc's table was built (libc returns 0, its answer for "
+      {kApple, "assigned after libc's table was built (libc returns 0, its answer for "
        "unassigned): U+088F, 0C5C, 0CDC, 1B4E-1B4F, 1B7F, 1C89-1C8A, 20C1, 2427-2429, "
        "2B96, A7CB-A7CF, A7D2, A7D4, A7DA-A7DC, A7F1, FBC3-FBD2, FD90-FD91, FDC8-FDCE",
        [](char32_t cp, int ours, int libc) {
@@ -146,37 +158,54 @@ int main() {
          for (auto& x : r) if (cp >= x[0] && cp <= x[1]) return true;
          return false;
        }},
-      {"ideographic description characters added in Unicode 15.1/16 (W): U+2FFC-2FFF, "
+      {kApple, "ideographic description characters added in Unicode 15.1/16 (W): U+2FFC-2FFF, "
        "31E4-31E5, 31EF — libc returns 0 (unknown to its table)",
        [](char32_t cp, int ours, int libc) {
          return ours == 2 && libc == 0 &&
                 ((cp >= 0x2FFC && cp <= 0x2FFF) || cp == 0x31E4 || cp == 0x31E5 || cp == 0x31EF);
        }},
-      {"East_Asian_Width became W for the Yijing trigrams, mono/digrams and hexagrams "
+      {kApple, "East_Asian_Width became W for the Yijing trigrams, mono/digrams and hexagrams "
        "(U+2630-2637, 268A-268F, 4DC0-4DFF); libc's older table has them narrow",
        [](char32_t cp, int ours, int libc) {
          return ours == 2 && libc == 1 &&
                 ((cp >= 0x2630 && cp <= 0x2637) || (cp >= 0x268A && cp <= 0x268F) ||
                  (cp >= 0x4DC0 && cp <= 0x4DFF));
        }},
-      {"Hangul fillers U+115F, 3164, FFA0 are Default_Ignorable (0); libc gives them "
+      {kBoth, "Hangul fillers U+115F, 3164, FFA0 are Default_Ignorable (0); libc gives them "
        "their East_Asian_Width (2, 2, 1)",
        [](char32_t cp, int ours, int) {
          return ours == 0 && (cp == 0x115F || cp == 0x3164 || cp == 0xFFA0);
        }},
-      {"Hangul Jamo Extended-B medial vowels and final consonants (U+D7B0-D7C6, "
+      {kApple, "Hangul Jamo Extended-B medial vowels and final consonants (U+D7B0-D7C6, "
        "D7CB-D7FB) conjoin with a leading consonant, so 0; libc says 1",
        [](char32_t cp, int ours, int libc) {
          return ours == 0 && libc == 1 &&
                 ((cp >= 0xD7B0 && cp <= 0xD7C6) || (cp >= 0xD7CB && cp <= 0xD7FB));
        }},
-      {"U+302E-302F Hangul tone marks are Mc (spacing marks, 0 by our rule) with "
+      {kBoth, "U+302E-302F Hangul tone marks are Mc (spacing marks, 0 by our rule) with "
        "East_Asian_Width W; libc says 2",
        [](char32_t cp, int ours, int libc) {
          return ours == 0 && libc == 2 && (cp == 0x302E || cp == 0x302F);
        }},
+      {kGlibc, "spacing marks (Mc) are 0 by our rule: they draw inside their base's cluster; glibc counts one",
+       [](char32_t cp, int ours, int libc) {
+         return ours == 0 && libc == 1 && rolltui_u_general_category(cp) == ROLLTUI_GENERALCATEGORY_Mc;
+       }},
+      {kGlibc, "format characters glibc draws, the soft hyphen U+00AD and the prepended concatenation marks "
+       "(U+0600-0605, 06DD, 070F, 0890-0891, 08E2), are Cf and 0 by our rule; glibc counts one",
+       [](char32_t cp, int ours, int libc) {
+         return ours == 0 && libc == 1 && rolltui_u_general_category(cp) == ROLLTUI_GENERALCATEGORY_Cf;
+       }},
+      {kGlibc, "U+3248-324F circled numbers on black squares are East_Asian_Width A, one cell unless the "
+       "terminal draws ambiguous characters wide; glibc's table has them wide",
+       [](char32_t cp, int ours, int libc) { return ours == 1 && libc == 2 && cp >= 0x3248 && cp <= 0x324F; }},
   };
+  std::vector<Known> known;
+  for (const Known& k : all_known)
+    if (k.libc & kThisLibc) known.push_back(k);
 
+  // Run where the disagreements are listed: Apple's libc and glibc.
+  if (kThisLibc != 0) {
   std::vector<int> claimed(known.size(), 0);
   int disagreements = 0, unexplained = 0, scanned = 0;
   for (char32_t cp = 0; cp <= 0xFFFF; ++cp) {
@@ -203,6 +232,7 @@ int main() {
   for (std::size_t i = 0; i < known.size(); ++i)
     check(claimed[i] > 0, "known entry still applies (" + std::to_string(claimed[i]) +
                               " code points): " + known[i].why);
+  }
 
   // ---- A TERMINAL THAT SPLITS CLUSTERS: Windows' console host gives every code point cells of its own, and its pseudo
   // console re-draws them for a terminal that joins them again. Such a terminal is sent each cluster's lead alone (its

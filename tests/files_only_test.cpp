@@ -132,6 +132,8 @@ std::string status_line(const std::string& frame) {
 int main(int argc, char** argv) {
   const bool record = (argc > 1 && std::strcmp(argv[1], "--record") == 0);
   const std::string frames = std::string(ROLLTUI_FIXTURE_DIR) + "/frames/";
+  // The goldens were recorded in a 24-bit terminal, and every studio this suite starts is told so.
+  set_terminal_env({{"TERM", "xterm-256color"}, {"COLORTERM", "truecolor"}});
 
   // Working memory for display_width (rolltui/c/rolltui_unicode.h): CALLER-OWNED, made
   // once and reused for every row of every case below, freed before the one return.

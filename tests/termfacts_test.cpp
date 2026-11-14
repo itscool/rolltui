@@ -88,7 +88,7 @@ const std::string kFullReply =
     "\x1b[?62;c";
 
 std::string take_all(std::string bytes, bool expect_cpr, RolltuiTermReplies& rep) {
-  std::memset(&rep, 0, sizeof rep);
+  rep = RolltuiTermReplies{};
   const std::size_t n = rolltui_termreplies_take(bytes.data(), bytes.size(), expect_cpr ? 1 : 0, &rep);
   return bytes.substr(0, n);
 }
@@ -266,7 +266,7 @@ int main() {
       std::string why;
       for (std::size_t cut = 0; cut <= whole.size(); ++cut) {
         RolltuiTermReplies split;
-        std::memset(&split, 0, sizeof split);
+        split = RolltuiTermReplies{};
         std::string buf = whole.substr(0, cut);
         std::size_t n = rolltui_termreplies_take(buf.data(), buf.size(), 1, &split);
         buf.resize(n);
@@ -317,7 +317,7 @@ int main() {
     {
       std::string runaway = "\x1b]11;" + std::string(5000, 'x');
       RolltuiTermReplies r2;
-      std::memset(&r2, 0, sizeof r2);
+      r2 = RolltuiTermReplies{};
       const std::size_t n = rolltui_termreplies_take(runaway.data(), runaway.size(), 0, &r2);
       check(n < runaway.size(), "an OSC that never ends is dropped, not held for ever");
     }

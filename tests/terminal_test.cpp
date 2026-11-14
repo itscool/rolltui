@@ -265,9 +265,7 @@ Heard finish(FakeTerminal& ft) {
 
 // Sets exactly the variables the library reads about a terminal, and none of the person's own.
 void set_env(const std::vector<std::pair<const char*, const char*>>& vars) {
-  for (const char* name : {"COLORTERM", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "LC_TERMINAL", "LC_TERMINAL_VERSION",
-                           "COLORFGBG", "ROLL_COLOR_DEPTH", "ROLL_AMBIGUOUS_WIDE", "ROLL_TERM_PROBE", "TMUX", "STY", "SSH_CONNECTION"})
-    ::unsetenv(name);
+  set_terminal_env({});
   for (const auto& v : vars) ::setenv(v.first, v.second, 1);
 }
 

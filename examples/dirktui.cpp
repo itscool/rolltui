@@ -2699,13 +2699,19 @@ RolltuiStr read_file(const RolltuiStr& path, bool& ok) {
   return out;
 }
 
+}  // namespace
+
 // The app's own files, generated at build time from `examples/presets/` by
 // cmake/embed_presets.cmake. Compiled in rather than written here, so the screen's words live in
-// the JSON a user's preset directory shadows and in no hand-written source.
+// the JSON a user's preset directory shadows and in no hand-written source. Declared at file
+// scope: inside an unnamed namespace GCC gives them internal linkage, and they never meet the
+// generated definitions.
 extern "C" {
 extern const RolltuiEmbeddedFile dirktui_kAppFiles[];
 extern const size_t dirktui_kAppFileCount;
 }
+
+namespace {
 
 // Where a person's own presets live, the same three rungs `rolltui_app_file` walks for an app's
 // own files: an explicit configuration directory, then the XDG one, then the home default

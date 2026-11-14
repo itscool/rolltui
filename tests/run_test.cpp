@@ -311,16 +311,26 @@ int main() {
   if (master < 0) return report("rolltui_run_test");
   int rep[2] = {-1, -1};
   check(::pipe(rep) == 0, "pipe");
+  // THE TERMINAL STAYS OPEN UNTIL THE PARENT HAS LOOKED AT IT. The child's script ends when it sees the
+  // leave sequence, which is written before the mode is restored; a master closed then hangs the pty up
+  // (Linux), and the restore and the check below both fail on a terminal that is gone.
+  int hold[2] = {-1, -1};
+  check(::pipe(hold) == 0, "pipe");
   const pid_t child = ::fork();
   if (child == 0) {
     ::close(slave);
     ::close(rep[0]);
+    ::close(hold[1]);
     child_terminal(master, rep[1]);
     ::close(rep[1]);
+    char c;
+    while (::read(hold[0], &c, 1) > 0) {
+    }
     ::_exit(0);
   }
   ::close(master);
   ::close(rep[1]);
+  ::close(hold[0]);
 
   const std::size_t base = live_bytes();
   State s;
@@ -335,6 +345,7 @@ int main() {
   check(live_bytes() == base, "…and nothing is left allocated (" + std::to_string(live_bytes()) + " vs " + std::to_string(base) + ")");
   termios tio{};
   check(::tcgetattr(slave, &tio) == 0 && (tio.c_lflag & ICANON) && (tio.c_lflag & ECHO), "…and the tty is cooked again");
+  ::close(hold[1]);  // the child may close the terminal now
   ::close(slave);
 
   std::string said;

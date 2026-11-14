@@ -139,7 +139,7 @@ typedef struct RolltuiMdRenderOptions {
   int ambiguous_wide ROLLTUI_DEFAULT(0);
   int tab_width ROLLTUI_DEFAULT(8);
   unsigned char base ROLLTUI_DEFAULT(0); /* the base Role (rolltui/Style.hpp) */
-  RolltuiMdRoles roles;                  /* the rest of the vocabulary */
+  RolltuiMdRoles roles ROLLTUI_DEFAULT({}); /* the rest of the vocabulary */
 
   /* Unset (NULL) is the seam's whole opt-in: an unregistered highlighter is never called,
    * and every code line renders through the exact pre-seam path. */

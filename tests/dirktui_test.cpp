@@ -61,6 +61,16 @@ std::string run(const std::string& cmd, int& rc) {
 int status_of(int rc) { return rc == -1 ? -1 : (WIFEXITED(rc) ? WEXITSTATUS(rc) : 128); }
 
 bool has(const std::string& hay, const std::string& needle) { return hay.find(needle) != std::string::npos; }
+// `n` bytes of `hay` from where `from` begins, for a check's message; "(absent)" when it is not there.
+std::string piece(const std::string& hay, const std::string& from, std::size_t n) {
+  const std::size_t at = hay.find(from);
+  return at == std::string::npos ? std::string("(absent)") : hay.substr(at, n);
+}
+// Whether a shell is installed here: zsh is on every Mac and not on every Linux.
+bool installed(const std::string& shell) {
+  const std::string cmd = "command -v " + shell + " >/dev/null 2>&1";
+  return std::system(cmd.c_str()) == 0;
+}
 
 // The status line's "column a/b": which column is focused and how many there are.
 std::pair<int, int> column_of(const std::string& frame) {
@@ -274,9 +284,15 @@ int main() {
     const std::string txt_log = stublines();
     check(status_of(crc) == 0 && has(txt, "find: ") && txt_log.rfind("ran nvim ", 0) == 0 && has(txt_log, ".txt"),
           "Enter on a text file opens it with the editor found first — Neovim — and stays: a frame is drawn [" + txt_log.substr(0, 40) + "]");
+    // The system opener, as the stand-in is handed it: `open` on macOS, `xdg-open` elsewhere.
+#if defined(__APPLE__)
+    const std::string opener = "ran open ";
+#else
+    const std::string opener = "ran xdg-open ";
+#endif
     run(no_editors + with_setting("{}") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
     const std::string bare_log = stublines();
-    check(bare_log.rfind("ran open ", 0) == 0 && has(bare_log, ".txt"), "…with no editor installed, with the system opener [" + bare_log.substr(0, 30) + "]");
+    check(bare_log.rfind(opener, 0) == 0 && has(bare_log, ".txt"), "…with no editor installed, with the system opener [" + bare_log.substr(0, 30) + "]");
     // beta: a-quite…txt, data.bin, page.html, tool.py — Down Right enters it on the first
     run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Down Down Enter\" >/dev/null 2>&1", crc);
     const std::string py_log = stublines();
@@ -284,21 +300,21 @@ int main() {
           "…a source file opens with the CODE group's first choice — Visual Studio Code over Neovim, both installed [" + py_log.substr(0, 40) + "]");
     run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Down Enter\" >/dev/null 2>&1", crc);
     const std::string html_log = stublines();
-    check(html_log.rfind("ran open ", 0) == 0 && has(html_log, "page.html"),
+    check(html_log.rfind(opener, 0) == 0 && has(html_log, "page.html"),
           "…a web page goes to the system opener — the browser — even with editors installed");
     const std::string unknown = run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && has(unknown, "/beta/data.bin\n") && stublines().empty(),
           "…and a type nobody listed goes to the command line (exit 3), opened by nothing");
     // THE CHOICE IS THE PERSON'S, PER TYPE — the setting `open` names a program per group.
     run(editors + with_setting("{ \"open\": { \"text\": \"system\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
-    check(stublines().rfind("ran open ", 0) == 0, "the setting picks the program for a type: text to the system opener although Neovim is installed");
+    check(stublines().rfind(opener, 0) == 0, "the setting picks the program for a type: text to the system opener although Neovim is installed");
     run(editors + with_setting("{ \"open\": { \"text\": \"textedit\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
     const std::string app_log = stublines();
     check(app_log.rfind("ran open -a TextEdit ", 0) == 0, "…an application found in the applications directory runs through `open -a` [" + app_log.substr(0, 30) + "]");
     const std::string to_shell = run(editors + with_setting("{ \"open\": { \"text\": \"shell\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && has(to_shell, ".txt\n") && stublines().empty(), "…and 'the command line' hands the file to the shell instead, exit 3");
     run(no_editors + with_setting("{ \"open\": { \"text\": \"nvim\" } }") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
-    check(stublines().rfind("ran open ", 0) == 0, "a chosen program that is not installed any more falls back to the type's default, never to nothing");
+    check(stublines().rfind(opener, 0) == 0, "a chosen program that is not installed any more falls back to the type's default, never to nothing");
     // THE MENU OFFERS WHAT WAS FOUND, per type, with the choice shown.
     const std::string menu = run(editors + with_setting("{}") + apps_flag + " --frame 110x40 --keys \"F2\" 2>/dev/null", crc);
     check(has(menu, "General") && has(menu, "Look") && has(menu, "Input") && has(menu, "Open with") &&
@@ -553,12 +569,16 @@ int main() {
             "…and appends ONE marked block to ~/.zshrc — PATH, then the shell side GUARDED on the binary existing — after what was there");
       run(ienv + product + " install zsh 2>&1", irc);
       check(read_file((ihome / ".zshrc").string(), ok) == zrc, "…a second install writes nothing twice");
-      run("zsh -n '" + (ihome / ".zshrc").string() + "' 2>&1", irc);
-      check(status_of(irc) == 0, "…and zsh -n accepts the rc file it wrote");
+      if (installed("zsh")) {
+        run("zsh -n '" + (ihome / ".zshrc").string() + "' 2>&1", irc);
+        check(status_of(irc) == 0, "…and zsh -n accepts the rc file it wrote");
+      } else {
+        std::fprintf(stderr, "  [SKIP] zsh is not installed here, so the rc file was not parsed\n");
+      }
       write_file(ihome / ".bash_profile", "export BAR=2\n");
       const std::string bsaid = run(ienv + product + " install bash 2>&1", irc);
       check(has(read_file((ihome / ".bashrc").string(), ok), "eval \"$(dirktui init bash)\"") && has(bsaid, ".bash_profile, which does not source ~/.bashrc"),
-            "bash: the block goes into ~/.bashrc, and a profile that never reads it is NAMED, not edited [" + bsaid.substr(bsaid.find("note"), 50) + "]");
+            "bash: the block goes into ~/.bashrc, and a profile that never reads it is NAMED, not edited [" + piece(bsaid, "note", 50) + "]");
       check(read_file((ihome / ".bash_profile").string(), ok) == "export BAR=2\n", "…the profile is untouched");
       run(ienv + product + " install fish 2>&1", irc);
       check(has(read_file((ihome / ".config" / "fish" / "conf.d" / "dirk.fish").string(), ok), "dirktui init fish | source"),
@@ -597,6 +617,10 @@ int main() {
       check(status_of(irc) == 0 && has(script, "_dirk_forward_char") && has(script, "_dirk_command") &&
                 has(script, "command dirktui"),
             std::string("`dirktui init ") + sh.name + "` prints the wrapper, the composed command, and the Right Arrow binding");
+      if (!installed(sh.name)) {
+        std::fprintf(stderr, "  [SKIP] %s is not installed here, so its script was not run\n", sh.name);
+        continue;
+      }
       const fs::path init = scratch / (std::string("init.") + sh.name);
       write_file(init, script);
       run(std::string(sh.name) + " -n '" + init.string() + "' 2>&1", irc);
@@ -619,10 +643,10 @@ int main() {
       check(has(drove, "cancel=1 /\n"), std::string(sh.name) + ": a cancel changes nothing and returns 1");
       check(has(drove, "insert=0 /\n") && has(drove, "./alpha/one.txt"),
             std::string(sh.name) + ": exit 3 changes no directory and hands the path to the line (or shows it) [" +
-                drove.substr(drove.find("insert="), 30) + "]");
+                piece(drove, "insert=", 30) + "]");
       check(has(drove, "beside=0 " + alpha + "\n") && has(drove, "./one.txt"),
             std::string(sh.name) + ": exit 4 lands in the file's folder with ./name on the line (or shown) [" +
-                drove.substr(drove.find("beside="), 40) + "]");
+                piece(drove, "beside=", 40) + "]");
       check(!fs::exists(opened), std::string(sh.name) + ": the shell side opens NOTHING any more — opening is the binary's");
     }
 
@@ -796,9 +820,9 @@ int main() {
     // Started INSIDE the empty folder "two words": its column has no row to be a cursor, so the
     // marks are the ancestors' trail rows, one each — except `tree`'s, whose selection "two
     // words" is two runs. One row of two marks: the count is the focused column's index.
-    check(num(spaced.substr(spaced.find("effects: ")), "marks=") == column_of(spaced).first,
+    check(num(piece(spaced, "effects: ", std::string::npos), "marks=") == column_of(spaced).first,
           "a name with a space is marked as two runs of letters, so a spark never lands on the space [" +
-              spaced.substr(spaced.find("effects: "), 40) + " column " + std::to_string(column_of(spaced).first) + "]");
+              piece(spaced, "effects: ", 40) + " column " + std::to_string(column_of(spaced).first) + "]");
     check(num(on_file, "marks=") >= 1 && num(on_file, "drawn=") >= 1,
           "a file under the cursor is marked exactly as a folder is — the cursor is the cursor [" + on_file + "]");
     // OPENING A FILE adds one mark, the burst, for its moment; then the count is back. Compared

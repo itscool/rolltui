@@ -230,9 +230,13 @@ std::string json_dump_text(const RolltuiJsonValue* v, int indent) {
 int main(int argc, char** argv) {
   const bool record = (argc > 1 && std::strcmp(argv[1], "--record") == 0);
   const std::string frames = std::string(ROLLTUI_FIXTURE_DIR) + "/frames/";
+  // The goldens were recorded in a 24-bit terminal, and every studio this suite starts is told so.
+  set_terminal_env({{"TERM", "xterm-256color"}, {"COLORTERM", "truecolor"}});
   // A scratch preset directory for the editor cases (never the developer's own).
-  const char* tmp = std::getenv("TMPDIR");
-  const std::string scratch = std::string(tmp && *tmp ? tmp : "/tmp") + "/rolltui_golden_" + std::to_string(::getpid());
+  // THE SCRATCH ROOT STARTS THE SAME ON EVERY MACHINE. A frame that reports a saved file shows the
+  // first 28 characters of its path, so they are this fixed prefix and never the machine's TMPDIR;
+  // the run's own directory comes after it.
+  const std::string scratch = "/tmp/rolltui-studio-golden-scratch/" + std::to_string(::getpid());
   const std::string presets = " --presets '" + scratch + "/p' --shipped '" + scratch + "/s'";
   std::filesystem::remove_all(scratch);
   std::filesystem::create_directories(scratch);

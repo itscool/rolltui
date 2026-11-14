@@ -20,6 +20,8 @@
 // is a CONSUMER of the module.
 //
 #include <cstddef>
+#include <cstdlib>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -78,6 +80,17 @@ inline RolltuiContext* test_context() {
 // or string_view it makes HERE, in its own harness, which is what "in your own file" means.
 #ifndef ROLLTUI_STD_BRIDGE_DEFINED
 #define ROLLTUI_STD_BRIDGE_DEFINED
+// THE TERMINAL A RUN SAYS IT IS: every variable the library reads about a terminal is cleared, then
+// `vars` set. A golden frame records a colour depth and a glyph width, so a suite that draws one states
+// the terminal it was recorded in, and the person's own (Apple Terminal, a CI runner with no TERM)
+// never reaches a child it starts.
+inline void set_terminal_env(std::initializer_list<std::pair<const char*, const char*>> vars) {
+  for (const char* name : {"COLORTERM", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "LC_TERMINAL", "LC_TERMINAL_VERSION",
+                           "COLORFGBG", "ROLL_COLOR_DEPTH", "ROLL_AMBIGUOUS_WIDE", "ROLL_TERM_PROBE", "TMUX", "STY", "SSH_CONNECTION"})
+    ::unsetenv(name);
+  for (const auto& v : vars) ::setenv(v.first, v.second, 1);
+}
+
 inline std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
 inline std::string_view view_of(const RolltuiStr& s) { return std::string_view(s.p ? s.p : "", s.n); }
 inline void set_str(RolltuiStr& s, std::string_view v) { rolltui_str_set(&s, v.data(), v.size()); }
