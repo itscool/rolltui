@@ -421,6 +421,7 @@ target_compile_definitions(rolltui-boundary-test PRIVATE
   ROLLTUI_TARGET_INCLUDES_FILE="${CMAKE_CURRENT_BINARY_DIR}/rolltui_target_includes.txt")
 
 add_rolltui_test(rolltui-grapheme-break-test tests/grapheme_break_test.cpp)
+add_rolltui_test(rolltui-normalization-test tests/normalization_test.cpp)
 add_rolltui_test(rolltui-line-break-test tests/line_break_test.cpp)
 add_rolltui_test(rolltui-width-test tests/width_test.cpp)
 # Milestone 9: UAX #29 word boundaries (the double-click), plus the escape stripper.
@@ -467,7 +468,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
-  width_test.cpp word_break_test.cpp wrap_test.cpp
+  width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp
   screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp watch_test.cpp hints_test.cpp regex_test.cpp syntax_test.cpp syntax_langs_test.cpp syntax_test_helpers.hpp preview_syntax_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part

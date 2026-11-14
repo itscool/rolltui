@@ -103,6 +103,21 @@ size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, si
  * hold at least `len` entries. Returns the number of scalars. */
 size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
 
+/* ---- UAX #15: normalization -------------------------------------------------------------- */
+/* Canonical_Combining_Class: 0 for a starter. */
+unsigned char rolltui_u_combining_class(RolltuiCodepoint cp);
+/* NFD and NFC of `in[0..n)` into `out`, which holds `cap` code points; 4 * n is always enough (a
+ * code point decomposes to at most four). Returns the length of the result; one longer than `cap`
+ * is not written whole. */
+size_t rolltui_u_nfd(const RolltuiCodepoint* in, size_t n, RolltuiCodepoint* out, size_t cap);
+size_t rolltui_u_nfc(const RolltuiCodepoint* in, size_t n, RolltuiCodepoint* out, size_t cap);
+/* THE CLUSTER'S LEAD: the first code point of a grapheme cluster after canonical composition, as
+ * UTF-8 into `out` (4 bytes), and its length; 0 for an empty cluster. `e` and a combining acute
+ * lead with `é`. It is what a terminal that splits clusters is sent for the whole cluster
+ * (rolltui_termfacts.h). Only the first ROLLTUI_U_LEAD_SPAN code points are composed. */
+#define ROLLTUI_U_LEAD_SPAN 16
+size_t rolltui_u_cluster_lead(const char* utf8, size_t len, char* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -205,8 +205,8 @@ int main() {
                               " code points): " + known[i].why);
 
   // ---- A TERMINAL THAT SPLITS CLUSTERS: Windows' console host gives every code point cells of its own, and its pseudo
-  // console re-draws them for a terminal that joins them again. Such a terminal is sent each cluster's first code point
-  // alone, so a cluster is measured at that code point's width.
+  // console re-draws them for a terminal that joins them again. Such a terminal is sent each cluster's lead alone (its
+  // first code point after canonical composition), so a cluster is measured at the lead's width.
   {
     auto cells = [&](const std::string& s) {
       std::vector<RolltuiUnicodeGrapheme> g(s.size() + 1);
@@ -229,7 +229,7 @@ int main() {
     rolltui_frame_put_text(fr, ds, 0, 0, cafe.data(), cafe.size(), RolltuiStyle{}, 4, 0, 0);
     std::size_t glen = 0;
     const char* last = rolltui_frame_glyph(fr, 3, 0, &glen);
-    check(std::string(last, glen) == "e", "split: the frame holds the cluster's first code point alone, so no accent reaches the terminal");
+    check(std::string(last, glen) == "\xC3\xA9", "split: the frame holds the cluster's lead, composed: `e` and its accent are sent as `é`, one code point");
     rolltui_termfacts_set_active_split(-1);
     rolltui_frame_put_text(fr, ds, 0, 0, cafe.data(), cafe.size(), RolltuiStyle{}, 4, 0, 0);
     last = rolltui_frame_glyph(fr, 3, 0, &glen);

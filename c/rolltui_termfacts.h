@@ -112,9 +112,10 @@ int rolltui_termfacts_active_wide(void); /* 1 only when a terminal measured (or 
  * is never sent a zero-width code point. Its pseudo console re-draws its own buffer for whatever
  * terminal reads it, and that terminal joins an accent to its letter where the console gave it a
  * cell, so a zero-width code point in the stream puts the two a cell apart for the rest of the line.
- * Each cluster is sent as its first code point alone (`rolltui_frame_put`) and measured at that
- * code point's width (`rolltui_u_cluster_width`): every terminal in the chain then counts the same
- * cells. -1 withdraws it. */
+ * Each cluster is sent as its lead alone, its first code point after canonical composition
+ * (`rolltui_u_cluster_lead`, in `rolltui_frame_put`), and measured at the lead's width
+ * (`rolltui_u_cluster_width`): `e` and a combining acute is sent `é`, and every terminal in the
+ * chain counts the same cells. -1 withdraws it. */
 void rolltui_termfacts_set_active_split(int split);
 int rolltui_termfacts_active_split(void); /* 1 only when a terminal measured it */
 void rolltui_termfacts_set_active_mode(int mode);

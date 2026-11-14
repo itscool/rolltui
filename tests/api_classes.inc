@@ -215,6 +215,10 @@ ROLLTUI_API(rolltui_u_codepoint_width, INTERNAL)
 ROLLTUI_API(rolltui_u_decode_one, INTERNAL)
 ROLLTUI_API(rolltui_u_decode_utf8, INTERNAL)  /* one of the three Unicode functions a host needs (Phase 17 m4) */
 ROLLTUI_API(rolltui_u_decode_utf8_chars, INTERNAL)
+ROLLTUI_API(rolltui_u_combining_class, INTERNAL)
+ROLLTUI_API(rolltui_u_nfd, INTERNAL)
+ROLLTUI_API(rolltui_u_nfc, INTERNAL)
+ROLLTUI_API(rolltui_u_cluster_lead, INTERNAL)
 ROLLTUI_API(rolltui_u_display_width, PUBLIC)
 ROLLTUI_API(rolltui_u_fit, PUBLIC)  /* the explorer's wall E2: a widget that truncates needs
                                      the cut offset; every list/tree/table/column view does */

@@ -13,9 +13,12 @@ offline.
 | `DerivedGeneralCategory.txt` | generator | General_Category, for LB1, LB15a–b, LB30b and display width |
 | `emoji-data.txt` | generator | Extended_Pictographic (GB11, LB30b, emoji width) |
 | `WordBreakProperty.txt` | generator | UAX #29 Word_Break, for word boundaries |
+| `UnicodeData.txt` | generator | Canonical_Combining_Class and the canonical decompositions, for UAX #15 normalization |
+| `DerivedNormalizationProps.txt` | generator | Full_Composition_Exclusion: which decompositions are not composed back |
 | `GraphemeBreakTest.txt` | `rolltui-grapheme-break-test` | the UAX #29 grapheme conformance suite, in full |
 | `LineBreakTest.txt` | `rolltui-line-break-test` | the UAX #14 conformance suite, in full |
 | `WordBreakTest.txt` | `rolltui-word-break-test` | the UAX #29 word conformance suite, in full |
+| `NormalizationTest.txt` | `rolltui-normalization-test` | the UAX #15 normalization conformance suite, in full |
 
 The generator is `tools/gen_unicode_tables.cpp`; it writes `unicode_tables.c` and
 `unicode_tables.h`. The `rolltui-unicode-tables-current` test regenerates both and fails if the

@@ -9,7 +9,9 @@
 //   DerivedCoreProperties-17.0.0.txt  (2025-07-30, 23:55:08 GMT)
 //   DerivedGeneralCategory-17.0.0.txt  (2025-07-24, 00:12:50 GMT)
 //   emoji-data.txt  (2025-07-25, 17:54:31 GMT)
-// generator commit: 344ee1969854-dirty
+//   UnicodeData.txt  (40575 rows; the file names no version or date)
+//   DerivedNormalizationProps-17.0.0.txt  (2025-01-27, 18:09:14 GMT)
+// generator commit: 195d1b826197-dirty
 //
 // Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui
 // Verify:      gen_unicode_tables rolltui/ucd --check rolltui
@@ -51,6 +53,20 @@ typedef struct RolltuiUnicodeRange {
   RolltuiCodepoint last;
   unsigned char value;
 } RolltuiUnicodeRange;
+
+/* A canonical decomposition: `cp` is `first` then `second` (0 when it is one code point). */
+typedef struct RolltuiUnicodeDecomposition {
+  RolltuiCodepoint cp;
+  RolltuiCodepoint first;
+  RolltuiCodepoint second;
+} RolltuiUnicodeDecomposition;
+
+/* A primary composite: `first` followed by `second` composes to `composite`. */
+typedef struct RolltuiUnicodeComposition {
+  RolltuiCodepoint first;
+  RolltuiCodepoint second;
+  RolltuiCodepoint composite;
+} RolltuiUnicodeComposition;
 
 /* LineBreak */
 #define ROLLTUI_LINEBREAK_AI 0
@@ -208,6 +224,12 @@ extern const RolltuiUnicodeRange rolltui_u_table_extended_pictographic[156];  /*
 #define ROLLTUI_U_TABLE_EXTENDED_PICTOGRAPHIC_COUNT 156
 extern const RolltuiUnicodeRange rolltui_u_table_default_ignorable[17];  /* DefaultIgnorable (value 1 = Yes; absent = No) */
 #define ROLLTUI_U_TABLE_DEFAULT_IGNORABLE_COUNT 17
+extern const RolltuiUnicodeRange rolltui_u_table_canonical_combining_class[403];  /* CanonicalCombiningClass (the value is the class; absent = 0) */
+#define ROLLTUI_U_TABLE_CANONICAL_COMBINING_CLASS_COUNT 403
+extern const RolltuiUnicodeDecomposition rolltui_u_table_decomposition[2081];  /* sorted by cp */
+#define ROLLTUI_U_TABLE_DECOMPOSITION_COUNT 2081
+extern const RolltuiUnicodeComposition rolltui_u_table_composition[961];  /* sorted by first, then second */
+#define ROLLTUI_U_TABLE_COMPOSITION_COUNT 961
 
 #ifdef __cplusplus
 }  /* extern "C" */
@@ -377,6 +399,8 @@ inline const Range* const kExtendedPictographic = rolltui_u_table_extended_picto
 inline constexpr std::size_t kExtendedPictographicCount = ROLLTUI_U_TABLE_EXTENDED_PICTOGRAPHIC_COUNT;
 inline const Range* const kDefaultIgnorable = rolltui_u_table_default_ignorable;
 inline constexpr std::size_t kDefaultIgnorableCount = ROLLTUI_U_TABLE_DEFAULT_IGNORABLE_COUNT;
+inline const Range* const kCanonicalCombiningClass = rolltui_u_table_canonical_combining_class;
+inline constexpr std::size_t kCanonicalCombiningClassCount = ROLLTUI_U_TABLE_CANONICAL_COMBINING_CLASS_COUNT;
 
 }  // namespace rolltui::unicode
 #endif  // __cplusplus

@@ -28,6 +28,14 @@
 //                                                      zero-width classes
 //   ExtendedPictographic emoji-data.txt                UAX #29 GB11, UAX #14 LB30b
 //   DefaultIgnorable     DerivedCoreProperties.txt     width 0 (renders nothing)
+//   CanonicalCombiningClass UnicodeData.txt            UAX #15: canonical ordering, and what
+//                                                      blocks a composition
+// And two sorted lists, for UAX #15 normalization:
+//   Decomposition        UnicodeData.txt               every canonical decomposition (one or two
+//                                                      code points; applied recursively)
+//   Composition          UnicodeData.txt and           the primary composites: every two-code-point
+//                        DerivedNormalizationProps.txt canonical decomposition whose composite is
+//                                                      not Full_Composition_Exclusion
 //
 // `# @missing:` lines give the value of every code point a file does not list, and
 // MUST be applied: a file has one for the whole codespace and may have more for
@@ -230,6 +238,7 @@ struct Table {
   uint8_t def = 0;                       // the @missing default
   std::vector<std::string> sources;      // file names, for the header comment
   bool flag = false;                     // boolean property: emitted without an enum
+  bool numeric = false;                  // the value IS the property (a combining class): no enum
   Table() : map(kMaxCp + 1, 0) {}
 
   uint8_t index_of(const std::string& raw, const std::string& where) const {
@@ -309,6 +318,46 @@ void load_flag(Table& t, const UcdFile& f, const std::string& property) {
     ++rows;
   }
   if (rows == 0) die(f.name + ": no rows for property " + property);
+}
+
+// UnicodeData.txt: fifteen `;`-separated fields a line, no comments, no @missing lines. Field 3 is
+// Canonical_Combining_Class and field 5 the decomposition: a canonical one is bare code points, a
+// compatibility one starts with a `<tag>`. A `<..., First>` / `<..., Last>` pair names a range whose
+// code points all have class 0 and no decomposition (Hangul's syllables decompose by algorithm).
+struct UnicodeData {
+  std::vector<uint8_t> ccc = std::vector<uint8_t>(kMaxCp + 1, 0);
+  std::map<char32_t, std::vector<char32_t>> canonical;  // code point -> its canonical decomposition
+  size_t rows = 0;
+};
+UnicodeData parse_unicode_data(const std::string& path) {
+  UnicodeData d;
+  std::istringstream in(read_file(path));
+  std::string line;
+  while (std::getline(in, line)) {
+    if (trim(line).empty()) continue;
+    const std::vector<std::string> f = split(line, ';');
+    char32_t cp = 0, hi = 0;
+    if (f.size() != 15 || !parse_range(f[0], cp, hi)) die(path + ": bad line: " + line);
+    char* end = nullptr;
+    const unsigned long ccc = std::strtoul(f[3].c_str(), &end, 10);
+    if (f[3].empty() || *end != '\0' || ccc > 254) die(path + ": bad combining class: " + line);
+    d.ccc[cp] = static_cast<uint8_t>(ccc);
+    if (!f[5].empty() && f[5][0] != '<') {
+      std::vector<char32_t> seq;
+      std::istringstream parts(f[5]);
+      std::string h;
+      while (parts >> h) {
+        char32_t c = 0, c2 = 0;
+        if (!parse_range(h, c, c2)) die(path + ": bad decomposition: " + line);
+        seq.push_back(c);
+      }
+      if (seq.empty() || seq.size() > 2) die(path + ": a canonical decomposition is one or two code points: " + line);
+      d.canonical[cp] = seq;
+    }
+    ++d.rows;
+  }
+  if (d.rows < 30000) die(path + ": only " + std::to_string(d.rows) + " rows: truncated?");
+  return d;
 }
 
 std::string hex(char32_t c) {
@@ -424,11 +473,13 @@ int main(int argc, char** argv) {
   UcdFile dcp = parse_ucd(ucd_dir + "DerivedCoreProperties.txt");
   UcdFile dgc = parse_ucd(ucd_dir + "DerivedGeneralCategory.txt");
   UcdFile emoji = parse_ucd(ucd_dir + "emoji-data.txt");
+  UcdFile dnp = parse_ucd(ucd_dir + "DerivedNormalizationProps.txt");
+  const UnicodeData udata = parse_unicode_data(ucd_dir + "UnicodeData.txt");
 
   // Every versioned file must agree on the Unicode version; emoji-data.txt carries
   // "# Version: 17.0" (major.minor only), so it is checked as a prefix.
   std::string version = lb.version;
-  for (const UcdFile* f : {&eaw, &gcb, &wb, &dcp, &dgc})
+  for (const UcdFile* f : {&eaw, &gcb, &wb, &dcp, &dgc, &dnp})
     if (f->version != version)
       die("Unicode version mismatch: " + lb.name + " is " + version + " but " + f->name +
           " is " + f->version);
@@ -492,6 +543,29 @@ int main(int argc, char** argv) {
   t_di.name = "kDefaultIgnorable"; t_di.enum_name = "DefaultIgnorable";
   load_flag(t_di, dcp, "Default_Ignorable_Code_Point");
 
+  Table t_ccc;
+  t_ccc.name = "kCanonicalCombiningClass"; t_ccc.enum_name = "CanonicalCombiningClass";
+  t_ccc.numeric = true;
+  t_ccc.map = udata.ccc;
+  t_ccc.sources.push_back("UnicodeData.txt  (" + std::to_string(udata.rows) + " rows; the file names no version or date)");
+
+  // The primary composites: a two-code-point canonical decomposition, read backwards, unless its
+  // composite is excluded (Full_Composition_Exclusion covers the script-specific exclusions, the
+  // singletons and the non-starter decompositions).
+  Table t_fce;
+  t_fce.name = "kFullCompositionExclusion"; t_fce.enum_name = "FullCompositionExclusion";
+  load_flag(t_fce, dnp, "Full_Composition_Exclusion");
+  struct Pair { char32_t first, second, composite; };
+  std::vector<Pair> compositions;
+  for (const auto& [cp, seq] : udata.canonical)
+    if (seq.size() == 2 && !t_fce.map[cp]) compositions.push_back({seq[0], seq[1], cp});
+  std::sort(compositions.begin(), compositions.end(), [](const Pair& a, const Pair& b) {
+    return a.first != b.first ? a.first < b.first : a.second < b.second;
+  });
+  for (size_t i = 1; i < compositions.size(); ++i)
+    if (compositions[i].first == compositions[i - 1].first && compositions[i].second == compositions[i - 1].second)
+      die("two composites for one pair at " + hex(compositions[i].first) + " " + hex(compositions[i].second));
+
   // ---- the commit line -------------------------------------------------------------
   if (commit.empty()) {
     std::string git = "git -C '" + ucd_dir + "' ";
@@ -505,7 +579,7 @@ int main(int argc, char** argv) {
   }
 
   // ---- emit ------------------------------------------------------------------------
-  std::vector<const Table*> tables = {&t_lb, &t_eaw, &t_gcb, &t_wb, &t_incb, &t_gc, &t_ep, &t_di};
+  std::vector<const Table*> tables = {&t_lb, &t_eaw, &t_gcb, &t_wb, &t_incb, &t_gc, &t_ep, &t_di, &t_ccc};
   std::string banner;
   {
     std::ostringstream o;
@@ -518,6 +592,7 @@ int main(int argc, char** argv) {
           seen.push_back(s);
           o << "//   " << s << "\n";
         }
+    o << "//   " << dnp.name << "  (" << dnp.date << ")\n";
     o << "// generator commit: " << commit << "\n"
          "//\n"
          "// Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui\n"
@@ -567,9 +642,23 @@ int main(int argc, char** argv) {
          "  RolltuiCodepoint first;\n"
          "  RolltuiCodepoint last;\n"
          "  unsigned char value;\n"
-         "} RolltuiUnicodeRange;\n";
+         "} RolltuiUnicodeRange;\n"
+         "\n"
+         "/* A canonical decomposition: `cp` is `first` then `second` (0 when it is one code point). */\n"
+         "typedef struct RolltuiUnicodeDecomposition {\n"
+         "  RolltuiCodepoint cp;\n"
+         "  RolltuiCodepoint first;\n"
+         "  RolltuiCodepoint second;\n"
+         "} RolltuiUnicodeDecomposition;\n"
+         "\n"
+         "/* A primary composite: `first` followed by `second` composes to `composite`. */\n"
+         "typedef struct RolltuiUnicodeComposition {\n"
+         "  RolltuiCodepoint first;\n"
+         "  RolltuiCodepoint second;\n"
+         "  RolltuiCodepoint composite;\n"
+         "} RolltuiUnicodeComposition;\n";
     for (const Table* t : tables) {
-      if (t->flag) continue;
+      if (t->flag || t->numeric) continue;
       o << "\n/* " << t->enum_name << " */\n";
       for (size_t i = 0; i < t->values.size(); ++i)
         o << "#define " << c_prefix(*t) << t->values[i] << " " << i << "\n";
@@ -579,9 +668,16 @@ int main(int argc, char** argv) {
     for (const Table* t : tables) {
       std::vector<Range> ranges = rle(*t);
       o << "extern const RolltuiUnicodeRange " << c_array(*t) << "[" << ranges.size() << "];  /* "
-        << t->enum_name << (t->flag ? " (value 1 = Yes; absent = No)" : "") << " */\n";
+        << t->enum_name << (t->flag ? " (value 1 = Yes; absent = No)" : t->numeric ? " (the value is the class; absent = 0)" : "")
+        << " */\n";
       o << "#define " << c_count(*t) << " " << ranges.size() << "\n";
     }
+    o << "extern const RolltuiUnicodeDecomposition rolltui_u_table_decomposition[" << udata.canonical.size()
+      << "];  /* sorted by cp */\n"
+         "#define ROLLTUI_U_TABLE_DECOMPOSITION_COUNT " << udata.canonical.size() << "\n"
+         "extern const RolltuiUnicodeComposition rolltui_u_table_composition[" << compositions.size()
+      << "];  /* sorted by first, then second */\n"
+         "#define ROLLTUI_U_TABLE_COMPOSITION_COUNT " << compositions.size() << "\n";
     o << "\n"
          "#ifdef __cplusplus\n"
          "}  /* extern \"C\" */\n"
@@ -595,7 +691,7 @@ int main(int argc, char** argv) {
          "inline constexpr char kUnicodeVersion[] = ROLLTUI_UNICODE_VERSION;\n"
          "using Range = RolltuiUnicodeRange;\n";
     for (const Table* t : tables) {
-      if (t->flag) continue;
+      if (t->flag || t->numeric) continue;
       o << "\nenum class " << t->enum_name << " : unsigned char {";
       for (size_t i = 0; i < t->values.size(); ++i) o << (i ? ", " : " ") << t->values[i];
       o << " };\n";
@@ -630,17 +726,28 @@ int main(int argc, char** argv) {
       std::vector<Range> ranges = rle(*t);
       o << "\n/* " << t->enum_name << ": " << ranges.size() << " ranges";
       if (t->flag) o << " (value is always 1; absent means No) */\n";
+      else if (t->numeric) o << " (the value is the class; absent means 0) */\n";
       else o << ", default " << t->enum_name << "::" << t->values[t->def] << " */\n";
       o << "const RolltuiUnicodeRange " << c_array(*t) << "[" << ranges.size() << "] = {\n";
       for (const Range& r : ranges) {
         o << "  {" << hex(r.lo) << ", " << hex(r.hi) << ", " << unsigned(r.v) << "},";
         // Rows carry the enum's integer value; the trailing comment names it so a
         // diff of the file on a Unicode bump reads as classes, not numbers.
-        if (!t->flag) o << "  /* " << t->values[r.v] << " */";
+        if (!t->flag && !t->numeric) o << "  /* " << t->values[r.v] << " */";
         o << "\n";
       }
       o << "};\n";
     }
+    o << "\n/* Decomposition: " << udata.canonical.size() << " canonical decompositions */\n"
+         "const RolltuiUnicodeDecomposition rolltui_u_table_decomposition[" << udata.canonical.size() << "] = {\n";
+    for (const auto& [cp, seq] : udata.canonical)
+      o << "  {" << hex(cp) << ", " << hex(seq[0]) << ", " << (seq.size() > 1 ? hex(seq[1]) : std::string("0")) << "},\n";
+    o << "};\n"
+         "\n/* Composition: " << compositions.size() << " primary composites */\n"
+         "const RolltuiUnicodeComposition rolltui_u_table_composition[" << compositions.size() << "] = {\n";
+    for (const Pair& c : compositions)
+      o << "  {" << hex(c.first) << ", " << hex(c.second) << ", " << hex(c.composite) << "},\n";
+    o << "};\n";
     source = o.str();
   }
 

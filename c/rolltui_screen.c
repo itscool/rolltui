@@ -21,6 +21,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_unicode.h"
 
 /* ---- an owned byte string that reuses its buffer ----------------------------------------- */
 typedef struct {
@@ -222,13 +223,14 @@ const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len
 int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t glyph_len,
                       int cells, RolltuiStyle s, unsigned int link) {
   RolltuiCellRaw* c;
+  char lead[4];
   if (y < 0 || y >= f->h || x < 0 || x >= f->w || cells <= 0) return 0;
   if (cells > 2) cells = 2;
-  /* A terminal that splits clusters is sent a cluster's first code point alone (rolltui_termfacts.h). */
+  /* A terminal that splits clusters is sent a cluster's lead alone (rolltui_termfacts.h): `é` for
+   * `e` and a combining acute. */
   if (glyph_len > 1 && rolltui_termfacts_active_split()) {
-    const unsigned char lead = (unsigned char)glyph[0];
-    const size_t first = lead < 0x80 ? 1 : lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
-    if (first < glyph_len) glyph_len = first;
+    glyph_len = rolltui_u_cluster_lead(glyph, glyph_len, lead);
+    glyph = lead;
   }
   /* Overwriting half of an existing wide glyph: blank the other half so no orphan
    * continuation cell survives. */

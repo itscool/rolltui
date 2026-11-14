@@ -489,8 +489,8 @@ int main() {
     // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. 413/712 on 2026-11-13, when the 94 functions the
     // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC). 410 the same day, when
     // the reach rule found three studio-tier functions nothing called, not even a test (`rolltui_theme_store_set_working`,
-    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went. INTERNAL 755 with rolltui_os.h's 43, 756 with `rolltui_labelf`, 758 with the active split fact.
-    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 758 && totals.size() == 2,
+    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went. INTERNAL 755 with rolltui_os.h's 43, 756 with `rolltui_labelf`, 758 with the active split fact, 762 with UAX #15 normalization.
+    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 762 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

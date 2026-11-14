@@ -128,6 +128,148 @@ static int is_ignorable(RolltuiCodepoint cp) {
 
 unsigned char rolltui_u_general_category(RolltuiCodepoint cp) { return gc_class(cp); }
 
+/* ---- UAX #15: normalization -------------------------------------------------------------- */
+
+/* Hangul syllables compose and decompose by arithmetic, not by table (UAX #15, section 3.12). */
+#define HANGUL_S 0xAC00u
+#define HANGUL_L 0x1100u
+#define HANGUL_V 0x1161u
+#define HANGUL_T 0x11A7u
+#define HANGUL_L_COUNT 19u
+#define HANGUL_V_COUNT 21u
+#define HANGUL_T_COUNT 28u
+#define HANGUL_N_COUNT (HANGUL_V_COUNT * HANGUL_T_COUNT)
+#define HANGUL_S_COUNT (HANGUL_L_COUNT * HANGUL_N_COUNT)
+
+unsigned char rolltui_u_combining_class(RolltuiCodepoint cp) {
+  if (cp < 0x300) return 0; /* nothing below the combining diacritics has a class */
+  return lookup(rolltui_u_table_canonical_combining_class, ROLLTUI_U_TABLE_CANONICAL_COMBINING_CLASS_COUNT, cp, 0);
+}
+
+static const RolltuiUnicodeDecomposition* find_decomposition(RolltuiCodepoint cp) {
+  size_t lo = 0, hi = ROLLTUI_U_TABLE_DECOMPOSITION_COUNT;
+  if (cp < 0xC0) return NULL; /* À is the first code point with one */
+  while (lo < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    if (rolltui_u_table_decomposition[mid].cp < cp) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < ROLLTUI_U_TABLE_DECOMPOSITION_COUNT && rolltui_u_table_decomposition[lo].cp == cp ? &rolltui_u_table_decomposition[lo]
+                                                                                              : NULL;
+}
+
+static size_t put_cp(RolltuiCodepoint* out, size_t k, size_t cap, RolltuiCodepoint cp) {
+  if (k < cap) out[k] = cp;
+  return k + 1;
+}
+
+/* `cp`'s full canonical decomposition appended at out[k]: the table's mappings applied until
+ * nothing in them decomposes further. */
+static size_t decompose_into(RolltuiCodepoint cp, RolltuiCodepoint* out, size_t k, size_t cap) {
+  const RolltuiUnicodeDecomposition* d;
+  if (cp >= HANGUL_S && cp < HANGUL_S + HANGUL_S_COUNT) {
+    const RolltuiCodepoint s = cp - HANGUL_S;
+    k = put_cp(out, k, cap, HANGUL_L + s / HANGUL_N_COUNT);
+    k = put_cp(out, k, cap, HANGUL_V + (s % HANGUL_N_COUNT) / HANGUL_T_COUNT);
+    if (s % HANGUL_T_COUNT) k = put_cp(out, k, cap, HANGUL_T + s % HANGUL_T_COUNT);
+    return k;
+  }
+  d = find_decomposition(cp);
+  if (!d) return put_cp(out, k, cap, cp);
+  k = decompose_into(d->first, out, k, cap);
+  return d->second ? decompose_into(d->second, out, k, cap) : k;
+}
+
+size_t rolltui_u_nfd(const RolltuiCodepoint* in, size_t n, RolltuiCodepoint* out, size_t cap) {
+  size_t i, m = 0;
+  for (i = 0; i < n; ++i) m = decompose_into(in[i], out, m, cap);
+  if (m > cap) return m;
+  /* Canonical ordering: each run of non-starters sorted by class, stably (an insertion sort). */
+  for (i = 1; i < m; ++i) {
+    const unsigned char c = rolltui_u_combining_class(out[i]);
+    size_t j = i;
+    if (!c) continue;
+    while (j > 0 && rolltui_u_combining_class(out[j - 1]) > c) {
+      const RolltuiCodepoint t = out[j];
+      out[j] = out[j - 1];
+      out[j - 1] = t;
+      --j;
+    }
+  }
+  return m;
+}
+
+/* The primary composite of `a` followed by `b`, or 0. */
+static RolltuiCodepoint compose_pair(RolltuiCodepoint a, RolltuiCodepoint b) {
+  size_t lo = 0, hi = ROLLTUI_U_TABLE_COMPOSITION_COUNT;
+  if (a >= HANGUL_L && a < HANGUL_L + HANGUL_L_COUNT && b >= HANGUL_V && b < HANGUL_V + HANGUL_V_COUNT)
+    return HANGUL_S + ((a - HANGUL_L) * HANGUL_V_COUNT + (b - HANGUL_V)) * HANGUL_T_COUNT;
+  if (a >= HANGUL_S && a < HANGUL_S + HANGUL_S_COUNT && (a - HANGUL_S) % HANGUL_T_COUNT == 0 && b > HANGUL_T &&
+      b < HANGUL_T + HANGUL_T_COUNT)
+    return a + (b - HANGUL_T);
+  while (lo < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    const RolltuiUnicodeComposition* c = &rolltui_u_table_composition[mid];
+    if (c->first < a || (c->first == a && c->second < b)) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo < ROLLTUI_U_TABLE_COMPOSITION_COUNT && rolltui_u_table_composition[lo].first == a &&
+      rolltui_u_table_composition[lo].second == b)
+    return rolltui_u_table_composition[lo].composite;
+  return 0;
+}
+
+/* Canonical composition over the decomposition, in place: a code point joins the last starter
+ * when nothing between them blocks it, that is when every code point between has a lower,
+ * non-zero class (UAX #15, D117). */
+size_t rolltui_u_nfc(const RolltuiCodepoint* in, size_t n, RolltuiCodepoint* out, size_t cap) {
+  const size_t m = rolltui_u_nfd(in, n, out, cap);
+  size_t i, k = 1, starter_at = 0;
+  RolltuiCodepoint starter;
+  int last;
+  if (m == 0 || m > cap) return m;
+  starter = out[0];
+  last = rolltui_u_combining_class(starter) ? 256 : 0; /* a leading non-starter composes with nothing */
+  for (i = 1; i < m; ++i) {
+    const RolltuiCodepoint c = out[i];
+    const int cc = rolltui_u_combining_class(c);
+    const RolltuiCodepoint composite = compose_pair(starter, c);
+    if (composite && (last < cc || last == 0)) {
+      out[starter_at] = composite;
+      starter = composite;
+      continue;
+    }
+    if (cc == 0) {
+      starter_at = k;
+      starter = c;
+    }
+    last = cc;
+    out[k++] = c;
+  }
+  return k;
+}
+
+/* The lead of `cps[0..n)`: its first code point after composition. A cluster too long to compose
+ * whole is composed over its first ROLLTUI_U_LEAD_SPAN code points, which decide its lead. */
+static RolltuiCodepoint lead_of(const RolltuiCodepoint* cps, size_t n) {
+  RolltuiCodepoint buf[4 * ROLLTUI_U_LEAD_SPAN];
+  if (n <= 1) return n ? cps[0] : 0;
+  if (n > ROLLTUI_U_LEAD_SPAN) n = ROLLTUI_U_LEAD_SPAN;
+  return rolltui_u_nfc(cps, n, buf, sizeof buf / sizeof buf[0]) ? buf[0] : cps[0];
+}
+
+size_t rolltui_u_cluster_lead(const char* utf8, size_t len, char* out) {
+  RolltuiCodepoint cps[ROLLTUI_U_LEAD_SPAN];
+  size_t n = 0, pos = 0;
+  while (pos < len && n < ROLLTUI_U_LEAD_SPAN) {
+    RolltuiDecodedChar d;
+    rolltui_u_decode_one(utf8, len, pos, &d);
+    cps[n++] = d.cp;
+    pos += d.length ? d.length : 1;
+  }
+  return n ? rolltui_u_append_utf8(lead_of(cps, n), out) : 0;
+}
+
 /* ---- UTF-8 ------------------------------------------------------------------------------- */
 
 static void decode_at(const char* s, size_t len, size_t pos, RolltuiDecodedChar* d) {
@@ -253,10 +395,9 @@ int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous
   int vs16 = 0, keycap = 0, zwj = 0;
   size_t i;
   if (n == 0) return 0;
-  /* A terminal that splits clusters is sent each cluster as its first code point alone
-   * (rolltui_frame_put), so the cluster is that code point's width. One that begins with a
-   * zero-width code point is not drawn. */
-  if (rolltui_termfacts_active_split()) return rolltui_u_codepoint_width(cps[0], ambiguous_wide);
+  /* A terminal that splits clusters is sent each cluster's lead alone (rolltui_frame_put), so the
+   * cluster is the lead's width. One that begins with a zero-width code point is not drawn. */
+  if (rolltui_termfacts_active_split()) return rolltui_u_codepoint_width(lead_of(cps, n), ambiguous_wide);
   for (i = 0; i < n; ++i) {
     RolltuiCodepoint cp = cps[i];
     unsigned char gb = gb_class(cp);
