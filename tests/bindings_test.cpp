@@ -857,6 +857,7 @@ int main() {
     check(missing == 0, "…every member is filled by the expansion [" + std::to_string(missing) + " NULL]");
     check(undeclared == 0, "…and every one names an action the library declares [" + bad + "]");
     check(ma->input == ia, "…and the menu's input table IS the input table, not a copy of it");
+    rolltui_bindings_free(d);
   }
 
   return report("rolltui_bindings_test");

@@ -424,7 +424,12 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
    * error factory leaves — so nothing downstream learns a new case. */
   wd = (RolltuiWidget*)rolltui_mem_alloc(sizeof *wd);
   memset(wd, 0, sizeof *wd);
-  rolltui_map_put(&w->by_content, content, len, wd);
+  {
+    /* A row this replaces is freed. Only a lookup that missed a row it holds (the control above)
+     * replaces one; `wd` is allocated first, so the freed address is never the one handed back. */
+    RolltuiWidget* replaced = (RolltuiWidget*)rolltui_map_put(&w->by_content, content, len, wd);
+    if (replaced) widget_destroy(replaced);
+  }
   memset(&built, 0, sizeof built);
   for (i = 0; i < w->cfg->kind_n; ++i)
     if (rolltui_str_eq(&w->cfg->kinds[i].name, content, kl)) {

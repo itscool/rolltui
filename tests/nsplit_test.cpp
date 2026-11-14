@@ -43,6 +43,12 @@ void destroy_test_node(NSplitNode* n) {
   delete t;
 }
 
+// A tree released when its block ends: every node, and every children array, through `nsplit_release`.
+struct OwnedTree {
+  TestNode* root;
+  ~OwnedTree() { nsplit_release(&root->base, destroy_test_node); }
+};
+
 struct Resolved {
   int id;
   NSplitRect outer, inner;
@@ -76,6 +82,7 @@ int main() {
   // ---- seam insets the node's own box, once, before anything else -----------------------------
   {
     TestNode* leaf = make(1, false, 0, 0, 1, 0, 2);
+    const OwnedTree own{leaf};
     const std::vector<Resolved> r = resolve(leaf, {0, 0, 40, 20});
     check(req(r[0].outer, 0, 0, 40, 20) && req(r[0].inner, 2, 2, 36, 16),
           "a seam of 2 insets 2 on every side, outer unchanged");
@@ -83,6 +90,7 @@ int main() {
   {
     // A seam that would make the inner rect negative clamps to zero, never wraps negative.
     TestNode* leaf = make(1, false, 0, 0, 1, 0, 100);
+    const OwnedTree own{leaf};
     const std::vector<Resolved> r = resolve(leaf, {0, 0, 10, 10});
     check(r[0].inner.w == 0 && r[0].inner.h == 0, "a seam wider than the box clamps the inner rect to zero, not negative");
   }
@@ -90,6 +98,7 @@ int main() {
   // ---- two fixed children, 50/50 by fraction, in a row -----------------------------------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*axis=row*/ 1);
+    const OwnedTree own{root};
     TestNode* a = make(1, false, 0.5, 0);
     TestNode* b = make(2, false, 0.5, 0);
     nsplit_attach(&root->base, 0, &a->base);
@@ -102,6 +111,7 @@ int main() {
   // ---- fixed cells plus a fill child takes the remainder ---------------------------------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*row*/ 1);
+    const OwnedTree own{root};
     TestNode* fixed = make(1, false, 0, 12); // exactly 12 cells
     TestNode* fill = make(2, true, 0, 0, 1);
     nsplit_attach(&root->base, 0, &fixed->base);
@@ -114,6 +124,7 @@ int main() {
   // ---- fill weights split the remainder proportionally -----------------------------------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*row*/ 1);
+    const OwnedTree own{root};
     TestNode* a = make(1, true, 0, 0, 1); // weight 1
     TestNode* b = make(2, true, 0, 0, 3); // weight 3 -> 3x a's share
     nsplit_attach(&root->base, 0, &a->base);
@@ -126,6 +137,7 @@ int main() {
   // ---- a hidden node takes no space and is never visited, itself or beneath it -----------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*row*/ 1);
+    const OwnedTree own{root};
     TestNode* shown = make(1, true, 0, 0);
     TestNode* hidden = make(2, true, 0, 0, 1, 0, 0, /*visible=*/0);
     TestNode* under_hidden = make(3, false, 0, 0);
@@ -142,6 +154,7 @@ int main() {
   // ---- nesting: a row containing a column containing two leaves ---------------------------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*row*/ 1);
+    const OwnedTree own{root};
     TestNode* col = make(1, false, 0.5, 0, 1, /*column*/ 0);
     TestNode* leaf_left = make(2, false, 0.5, 0);
     TestNode* top = make(3, false, 0.5, 0);
@@ -174,7 +187,7 @@ int main() {
     for (const Resolved& x : r)
       if (x.id >= 100 && x.inner.w != 10) evenSplit = false;
     check(evenSplit, "…each gets an equal 1/30th share (10 of 300)");
-    for (TestNode* k : kids) delete k;
+    nsplit_release(&root->base, destroy_test_node);  // the root, the thirty, and the spilled children array
   }
 
   // ---- mutation: attach, detach, reparent --------------------------------------------------------
@@ -194,17 +207,15 @@ int main() {
     TestNode* other_parent = make(9, false, 0, 0);
     nsplit_attach(&other_parent->base, 0, out); // replant the detached node under a new parent
     check(other_parent->base.n == 1 && other_parent->base.children[0] == out, "a detached node can be attached anywhere else, whole");
-    delete other_parent; // does not own `out`'s memory; freed separately below
-    delete b;
+    nsplit_release(&other_parent->base, destroy_test_node);  // and `b`, its child now
 
     // reparent: move `a` from `root` to a fresh third node in one call.
     TestNode* third = make(8, false, 0, 0);
     nsplit_reparent(&root->base, 0, &third->base, 0);
     check(root->base.n == 0 && third->base.n == 1 && third->base.children[0] == &a->base,
           "reparent moves a node from one parent to another in one call");
-    delete third; // does not own `a`
-    delete a;
-    delete root;
+    nsplit_release(&third->base, destroy_test_node);  // and `a`, its child now
+    nsplit_release(&root->base, destroy_test_node);   // childless, but it still holds the array attach grew
   }
 
   // ---- release: post-order, every node exactly once, root last ----------------------------------

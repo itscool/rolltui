@@ -201,6 +201,9 @@ struct RouteC {
 // SHAPE, never a rule: `rolltui_layout_report_clean` is the library's own, called through.
 struct LayoutReport : RolltuiLayoutReport {
   LayoutReport() : RolltuiLayoutReport{} {}
+  ~LayoutReport() { rolltui_layout_report_release(this); }
+  LayoutReport(const LayoutReport&) = delete;
+  LayoutReport& operator=(const LayoutReport&) = delete;
   bool clean() const { return rolltui_layout_report_clean(this) != 0; }
 };
 // `for (const std::string& s : rep.bad_values)`-style loops need an index; this is the

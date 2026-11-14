@@ -426,9 +426,9 @@ static void raw_insert(RolltuiInput* in, const char* utf8, size_t len) {
     return;
   }
   t = (char*)rolltui_mem_alloc(in->text.n + n);
-  memcpy(t, in->text.p, in->caret);
+  if (in->caret) memcpy(t, in->text.p, in->caret); /* an empty input's text is NULL */
   memcpy(t + in->caret, s, n);
-  memcpy(t + in->caret + n, in->text.p + in->caret, in->text.n - in->caret);
+  if (in->text.n > in->caret) memcpy(t + in->caret + n, in->text.p + in->caret, in->text.n - in->caret);
   memset(&in->sel, 0, sizeof in->sel);
   retext(in, t, in->text.n + n, in->caret + n);
   rolltui_mem_free(t);

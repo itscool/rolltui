@@ -337,9 +337,7 @@ class LayoutStore {
   void start(LayoutPresetReport& rep) { rolltui_layout_store_start(s_, &rep); }
   const RolltuiLayout* working() const { return rolltui_layout_store_working(s_); }
   void set_working(const RolltuiLayout& l, bool persist = true) {
-    RolltuiLayout* v = new RolltuiLayout();
-    rolltui_layout_copy(v, &l);
-    rolltui_layout_store_set_working(s_, v, persist ? 1 : 0);
+    rolltui_layout_store_set_working(s_, rolltui_layout_clone(&l), persist ? 1 : 0);  // the store takes it: the library's allocation
   }
   std::optional<RolltuiLayout> get(std::string_view name, LayoutPresetReport& rep) const {
     RolltuiLayout* v = rolltui_layout_store_get(s_, name.data(), name.size(), &rep);

@@ -5115,7 +5115,11 @@ static int draw_gantt(RolltuiMermaid* m, const Source* src, size_t first, int ma
             ids.n -= q < ids.n ? q + 1 : ids.n;
             skip_ws(&ids);
           }
-          if (!found) { reason_set(reason, "a task starts after one that has not been defined"); goto done; }
+          if (!found) {
+            reason_set(reason, "a task starts after one that has not been defined");
+            rolltui_str_free(&t.id); /* not yet in `ts`, which `done` frees */
+            goto done;
+          }
           start = latest; have_start = 1;
         } else if (parse_date(tok, &d)) {
           if (!have_start) { start = d; have_start = 1; } else { end = d; have_end = 1; }
@@ -5127,7 +5131,11 @@ static int draw_gantt(RolltuiMermaid* m, const Source* src, size_t first, int ma
       else if (have_dur) end = start + (long)(dur + 0.999);
       else end = start + 1;
       if (t.milestone) end = start;
-      if (nt >= 200) { reason_set(reason, "a Gantt chart with more than 200 tasks is not drawn"); goto done; }
+      if (nt >= 200) {
+        reason_set(reason, "a Gantt chart with more than 200 tasks is not drawn");
+        rolltui_str_free(&t.id); /* not yet in `ts`, which `done` frees */
+        goto done;
+      }
       ts = (GTask*)rolltui_grow(ts, &tcap, nt + 1, sizeof *ts);
       ts[nt] = t;
       clean_label(name, &ts[nt].name);
