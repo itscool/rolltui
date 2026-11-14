@@ -13,7 +13,7 @@ A terminal UI library in C, with a C++ API on top.
 
 | | rolltui | Textual | ratatui | Bubble Tea | notcurses | FTXUI |
 |---|---|---|---|---|---|---|
-| Platforms | 🍎 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
+| Platforms | 🍎 🐧 🪟 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
 | Language | C, C++ API | Python | Rust | Go | C | C++ |
 | Dependencies | none | rich, Pygments, markdown-it, … | crossterm, ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
 | **Configuration** | | | | | | |
@@ -58,7 +58,8 @@ A terminal UI library in C, with a C++ API on top.
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under
   `c/` is internal. Every pointer is OWNED, BORROWED or a plain VALUE, and there is no `shared_ptr`.
 - **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell. `dirk` browses, prints
-  the chosen path, and a shell function does the rest. `brew install itscool/tap/dirktui`
+  the chosen path, and a shell function does the rest. `brew install itscool/tap/dirktui`; on
+  Windows, `dirktui install` puts `dirk` into PowerShell's profile.
 - **rolltui-studio** (`tools/studio.cpp`, `rolltui_studio.h`): edits themes, layouts, key bindings
   and menus live.
 - **Examples**: `rolltui-chat` (`examples/chat.cpp`), `rolltui-paint` (`examples/paint.cpp`).
@@ -78,6 +79,18 @@ ctest --test-dir build
 ./build/rolltui-studio           # author themes, layouts, key bindings and menus
 ./build/rolltui-chat             # the chat screen with a pretend assistant
 ./build/rolltui-paint            # the text-mode painting app
+```
+
+### Windows
+
+The library and the programs cross-compile with MinGW-w64. The programs link their runtime in and
+need nothing else installed on Windows 10 or 11. The test suite drives programs through ptys and is
+off for Windows builds.
+
+```sh
+cmake -B build-windows -S . -DCMAKE_SYSTEM_NAME=Windows \
+  -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++
+cmake --build build-windows -j
 ```
 
 ## Documentation

@@ -31,12 +31,18 @@ Use these rather than converting to and from `std::string`.
 ## Terminal detection
 
 `rolltui_terminal_new` asks the terminal, in the same round trip that sets up the keyboard, how
-many colours it draws, whether its background is light or dark, and how wide it draws
-ambiguous-width characters. The library applies the answers:
+many colours it draws, whether its background is light or dark, how wide it draws
+ambiguous-width characters, and whether it gives a combining accent a cell of its own. The
+library applies the answers:
 
 - `rolltui_swap_present` never draws at more colour depth than the terminal has.
 - Every character is measured at the width the terminal draws it.
 - A theme in `auto` mode follows the terminal's background.
+- On a terminal that gives every code point its own cells (Windows' console host), each grapheme
+  cluster is sent as one code point: its first after canonical composition, so `e` and a
+  combining acute is sent as `é`.
+
+Windows' own console sets no `TERM` and is drawn in 24-bit colour.
 
 Answers are cached per terminal, keyed by terminal name and version, operating system, program
 build, and whether the session runs over ssh or inside a multiplexer. A cached answer is used at
