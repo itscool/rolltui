@@ -38,7 +38,7 @@ A terminal UI library in C, with a C++ API on top.
 | **Terminal** | | | | | | |
 | Capabilities probed and remembered per terminal | ✓ | ✗ | ✗ | probed | probed | ✗ |
 | Line breaking tested against Unicode's test files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Synchronized output | ✗ | ✓ | ✗ | ✓ | ✓ | ✗ |
+| Synchronized output | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ |
 | Inline mode | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hyperlinks | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ |
 

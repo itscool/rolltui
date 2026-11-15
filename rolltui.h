@@ -3782,6 +3782,10 @@ typedef struct RolltuiTermFacts {
    * cluster shares the cells of its first character.
    * Measured with `ambiguous_wide`, in the same exchange. */
   unsigned char split_clusters;
+  /* 1: the terminal draws a frame whole (synchronized output, DEC mode 2026), so every frame is sent between its begin and
+   * end and is never seen half drawn. Asked with DECRQM in the same exchange; a terminal that does not answer is never sent
+   * the mode. */
+  unsigned char sync_output;
   unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
   unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
   unsigned char remembered;     /* this run used remembered answers rather than asking */

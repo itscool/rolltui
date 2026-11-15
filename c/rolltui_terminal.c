@@ -355,6 +355,7 @@ static void adopt_cache(RolltuiTerminal* t) {
     f->ambiguous_source = ROLLTUI_FACT_CACHE;
   }
   if (e->has_split) f->split_clusters = e->split_clusters;
+  if (e->has_sync) f->sync_output = e->sync_output;
   if (e->has_depth && f->depth_source != ROLLTUI_FACT_FORCED) {
     f->depth = e->depth;
     f->depth_source = ROLLTUI_FACT_CACHE;
@@ -384,6 +385,10 @@ static void remember(RolltuiTerminal* t, const RolltuiTermReplies* rep) {
   if (rep->cpr2 && rep->cpr2_col >= 2) {
     e.has_split = 1;
     e.split_clusters = t->facts.split_clusters;
+  }
+  if (rep->has_sync) {
+    e.has_sync = 1;
+    e.sync_output = t->facts.sync_output;
   }
   if (t->facts.depth_source == ROLLTUI_FACT_PROBE) {
     e.has_depth = 1;
@@ -554,10 +559,19 @@ void rolltui_terminal_set_depth(RolltuiTerminal* t, int depth) {
   publish_depth(t);
 }
 
+/* SYNCHRONIZED OUTPUT: a terminal that has mode 2026 is sent each frame between its begin and end,
+ * in the same write, and draws it whole. One that does not is never sent the mode. */
+#define SYNC_BEGIN "\x1b[?2026h"
+#define SYNC_END "\x1b[?2026l"
+
 void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch) {
   const unsigned char depth = (unsigned char)(t->depth_override >= 0 ? t->depth_override : t->facts.depth);
+  const int sync = t->tty && t->facts.sync_output;
   rolltui_str_clear(scratch);
+  if (sync) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
   rolltui_swap_present(s, depth, scratch);
+  if (sync && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */
+  else if (sync) rolltui_str_append(scratch, SYNC_END, sizeof SYNC_END - 1);
   if (scratch->n) rolltui_terminal_write(t, scratch->p, scratch->n);
 }
 

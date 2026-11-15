@@ -98,8 +98,10 @@ static void finish(RolltuiStr* out, const RolltuiFrame* f) {
   if (vis) put_lit(out, "\x1b[?25h");
 }
 
+/* A FULL REPAINT WRITES EVERY CELL, each in its own style, so nothing is cleared first: a clear is a
+ * blank screen a terminal may show between it and the frame. */
 void rolltui_render_full(const RolltuiFrame* next, unsigned char depth, RolltuiStr* out) {
-  put_lit(out, "\x1b[?25l\x1b[H\x1b[2J");
+  put_lit(out, "\x1b[?25l");
   SgrState current;
   current.have = 0;
   memset(&current.style, 0, sizeof current.style);

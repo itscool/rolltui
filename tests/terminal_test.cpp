@@ -138,6 +138,7 @@ struct Script {
   std::string version;                       // the DCS reply to XTVERSION
   int cpr_col = 2;                           // where the cursor is after the glyph; 0: no answer
   int mark_col = 2;                          // ...after `e` and a combining accent (3: the accent took a cell of its own)
+  std::string decrpm;                        // the reply to DECRQM for mode 2026 (synchronized output); "": none
   std::string da1 = "\x1b[?1;2c";
   std::string after;                         // written on its own 150 ms after the first DA1 is answered (a LATE reply)
   int idle_ms = 350;                         // how long the terminal lingers once nothing more is coming
@@ -204,9 +205,9 @@ void fake_serve(int master, int report_fd, const Script& sc) {
       // Every question found in what just arrived, in the order it was asked.
       struct Q { std::size_t at; const char* tok; std::size_t len; };
       static const Q qs[] = {{0, "\x1b[?u", 4}, {0, "\x1b[?4m", 5}, {0, "\x1b]11;?\x1b\\", 8}, {0, "\x1bP$qm\x1b\\", 6},
-                             {0, "\x1b[>0q", 5}, {0, "\x1b[6n", 4}, {0, "\x1b[c", 3}};
+                             {0, "\x1b[>0q", 5}, {0, "\x1b[6n", 4}, {0, "\x1b[c", 3}, {0, "\x1b[?2026$p", 9}};
       std::vector<std::pair<std::size_t, int>> found;
-      for (int qi = 0; qi < 7; ++qi) {
+      for (int qi = 0; qi < 8; ++qi) {
         std::size_t at = processed;
         while ((at = seen.find(qs[qi].tok, at)) != std::string::npos) {
           found.emplace_back(at, qi);
@@ -228,6 +229,7 @@ void fake_serve(int master, int report_fd, const Script& sc) {
             if (sc.cpr_col > 0) out += "\x1b[1;" + std::to_string(col) + "R";
             break;
           }
+          case 7: out += sc.decrpm; break;
           case 6:
             out += sc.da1;
             if (!first_da_answered) {
@@ -782,6 +784,55 @@ int main() {
     check(while_alive_width == 2, "a glyph the terminal draws two cells wide is measured as two, though the host never asked and passed zero");
     check(while_alive_mode == ROLLTUI_MODE_LIGHT, "…and a theme that says auto follows the terminal's light background, though the host never asked");
     check(rolltui_u_codepoint_width(0x2588, 0) == 1 && rolltui_termfacts_active_mode() == -1, "…and both are withdrawn when the terminal is freed");
+  }
+
+  // ---- Synchronized output: a terminal that has mode 2026 gets each frame whole, and only that terminal
+  {
+    auto frames = [](RolltuiTerminal* t) {
+      RolltuiSwap* swap = rolltui_swap_new(10, 2, RolltuiStyle{});
+      RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+      std::vector<std::string> sent;
+      for (const char* text : {"hi", "hi", "ho"}) {  // a frame, the same frame again, a changed one
+        RolltuiFrame* fr = rolltui_swap_begin(swap, 10, 2, RolltuiStyle{});
+        rolltui_frame_put_text(fr, d, 0, 0, text, 2, RolltuiStyle{}, 10, 0, 0);
+        RolltuiStr out{};
+        rolltui_terminal_present(t, swap, &out);
+        sent.emplace_back(out.p ? out.p : "", out.n);
+        rolltui_str_free(&out);
+      }
+      rolltui_draw_scratch_free(d);
+      rolltui_swap_free(swap);
+      return sent;
+    };
+    auto wrapped = [](const std::string& s) {
+      return s.rfind("\x1b[?2026h", 0) == 0 && s.size() > 16 && s.compare(s.size() - 8, 8, "\x1b[?2026l") == 0;
+    };
+    Script synced = kGhostty;
+    synced.decrpm = "\x1b[?2026;2$y";
+    const std::string dir = make_dir("sync");
+    RolltuiTerminalOptions o;
+    o.cache_dir = dir.c_str();
+    std::vector<std::string> sent;
+    unsigned char measured = 0;
+    const Heard asked = with_terminal(synced, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      measured = facts_of(t).sync_output;
+      sent = frames(t);
+    });
+    check(asked.asked("\x1b[?2026$p") && measured == 1, "the terminal is asked about mode 2026, and one that has it is recorded so");
+    check(sent.size() == 3 && wrapped(sent[0]) && sent[0].find("hi") != std::string::npos,
+          "each frame is sent between the mode's begin and end, in one write");
+    check(sent.size() == 3 && sent[1].empty(), "…a frame that changed nothing sends nothing, not an empty pair");
+    check(sent.size() == 3 && wrapped(sent[2]) && sent[2].find("o") != std::string::npos, "…and the next change is wrapped again");
+    std::vector<std::string> again;
+    const Heard remembered = with_terminal(synced, kGhosttyEnv, o, [&](RolltuiTerminal* t) { again = frames(t); });
+    check(!remembered.asked("\x1b[?2026$p") && !again.empty() && wrapped(again[0]),
+          "…and the next run remembers it without asking");
+    RolltuiTerminalOptions fresh;
+    fresh.no_cache = true;
+    std::vector<std::string> plain;
+    with_terminal(kGhostty, kGhosttyEnv, fresh, [&](RolltuiTerminal* t) { plain = frames(t); });
+    check(!plain.empty() && plain[0].find("2026") == std::string::npos && plain[0].find("hi") != std::string::npos,
+          "a terminal that does not answer is never sent the mode");
   }
 
   // ---- A terminal that gives a combining accent a cell of its own (Windows' console host)

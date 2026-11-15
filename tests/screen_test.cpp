@@ -185,8 +185,9 @@ int main() {
   // ---- golden bytes --------------------------------------------------------------
   {
     FramePtr blank = new_frame(4, 2);
+    // Every cell of every row, each in its style, and no clear: a clear is a blank screen a terminal may show first.
     expect_bytes("full repaint of a blank 4x2 frame", render_full(blank.get(), depth),
-                 "\x1b[?25l\x1b[H\x1b[2J"
+                 "\x1b[?25l"
                  "\x1b[1;1H\x1b[0m    "
                  "\x1b[2;1H    "
                  "\x1b[0m\x1b[1;1H");
@@ -352,7 +353,7 @@ int main() {
               frame_eq(after.get(), fresh_4x3.get()),
           "reset to a new size resizes and still equals a fresh frame of that size");
     const std::string bytes = render_diff(before.get(), after.get(), ROLLTUI_DEPTH_TRUECOLOR);
-    check(bytes.rfind("\x1b[?25l\x1b[H\x1b[2J", 0) == 0,
+    check(bytes == render_full(after.get(), ROLLTUI_DEPTH_TRUECOLOR),
           "…and diffing across a size change is a FULL repaint, so a resize cannot corrupt by geometry");
 
     // A long run of paints, including resizes, ends where a fresh frame would.

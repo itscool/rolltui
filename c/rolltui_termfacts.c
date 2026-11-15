@@ -265,6 +265,7 @@ size_t rolltui_termprobe_queries(unsigned want, char* out, size_t cap) {
   if (want & ROLLTUI_TERMQ_WIDTH)
     ROLLTUI_TERMQ_ADD("\x1b" "7" "\x1b[1;1H" "\xE2\x96\x88" "\x1b[6n" "\x1b[1;1H" "e\xCC\x81" "\x1b[6n"
                       "\x1b[1;1H" "\x1b[K" "\x1b" "8");
+  if (want & ROLLTUI_TERMQ_SYNC) ROLLTUI_TERMQ_ADD("\x1b[?2026$p"); /* DECRQM: synchronized output */
   ROLLTUI_TERMQ_ADD("\x1b[c"); /* Primary DA: the terminator every terminal answers */
 #undef ROLLTUI_TERMQ_ADD
   if (n < cap) out[n] = '\0';
@@ -325,7 +326,22 @@ static size_t take_csi(const char* p, size_t n, int expect_cpr, RolltuiTermRepli
     r->key_last = 2;
     return total;
   }
-  if (lead == '?' && fin == 'y' && has_dollar) return total; /* DECRPM: swallowed */
+  if (lead == '?' && fin == 'y' && has_dollar) { /* DECRPM: CSI ? mode ; value $ y */
+    size_t semi = 0, k;
+    for (k = 3; k < params_end; ++k)
+      if (p[k] == ';') {
+        semi = k;
+        break;
+      }
+    if (semi && digits_at(p, 3, semi) == 2026) {
+      /* 1 set, 2 reset, 3 permanently set: the terminal has the mode. 0 it does not know it, 4 it
+       * is permanently off. */
+      const int v = digits_at(p, semi + 1, params_end);
+      r->has_sync = 1;
+      r->sync = v == 1 || v == 2 || v == 3;
+    }
+    return total;
+  }
   if (lead == 0 && fin == 'R' && expect_cpr && !has_dollar) { /* CSI row ; col R */
     size_t semi = 0, k;
     for (k = 2; k < params_end; ++k)
@@ -461,6 +477,7 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
     f->ambiguous_source = ROLLTUI_FACT_PROBE;
   }
   if ((asked & ROLLTUI_TERMQ_WIDTH) && r->cpr2 && r->cpr2_col >= 2) f->split_clusters = r->cpr2_col >= 3;
+  if ((asked & ROLLTUI_TERMQ_SYNC) && r->has_sync) f->sync_output = r->sync ? 1 : 0;
   if ((asked & ROLLTUI_TERMQ_SGR) && f->depth_source != ROLLTUI_FACT_FORCED) {
     if (r->sgr == ROLLTUI_TERMR_SGR_TRUE) {
       f->depth = ROLLTUI_DEPTH_TRUECOLOR;
@@ -572,6 +589,11 @@ int rolltui_termcache_load(const char* path, const char* key, RolltuiTermCacheEn
       out->has_split = 1;
       out->split_clusters = rolltui_json_as_number(v, 0) != 0;
     }
+    v = rolltui_json_get(e, "sync", 4);
+    if (rolltui_json_is_number(v)) {
+      out->has_sync = 1;
+      out->sync_output = rolltui_json_as_number(v, 0) != 0;
+    }
     s = rolltui_json_as_string(rolltui_json_get(e, "depth", 5), "", 0, &n);
     if (n) {
       const int d = rolltui_color_depth_from_name(s, n);
@@ -602,6 +624,7 @@ static RolltuiJsonValue* entry_to_json(const RolltuiTermCacheEntry* e) {
   rolltui_json_set(o, "keyboard", 8, rolltui_json_number(e->keyboard));
   if (e->has_wide) rolltui_json_set(o, "wide", 4, rolltui_json_number(e->ambiguous_wide ? 1 : 0));
   if (e->has_split) rolltui_json_set(o, "split", 5, rolltui_json_number(e->split_clusters ? 1 : 0));
+  if (e->has_sync) rolltui_json_set(o, "sync", 4, rolltui_json_number(e->sync_output ? 1 : 0));
   if (e->has_depth && e->depth < ROLLTUI_DEPTH_COUNT)
     rolltui_json_set(o, "depth", 5, rolltui_json_string(kDepthNames[e->depth], strlen(kDepthNames[e->depth])));
   rolltui_json_set(o, "answers_background", 18, rolltui_json_bool(e->answers_background));

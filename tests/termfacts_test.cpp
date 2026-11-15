@@ -78,13 +78,15 @@ void depth_is(const std::string& what, const Env& e, unsigned char want, unsigne
 }
 
 // The bytes a truecolor terminal writes back to the FULL batch, in the order the questions were
-// asked: kitty's flags, OSC 11, DECRQSS, XTVERSION, the cursor report, and Primary DA last.
+// asked: kitty's flags, OSC 11, DECRQSS, XTVERSION, the cursor report, DECRPM for mode 2026, and
+// Primary DA last.
 const std::string kFullReply =
     "\x1b[?0u"
     "\x1b]11;rgb:1e1e/1e1e/2e2e\x1b\\"
     "\x1bP1$r0;48:2::1:2:3m\x1b\\"
     "\x1bP>|ghostty 1.1.3\x1b\\"
     "\x1b[1;3R"
+    "\x1b[?2026;2$y"
     "\x1b[?62;c";
 
 std::string take_all(std::string bytes, bool expect_cpr, RolltuiTermReplies& rep) {
@@ -236,6 +238,7 @@ int main() {
           "…asks the terminal what a 24-bit background became (DECRQSS)");
     check(all.find("\x1b[>0q") != std::string::npos, "…asks who it is (XTVERSION)");
     check(all.find("\xE2\x96\x88\x1b[6n") != std::string::npos, "…and draws one ambiguous glyph and asks where the cursor went");
+    check(all.find("\x1b[?2026$p") != std::string::npos, "…and asks whether it has synchronized output (DECRQM 2026)");
     n = rolltui_termprobe_queries(ROLLTUI_TERMQ_BACKGROUND, q, sizeof q);
     check(std::string(q, n) == "\x1b]11;?\x1b\\\x1b[c", "asking one thing asks ONLY that thing, then DA");
     n = rolltui_termprobe_queries(0, q, sizeof q);
@@ -257,6 +260,7 @@ int main() {
     check(rep.sgr == ROLLTUI_TERMR_SGR_TRUE, "a DECRQSS reply carrying 48:2 says the background took a 24-bit colour");
     check(std::string(rep.version) == "ghostty 1.1.3", "XTVERSION was read [" + std::string(rep.version) + "]");
     check(rep.cpr == 1 && rep.cpr_row == 1 && rep.cpr_col == 3, "the cursor report was read: an ambiguous glyph took two cells");
+    check(rep.has_sync == 1 && rep.sync == 1, "DECRPM for mode 2026 was read: the terminal has synchronized output");
 
     // THE PROPERTY: cut the bytes ANYWHERE and read on, and the result is the same. A terminal's
     // reply is written in one go and read in however many pieces the kernel likes.
@@ -273,7 +277,7 @@ int main() {
         buf += whole.substr(cut);
         n = rolltui_termreplies_take(buf.data(), buf.size(), 1, &split);
         buf.resize(n);
-        const bool same = buf == "xy" && split.da1 == 1 && split.has_bg == 1 && split.cpr == 1 && split.cpr_col == 3 &&
+        const bool same = buf == "xy" && split.da1 == 1 && split.has_bg == 1 && split.cpr == 1 && split.cpr_col == 3 && split.sync == 1 &&
                           split.sgr == ROLLTUI_TERMR_SGR_TRUE && std::string(split.version) == "ghostty 1.1.3" && split.kitty == 1;
         if (!same && all_same) {
           all_same = false;
@@ -391,6 +395,26 @@ int main() {
       rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_WIDTH);
       check(f.split_clusters == 1 && rep.cpr2 == 0, "one report alone says nothing about the accent");
     }
+    // Mode 2026: 1 set, 2 reset and 3 permanently set are a terminal that has it; 0 and 4 are not.
+    {
+      const struct { const char* reply; int has, sync; } kAnswers[] = {
+          {"\x1b[?2026;1$y", 1, 1}, {"\x1b[?2026;2$y", 1, 1}, {"\x1b[?2026;3$y", 1, 1},
+          {"\x1b[?2026;0$y", 1, 0}, {"\x1b[?2026;4$y", 1, 0}, {"\x1b[?2027;1$y", 0, 0}};
+      bool all_read = true;
+      for (const auto& a : kAnswers) {
+        take_all(std::string(a.reply) + "\x1b[?1;2c", false, rep);
+        if (rep.has_sync != a.has || rep.sync != a.sync) all_read = false;
+      }
+      check(all_read, "DECRPM for 2026 reads set, reset and permanently set as having it, unknown and permanently reset as not, and "
+                      "another mode's report as no answer");
+      f = facts_of({});
+      take_all("\x1b[?2026;2$y\x1b[?1;2c", false, rep);
+      rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_SYNC);
+      check(f.sync_output == 1, "…and a terminal that has it is drawn to in synchronized frames");
+      take_all("\x1b[?1;2c", false, rep);
+      rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_SYNC);
+      check(f.sync_output == 1, "…while silence changes nothing it already knew");
+    }
     // Asked about one thing, nothing else moves: a background reply not asked for is not applied.
     f = facts_of({});
     take_all("\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[?1;2c", false, rep);
@@ -486,6 +510,8 @@ int main() {
     w.ambiguous_wide = 1;
     w.has_split = 1;
     w.split_clusters = 1;
+    w.has_sync = 1;
+    w.sync_output = 1;
     w.has_depth = 1;
     w.depth = ROLLTUI_DEPTH_TRUECOLOR;
     w.answers_background = 1;
@@ -499,7 +525,7 @@ int main() {
     RolltuiTermCacheEntry r{};
     check(rolltui_termcache_load(path.c_str(), "k1", &r) == 1, "…and read back");
     check(r.probed == 1000000 && r.responsive == 1 && r.keyboard == ROLLTUI_PROTOCOL_KITTY && r.has_wide == 1 && r.ambiguous_wide == 1 &&
-              r.has_split == 1 && r.split_clusters == 1 &&
+              r.has_split == 1 && r.split_clusters == 1 && r.has_sync == 1 && r.sync_output == 1 &&
               r.has_depth == 1 && r.depth == ROLLTUI_DEPTH_TRUECOLOR && r.answers_background == 1 && r.has_background == 1 &&
               r.background.kind == RolltuiStyleColor::Kind::Rgb && r.background.r == 0x1e && r.background.b == 0x2e &&
               std::string(r.name) == "ghostty 1.1.3",

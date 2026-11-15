@@ -128,7 +128,8 @@ int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no termin
 #define ROLLTUI_TERMQ_VERSION 8    /* XTVERSION */
 #define ROLLTUI_TERMQ_WIDTH 16     /* draw one ambiguous glyph, then `e` and a combining accent, asking where
                                     * the cursor is after each; put the line back */
-#define ROLLTUI_TERMQ_ALL 31
+#define ROLLTUI_TERMQ_SYNC 32      /* DECRQM for mode 2026: does it draw a frame whole (synchronized output) */
+#define ROLLTUI_TERMQ_ALL 63
 
 /* The bytes that ask the questions in `want`, in ONE write, ending in Primary DA — the question
  * every terminal answers, and the reason an answer that never comes is a definite "no" rather than
@@ -152,6 +153,8 @@ typedef struct RolltuiTermReplies {
   int cpr_row, cpr_col;
   int cpr2;         /* a SECOND cursor report: where `e` and a combining accent left the cursor */
   int cpr2_col;
+  int has_sync;     /* DECRPM for mode 2026 arrived */
+  int sync;         /* …and the mode is one the terminal has: set, reset, or permanently set */
   int sgr;          /* ROLLTUI_TERMR_SGR_* */
   char version[64]; /* XTVERSION: "ghostty 1.1.3" */
 } RolltuiTermReplies;
@@ -176,6 +179,8 @@ typedef struct RolltuiTermCacheEntry {
   unsigned char ambiguous_wide;
   unsigned char has_split;       /* `split_clusters` was asked and answered */
   unsigned char split_clusters;
+  unsigned char has_sync;        /* `sync_output` was asked and answered */
+  unsigned char sync_output;
   unsigned char has_depth;       /* the terminal CONFIRMED its depth (not merely the environment) */
   unsigned char depth;
   unsigned char answers_background; /* it answered OSC 11: worth re-checking each run */
