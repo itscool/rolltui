@@ -246,11 +246,31 @@ void test_too_small() {
 
 }  // namespace
 
+// EVERYTHING A RUN OF THE STACK HELD IS GIVEN BACK: the maximised window's id, a tab's, a too-small note's. A stack made, driven
+// through each runtime call and freed leaves the allocator where it found it, on every platform, not only where a leak checker runs.
+void test_nothing_kept() {
+  { Screen warm(kBreak); warm.paint(120, 6); } /* the library's caches, made once */
+  std::size_t before = 0, after = 0;
+  rolltui_mem_stats(nullptr, nullptr, nullptr, nullptr, nullptr, &before);
+  {
+    Screen s(kBreak);
+    s.paint(120, 6);
+    rolltui_window_stack_set_visible(s.stack, "preview", 7, 0);
+    rolltui_window_stack_set_size(s.stack, "preview", 7, "30", 2);
+    rolltui_window_stack_maximize(s.stack, "list", 4);
+    s.paint();
+  }
+  rolltui_mem_stats(nullptr, nullptr, nullptr, nullptr, nullptr, &after);
+  check(after == before, "a stack hidden, sized and maximised, then freed, gives back every block it held (" + std::to_string(before) +
+                             " before, " + std::to_string(after) + " after)");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_tabs();
   test_breakpoints();
   test_hide_size_maximize();
   test_too_small();
+  test_nothing_kept();
   return testkit::report("layout_runtime_test");
 }

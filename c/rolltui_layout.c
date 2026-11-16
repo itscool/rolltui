@@ -2284,6 +2284,7 @@ void rolltui_window_stack_free(RolltuiWindowStack* s) {
   for (i = 0; i < s->n; ++i) rolltui_layer_release(&s->layers[i]);
   rolltui_mem_free(s->layers);
   rolltui_str_free(&s->captured);
+  rolltui_str_free(&s->maximized);
   rolltui_mem_free(s);
 }
 
