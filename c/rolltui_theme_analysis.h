@@ -97,7 +97,7 @@ typedef struct RolltuiStrArray {
 /* The must-differ pairs' COUNT. The pairs are a LIBRARY RULE, closed on purpose (the decision and each pair's justification are at the
  * table, `kMustDiffer` in rolltui_theme_analysis.c). Only the count is a caller's business: it sizes the `out_pairs` array
  * `rolltui_theme_analyse` fills, and the pairs come back IN it (`RolltuiPairCheck.a` / `.b`). */
-#define ROLLTUI_MUST_DIFFER_COUNT 11
+#define ROLLTUI_MUST_DIFFER_COUNT 12
 
 /* ---- the per-role / per-pair check ------------------------------------------------------- */
 typedef struct RolltuiRoleCheck {

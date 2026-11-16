@@ -255,6 +255,11 @@
         "fg": "none",
         "bg": "none",
         "bold": true
+      },
+      "hover": {
+        "fg": "none",
+        "bg": "none",
+        "bold": true
       }
     },
     "effects": {

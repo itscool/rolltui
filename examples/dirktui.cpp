@@ -2605,6 +2605,9 @@ struct App {
       RolltuiStyle sep = style(ROLLTUI_ROLE_LABEL), part = style(ROLLTUI_ROLE_VALUE), muted = style(ROLLTUI_ROLE_TEXT_MUTED);
       sep.bg = band.bg; part.bg = band.bg; muted.bg = band.bg;
       rolltui_frame_fill(f, draw_scratch, RolltuiRect{pr.x, pr.y, pr.w, 1}, band, nullptr, 0);
+      int px = -1, py = -1;
+      rolltui_window_stack_pointer(stack, &px, &py);
+      rolltui_hint_bar_hover(crumbs, px, py, style(ROLLTUI_ROLE_HOVER));
       crumbs_used = rolltui_hint_bar_draw(crumbs, f, draw_scratch, pr.x, pr.y, pr.w, sep, part, muted, ambiguous ? 1 : 0);
     } else {
       rolltui_hint_bar_clear(crumbs);  // nothing to hit while the line is text
@@ -2692,6 +2695,9 @@ struct App {
       // ground exactly as the menu widget resolves it against a row's.
       RolltuiStyle chord = style(ROLLTUI_ROLE_MENU_SHORTCUT);
       rolltui_style_on(&chord, ground);
+      int px = -1, py = -1;
+      rolltui_window_stack_pointer(stack, &px, &py);
+      rolltui_hint_bar_hover(hints, px, py, style(ROLLTUI_ROLE_HOVER));  // a hint is a button: lit under the pointer
       if (at < right) at += rolltui_hint_bar_draw(hints, f, draw_scratch, at, h - 1, right - at, chord, style(ROLLTUI_ROLE_LABEL), muted, 0);
       at += 2;
       if (at < right)
@@ -3790,6 +3796,7 @@ int main(int argc, char** argv) {
     if (a.quit) rolltui_run_stop(run);
   };
   RolltuiTerminalOptions opts{};
+  opts.hover = 1;  // what a click would act on is lit under the pointer
   const int ran = rolltui_run(tty.in, tty.out, opts, &hooks);
   close_tty(tty);  // the screen was put back before the loop returned: what follows lands on the person's own
   if (ran == ROLLTUI_RUN_NOT_A_TERMINAL) {

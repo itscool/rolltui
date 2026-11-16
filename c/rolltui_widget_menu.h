@@ -153,6 +153,9 @@ const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len);
 
 void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o);
 void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area);
+/* THE POINTER, for the next draw: `on` with its cell, as the window's resolved node says (`RolltuiResolvedNode::hover`). The row, the
+ * dropdown option or the scroll marker a click there would act on is drawn in the `hover` role; nothing moves. */
+void rolltui_menu_set_hover(RolltuiMenu* m, int on, int x, int y);
 
 void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
                        const RolltuiStyle* styles, const RolltuiMenuRoles* roles,

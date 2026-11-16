@@ -57,6 +57,9 @@ int rolltui_picker_refresh(RolltuiPicker* p);
 /* The frame clock, set before layout and before an event: 0 means headless, nothing moves. */
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms);
 void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner);
+/* THE POINTER, for the next draw (`RolltuiResolvedNode::hover`): the entry a click there would select is drawn in the `hover` role,
+ * unless it is the cursor's own. Nothing moves. */
+void rolltui_picker_set_hover(RolltuiPicker* p, int on, int x, int y);
 void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* styles,
                          const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide);
 /* 1 when the event was consumed. Keys are resolved in the `picker` scope of `b` against `a`. */

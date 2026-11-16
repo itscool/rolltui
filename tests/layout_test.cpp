@@ -1410,6 +1410,77 @@ int main() {
     expect_rect("its buttons at the bottom", by_id(v, "buttons")->outer, {21, 15, 38, 1});
   }
 
+  {
+    // THE POINTER: the stack learns where it rests from the terminal's motion reports and marks the one window a press there would
+    // reach, on `_resolve` and `_compose` alike. A press alone says nothing about where the pointer rests afterwards.
+    const RolltuiRect scr{0, 0, 80, 24};
+    StackC s;
+    RolltuiLayer two;
+    two.root = RolltuiLayoutNode::column();
+    two.root.children.push_back(win("a", {}, Border::None, true));
+    two.root.children.push_back(win("b", {}, Border::None, true));
+    rolltui_window_stack_set_base(s.s, &two);
+    auto mouse = [](RolltuiMouseEvent::Kind k, int x, int y) {
+      RolltuiMouseEvent m{};
+      m.kind = k;
+      m.x = x;
+      m.y = y;
+      m.button = k == RolltuiMouseEvent::Kind::Press ? 1 : 0;
+      return m;
+    };
+    auto hovered = [&](RolltuiRect at) {
+      std::string ids;
+      for (const RolltuiResolvedNode& rn : resolve_stack_c(s.s, at))
+        if (rn.hover) ids += (ids.empty() ? "" : ",") + std::string(view_of(rn.node->id)) + "@" + std::to_string(rn.hover_x) + "," + std::to_string(rn.hover_y);
+      return ids;
+    };
+    int px = 0, py = 0;
+    check(rolltui_window_stack_pointer(s.s, &px, &py) == 0 && px == -1 && py == -1 && hovered(scr).empty(),
+          "before the terminal reports the pointer moving, the stack knows no pointer and marks no window");
+    s.route(mouse(RolltuiMouseEvent::Kind::Press, 5, 15), scr);
+    s.route(mouse(RolltuiMouseEvent::Kind::Release, 5, 15), scr);
+    check(rolltui_window_stack_pointer(s.s, nullptr, nullptr) == 0 && hovered(scr).empty(),
+          "a click alone does not: without motion reports nothing says when the pointer left");
+    s.route(mouse(RolltuiMouseEvent::Kind::Move, 5, 3), scr);  // first over "a", which does not have the focus: the press gave it to "b"
+    const RouteC moved = s.route(mouse(RolltuiMouseEvent::Kind::Move, 5, 15), scr);
+    check(moved == RouteC{RouteC::Kind::Deliver, "b"} && hovered(scr) == "b@5,15" &&
+              rolltui_window_stack_pointer(s.s, &px, &py) == 1 && px == 5 && py == 15,
+          "a Move is delivered to the window under it, and that window is marked with the pointer's cell [" + hovered(scr) + "]");
+    s.route(mouse(RolltuiMouseEvent::Kind::Move, 5, 3), scr);
+    check(std::string(rolltui_window_stack_focused(s.s)->id.p, rolltui_window_stack_focused(s.s)->id.n) == "b",
+          "…and the focus did not move to the window under it: hover is not a press");
+    s.route(mouse(RolltuiMouseEvent::Kind::WheelDown, 5, 3), scr);
+    check(hovered(scr) == "a@5,3", "once known, every mouse report moves it: the wheel over the other window [" + hovered(scr) + "]");
+    {
+      std::string marked;
+      FrameC f(80, 24);
+      ThemeFixture theme;
+      builtin_theme_c("default-dark", theme);
+      s.compose(f, scr, theme, [&](const RolltuiResolvedNode& rn, FrameC&) { if (rn.hover) marked += std::string(view_of(rn.node->id)); });
+      check(marked == "a", "a compose hands the same mark to the window's draw [" + marked + "]");
+    }
+    // A popup over it: a dismissing one, and then a modal one, leave every window below unmarked, since a press there closes the
+    // popup or is dropped. One that does neither leaves the window below as reachable as before.
+    for (int kind = 0; kind < 3; ++kind) {
+      RolltuiLayer p;
+      p.id = "p";
+      p.modal = kind == 1;
+      p.dismiss = kind == 0;
+      p.placement = P(RolltuiDim::rel(0.5), RolltuiDim::rel(0.5), RolltuiDim::abs(20), RolltuiDim::abs(6), Anchor::Center);
+      p.root = RolltuiLayoutNode::column();
+      p.root.children.push_back(win("pw", {}, Border::None, true));
+      rolltui_window_stack_push(s.s, &p);
+      s.route(mouse(RolltuiMouseEvent::Kind::Move, 40, 12), scr);
+      const std::string inside = hovered(scr);
+      s.route(mouse(RolltuiMouseEvent::Kind::Move, 2, 2), scr);
+      const std::string outside = hovered(scr);
+      const char* what = kind == 0 ? "a dismissing popup" : kind == 1 ? "a modal popup" : "a popup that neither dismisses nor is modal";
+      check(inside == "pw@40,12" && outside == (kind == 2 ? "a@2,2" : ""),
+            std::string(what) + ": its own window is marked under the pointer; below it [" + outside + "]");
+      rolltui_window_stack_pop(s.s);
+    }
+  }
+
   // ---- 7. content and widgets --------------------------------------------------
   std::printf("-- content: the kind table\n");
   {

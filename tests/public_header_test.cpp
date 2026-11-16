@@ -495,7 +495,9 @@ int main() {
     // `rolltui_document_remove` to drop it once committed, `rolltui_layout_inline` for a layout that says so),
     // INTERNAL 766. INTERNAL 767 with `rolltui_fatal`, which puts the terminal back before a stop is said. PUBLIC 418 and
     // INTERNAL 766 with `rolltui_frame_link_id`, which `rolltui_frame_put_text`'s `link` needs and a host could not reach.
-    check(totals["PUBLIC"] == 418 && totals["INTERNAL"] == 766 && totals.size() == 2,
+    // 2026-11-16, hover: PUBLIC 420 (`rolltui_window_stack_pointer`, `rolltui_hint_bar_hover`: what a host draws outside the
+    // windows lit under the pointer) and INTERNAL 768 (the menu's and the picker's `_set_hover`, fed from the resolved node).
+    check(totals["PUBLIC"] == 420 && totals["INTERNAL"] == 768 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -658,11 +660,12 @@ int main() {
     // rolltui.h without a row until the class census came back (2026-11-13): vocab +1 (`rolltui_style_on`), settings +1 (the
     // keys editor's presets switch), bind +1 (`rolltui_rows_add_colour`), run +5 (the terminal facts, their cache, reprobe, depth,
     // present), widget +1 (`rolltui_frame_put_swatch`). Then settings 94 -> 91: the three studio-tier functions nothing called.
+    // Run 118 -> 120: the pointer for a host's own drawing, and the hint bar lit under it.
     check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 102 && rt["HOST_RUN"] == 118 && rt["HOST_RELEASE"] == 10 &&
+              rt["HOST_BIND"] == 102 && rt["HOST_RUN"] == 120 && rt["HOST_RELEASE"] == 10 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 29,
-          "the roles are the recorded shape — vocab 37, host load 31 / settings 91 / bind 102 / run 118 / "
-          "release 10, tool interop 0, widget 28 (got " +
+          "the roles are the recorded shape — vocab 37, host load 31 / settings 91 / bind 102 / run 120 / "
+          "release 10, tool interop 0, widget 29 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

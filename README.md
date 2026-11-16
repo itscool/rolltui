@@ -41,6 +41,7 @@ A terminal UI library in C, with a C++ API on top.
 | Synchronized output | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ |
 | Inline mode | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hyperlinks | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ |
+| Hover under the pointer | ✓ | ✓ | events only | events only | events only | ✓ |
 
 🍎 macOS · 🐧 Linux · 🪟 Windows · 🌐 browser · (🪟) partial
 

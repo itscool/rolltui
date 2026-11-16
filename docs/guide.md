@@ -115,6 +115,37 @@ with `rolltui_transcript_entry_frame`, committed, and removed from the document 
 on the alternate screen. Choosing `inline` again writes only what the terminal does not already
 hold. Leaving commits a reply still arriving, as far as it got.
 
+## Hover
+
+Set `RolltuiTerminalOptions.hover` and the terminal also reports the pointer as it moves with no
+button held (mode 1003). It needs `mouse`, which is on by default. While the pointer rests on
+something a click would act on, that thing is drawn in the theme's `hover` role:
+
+- a menu row, an option in an open dropdown, and a menu's ▲ and ▼ scroll markers;
+- an entry in the column browser;
+- the "N more" marker of a text, file or help window;
+- a hint in a hint bar.
+
+The keyboard's cursor never moves with the pointer, and hover sends no menu event. The cursor's
+own row keeps its look under the pointer. Headings and disabled items are not lit. Under a modal
+popup, or a popup that closes on a press outside it, nothing below the popup is lit.
+
+The window stack learns where the pointer is from the mouse events it routes, and marks the one
+window a press there would reach: `RolltuiResolvedNode.hover`, with the pointer's cell in
+`hover_x` and `hover_y`. A host's own widget reads them in its `draw`. For what a host draws
+outside the windows, `rolltui_window_stack_pointer` gives the pointer's cell and
+`rolltui_hint_bar_hover` lights a hint bar from it.
+
+- Nothing is lit until the terminal first reports the pointer moving. A click alone does not
+  say where the pointer rests afterwards.
+- A terminal does not report the pointer leaving its window, so the last thing lit stays lit
+  until the pointer comes back.
+- The shipped themes lift the panel colour toward the text colour. At 16 colours the lift
+  collapses into the panel, as the panel collapses into the background. `mono` draws a
+  hovered row bold.
+
+dirktui, `rolltui-chat`, paint and the studio turn hover on.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.

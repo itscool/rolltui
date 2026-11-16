@@ -1478,6 +1478,7 @@ struct App {
   void open_terminal() {
     RolltuiTerminalOptions opts{};
     opts.facts_events = 1;
+    opts.hover = 1;  // what a click would act on is lit under the pointer
     if (inline_mode) opts.inline_rows = 3;  // the height is the frame's: `frame_rows`
     term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
     read_facts();

@@ -632,9 +632,10 @@ struct App {
     return slot;
   }
   // A raw `RolltuiMenu*`'s draw — the one-line convenience every editor's own draw call needs.
-  void draw_raw_menu(RolltuiMenu* m, RolltuiFrame* f, bool focused) const {
+  void draw_raw_menu(RolltuiMenu* m, RolltuiFrame* f, const RolltuiResolvedNode& rn) const {
     const RolltuiInputRoles ir = editor_input_roles();
-    rolltui_menu_draw(m, f, editor_draw_scratch(), theme_styles, editor_menu_roles(), &ir, focused ? 1 : 0);
+    rolltui_menu_set_hover(m, rn.hover, rn.hover_x, rn.hover_y);
+    rolltui_menu_draw(m, f, editor_draw_scratch(), theme_styles, editor_menu_roles(), &ir, rn.focused);
   }
 
   // The sources a layout may name. Everything a window can show in the studio is here, by
@@ -1225,7 +1226,7 @@ struct App {
     mo.ambiguous_wide = ambiguous ? 1 : 0;
     rolltui_menu_set_options_struct(meditor.menu(), &mo);
     rolltui_menu_layout(meditor.menu(), m);
-    if (m.h > 0) draw_raw_menu(meditor.menu(), f, rn.focused != 0);
+    if (m.h > 0) draw_raw_menu(meditor.menu(), f, rn);
     int y = r.y + m.h;
     const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
     if (const RolltuiStr line = meditor.selection_line(); !line.empty() && y < r.y + r.h)
@@ -1295,7 +1296,7 @@ struct App {
     mo.ambiguous_wide = ambiguous ? 1 : 0;
     rolltui_menu_set_options_struct(keditor.menu(), &mo);
     rolltui_menu_layout(keditor.menu(), m);
-    if (m.h > 0) draw_raw_menu(keditor.menu(), f, rn.focused != 0);
+    if (m.h > 0) draw_raw_menu(keditor.menu(), f, rn);
     int y = r.y + m.h;
     const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
     if (y < r.y + r.h) {
@@ -1675,7 +1676,7 @@ struct App {
     mo.ambiguous_wide = ambiguous ? 1 : 0;
     rolltui_menu_set_options_struct(leditor.menu(), &mo);
     rolltui_menu_layout(leditor.menu(), m);
-    if (m.h > 0) draw_raw_menu(leditor.menu(), f, rn.focused != 0);
+    if (m.h > 0) draw_raw_menu(leditor.menu(), f, rn);
     y = m.y + std::max(m.h, 0);
     // The selected node IN WORDS, which the tree above does not repeat: its size, its border,
     // whether it is hidden, and — the one thing nothing else says — whether this binary can
@@ -2901,6 +2902,7 @@ int main(int argc, char** argv) {
     x.app->maybe_reload_layout();
   };
   RolltuiTerminalOptions topts{};
+  topts.hover = 1;  // what a click would act on is lit under the pointer
   if (rolltui_run(STDIN_FILENO, STDOUT_FILENO, topts, &hooks) == ROLLTUI_RUN_NOT_A_TERMINAL) {
     std::fprintf(stderr, "not a terminal (rolltui-studio-selftest --frame WxH renders one)\n");
     return 1;

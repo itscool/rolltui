@@ -569,6 +569,50 @@ int main() {
     }
   }
 
+  // ---- THE POINTER'S ROW IS SEEN IN EVERY SHIPPED THEME, at both modes ----------------
+  // A hovered row must read as lifted beside a plain menu row and a plain listing row, and must never read as the cursor's. A colour
+  // theme lifts the ground (kept distinct at 256 colours too); mono, with no colour to spend, marks it bold.
+  {
+    auto differs = [](const RolltuiStyle& a, const RolltuiStyle& b, unsigned char depth) {
+      RolltuiStyleColorRaw ab = a.bg, bb = b.bg, af = a.fg, bf = b.fg;
+      rolltui_color_downgrade(&ab, depth);
+      rolltui_color_downgrade(&bb, depth);
+      rolltui_color_downgrade(&af, depth);
+      rolltui_color_downgrade(&bf, depth);
+      return std::memcmp(&ab, &bb, sizeof ab) != 0 || std::memcmp(&af, &bf, sizeof af) != 0 || a.bold != b.bold ||
+             a.italic != b.italic || a.underline != b.underline || a.reverse != b.reverse || a.dim != b.dim;
+    };
+    int themes = 0;
+    for (const fs::directory_entry& e : fs::directory_iterator(std::string(ROLLTUI_SOURCE_DIR) + "/presets/themes")) {
+      if (e.path().extension() != ".json") continue;
+      const std::string text = read_file(e.path().string());
+      std::string err;
+      Value file = parse(text, err);
+      const Value colours = file["colours"];
+      ++themes;
+      for (const unsigned char mode : {static_cast<unsigned char>(ROLLTUI_MODE_DARK), static_cast<unsigned char>(ROLLTUI_MODE_LIGHT)}) {
+        RolltuiStr name{};
+        RolltuiThemeReport rep{};
+        std::array<RolltuiStyle, kRoleCount> st{};
+        RolltuiEffectMap* eff = rolltui_theme_load(colours.handle(), mode, rolltui_theme_default_vocab(), st.data(), &name, &rep);
+        const RolltuiStyle& hover = st[ROLLTUI_ROLE_HOVER];
+        const std::string where = e.path().filename().string() + (mode == ROLLTUI_MODE_DARK ? " dark" : " light");
+        bool seen = eff != nullptr;
+        for (const unsigned char depth : {static_cast<unsigned char>(ROLLTUI_DEPTH_TRUECOLOR), static_cast<unsigned char>(ROLLTUI_DEPTH_ANSI256)})
+          seen = seen && differs(hover, st[ROLLTUI_ROLE_MENU_ITEM], depth) && differs(hover, st[ROLLTUI_ROLE_TEXT], depth) &&
+                 differs(hover, st[ROLLTUI_ROLE_MENU_SELECTED], depth);
+        check(seen, where + ": the hovered row differs from a menu row, a listing row and the cursor's, at truecolor and 256 colours");
+        std::string problems;
+        for (std::size_t i = 0; i < rep.badge_mismatches_n; ++i) problems += str_of(rep.badge_mismatches[i]) + "; ";
+        check(rep.badge_mismatches_n == 0, where + ": …and it still earns every badge it claims " + problems);
+        rolltui_effect_map_free(eff);
+        rolltui_str_free(&name);
+        rolltui_theme_report_release(&rep);
+      }
+    }
+    check(themes >= 10, "…every shipped theme was looked at (" + std::to_string(themes) + ")");
+  }
+
   // ---- round trip ----------------------------------------------------------------
   {
     const Theme& dark = *builtin_theme("default-dark");

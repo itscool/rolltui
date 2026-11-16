@@ -142,6 +142,41 @@ int main() {
     rolltui_frame_free(mp);
     rolltui_hint_bar_free(path);
   }
+  // UNDER THE POINTER a hint is one lit button, its chord, the space after it and its label alike; a disabled one is never lit.
+  {
+    RolltuiHintBar* hb = rolltui_hint_bar_new();
+    rolltui_hint_bar_add(hb, "F1", 2, "help", 4, "app.help", 8);
+    rolltui_hint_bar_add(hb, "F2", 2, "settings", 8, "app.menu", 8);
+    RolltuiStyle lit{};
+    lit.bold = 1;
+    lit.bg.kind = RolltuiStyleColorRaw::Kind::Rgb;
+    lit.bg.r = 40;
+    auto drawn = [&](int px, int py) {
+      RolltuiFrame* fr = rolltui_frame_new(30, 1, RolltuiStyle{});
+      rolltui_hint_bar_hover(hb, px, py, lit);
+      rolltui_hint_bar_draw(hb, fr, s, 0, 0, 30, RolltuiStyle{}, RolltuiStyle{}, RolltuiStyle{}, 0);
+      return fr;
+    };
+    auto is_lit = [&](RolltuiFrame* fr, int x) {
+      RolltuiCellRaw c{};
+      rolltui_frame_cell(fr, x, 0, &c);
+      return std::memcmp(&c.style, &lit, sizeof lit) == 0;
+    };
+    RolltuiFrame* a = drawn(12, 0);  // on "settings"
+    check(is_lit(a, 9) && is_lit(a, 11) && is_lit(a, 19) && !is_lit(a, 0) && !is_lit(a, 7) && !is_lit(a, 20),
+          "the hint under the pointer is lit from its chord to its label's end; the other hint and the gap are not");
+    rolltui_frame_free(a);
+    RolltuiFrame* g = drawn(7, 0);  // the gap
+    bool any = false;
+    for (int x = 0; x < 30; ++x) any |= is_lit(g, x);
+    check(!any, "the pointer in the gap between hints lights nothing");
+    rolltui_frame_free(g);
+    rolltui_hint_bar_enable(hb, "app.menu", 8, 0);
+    RolltuiFrame* d = drawn(12, 0);
+    check(!is_lit(d, 12), "a disabled hint is never lit: a press there does nothing");
+    rolltui_frame_free(d);
+    rolltui_hint_bar_free(hb);
+  }
   rolltui_str_free(&text);
   rolltui_frame_free(g);
   rolltui_frame_free(f);

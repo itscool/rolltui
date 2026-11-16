@@ -37,6 +37,7 @@ typedef struct Column {
 
 struct RolltuiPicker {
   RolltuiPickerOptions opt;
+  int hover_on, hover_x, hover_y; /* the pointer, as the last draw was handed it */
   RolltuiUnicodeScratch* u;  /* OWNED: the fit/width scratch */
   RolltuiDrawScratch* draw;  /* OWNED: the cluster walk a put_text needs, reused every frame */
   RolltuiRect inner;
@@ -1016,6 +1017,12 @@ static void mark_words(Draw* d, const char* name, size_t n, int x, int cw, int y
   }
 }
 
+void rolltui_picker_set_hover(RolltuiPicker* p, int on, int x, int y) {
+  p->hover_on = on != 0;
+  p->hover_x = x;
+  p->hover_y = y;
+}
+
 void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* styles,
                          const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide) {
   Draw d;
@@ -1028,6 +1035,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   RolltuiStyle head = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_LABEL);
   const RolltuiStyle here = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_MENU_SELECTED);
   const RolltuiStyle trail = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SELECTION);
+  const RolltuiStyle hover = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_HOVER);
   const RolltuiStyle err_style = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_ERROR);
   const RolltuiStyle border = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_BORDER);
   const RolltuiStyle bar_role = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SCROLLBAR);
@@ -1161,7 +1169,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       const size_t i = c->top + (size_t)row;
       const int y = d.r.y + hr + row;
       const RolltuiDirEntry* e;
-      int is_sel, is_focus_col, is_trail;
+      int is_sel, is_focus_col, is_trail, is_hover;
       RolltuiStyle st;
       if (y >= d.r.y + d.r.h) break;
       if (i >= c->entries.n) break;
@@ -1174,7 +1182,13 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
        * effect (marked below regardless) may also be lit. A host is expected to keep at least
        * one of the two on, or neither row reads as the cursor's. */
       is_trail = is_sel && ci < p->focus_col;
-      st = is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
+      /* THE ENTRY UNDER THE POINTER is the one a press would select, by `handle_inner`'s own test: this column's cells, this row.
+       * The cursor's row keeps its own look; a trail row under the pointer shows the hover until the pointer leaves. */
+      is_hover = p->hover_on && !(is_sel && is_focus_col) && p->hover_y == y && p->hover_x >= x && p->hover_x < x + sw &&
+                 p->hover_x >= d.r.x && !(preview_shown(p) && p->hover_x >= p->pv_rect.x && p->hover_x < p->pv_rect.x + p->pv_rect.w &&
+                                          p->hover_y >= p->pv_rect.y && p->hover_y < p->pv_rect.y + p->pv_rect.h);
+      st = is_hover ? hover
+                    : is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
       rolltui_str_set(&p->s2, e->name.p ? e->name.p : "", e->name.n);
@@ -1185,12 +1199,14 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
         const unsigned long long opened_age = p->now_ms >= p->opened_since_ms ? p->now_ms - p->opened_since_ms : 0;
         const int opened_now = ci == p->opened_col && i == p->opened_sel && opened_age < OPENED_MS;
         size_t name_n = p->s1.n;
-        if (show_highlight) fill_row(&d, fx, y, x + cw - fx, st);
+        if (show_highlight || is_hover) fill_row(&d, fx, y, x + cw - fx, st);
         if (e->is_dir && name_n >= 4 && memcmp(p->s1.p + name_n - 4, " \xE2\x80\xBA", 4) == 0) name_n -= 4;
         mark_words(&d, p->s1.p ? p->s1.p : "", name_n, x, cw, y,
                    is_focus_col ? ROLLTUI_EFFECT_STATE_PICKER_CURSOR : ROLLTUI_EFFECT_STATE_PICKER_TRAIL,
                    is_focus_col ? p->cursor_since_ms : 0, opened_now, p->opened_since_ms);
       }
+      if (is_hover && !(is_sel && (is_focus_col || is_trail))) /* those two rows were filled above */
+        fill_row(&d, imax(x, d.r.x), y, x + cw - imax(x, d.r.x), st);
       put_clipped(&d, x + 1, y, p->s1.p ? p->s1.p : "", p->s1.n, st, cw - 1 - extras_width(p));
       if (extras_width(p) > 0) {
         /* THE FACTS, right-aligned at the column's edge, muted unless the row is the cursor's:
@@ -1201,7 +1217,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
          * row's own ground: muted lettering, the highlight's background, so the block runs the
          * row's whole width. */
         RolltuiStyle fs = is_sel && is_focus_col && show_highlight ? st : dim;
-        if (is_trail && show_highlight) fs.bg = st.bg;
+        if ((is_trail && show_highlight) || is_hover) fs.bg = st.bg;
         if (show_size(p)) {
           int wdt;
           if (e->is_dir) snprintf(buf, sizeof buf, "-");

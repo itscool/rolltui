@@ -659,6 +659,8 @@ struct RolltuiMenu {
   int dd_open;
   size_t dd_sel;
   int dd_top;
+  /* THE POINTER, as the last draw was handed it: what a click there would act on is drawn hovered. */
+  int hover_on, hover_x, hover_y;
 
   /* the visible list, rebuilt on demand and LENT to a caller */
   size_t* vis;
@@ -1196,6 +1198,18 @@ static void descend(RolltuiMenu* m, size_t child) {
   clamp_selection(m);
 }
 
+/* THE VISIBLE ROW HOLDING CHILD `child` of the current level, found in the list `build_visible` lays out (the back row and the gap
+ * before each later heading come between them, so it is never `child` counted from the first row); the first child's row when the
+ * filter hides it. */
+static size_t row_of_child(RolltuiMenu* m, size_t child) {
+  const size_t n = build_visible(m);
+  size_t i;
+  if (!m->palette)
+    for (i = 0; i < n; ++i)
+      if (m->vis[i] == child) return i;
+  return first_child_row(m);
+}
+
 static int ascend(RolltuiMenu* m) {
   size_t was;
   const RolltuiMenuItem* lv;
@@ -1203,7 +1217,7 @@ static int ascend(RolltuiMenu* m) {
   was = m->path[--m->path_n];
   rolltui_str_clear(&m->filter);
   lv = rolltui_menu_level(m);
-  m->sel = lv->children.n == 0 ? 0 : first_child_row(m) + zmin(was, lv->children.n - 1);
+  m->sel = lv->children.n == 0 ? 0 : row_of_child(m, zmin(was, lv->children.n - 1));
   m->top = 0;
   clamp_selection(m);
   return 1;
@@ -1648,6 +1662,53 @@ static void handle_dropdown_mouse(RolltuiMenu* m, RolltuiMenuItem* it, const Rol
   close_dropdown(m);
 }
 
+/* ---- the pointer ---------------------------------------------------------------------------- */
+
+void rolltui_menu_set_hover(RolltuiMenu* m, int on, int x, int y) {
+  m->hover_on = on != 0;
+  m->hover_x = x;
+  m->hover_y = y;
+}
+
+#define NO_HOVER ((size_t)-1)
+
+/* -1 when the pointer is on the drawn ▲, 1 on the drawn ▼, else 0, at the current `m->area`: the two scroll markers are buttons
+ * (`handle_mouse`). */
+static int hover_marker(RolltuiMenu* m) {
+  const int rows = item_rows(m), first = first_item_y(m);
+  const int marker_x = m->area.x + m->area.w - 1 - m->opt.inset;
+  if (!m->hover_on || m->editing || m->dd_open || rows < 1 || m->hover_x != marker_x) return 0;
+  if (m->hover_y == first && m->top > 0) return -1;
+  if (m->hover_y == first + rows - 1 && (size_t)(m->top + rows) < build_visible(m)) return 1;
+  return 0;
+}
+
+/* THE VISIBLE ROW A CLICK AT THE POINTER WOULD ACT ON, at the current `m->area`, by `handle_mouse`'s own geometry; NO_HOVER off the
+ * rows, on a drawn scroll marker, on a row the cursor cannot rest on (a divider, a disabled item), while a field is edited and while
+ * a dropdown is open over the rows. */
+static size_t hover_row(RolltuiMenu* m) {
+  const RolltuiRect a = m->area;
+  const int x = m->hover_x, y = m->hover_y;
+  int first;
+  size_t idx;
+  if (!m->hover_on || m->editing || m->dd_open) return NO_HOVER;
+  if (x < a.x || y < a.y || x >= a.x + a.w || y >= a.y + a.h) return NO_HOVER;
+  first = first_item_y(m);
+  if (y < first || y >= first + item_rows(m) || hover_marker(m) != 0) return NO_HOVER;
+  idx = (size_t)m->top + (size_t)(y - first);
+  return selectable_row(m, idx) ? idx : NO_HOVER;
+}
+
+/* The OPTION a click at the pointer would choose in the open dropdown's `box` (`handle_dropdown_mouse`); NO_HOVER for none. */
+static size_t hover_option(const RolltuiMenu* m, const RolltuiMenuItem* it, RolltuiRect box, int rows) {
+  size_t o;
+  if (!m->hover_on || m->hover_x < box.x + 1 || m->hover_x >= box.x + box.w - 1 || m->hover_y < box.y + 2 ||
+      m->hover_y >= box.y + 2 + rows)
+    return NO_HOVER;
+  o = (size_t)m->dd_top + (size_t)(m->hover_y - (box.y + 2));
+  return o < it->children.n && it->children.v[o]->enabled ? o : NO_HOVER;
+}
+
 static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw, const RolltuiStyle* styles,
                           const RolltuiMenuRoles* roles, const RolltuiMenuItem* it) {
   RolltuiRect box;
@@ -1658,7 +1719,9 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
   RolltuiStyle frame_style = styles[roles->breadcrumb];
   RolltuiStyle title = styles[roles->item];
   RolltuiRect row_rect;
+  size_t hov;
   if (!dropdown_box(m, it, &box, &rows)) return;
+  hov = hover_option(m, it, box, rows);
   /* The menu under the box steps half a pace back — still the thing being edited, no longer
    * the thing being looked at. Half the modal's shade, so the two depths read as two. */
   rolltui_frame_shade(f, m->area, styles[ROLLTUI_ROLE_OVERLAY], ROLLTUI_SHADE_DROPDOWN);
@@ -1693,7 +1756,8 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
     o = it->children.v[i];
     /* A DISABLED option is listed, muted, and cannot be chosen: a list that shows what COULD be
      * picked says more than one that hides it — a program not installed is still a program. */
-    st = i == m->dd_sel ? styles[roles->selected] : (o->enabled ? ground : styles[roles->text_muted]);
+    st = i == m->dd_sel ? styles[roles->selected]
+                        : i == hov ? styles[roles->hover] : (o->enabled ? ground : styles[roles->text_muted]);
     if (!o->enabled) st.bg = ground.bg;
     row_rect.x = box.x + 1; row_rect.y = box.y + 2 + r; row_rect.w = box.w - 2; row_rect.h = 1;
     rolltui_frame_fill(f, draw, row_rect, st, NULL, 0);
@@ -1933,6 +1997,19 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
   act(m, m->sel, out);
 }
 
+/* THE AREA THE CURRENT LEVEL IS DRAWN IN: the popup box's interior when the level floats (`rolltui_menu_draw` substitutes it), else
+ * the menu's own. A press and the pointer are tested against the same rows the person sees. */
+static void level_area(const RolltuiMenu* m, RolltuiRect* out) {
+  RolltuiRect box;
+  *out = m->area;
+  if (current_level_is_popup(m) && popup_level_box(m, &box)) {
+    out->x = box.x + 1;
+    out->y = box.y + 1;
+    out->w = box.w - 2;
+    out->h = box.h - 2;
+  }
+}
+
 /* A click inside the popup box acts on it exactly as `handle_mouse` would at full size — the
  * area is substituted to the box's interior for the call, the same substitution `rolltui_menu_draw`
  * makes to draw it there. A click outside the box closes it and is consumed — the level underneath
@@ -1984,7 +2061,13 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
     RolltuiMenuItem* it = dropdown_item(m);
     if (it) {
       if (e->kind == ROLLTUI_EVENT_KEY) handle_dropdown_key(m, it, &e->key, b, A, out);
-      else if (e->kind == ROLLTUI_EVENT_MOUSE) handle_dropdown_mouse(m, it, &e->mouse, out);
+      else if (e->kind == ROLLTUI_EVENT_MOUSE) {
+        /* The box is centred in the area the level is DRAWN in, the popup's own when the level floats, so a press is tested there. */
+        const RolltuiRect saved_area = m->area;
+        level_area(m, &m->area);
+        handle_dropdown_mouse(m, it, &e->mouse, out);
+        m->area = saved_area;
+      }
       goto done;
     }
   }
@@ -2121,9 +2204,34 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     const int paw = m->opt.ambiguous_wide;
     RolltuiStyle pground = styles[roles->item];
     RolltuiStyle pframe = styles[roles->breadcrumb];
-    mm->path_n -= 1;
-    rolltui_menu_draw(m, f, draw, styles, roles, input_roles, focused);
-    mm->path_n += 1;
+    /* THE LEVEL BEHIND IS DRAWN AS ASCENDING WOULD LEAVE IT: its cursor on the row the popup was entered from, unfiltered, nothing
+     * open in it and nothing lit, since a press there closes the popup rather than acting. The cursor, scroll, filter, field and
+     * dropdown are the popup level's own: read against the level behind, they marked another row there, drew a field there, and
+     * closed the popup's dropdown as no longer on its choice. */
+    {
+      const size_t sel = m->sel;
+      const int top = m->top, editing = m->editing, dd_open = m->dd_open, hover_on = m->hover_on;
+      const RolltuiStr filter = m->filter;
+      const size_t was = m->path[m->path_n - 1];
+      const RolltuiMenuItem* lv;
+      memset(&mm->filter, 0, sizeof mm->filter);
+      mm->path_n -= 1;
+      mm->editing = 0;
+      mm->dd_open = 0;
+      mm->hover_on = 0;
+      lv = rolltui_menu_level(m);
+      mm->sel = lv->children.n == 0 ? 0 : row_of_child(mm, zmin(was, lv->children.n - 1));
+      mm->top = 0;
+      ensure_visible(mm);
+      rolltui_menu_draw(m, f, draw, styles, roles, input_roles, focused);
+      mm->path_n += 1;
+      mm->sel = sel;
+      mm->top = top;
+      mm->editing = editing;
+      mm->dd_open = dd_open;
+      mm->hover_on = hover_on;
+      mm->filter = filter;
+    }
     rolltui_frame_shade(f, saved_area, styles[ROLLTUI_ROLE_OVERLAY], ROLLTUI_SHADE_DROPDOWN);
     pframe.bg = pground.bg;
     memset(&pline, 0, sizeof pline);
@@ -2168,12 +2276,14 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
    * the same move `name_style.bg = base.bg` already makes a few lines down for the VALUE role —
    * this is that same fix, generalised so the next role that says "none" gets it for free. */
   const RolltuiStyleColorRaw ground = styles[roles->item].bg;
-  size_t vis_n;
-  int y = a.y, rows, r;
+  size_t vis_n, hov;
+  int y = a.y, rows, r, hov_marker;
   RolltuiStr line;
   if (a.w <= 0 || a.h <= 0 || w <= 0) return;
   memset(&line, 0, sizeof line);
   vis_n = build_visible(mm);
+  hov = hover_row(mm);
+  hov_marker = hover_marker(mm);
   if (status_rows(m)) {
     const int sy = status_y(m);
     if (m->editing) {
@@ -2254,7 +2364,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     }
     if (m->vis[i] == BACK_ROW) {
       RolltuiRect back_rect;
-      RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut], blank;
+      RolltuiStyle back = styles[i == m->sel ? roles->selected : i == hov ? roles->hover : roles->shortcut], blank;
       rolltui_style_on(&back, ground);
       /* THE ROW'S BLANK IS NOT PART OF THE WORD. Unselected, the way back is drawn in the shortcut
        * role, which a theme with no colour to spare marks (mono underlines it): the blank to the
@@ -2276,7 +2386,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     it = item_at(mm, i);
     if (!it) break;
     is_sel = i == m->sel;
-    base = styles[is_sel ? roles->selected : (usable(it) ? roles->item : roles->text_muted)];
+    base = styles[is_sel ? roles->selected : i == hov ? roles->hover : (usable(it) ? roles->item : roles->text_muted)];
     row_rect.x = x0;
     row_rect.y = y + r;
     row_rect.w = w;
@@ -2470,9 +2580,11 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     }
   }
   if (w >= 1 && rows >= 1) {
-    if (m->top > 0) rolltui_frame_put(f, x0 + w - 1, y, "\xE2\x96\xB2", 3, 1, styles[roles->scroll_marker], 0);
+    if (m->top > 0)
+      rolltui_frame_put(f, x0 + w - 1, y, "\xE2\x96\xB2", 3, 1, styles[hov_marker < 0 ? roles->hover : roles->scroll_marker], 0);
     if ((size_t)(m->top + rows) < vis_n)
-      rolltui_frame_put(f, x0 + w - 1, y + rows - 1, "\xE2\x96\xBC", 3, 1, styles[roles->scroll_marker], 0);
+      rolltui_frame_put(f, x0 + w - 1, y + rows - 1, "\xE2\x96\xBC", 3, 1,
+                        styles[hov_marker > 0 ? roles->hover : roles->scroll_marker], 0);
   }
   rolltui_str_free(&line);
   if (m->dd_open) {

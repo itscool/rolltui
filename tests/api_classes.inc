@@ -564,6 +564,7 @@ ROLLTUI_API(rolltui_window_stack_find, INTERNAL)  /* a step of loading, saving o
 ROLLTUI_API(rolltui_window_stack_focus, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_focus_layer, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_window_stack_focused, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_pointer, PUBLIC)  /* where the pointer rests, for what a host draws outside the windows: dirktui's hints */
 ROLLTUI_API(rolltui_window_stack_free, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_has_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_action_popup, PUBLIC)
@@ -589,6 +590,7 @@ ROLLTUI_API(rolltui_picker_focus_column, INTERNAL)
 ROLLTUI_API(rolltui_picker_reload, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
 ROLLTUI_API(rolltui_picker_layout, INTERNAL)
+ROLLTUI_API(rolltui_picker_set_hover, INTERNAL)
 ROLLTUI_API(rolltui_picker_draw, INTERNAL)
 ROLLTUI_API(rolltui_picker_handle, INTERNAL)
 ROLLTUI_API(rolltui_picker_event, INTERNAL)
@@ -740,6 +742,7 @@ ROLLTUI_API(rolltui_hint_bar_hit, PUBLIC)
 ROLLTUI_API(rolltui_hint_bar_set_separator, PUBLIC)  /* a breadcrumb: dirktui */
 ROLLTUI_API(rolltui_hint_bar_set_keep_tail, PUBLIC)  /* a breadcrumb: dirktui */
 ROLLTUI_API(rolltui_hint_bar_enable, PUBLIC)  /* a hint that cannot be taken now: dirktui */  /* the press half: a hint answers with its action */
+ROLLTUI_API(rolltui_hint_bar_hover, PUBLIC)  /* the hint under the pointer, lit: dirktui */
 ROLLTUI_API(rolltui_hint_bar_count, INTERNAL)
 ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; the picker draws the same capsule the window does */
 ROLLTUI_API(rolltui_windows_set_theme_hint, INTERNAL)
@@ -903,6 +906,7 @@ ROLLTUI_API(rolltui_menu_free, INTERNAL)
 ROLLTUI_API(rolltui_menu_handle, PUBLIC)
 ROLLTUI_API(rolltui_menu_item_actions, PUBLIC)  /* KEPT: matching part — `rolltui_menu_parse_json` fills an item tree, and this is how a host checks the action ids in the tree it just parsed */
 ROLLTUI_API(rolltui_menu_layout, INTERNAL)
+ROLLTUI_API(rolltui_menu_set_hover, INTERNAL)  /* the pointer for the next draw, from the window's resolved node */
 ROLLTUI_API(rolltui_menu_level, INTERNAL)
 ROLLTUI_API(rolltui_menu_load_report_add_bad_value, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_menu_load_report_add_unknown_key, INTERNAL)  /* the loader's report builder */

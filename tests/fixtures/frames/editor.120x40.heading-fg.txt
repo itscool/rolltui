@@ -18,19 +18,19 @@
 │ │ abs/rel per axis), focus        │             │ resolve(Placement,│ #3a404a ▏▕                                     ┃
 │ │                                 │             │ Rect is a pure fun│ #2e4460 ▏▕                                     ┃
 │ │ Menu widget (hierarchical,      │ build       │ single header each│ #4a3e1c ▏▕                                     ┃
-│ │ filterable) + list/text widgets │             │ set is deliberatel│ #22262c ▏▕                                     ┃
-│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ #e9ecf2 ▏▕                                     ┃
-│ │ placements + content slots)     │             │ parser; hot-reload│ #575d67 ▏▕                                     ┃
-│ │ Markdown block renderer (blocks │ build       │ single header over│ #d7dbe2 ▏▕                                     ┃
-│ │ → styled wrapped lines)         │             │                   │ #a1a4aa ▏▕                                     ┃
-│ │ Theme (roles → styles, JSON     │ build       │ single header     │ #3a69a6 ▏▕                                     ┃
-│ │ loader, built-ins)              │             │                   │ #515761 ▏▕                                     ┃
-│ └─────────────────────────────────┴─────────────┴───────────────────│ #11521a ▏▕                                     ┃
-│                                                                     │ #816400 ▏▕                                     ┃
-│ Here is the function you asked for:                                 │ #603b7b ▏▕                                     ┃
-│                                                                     │ #097475 ▏▕                                     ┃
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ #55050b ▏▕                                   ▼ ┃
-│ │ int add(int a, int b) {                                           │ md_heading  fg #adeeae  bg #14161a  bold       ╹
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ #35383e ▏▕                                     ┃
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ #22262c ▏▕                                     ┃
+│ │ placements + content slots)     │             │ parser; hot-reload│ #e9ecf2 ▏▕                                     ┃
+│ │ Markdown block renderer (blocks │ build       │ single header over│ #575d67 ▏▕                                     ┃
+│ │ → styled wrapped lines)         │             │                   │ #d7dbe2 ▏▕                                     ┃
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │ #a1a4aa ▏▕                                     ┃
+│ │ loader, built-ins)              │             │                   │ #3a69a6 ▏▕                                     ┃
+│ └─────────────────────────────────┴─────────────┴───────────────────│ #515761 ▏▕                                     ┃
+│                                                                     │ #11521a ▏▕                                     ┃
+│ Here is the function you asked for:                                 │ #816400 ▏▕                                     ┃
+│                                                                     │ #603b7b ▏▕                                     ╹
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ #097475 ▏▕                                   ▼ │
+│ │ int add(int a, int b) {                                           │ md_heading  fg #adeeae  bg #14161a  bold       │
 │ │   return a + b;                                                   │  Aa  the quick brown fox — sample in this role │
 │ └───────────────────────────────────────────────────────────────────│ fg ▏▕  bg ▏▕  ▶ ▏▕                             │
 └─────────────────────────────────────────────────────────────────────│ previewing — Enter commits, Esc cancels · undo │

@@ -435,6 +435,38 @@ int main() {
           "termios restored on destruction");
   }
 
+  // ---- HOVER: the pointer reported as it moves, asked for only when a host wants it ----------
+  {
+    check(enter.find("\x1b[?1003h") == std::string::npos && leave.find("\x1b[?1003l") == std::string::npos,
+          "by default the terminal is not asked to report a pointer that moves with no button held");
+    RolltuiTerminalOptions o;
+    o.no_cache = true;
+    o.handle_signals = false;
+    o.hover = 1;
+    RolltuiTerminal* t = rolltui_terminal_new(slave, slave, o);
+    const std::string en(sequence_of(rolltui_terminal_enter_sequence, t)), lv(sequence_of(rolltui_terminal_leave_sequence, t));
+    check(en.find("\x1b[?1002h") != std::string::npos && en.find("\x1b[?1003h") > en.find("\x1b[?1002h") &&
+              en.find("\x1b[?1003h") != std::string::npos,
+          "hover: mode 1003 is asked for after the button modes");
+    check(lv.find("\x1b[?1003l") != std::string::npos && lv.find("\x1b[?1003l") < lv.find("\x1b[?1006l"),
+          "…and given back first when leaving, before the modes it was asked after");
+    (void)read_until(master, en, 500);
+    write(master, "\x1b[<35;12;7M", 11);
+    check(names(t, 500) == "Mouse Move @11,6", "a report of the pointer moving with no button is a Move at its cell");
+    rolltui_terminal_free(t);
+    (void)read_until(master, "\x1b[?1049l", 500);
+    RolltuiTerminalOptions nm;
+    nm.no_cache = true;
+    nm.handle_signals = false;
+    nm.mouse = 0;
+    nm.hover = 1;
+    RolltuiTerminal* u = rolltui_terminal_new(slave, slave, nm);
+    check(std::string(sequence_of(rolltui_terminal_enter_sequence, u)).find("\x1b[?1003h") == std::string::npos,
+          "hover needs the mouse: with `mouse` off, nothing is asked for");
+    rolltui_terminal_free(u);
+    (void)read_until(master, "\x1b[?1049l", 500);
+  }
+
   // ---- forked child killed by SIGTERM restores before dying ----------------------
   {
     pid_t pid = fork();

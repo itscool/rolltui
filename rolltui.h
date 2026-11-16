@@ -385,6 +385,7 @@ ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in bo
   X(find_match, FIND_MATCH) \
   X(find_current, FIND_CURRENT) \
   X(scrollbar, SCROLLBAR) \
+  X(hover, HOVER) \
 
 typedef enum RolltuiRole {
 #define ROLLTUI_ROLE_ENUM_(lower, UPPER) ROLLTUI_ROLE_##UPPER,
@@ -1355,6 +1356,12 @@ typedef struct RolltuiResolvedNode {
   RolltuiRect outer; /* the node's box before clipping to the frame */
   RolltuiRect inner; /* outer minus the border, clipped — what a split divides / a slot draws in */
   unsigned char focused ROLLTUI_DEFAULT(0);
+  /* THE POINTER RESTS HERE: 1 on the one window a press at the pointer would reach, while the terminal reports hover
+   * (`RolltuiTerminalOptions::hover`), with the pointer's cell in frame coordinates. A widget draws what a click there would act on
+   * in the `hover` role and moves nothing: the keyboard's cursor stays where it is. 0 on every other window, and on every window
+   * under a popup that is modal or closes on a press outside it. */
+  unsigned char hover ROLLTUI_DEFAULT(0);
+  int hover_x ROLLTUI_DEFAULT(0), hover_y ROLLTUI_DEFAULT(0);
   size_t layer ROLLTUI_DEFAULT(0);
 } RolltuiResolvedNode;
 
@@ -2565,7 +2572,7 @@ typedef struct RolltuiMenuOptions {
   int inset ROLLTUI_DEFAULT(0); /* columns kept clear on each side of the area */
 } RolltuiMenuOptions;
 
-/* THE SEVEN ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
+/* THE ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
  * editor's own draw takes. */
 typedef struct RolltuiMenuRoles {
   unsigned char item;
@@ -2579,6 +2586,7 @@ typedef struct RolltuiMenuRoles {
    * Only the FOREGROUND is taken: the row keeps its own background, so a selected row stays one solid block. */
   unsigned char label;
   unsigned char value;
+  unsigned char hover; /* the row under the pointer (`RolltuiResolvedNode::hover`) */
 } RolltuiMenuRoles;
 
 /* The report, transparent like `RolltuiBindingsReport` and `RolltuiLayoutReport`: `RolltuiStr` values in growing amortised arrays,
@@ -3318,6 +3326,7 @@ size_t rolltui_scroll_marker_text(size_t below, int max_width, int ambiguous_wid
 typedef struct RolltuiBuiltinRoles {
   unsigned char text, text_muted, error, scroll_marker, label, value;
   unsigned char input_text, input_selection, input_placeholder;
+  unsigned char hover; /* what a click at the pointer would act on (`RolltuiResolvedNode::hover`) */
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use: this file knows the rule and none of the words (the same trade
@@ -3409,6 +3418,10 @@ int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout
 
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
 
+/* WHERE THE POINTER RESTS, for what a host draws outside the windows (a status line's hints): 1 with its cell once the terminal has
+ * reported it moving with no button held, which it does only for hover (`RolltuiTerminalOptions::hover`); 0 and (-1, -1) before. */
+int rolltui_window_stack_pointer(const RolltuiWindowStack* s, int* x, int* y);
+
 void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len);
 
 /* Every layer resolved against `screen`, in draw order, `focused` set on the one focused
@@ -3422,7 +3435,8 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
                                   RolltuiComposeScratch* scratch);
 
 /* Routes one event. `window` is filled with the target id — a COPY, because the
- * ClosedPopup case names a layer this call has already freed. */
+ * ClosedPopup case names a layer this call has already freed. A mouse event also tells the stack where the pointer is, which
+ * `_compose` and `_resolve` mark on the window it rests on (`RolltuiResolvedNode::hover`). */
 unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEvent* e, RolltuiRect screen,
                                          const RolltuiBindings* bindings, const RolltuiStackActions* actions,
                                          RolltuiStr* window);
@@ -3691,6 +3705,9 @@ void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on);
 /* A hint whose action cannot be taken now is DISABLED: drawn in `muted`, never hit. Set by
  * action name, every frame if need be — it allocates nothing. */
 void rolltui_hint_bar_enable(RolltuiHintBar* b, const char* action, size_t len, int on);
+/* THE POINTER, for the next draw: the hint whose cells hold (x, y) is drawn in `hover`, chord and label alike, as a button lit under
+ * it; (-1, -1) for none. A disabled hint is never lit. Set every frame from `rolltui_window_stack_pointer`; it allocates nothing. */
+void rolltui_hint_bar_hover(RolltuiHintBar* b, int x, int y, RolltuiStyle hover);
 /* Draws from (x, y) within `width` cells and returns the cells used. */
 int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, int width,
                           RolltuiStyle chord_style, RolltuiStyle label_style, RolltuiStyle muted, int ambiguous_wide);
@@ -3745,6 +3762,10 @@ typedef struct RolltuiTerminalOptions {
    * `alt_screen` is ignored when this is set. */
   unsigned short inline_rows ROLLTUI_DEFAULT(0);
   unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */
+  /* HOVER: the terminal also reports the pointer as it moves with no button held (mode 1003), and what is under it is drawn
+   * hovered: the row a click would act on, in the theme's `hover` role (see `RolltuiResolvedNode::hover`). The keyboard's cursor
+   * never moves with it. Needs `mouse`. Off by default: a host that draws no hover gains only events. */
+  unsigned char hover ROLLTUI_DEFAULT(0);
   unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
   unsigned char hide_cursor ROLLTUI_DEFAULT(1);
   unsigned char handle_signals ROLLTUI_DEFAULT(1); /* restore-and-reraise on INT/TERM/HUP/QUIT */

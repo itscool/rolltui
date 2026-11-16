@@ -165,6 +165,8 @@ int rolltui_menu_editing(const RolltuiMenu* m);
 const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len);
 void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o);
 void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area);
+/* The pointer for the next draw, as the window's resolved node carries it (`RolltuiResolvedNode::hover`). */
+void rolltui_menu_set_hover(RolltuiMenu* m, int on, int x, int y);
 void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
                        const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
                        const RolltuiInputRoles* input_roles, int focused);

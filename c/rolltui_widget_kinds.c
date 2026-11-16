@@ -167,9 +167,13 @@ static int scroll_text_base_draw_with(RolltuiScrollTextBase* b, const RolltuiRes
   below = total - (b->top > 0 ? b->top : 0) - r.h;
   mlen = rolltui_scroll_marker_text(below > 0 ? (size_t)below : 0, r.w, env->ambiguous_wide, marker, sizeof marker);
   if (mlen > 0) {
+    int mx, lit;
     mw = rolltui_u_display_width(b->uscratch, marker, mlen, env->ambiguous_wide);
-    rolltui_frame_put_text(f, b->draw, r.x + (r.w - mw > 0 ? r.w - mw : 0), r.y + r.h - 1, marker, mlen,
-                           styles[b->roles.scroll_marker], mw, env->ambiguous_wide, 0);
+    mx = r.x + (r.w - mw > 0 ? r.w - mw : 0);
+    /* The marker is a button (`scroll_text_marker_hit`), so the pointer on it lights it. */
+    lit = rn->hover && rn->hover_y == r.y + r.h - 1 && rn->hover_x >= mx && rn->hover_x < r.x + r.w;
+    rolltui_frame_put_text(f, b->draw, mx, r.y + r.h - 1, marker, mlen, styles[lit ? b->roles.hover : b->roles.scroll_marker], mw,
+                           env->ambiguous_wide, 0);
   }
   return total;
 }
@@ -1058,6 +1062,7 @@ static void picker_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFra
   RolltuiPickerCtx* c = (RolltuiPickerCtx*)ctx;
   const RolltuiWidgetEnv* env = rolltui_windows_env(c->w);
   picker_ctx_layout(ctx, rn);
+  rolltui_picker_set_hover(c->p, rn->hover, rn->hover_x, rn->hover_y);
   rolltui_picker_draw(c->p, f, rolltui_windows_styles(c->w), rolltui_windows_scrollbar_glyphs(c->w), env->ambiguous_wide);
 }
 /* Notes do NOT stop the widget drawing — the dotfile count is exactly that kind of remark. */
@@ -1206,6 +1211,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*input_text=*/ROLLTUI_ROLE_INPUT_TEXT,
       /*input_selection=*/ROLLTUI_ROLE_SELECTION,
       /*input_placeholder=*/ROLLTUI_ROLE_INPUT_PLACEHOLDER,
+      /*hover=*/ROLLTUI_ROLE_HOVER,
   };
   static const RolltuiMenuRoles kMenuRoles = {
       /*item=*/ROLLTUI_ROLE_MENU_ITEM,
@@ -1217,6 +1223,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
       /*label=*/ROLLTUI_ROLE_LABEL,
       /*value=*/ROLLTUI_ROLE_VALUE,
+      /*hover=*/ROLLTUI_ROLE_HOVER,
   };
   if (!ctx) return;
   /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds
@@ -1881,6 +1888,7 @@ static void menu_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   iroles.text = br->input_text;
   iroles.selection = br->input_selection;
   iroles.placeholder = br->input_placeholder;
+  rolltui_menu_set_hover(mc->m, rn->hover, rn->hover_x, rn->hover_y);
   rolltui_menu_draw(mc->m, f, mc->draw, rolltui_windows_styles(mc->w), rolltui_windows_menu_roles(mc->w), &iroles,
                     rn->focused);
 }
@@ -2244,6 +2252,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     iroles.text = br->input_text;
     iroles.selection = br->input_selection;
     iroles.placeholder = br->input_placeholder;
+    rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
     rolltui_menu_draw(m, f, tc->draw, styles, rolltui_windows_menu_roles(tc->w), &iroles, rn->focused);
   }
   label = styles[br->label];
@@ -2693,6 +2702,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
     iroles.text = br->input_text;
     iroles.selection = br->input_selection;
     iroles.placeholder = br->input_placeholder;
+    rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
     rolltui_menu_draw(m, f, kc->draw, styles, rolltui_windows_menu_roles(kc->w), &iroles, rn->focused);
   }
   label = styles[br->label];

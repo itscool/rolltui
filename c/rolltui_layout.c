@@ -346,6 +346,9 @@ static void resolve_sink(void* ctx, const NSplitNode* node, NSplitRect outer, NS
   rn.outer = router;                              /* UNCLIPPED — place() never clipped outer either */
   rn.inner = rect_intersect(rinner, rc->screen);   /* the one thing nsplit correctly does not know */
   rn.focused = 0;
+  rn.hover = 0;
+  rn.hover_x = 0;
+  rn.hover_y = 0;
   rn.layer = rc->layer;
   rc->emit(rc->user_ctx, &rn);
 }
@@ -1970,7 +1973,18 @@ struct RolltuiWindowStack {
   RolltuiStr captured;
   RolltuiStackLevelFn level_fn; /* BORROWED with its ctx: the window table's `back` */
   void* level_ctx;
+  /* THE POINTER, where the terminal last reported it. Known from the first report of it moving with no button held, which a
+   * terminal sends only when asked for hover: until then a press's cell is not where the pointer rests, since nothing says when it
+   * left. */
+  unsigned char pointer_known;
+  int pointer_x, pointer_y;
 };
+
+int rolltui_window_stack_pointer(const RolltuiWindowStack* s, int* x, int* y) {
+  if (x) *x = s->pointer_known ? s->pointer_x : -1;
+  if (y) *y = s->pointer_known ? s->pointer_y : -1;
+  return s->pointer_known;
+}
 
 void rolltui_window_stack_set_level_fn(RolltuiWindowStack* s, RolltuiStackLevelFn fn, void* ctx) {
   s->level_fn = fn;
@@ -2204,13 +2218,62 @@ typedef struct StackSink {
   RolltuiResolvedSink emit;
   void* ctx;
   const RolltuiLayoutNode* focused;
+  const RolltuiLayoutNode* hover; /* the window the pointer rests on; NULL for none */
+  int hover_x, hover_y;
 } StackSink;
 
 static void stack_sink(void* ctx, const RolltuiResolvedNode* rn) {
   StackSink* s = (StackSink*)ctx;
   RolltuiResolvedNode out = *rn;
   out.focused = (unsigned char)(rn->node == s->focused);
+  if (s->hover && rn->node == s->hover) {
+    out.hover = 1;
+    out.hover_x = s->hover_x;
+    out.hover_y = s->hover_y;
+  }
   s->emit(s->ctx, &out);
+}
+
+typedef struct HoverFind {
+  RolltuiRect screen;
+  int x, y;
+  const RolltuiLayoutNode* node;
+  size_t layer;
+} HoverFind;
+
+/* Every window is visited in draw order, so the last one under the pointer is the one drawn over the rest. */
+static void hover_sink(void* ctx, const RolltuiResolvedNode* rn) {
+  HoverFind* h = (HoverFind*)ctx;
+  if (rn->node->kind == ROLLTUI_NODE_WINDOW && rect_contains(rect_intersect(rn->outer, h->screen), h->x, h->y)) {
+    h->node = rn->node;
+    h->layer = rn->layer;
+  }
+}
+
+/* THE WINDOW THE POINTER RESTS ON is the one a press there would reach, by `route`'s own rules: the topmost window under it, and
+ * none at all when that window lies under a popup that is modal or closes on a press outside it, since a press there would be
+ * dropped or would close the popup, and a row lit there would promise a click it will not get. */
+static void stack_hover(const RolltuiWindowStack* s, RolltuiRect screen, StackSink* w) {
+  HoverFind h;
+  size_t i;
+  const size_t top = s->n - 1;
+  w->hover = NULL;
+  w->hover_x = w->hover_y = 0;
+  if (!s->pointer_known) return;
+  h.screen = screen;
+  h.x = s->pointer_x;
+  h.y = s->pointer_y;
+  h.node = NULL;
+  h.layer = 0;
+  for (i = 0; i < s->n; ++i) {
+    RolltuiRect box;
+    rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
+    rolltui_resolve_tree(&s->layers[i].root, box, screen, i, hover_sink, &h);
+  }
+  if (!h.node || (h.layer != top && (s->layers[top].modal || s->layers[top].dismiss))) return;
+  w->hover = h.node;
+  w->hover_x = h.x;
+  w->hover_y = h.y;
 }
 
 void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect screen, RolltuiResolvedSink emit,
@@ -2220,6 +2283,7 @@ void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect scree
   w.emit = emit;
   w.ctx = ctx;
   w.focused = rolltui_window_stack_focused(s);
+  stack_hover(s, screen, &w);
   for (i = 0; i < s->n; ++i) {
     RolltuiRect box;
     rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
@@ -2239,6 +2303,7 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
   w.emit = collect_sink;
   w.ctx = &scratch->nodes;
   w.focused = rolltui_window_stack_focused(s);
+  stack_hover(s, screen, &w);
   for (i = 0; i < s->n; ++i) {
     RolltuiRect box;
     if (s->layers[i].modal) rolltui_frame_shade(f, screen, styles[roles->overlay], ROLLTUI_SHADE_MODAL);
@@ -2263,6 +2328,11 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
     const size_t top = s->n - 1;
     size_t k;
     unsigned char verdict = ROLLTUI_ROUTE_DROPPED;
+    if (m->kind == 3 /* Move */) s->pointer_known = 1;
+    if (s->pointer_known) {
+      s->pointer_x = m->x;
+      s->pointer_y = m->y;
+    }
     /* A captured pointer: drags and the release go to the pressed window, wherever the
      * pointer is now (the window may even have gone: then the capture just ends). */
     if (s->captured.n && (m->kind == 2 /* Drag */ || m->kind == 1 /* Release */)) {
@@ -2286,6 +2356,8 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       w.emit = collect_sink;
       w.ctx = &c;
       w.focused = rolltui_window_stack_focused(s);
+      w.hover = NULL;
+      w.hover_x = w.hover_y = 0;
       for (i = 0; i < s->n; ++i) {
         RolltuiRect box;
         rolltui_placement_resolve(&s->layers[i].placement, screen, &box);

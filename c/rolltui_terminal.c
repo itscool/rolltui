@@ -246,11 +246,13 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
   }
   if (opts.alt_screen) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1049h");
   if (opts.mouse) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+  if (opts.mouse && opts.hover) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1003h");
   if (opts.bracketed_paste) seq_append(t->enter_seq, &t->enter_len, "\x1b[?2004h");
   if (opts.hide_cursor) seq_append(t->enter_seq, &t->enter_len, "\x1b[?25l");
   seq_append(t->leave_seq, &t->leave_len, "\x1b[0m"); /* attributes off before anything else */
   if (opts.hide_cursor) seq_append(t->leave_seq, &t->leave_len, "\x1b[?25h");
   if (opts.bracketed_paste) seq_append(t->leave_seq, &t->leave_len, "\x1b[?2004l");
+  if (opts.mouse && opts.hover) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1003l");
   if (opts.mouse) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1006l\x1b[?1002l\x1b[?1000l");
   if (opts.alt_screen) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1049l");
   t->decoder = rolltui_key_decoder_new();

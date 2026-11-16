@@ -813,6 +813,13 @@ add_dependencies(rolltui-dirktui-child-test dirktui)
 if(ROLLTUI_BUILD_TESTS)
   set_tests_properties(rolltui-dirktui-child-test PROPERTIES TIMEOUT 60)
 endif()
+# THE ENTRY UNDER THE POINTER IS LIT: the real dirktui on a pty, the pointer reported moving over its listing.
+add_rolltui_test(rolltui-dirktui-hover-test tests/dirktui_hover_test.cpp)
+target_compile_definitions(rolltui-dirktui-hover-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-dirktui-hover-test dirktui)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-dirktui-hover-test PROPERTIES TIMEOUT 60)
+endif()
 add_rolltui_test(rolltui-dirktui-theme-test tests/dirktui_theme_test.cpp)
 target_compile_definitions(rolltui-dirktui-theme-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
                            ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")

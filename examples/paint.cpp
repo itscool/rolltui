@@ -1235,6 +1235,7 @@ int main(int argc, char** argv) {
     a.h = h;
   };
   RolltuiTerminalOptions opts{};
+  opts.hover = 1;  // what a click would act on is lit under the pointer
   if (rolltui_run(STDIN_FILENO, STDOUT_FILENO, opts, &hooks) == ROLLTUI_RUN_NOT_A_TERMINAL) {
     std::fprintf(stderr, "not a terminal (rolltui-paint-selftest --frame WxH renders one)\n");
     return 1;

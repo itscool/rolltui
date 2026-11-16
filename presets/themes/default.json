@@ -530,6 +530,16 @@
           "dark": "#14161a",
           "light": "#e9ecf2"
         }
+      },
+      "hover": {
+        "fg": {
+          "dark": "#d8dce2",
+          "light": "#22262c"
+        },
+        "bg": {
+          "dark": "#35383e",
+          "light": "#bfc3ca"
+        }
       }
     },
     "effects": {

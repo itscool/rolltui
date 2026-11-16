@@ -73,6 +73,7 @@ enum {
   R_menu_item, R_menu_selected, R_menu_breadcrumb, R_menu_shortcut,
   R_find_match, R_find_current,
   R_scrollbar,
+  R_hover,
   ROLLTUI_THEME_GEN_ROLE_COUNT_
 };
 
@@ -131,7 +132,7 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
   double chroma = 0.13, ink_chroma = 0.01, ground_chroma = 0.01;
   int i;
   double ground_L, panel_L, ink_L, muted_L, border_L, acc_L[4];
-  RolltuiStyleColorRaw bg, panel, fg, muted, border, a[4], warning, error_c, green, cyan, code_bg, sel, find_wash;
+  RolltuiStyleColorRaw bg, panel, fg, muted, border, a[4], warning, error_c, green, cyan, code_bg, sel, find_wash, hover;
   char namebuf[96];
   const char* rn;
   size_t rnlen;
@@ -216,6 +217,9 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
   code_bg = okl(dark ? ground_L + 0.03 : ground_L - 0.03, ground_chroma, base_hue);
   sel = okl(dark ? 0.35 : 0.85, 0.05, acc[0]);
   find_wash = okl(dark ? 0.35 : 0.85, 0.06, acc[2]);
+  /* The panel lifted toward the ink, no accent in it: the pointer's row reads as a lift, never as a second selection. Draws no jitter,
+   * so every colour above stays what the seed made it. */
+  hover = okl(dark ? panel_L + 0.07 : panel_L - 0.07, ground_chroma, base_hue);
 
   rn = rolltui_ruleset_name(ruleset, &rnlen);
   namelen = snprintf(namebuf, sizeof namebuf, "gen-%.*s-%llu-%.2f", (int)rnlen, rn, (unsigned long long)seed, chaos);
@@ -277,6 +281,7 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
   out_styles[R_find_match] = mkstyle(fg, find_wash, 0, 0, 0, 0, 0);
   out_styles[R_find_current] = mkstyle(bg, a[2], 1, 0, 0, 0, 0);
   out_styles[R_scrollbar] = mkstyle(muted, bg, 0, 0, 0, 0, 0);
+  out_styles[R_hover] = mkstyle(fg, hover, 0, 0, 0, 0, 0);
 
   /* ---- the repair loop: fix until the promised badges hold, or give up honestly ---------- */
   *out_repairs = 0;

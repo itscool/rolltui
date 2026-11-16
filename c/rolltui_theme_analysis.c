@@ -183,7 +183,7 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
  * THE DECISION: which role pairs must be visually distinct is the LIBRARY's rule, not a
  * theme's, and this table is its one home. A theme file that states a `must_differ` key is
  * reported as an unknown key (`theme_test.cpp` asserts it), and `theme_analysis_test.cpp`
- * asserts these eleven BY NAME, so a change here is a decision recorded in a test rather than
+ * asserts these twelve BY NAME, so a change here is a decision recorded in a test rather than
  * an edit nothing notices.
  *
  * WHY THE LIBRARY AND NOT THE THEME — two reasons, and the second is decisive:
@@ -205,7 +205,7 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
  * theme editor's `--check` popup prints verbatim. The rule is VISIBLE and not EDITABLE, and
  * that asymmetry is the decision — not an accident of where an array happened to live.
  *
- * THE REJECTED ALTERNATIVE: a theme-file `must_differ` array, with these eleven as the
+ * THE REJECTED ALTERNATIVE: a theme-file `must_differ` array, with these twelve as the
  * default. It would let an author ADD a pair (a stricter self-check) or DROP one (declare a
  * widget's only cue unimportant). Dropping is reason 2 above. Adding is a bug report: a pair
  * an author needs is a widget drawing two roles with no other cue, which is this table
@@ -227,6 +227,11 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
  *                                    text goes; style is the only cue.
  *   find_match / find_current        `rolltui_widget_transcript.c`: the current match differs from
  *                                    the others by style alone.
+ *   hover / menu_selected            the menu and the picker draw the row under the pointer and
+ *                                    the cursor's row at once; a hovered row that read as
+ *                                    selected would be a second cursor, and the keys act on one.
+ *   NOT a pair: hover / menu_item — the pointer is itself the cue to where it is; the row's
+ *   lift only echoes it, so a theme that drew the two alike would hide nothing a person needs.
  *   NOT a pair, by the same criterion: diff_added_word / diff_added — the word role is an
  *   emphasis ON its line (same hue, bold; `studio_golden_test.cpp` asserts the rendering).
  *
@@ -244,7 +249,7 @@ static const RolePairLocal kMustDiffer[ROLLTUI_MUST_DIFFER_COUNT] = {
     {R_accent_1, R_accent_2},       {R_accent_1, R_accent_3}, {R_accent_1, R_accent_4},
     {R_accent_2, R_accent_3},       {R_accent_2, R_accent_4}, {R_accent_3, R_accent_4},
     {R_menu_item, R_menu_selected}, {R_input_text, R_input_placeholder},
-    {R_find_match, R_find_current},
+    {R_find_match, R_find_current}, {R_hover, R_menu_selected},
 };
 
 size_t rolltui_must_differ_count(void) { return ROLLTUI_MUST_DIFFER_COUNT; }

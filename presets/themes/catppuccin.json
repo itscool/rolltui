@@ -94,6 +94,10 @@
       "mark": {
         "dark": "#585b70",
         "light": "#acb0be"
+      },
+      "hover": {
+        "dark": "#2f3040",
+        "light": "#c6c8db"
       }
     },
     "roles": {
@@ -310,6 +314,10 @@
       "scrollbar": {
         "fg": "focus",
         "bg": "bg"
+      },
+      "hover": {
+        "fg": "fg",
+        "bg": "hover"
       }
     },
     "effects": {

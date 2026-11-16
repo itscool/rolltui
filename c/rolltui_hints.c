@@ -23,6 +23,8 @@ struct RolltuiHintBar {
   RolltuiUnicodeScratch* u; /* OWNED: the width of a chord's text */
   RolltuiStr separator;     /* between hints: two spaces for keys, " › " for a breadcrumb */
   unsigned char keep_tail;  /* drop from the HEAD when short of room, an ellipsis first: a breadcrumb */
+  int hover_x, hover_y;     /* the pointer's cell for the next draw; -1 for none */
+  RolltuiStyle hover;
 };
 
 RolltuiHintBar* rolltui_hint_bar_new(void) {
@@ -30,7 +32,13 @@ RolltuiHintBar* rolltui_hint_bar_new(void) {
   memset(b, 0, sizeof *b);
   b->u = rolltui_u_scratch_new();
   rolltui_str_set(&b->separator, "  ", 2);
+  b->hover_x = b->hover_y = -1;
   return b;
+}
+void rolltui_hint_bar_hover(RolltuiHintBar* b, int x, int y, RolltuiStyle hover) {
+  b->hover_x = x;
+  b->hover_y = y;
+  b->hover = hover;
 }
 void rolltui_hint_bar_set_separator(RolltuiHintBar* b, const char* sep, size_t len) { rolltui_str_set(&b->separator, sep, len); }
 void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on) { b->keep_tail = on ? 1 : 0; }
@@ -123,8 +131,20 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
     h->x = x + used + gap;
     h->y = y;
     h->w = hw;
-    if (cw) rolltui_frame_put_text(f, s, h->x, y, h->chord.p ? h->chord.p : "", h->chord.n, h->disabled ? muted : chord_style, cw, ambiguous_wide, 0);
-    rolltui_frame_put_text(f, s, h->x + cl, y, h->label.p ? h->label.p : "", h->label.n, h->disabled ? muted : label_style, hw - cl, ambiguous_wide, 0);
+    {
+      /* UNDER THE POINTER, the hint is one lit button: chord, the space after it and label in one style. */
+      const int lit = !h->disabled && b->hover_y == y && b->hover_x >= h->x && b->hover_x < h->x + hw;
+      if (lit) {
+        RolltuiRect r;
+        r.x = h->x;
+        r.y = y;
+        r.w = hw;
+        r.h = 1;
+        rolltui_frame_fill(f, s, r, b->hover, NULL, 0);
+      }
+      if (cw) rolltui_frame_put_text(f, s, h->x, y, h->chord.p ? h->chord.p : "", h->chord.n, lit ? b->hover : h->disabled ? muted : chord_style, cw, ambiguous_wide, 0);
+      rolltui_frame_put_text(f, s, h->x + cl, y, h->label.p ? h->label.p : "", h->label.n, lit ? b->hover : h->disabled ? muted : label_style, hw - cl, ambiguous_wide, 0);
+    }
     used += gap + hw;
   }
   return used;

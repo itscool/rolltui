@@ -418,6 +418,7 @@ constexpr RolltuiMenuRoles kMenuRoles = {
     /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
     /*label=*/static_cast<unsigned char>(Role::label),
     /*value=*/static_cast<unsigned char>(Role::value),
+    /*hover=*/static_cast<unsigned char>(Role::hover),
 };
 constexpr RolltuiInputRoles kInputRoles = {
     /*text=*/static_cast<unsigned char>(Role::input_text),
@@ -858,6 +859,131 @@ int main() {
       check(std::string(t.p, t.n) == "the window \xE2\x80\xBA Layout", "the title rooted at the window's own name carries the level's path [" + std::string(t.p, t.n) + "]");
       rolltui_str_free(&t);
     }
+  }
+  // ---- THE POINTER: what a click would act on is drawn hovered, and nothing moves ----
+  {
+    Menu m(sample());
+    m.find("disabled")->enabled = false;
+    Frame f(30, 8);
+    m.layout({0, 0, 30, 8});
+    rolltui_menu_set_hover(m.raw(), 1, 5, 2);  // over "[ ] Wrap long lines"
+    m.draw(f, theme, true);
+    check(f.at(0, 2).style == theme.style(Role::hover) && f.at(29, 2).style == theme.style(Role::hover) &&
+              f.at(0, 0).style == theme.style(Role::menu_selected) && f.at(0, 1).style == theme.style(Role::menu_item),
+          "the row under the pointer is drawn in hover across its width; the cursor's row keeps menu_selected, the rest menu_item");
+    check(m.selected() == 0, "…and the cursor did not move");
+    RolltuiMouseEvent mv{};
+    mv.kind = RolltuiMouseEvent::Kind::Move;
+    mv.x = 5;
+    mv.y = 3;
+    const MenuEvent moved = m.handle(mv);
+    check(moved.kind == MenuEvent::Kind::None && m.selected() == 0,
+          "a Move event changes nothing and reports nothing: MOVED is the cursor's, never the pointer's");
+    Frame g(30, 8);
+    rolltui_menu_set_hover(m.raw(), 1, 5, 0);
+    m.draw(g, theme, true);
+    check(g.at(0, 0).style == theme.style(Role::menu_selected), "the cursor's own row under the pointer stays the cursor's");
+    Frame d(30, 8);
+    rolltui_menu_set_hover(m.raw(), 1, 5, 5);
+    m.draw(d, theme, true);
+    check(d.at(0, 5).style == theme.style(Role::text_muted), "a disabled row is not lit: a click there does nothing");
+    Frame o(30, 8);
+    rolltui_menu_set_hover(m.raw(), 0, 5, 2);
+    m.draw(o, theme, true);
+    check(o.at(0, 2).style == theme.style(Role::menu_item), "with no pointer, no row is hovered");
+  }
+  // A POPUP LEVEL AND ITS DROPDOWN: the level behind the popup is never lit, and a press on an option the dropdown draws chooses
+  // that option. The box is centred in the popup's own area, smaller than the menu's, and the press is tested there too.
+  {
+    std::string opts;
+    for (int i = 0; i < 10; ++i) opts += std::string(i ? ", " : "") + R"({ "id": "o)" + std::to_string(i) + R"(", "label": "o)" + std::to_string(i) + R"(" })";
+    const std::string text = R"({ "id": "root", "label": "settings", "items": [
+      { "id": "more", "label": "More", "kind": "submenu", "popup": true, "items": [
+        { "id": "pick", "label": "Pick", "kind": "choice", "dropdown": true, "value": "o0", "items": [ )" + opts + R"( ] },
+        { "id": "a", "label": "Alpha" }, { "id": "b", "label": "Beta" }, { "id": "c", "label": "Gamma" },
+        { "id": "d", "label": "Delta" }, { "id": "e", "label": "Epsilon" } ] },
+      { "id": "quit", "label": "Quit" } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text.data(), text.size(), &root, &rep) != 0, "the popup-level fixture parses");
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 60, 20});
+    RolltuiMenuEvent ev{};
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiEvent enter = key(Key::Enter);
+    rolltui_menu_handle(m, &enter, b, A, &ev);  // into the popup level
+    {
+      // Behind the popup, the root's "Quit" row: the pointer on it lights nothing, since a press there closes the popup.
+      Frame f(60, 20);
+      rolltui_menu_set_hover(m, 1, 1, 1);
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), theme.styles.data(), &kMenuRoles, &kInputRoles, 1);
+      bool lit = false;
+      for (int x = 0; x < 60; ++x) lit |= f.at(x, 1).style == theme.style(Role::hover);
+      check(!lit, "the level behind a popup level is shaded context: the pointer lights none of its rows");
+    }
+    rolltui_menu_handle(m, &enter, b, A, &ev);  // open the dropdown on "Pick"
+    rolltui_menu_event_release(&ev);
+    Frame f(60, 20);
+    rolltui_menu_set_hover(m, 0, 0, 0);
+    rolltui_menu_draw(m, f.handle(), draw_scratch(), theme.styles.data(), &kMenuRoles, &kInputRoles, 1);
+    int ox = -1, oy = -1;
+    for (int y = 0; y < 20 && oy < 0; ++y) {
+      const std::size_t at = row(f, y).find("\xE2\x97\x8B o1");
+      if (at != std::string::npos) { oy = y; ox = 2; for (int x = 0; x < 60; ++x) if (f.glyph(x, y) == "\xE2\x97\x8B") { ox = x; break; } }
+    }
+    check(rolltui_menu_dropdown_open(m) != 0 && oy >= 0, "the dropdown is open inside the popup level and draws option o1");
+    Frame h(60, 20);
+    rolltui_menu_set_hover(m, 1, ox + 2, oy);
+    rolltui_menu_draw(m, h.handle(), draw_scratch(), theme.styles.data(), &kMenuRoles, &kInputRoles, 1);
+    check(oy >= 0 && h.at(ox, oy).style == theme.style(Role::hover), "the option under the pointer is drawn hovered");
+    RolltuiEvent press{};
+    press.kind = ROLLTUI_EVENT_MOUSE;
+    press.mouse.kind = RolltuiMouseEvent::Kind::Press;
+    press.mouse.button = 1;
+    press.mouse.x = ox + 2;
+    press.mouse.y = oy;
+    rolltui_menu_handle(m, &press, b, A, &ev);
+    check(ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "o1",
+          "a press on the drawn o1 chooses o1 [" + std::string(ev.value.p ? ev.value.p : "", ev.value.n) + "]");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
+  }
+  // BACK OUT OF A LEVEL, THE CURSOR IS ON THE ROW IT WAS ENTERED FROM, whatever headings stand above it: a heading after the first
+  // has a gap row before it, so the row is found in the visible list, never counted from the child's index.
+  {
+    const char* text = R"({ "id": "root", "label": "settings", "items": [
+      { "id": "s1", "label": "General", "kind": "section" }, { "id": "a", "label": "Alpha" },
+      { "id": "s2", "label": "More", "kind": "section" }, { "id": "b", "label": "Beta" }, { "id": "c", "label": "Gamma" },
+      { "id": "sub", "label": "Deeper", "kind": "submenu", "items": [ { "id": "x", "label": "X" } ] } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0, "the sections fixture parses");
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 40, 12});
+    RolltuiMenuEvent ev{};
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiEvent end = key(Key::End), enter = key(Key::Enter);
+    rolltui_menu_handle(m, &end, b, A, &ev);
+    const RolltuiMenuItem* before = rolltui_menu_selected_item(m);
+    rolltui_menu_handle(m, &enter, b, A, &ev);
+    const std::size_t* path = nullptr;
+    check(before && std::string(before->id.p, before->id.n) == "sub" && rolltui_menu_path(m, &path) == 1, "End lands on the submenu and Enter goes into it");
+    rolltui_menu_back(m);
+    const RolltuiMenuItem* after = rolltui_menu_selected_item(m);
+    check(rolltui_menu_path(m, &path) == 0 && after && std::string(after->id.p, after->id.n) == "sub",
+          "back out of it, the cursor is on the submenu again [" + std::string(after ? std::string(after->id.p, after->id.n) : "none") + "]");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
   }
   // ---- drawing ----
   {

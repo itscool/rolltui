@@ -115,6 +115,60 @@ int main() {
   key(ROLLTUI_KEY_RIGHT);
   check(rolltui_picker_selected(p, &got, &is_dir) && str(got) == (root / "alpha" / "one.txt").string(),
         "a folder left and re-entered, after visiting a sibling, puts the cursor back where it was");
+  // ---- THE POINTER: the entry a press would select is drawn hovered, and nothing moves ----------------------------------
+  {
+    // Where `name` is drawn: its first cell, found by the frame's own glyphs.
+    auto find_cell = [](RolltuiFrame* f, const std::string& name, int& fx, int& fy) {
+      for (int y = 0; y < rolltui_frame_height(f); ++y) {
+        std::string row;
+        std::vector<int> at;
+        for (int x = 0; x < rolltui_frame_width(f); ++x) {
+          RolltuiCellRaw c{};
+          rolltui_frame_cell(f, x, y, &c);
+          if (c.continuation) continue;
+          at.push_back(static_cast<int>(row.size()));
+          row.append(c.bytes, c.len);
+        }
+        const std::size_t k = row.find(name);
+        if (k == std::string::npos) continue;
+        for (std::size_t i = 0; i < at.size(); ++i)
+          if (at[i] == static_cast<int>(k)) { fx = static_cast<int>(i); fy = y; return true; }
+      }
+      return false;
+    };
+    auto style_at = [](RolltuiFrame* f, int x, int y) {
+      RolltuiCellRaw c{};
+      rolltui_frame_cell(f, x, y, &c);
+      return c.style;
+    };
+    auto same = [](const RolltuiStyle& a, const RolltuiStyle& b) { return std::memcmp(&a, &b, sizeof a) == 0; };
+    RolltuiFrame* f = draw(80, 8);
+    int bx = -1, by = -1, cx = -1, cy = -1;
+    const bool found = find_cell(f, "beta", bx, by) && find_cell(f, "one.txt", cx, cy);
+    rolltui_frame_free(f);
+    check(found, "the root column shows beta, and the focused column the cursor's one.txt");
+    rolltui_picker_set_hover(p, 1, bx + 1, by);
+    f = draw(80, 8);
+    check(same(style_at(f, bx, by), styles[ROLLTUI_ROLE_HOVER]) && same(style_at(f, cx, cy), styles[ROLLTUI_ROLE_MENU_SELECTED]),
+          "the entry under the pointer is drawn in hover; the cursor's row keeps its own look");
+    rolltui_frame_free(f);
+    rolltui_picker_set_hover(p, 1, cx + 1, cy);
+    f = draw(80, 8);
+    check(same(style_at(f, cx, cy), styles[ROLLTUI_ROLE_MENU_SELECTED]), "…and stays the cursor's with the pointer on it");
+    rolltui_frame_free(f);
+    RolltuiEvent mv{};
+    mv.kind = ROLLTUI_EVENT_MOUSE;
+    mv.mouse.kind = RolltuiMouseEvent::Kind::Move;
+    mv.mouse.x = bx + 1;
+    mv.mouse.y = by;
+    const int took = rolltui_picker_handle(p, &mv, b, A);
+    check(!took && rolltui_picker_selected(p, &got, &is_dir) && str(got) == (root / "alpha" / "one.txt").string(),
+          "a Move selects nothing: the cursor is where the keys left it");
+    rolltui_picker_set_hover(p, 0, 0, 0);
+    f = draw(80, 8);
+    check(!same(style_at(f, bx, by), styles[ROLLTUI_ROLE_HOVER]), "with no pointer, no entry is hovered");
+    rolltui_frame_free(f);
+  }
   // ---- Enter: a folder enters by default, takes with the option; a file always takes ------
   key(ROLLTUI_KEY_UP);     // nested
   key(ROLLTUI_KEY_ENTER);
