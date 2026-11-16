@@ -507,7 +507,25 @@ int main() {
     // The same rule the boundary was measured with, in one pass over stripped source.
     auto statics_in = [](const std::string& text) {
       std::vector<std::string> names;
-      const std::string code = strip_comments_and_literals(text);
+      std::string code = strip_comments_and_literals(text);
+      // A STRUCT DECLARED IN PLACE (`static struct { ... } g_x = ...;`) spans lines: its body is dropped, so the declarator after it
+      // is read on the line that began it, as any other static's is.
+      {
+        static const std::regex kInPlace(R"((^|\n)[ \t]*static[ \t]+(const[ \t]+)?(struct|union)[ \t]*[A-Za-z_0-9]*[ \t]*\{)");
+        std::smatch m;
+        std::size_t from = 0;
+        while (std::regex_search(code.cbegin() + static_cast<std::ptrdiff_t>(from), code.cend(), m, kInPlace)) {
+          const std::size_t open = from + static_cast<std::size_t>(m.position(0) + m.length(0)) - 1;
+          std::size_t close = open, depth = 0;
+          for (; close < code.size(); ++close) {
+            if (code[close] == '{') ++depth;
+            else if (code[close] == '}' && --depth == 0) break;
+          }
+          if (close >= code.size()) break;
+          code.erase(open, close - open + 1);
+          from = open;
+        }
+      }
       std::istringstream in(code);
       std::string line;
       while (std::getline(in, line)) {
@@ -523,8 +541,16 @@ int main() {
           if (star == std::string::npos) continue;                       // a constant
           if (head.find("const", star) != std::string::npos) continue;   // a CONST pointer
         }
-        // every declarator on the line: drop array sizes, take the last identifier before '='
+        // every declarator on the line: drop a braced initializer and array sizes, take the last identifier before '='
         std::string decl = t.substr(0, t.find(';'));
+        for (std::size_t ob; (ob = decl.find('{')) != std::string::npos;) {
+          std::size_t cb = ob, depth = 0;
+          for (; cb < decl.size(); ++cb) {
+            if (decl[cb] == '{') ++depth;
+            else if (decl[cb] == '}' && --depth == 0) break;
+          }
+          decl.erase(ob, (cb < decl.size() ? cb + 1 : decl.size()) - ob);
+        }
         std::size_t start = 0;
         for (;;) {
           const std::size_t comma = decl.find(',', start);
@@ -560,9 +586,11 @@ int main() {
       const std::vector<std::string> planted =
           statics_in("static int g_planted;\nstatic const char* g_ptr;\n"
                      "static const char* const kConst = \"x\";\nstatic int f(void) { return 0; }\n"
-                     "/* static int g_in_a_comment; */\nconst char* s = \"static int g_in_a_literal;\";\n");
-      check(planted.size() == 2 && planted[0] == "g_planted" && planted[1] == "g_ptr",
-            "the globals scanner finds a mutable static and a mutable POINTER, and is not fooled by a "
+                     "/* static int g_in_a_comment; */\nconst char* s = \"static int g_in_a_literal;\";\n"
+                     "static struct {\n  int a;\n  char* b;\n} g_in_place = {0, NULL};\n"
+                     "static const struct { int k; } kTable[2] = {{1}, {2}};\n");
+      check(planted.size() == 3 && planted[0] == "g_planted" && planted[1] == "g_ptr" && planted[2] == "g_in_place",
+            "the globals scanner finds a mutable static, a mutable POINTER and a struct declared in place, and is not fooled by a "
             "const table, a function, a comment or a literal (" + std::to_string(planted.size()) + ")");
     }
 
@@ -602,9 +630,10 @@ int main() {
     // POSIX, 2 Windows), gone on to after a crash puts the terminal back.
     // 35 -> 39: the entered terminal's way of drawing pictures and its cell's pixels (three), and the pictures' id counter.
     // 40: whether the entered terminal erases in the background colour, which the renderer's short forms stand on. 41: whether a stop
-    // from outside has been continued. 42: whether the entered terminal's window has the person's focus.
-    check(ctx == 0 && proc == 42,
-          "the boundary is 0 CONTEXT + 42 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // from outside has been continued. 42: whether the entered terminal's window has the person's focus. 43: a web page's side of
+    // its terminal (rolltui_os_web.c, compiled for wasm32-wasi in place of the POSIX and Windows sets).
+    check(ctx == 0 && proc == 43,
+          "the boundary is 0 CONTEXT + 43 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

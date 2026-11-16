@@ -174,6 +174,9 @@ ROLLTUI_API(rolltui_run_after, PUBLIC)  /* KEPT: a host acts once after a while 
 ROLLTUI_API(rolltui_run_every, PUBLIC)  /* KEPT: a host's clock, a dashboard's refresh */
 ROLLTUI_API(rolltui_run_cancel_timer, PUBLIC)  /* KEPT: the pair to after and every */
 ROLLTUI_API(rolltui_run_debounce, PUBLIC)  /* KEPT: filtering once a burst of keys is over */
+ROLLTUI_API(rolltui_run_begin, PUBLIC)   /* a host whose own loop must never block (a web page) steps the same loop */
+ROLLTUI_API(rolltui_run_step, PUBLIC)    /* …one wake and one frame, without waiting */
+ROLLTUI_API(rolltui_run_finish, PUBLIC)  /* …and leaves the terminal as it was found */
 
 /* ---- rolltui_diff.h — diff highlighting a host draws; default PUBLIC --------------------- */
 ROLLTUI_API(rolltui_diff_default_roles, PUBLIC)

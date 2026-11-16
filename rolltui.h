@@ -3802,7 +3802,8 @@ void rolltui_window_stack_set_level_fn(RolltuiWindowStack* s, RolltuiStackLevelF
  * does not (nothing is pushed). A layer a HOST built itself still goes through `_push`. This exists because
  * `RolltuiLayer copy = *p; rolltui_window_stack_push(stack, &copy);` is a different operation in the two languages: under C++ it is a
  * DEEP copy through `rolltui_layer_copy`, in C a shallow struct assignment whose copy aliases the layout's own buffers, so freeing the
- * stack double-frees (measured by `c_consumer_test.c`). */
+ * stack double-frees (measured by `c_consumer_test.c`). Its widget is made by the next `rolltui_windows_sync`: a host opening one while
+ * handling an event syncs straight after, so the keys that arrived behind it in the same batch reach it. */
 int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len);
 
 int rolltui_window_stack_pop(RolltuiWindowStack* s); /* 0 when only the base remains */
@@ -3837,7 +3838,7 @@ int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, 
  * a popup in `layout`, it is toggled and this returns 1; otherwise nothing happens and it returns 0, so a host tests its own actions
  * after calling this and an unknown name falls through. A screen gains a panel by adding one to its layout and one chord to its
  * bindings, with no host code. It TOGGLES: pressing the key that opened a panel closes it. A host that wants something else owns that
- * action itself. */
+ * action itself. As with `_push_popup`, sync the window table after it opens one. */
 int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
                                       const char* action, size_t len);
 
@@ -4466,6 +4467,18 @@ typedef struct RolltuiRunApp {
  * case the terminal is as it was found and nothing is left allocated. */
 int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app);
 
+/* THE SAME LOOP, A STEP AT A TIME, for a host whose own loop must never block: a browser, a game engine, a toolkit's event loop.
+ * `rolltui_run_begin` enters the terminal and calls `start`; NULL with `*result` set as `rolltui_run` would return it. Each
+ * `rolltui_run_step` takes what has arrived without waiting (events, workers' results, due timers, `settle`), then draws and presents
+ * one frame. It returns the milliseconds the frame asked to wait, sooner where a timer is due, or -1 for "until input arrives"; the
+ * host steps again then, or as soon as input arrives, whichever is first. ROLLTUI_RUN_STEP_STOPPED once the app has stopped.
+ * `rolltui_run_finish` leaves the terminal as it was found, frees the run and returns ROLLTUI_RUN_STOPPED. `rolltui_run_program`
+ * and `rolltui_run_suspend_job` block, so a stepped host does not call them. */
+#define ROLLTUI_RUN_STEP_STOPPED (-2)
+RolltuiRun* rolltui_run_begin(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result);
+int rolltui_run_step(RolltuiRun* run);
+int rolltui_run_finish(RolltuiRun* run);
+
 /* WHAT THE CALLBACKS CALL, all no-ops on NULL. Leave the loop after this wake: the events of the batch that follow
  * are dropped, `settle` is still called once. */
 void rolltui_run_stop(RolltuiRun* run);
@@ -4513,7 +4526,8 @@ void rolltui_run_resume(RolltuiRun* run);
 typedef void (*RolltuiJobWork)(void* ctx, const RolltuiJob* job);
 typedef void (*RolltuiJobDone)(void* ctx, int cancelled);
 typedef void (*RolltuiPostFn)(void* ctx);
-/* `workers` threads (1 to 16). `wake` is called from any thread when there is something to drain; it may be NULL. */
+/* `workers` threads (1 to 16). 0, or a system that starts none (a browser), runs each job on the thread that drains, in
+ * `rolltui_tasks_drain`, one after another. `wake` is called from any thread when there is something to drain; it may be NULL. */
 RolltuiTasks* rolltui_tasks_new(int workers, void (*wake)(void* ctx), void* wake_ctx);
 void rolltui_tasks_free(RolltuiTasks* t); /* a no-op on NULL */
 /* Queues a job; its id, never 0. */

@@ -18,7 +18,8 @@ typedef struct RunEvent {
   int w, h;
 } RunEvent;
 
-/* OWNED BY `rolltui_run` for the length of one call, on its stack; an app only ever holds a borrow. */
+/* OWNED BY `rolltui_run` for the length of one call, on its stack, or by a stepped host from `rolltui_run_begin` to
+ * `rolltui_run_finish`; an app only ever holds a borrow. */
 struct RolltuiRun {
   const RolltuiRunApp* app;
   RolltuiTerminal* term;
@@ -40,6 +41,7 @@ struct RolltuiRun {
   RolltuiTasks* tasks; /* made on first use (`rolltui_run_tasks`), drained every wake, freed before the terminal */
   RolltuiStr text;   /* every event's text, back to back */
   RolltuiStr out;    /* the bytes of a present, kept between frames */
+  int stepped;       /* `rolltui_run_step` has drawn once: each later step takes what arrived before it draws */
 };
 
 static unsigned long long steady_ms(void) { return rolltui_os_monotonic_ms(); }
@@ -155,74 +157,131 @@ static void ground_of(RolltuiRun* r, RolltuiStyle* fill) {
   if (r->app->ground) r->app->ground(r->app->ctx, r, fill);
 }
 
-int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app) {
-  RolltuiRun r;
+/* Enters the terminal and makes the run's own state. 0, with nothing made, when the app or the descriptors are refused. */
+static int run_enter(RolltuiRun* r, int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result) {
   RolltuiStyle fill;
-  size_t i;
-  if (!app || !app->render || !app->event) return ROLLTUI_RUN_BAD_APP;
+  if (!app || !app->render || !app->event) {
+    *result = ROLLTUI_RUN_BAD_APP;
+    return 0;
+  }
   /* ASKED BEFORE THE TERMINAL IS MADE, of both descriptors. Making it enters: the alternate screen, the modes, the
    * questions, and the leaving again at free, all WRITTEN — so a refusal decided afterwards has already sent all of
    * that into a pipe or a file, which is the one place a program refusing to draw must leave untouched. */
-  if (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd)) return ROLLTUI_RUN_NOT_A_TERMINAL;
-  memset(&r, 0, sizeof r);
-  r.app = app;
-  r.in_fd = in_fd;
-  r.out_fd = out_fd;
+  if (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd)) {
+    *result = ROLLTUI_RUN_NOT_A_TERMINAL;
+    return 0;
+  }
+  memset(r, 0, sizeof *r);
+  r->app = app;
+  r->in_fd = in_fd;
+  r->out_fd = out_fd;
   opts.facts_events = 1; /* the loop is what listens for them */
-  r.term = rolltui_terminal_new(in_fd, out_fd, opts);
-  r.w = rolltui_terminal_width(r.term);
-  r.h = rolltui_terminal_height(r.term);
-  r.rows = opts.inline_rows;
-  if (r.rows > 0 && r.rows < r.h) r.h = r.rows; /* an inline region is the frame's height */
-  if (app->start) app->start(app->ctx, &r);
-  if (!r.stop) {
-    ground_of(&r, &fill);
-    r.swap = rolltui_swap_new(r.w, r.h, fill);
+  r->term = rolltui_terminal_new(in_fd, out_fd, opts);
+  r->w = rolltui_terminal_width(r->term);
+  r->h = rolltui_terminal_height(r->term);
+  r->rows = opts.inline_rows;
+  if (r->rows > 0 && r->rows < r->h) r->h = r->rows; /* an inline region is the frame's height */
+  if (app->start) app->start(app->ctx, r);
+  if (!r->stop) {
+    ground_of(r, &fill);
+    r->swap = rolltui_swap_new(r->w, r->h, fill);
   }
-  while (!r.stop) {
-    RolltuiFrame* f;
-    int timeout;
-    ground_of(&r, &fill);
-    f = rolltui_swap_begin(r.swap, r.w, r.h, fill);
-    timeout = app->render(app->ctx, &r, f, r.w, r.h, steady_ms());
-    timeout = timer_wait(&r, timeout); /* a timer due sooner than the frame asked to wait wakes it */
-    /* AT THE DEPTH THE TERMINAL HAS: a terminal sent 24-bit colour it cannot draw reads it as stray attributes. */
-    rolltui_terminal_present(r.term, r.swap, &r.out);
+  *result = ROLLTUI_RUN_STOPPED;
+  return 1;
+}
 
-    r.ev_n = 0;
-    r.facts = 0;
-    rolltui_str_clear(&r.text);
-    rolltui_terminal_poll(r.term, timeout, collect, &r);
-    /* The text pointers only now: `text` growing while events were collected would have dangled every earlier one. */
-    for (i = 0; i < r.ev_n; ++i)
-      if (r.ev[i].has_text) r.ev[i].e.text = r.text.p ? r.text.p + r.ev[i].at : "";
-    for (i = 0; i < r.ev_n && !r.stop; ++i) {
-      if (r.ev[i].is_resize) {
-        r.w = r.ev[i].w;
-        r.h = r.rows > 0 && r.rows < r.ev[i].h ? r.rows : r.ev[i].h;
-        rolltui_swap_invalidate(r.swap);
-        if (app->resized) app->resized(app->ctx, &r, r.w, r.h);
-      } else if (r.ev[i].is_focus) {
-        if (app->focus) app->focus(app->ctx, &r, r.ev[i].focused);
-      } else {
-        app->event(app->ctx, &r, &r.ev[i].e);
-      }
+/* One frame drawn and presented. Returns how long it asked to wait, a timer due sooner winning. */
+static int run_frame(RolltuiRun* r) {
+  const RolltuiRunApp* app = r->app;
+  RolltuiStyle fill;
+  RolltuiFrame* f;
+  int timeout;
+  ground_of(r, &fill);
+  f = rolltui_swap_begin(r->swap, r->w, r->h, fill);
+  timeout = app->render(app->ctx, r, f, r->w, r->h, steady_ms());
+  timeout = timer_wait(r, timeout); /* a timer due sooner than the frame asked to wait wakes it */
+  /* AT THE DEPTH THE TERMINAL HAS: a terminal sent 24-bit colour it cannot draw reads it as stray attributes. */
+  rolltui_terminal_present(r->term, r->swap, &r->out);
+  return timeout;
+}
+
+/* One wake: waits up to `timeout` for the terminal (0: takes what has arrived), then acts on it, in the order the loop promises. */
+static void run_wake(RolltuiRun* r, int timeout) {
+  const RolltuiRunApp* app = r->app;
+  size_t i;
+  r->ev_n = 0;
+  r->facts = 0;
+  rolltui_str_clear(&r->text);
+  rolltui_terminal_poll(r->term, timeout, collect, r);
+  /* The text pointers only now: `text` growing while events were collected would have dangled every earlier one. */
+  for (i = 0; i < r->ev_n; ++i)
+    if (r->ev[i].has_text) r->ev[i].e.text = r->text.p ? r->text.p + r->ev[i].at : "";
+  for (i = 0; i < r->ev_n && !r->stop; ++i) {
+    if (r->ev[i].is_resize) {
+      r->w = r->ev[i].w;
+      r->h = r->rows > 0 && r->rows < r->ev[i].h ? r->rows : r->ev[i].h;
+      rolltui_swap_invalidate(r->swap);
+      if (app->resized) app->resized(app->ctx, r, r->w, r->h);
+    } else if (r->ev[i].is_focus) {
+      if (app->focus) app->focus(app->ctx, r, r->ev[i].focused);
+    } else {
+      app->event(app->ctx, r, &r->ev[i].e);
     }
-    if (r.facts && !r.stop) {
-      if (app->facts_changed) app->facts_changed(app->ctx, &r);
-      rolltui_swap_invalidate(r.swap);
-    }
-    if (r.tasks && !r.stop) rolltui_tasks_drain(r.tasks); /* what workers finished and threads posted, on this thread */
-    if (!r.stop) fire_timers(&r);
-    if (app->settle) app->settle(app->ctx, &r);
   }
-  rolltui_tasks_free(r.tasks); /* the workers stopped and every job's `done` called, before the terminal goes */
-  rolltui_mem_free(r.timers);
-  rolltui_mem_free(r.ev);
-  rolltui_str_free(&r.text);
-  rolltui_str_free(&r.out);
-  rolltui_swap_free(r.swap);
-  rolltui_terminal_free(r.term); /* restores the screen before the caller says anything */
+  if (r->facts && !r->stop) {
+    if (app->facts_changed) app->facts_changed(app->ctx, r);
+    rolltui_swap_invalidate(r->swap);
+  }
+  if (r->tasks && !r->stop) rolltui_tasks_drain(r->tasks); /* what workers finished and threads posted, on this thread */
+  if (!r->stop) fire_timers(r);
+  if (app->settle) app->settle(app->ctx, r);
+}
+
+static void run_leave(RolltuiRun* r) {
+  rolltui_tasks_free(r->tasks); /* the workers stopped and every job's `done` called, before the terminal goes */
+  rolltui_mem_free(r->timers);
+  rolltui_mem_free(r->ev);
+  rolltui_str_free(&r->text);
+  rolltui_str_free(&r->out);
+  rolltui_swap_free(r->swap);
+  rolltui_terminal_free(r->term); /* restores the screen before the caller says anything */
+}
+
+int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app) {
+  RolltuiRun r;
+  int result;
+  if (!run_enter(&r, in_fd, out_fd, opts, app, &result)) return result;
+  while (!r.stop) {
+    const int timeout = run_frame(&r);
+    run_wake(&r, timeout);
+  }
+  run_leave(&r);
+  return ROLLTUI_RUN_STOPPED;
+}
+
+RolltuiRun* rolltui_run_begin(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result) {
+  RolltuiRun* r = (RolltuiRun*)rolltui_mem_alloc(sizeof *r);
+  int ignored;
+  if (!result) result = &ignored;
+  if (!run_enter(r, in_fd, out_fd, opts, app, result)) {
+    rolltui_mem_free(r);
+    return NULL;
+  }
+  return r;
+}
+
+int rolltui_run_step(RolltuiRun* r) {
+  if (!r || r->stop) return ROLLTUI_RUN_STEP_STOPPED;
+  if (r->stepped) run_wake(r, 0); /* the first step has had nothing arrive: it draws */
+  r->stepped = 1;
+  if (r->stop) return ROLLTUI_RUN_STEP_STOPPED;
+  return run_frame(r);
+}
+
+int rolltui_run_finish(RolltuiRun* r) {
+  if (!r) return ROLLTUI_RUN_STOPPED;
+  run_leave(r);
+  rolltui_mem_free(r);
   return ROLLTUI_RUN_STOPPED;
 }
 

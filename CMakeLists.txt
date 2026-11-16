@@ -185,10 +185,11 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   an environment and a buffer, plus the file that
                                          #   remembers the answers. No tty in it: that is below.
                   c/rolltui_terminal.c   # the terminal protocol: entering, negotiating, decoding.
-                  c/rolltui_os_posix.c c/rolltui_os_win32.c
+                  c/rolltui_os_posix.c c/rolltui_os_win32.c c/rolltui_os_web.c
                                          # THE OPERATING SYSTEM (rolltui_os.h): files, time, locks
                                          #   and the terminal device. Each file compiles to nothing
-                                         #   on the other platform.
+                                         #   on the other platforms; the web's is a page's, behind
+                                         #   xterm.js (tools/web).
                   c/rolltui_process.c c/rolltui_process_posix.c c/rolltui_process_win32.c)
                                          # OTHER PROGRAMS: run, read, written and stopped; the
                                          #   system's opener, the clipboard, the terminal by name.
@@ -651,6 +652,22 @@ target_link_libraries(rolltui-paint-selftest PRIVATE rolltui)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE ${ROLLTUI_WARNINGS})
 target_compile_options(rolltui-paint PRIVATE ${ROLLTUI_WARNINGS})
+
+# THE TOUR — the library in one screen: a table, a dashboard, a page of Markdown, every shipped theme and the vim keys, each
+# window one of the library's own kinds. The same file is the web demo (tools/web/build.sh), which the page steps.
+add_executable(rolltui-tour examples/tour.c)
+target_link_libraries(rolltui-tour PRIVATE rolltui)
+target_compile_options(rolltui-tour PRIVATE ${ROLLTUI_WARNINGS})
+if(NOT WIN32)
+  add_rolltui_test(rolltui-tour-test tests/tour_test.cpp)
+  target_compile_definitions(rolltui-tour-test PRIVATE ROLLTUI_TOUR_BIN="$<TARGET_FILE:rolltui-tour>")
+  add_dependencies(rolltui-tour-test rolltui-tour)
+endif()
+
+# THE WEB BUILD'S SOURCES ARE THE LIBRARY'S OWN LIST, written here so tools/web/build.sh compiles exactly what this build does,
+# for wasm32-wasi, and a file added to the library is in the page with no second list to forget.
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rolltui_sources.txt
+     CONTENT "$<JOIN:$<TARGET_PROPERTY:rolltui,SOURCES>,\n>\n$<JOIN:$<TARGET_PROPERTY:rolltui_embedded,SOURCES>,\n>\n")
 
 # THE CHAT-SHAPED HOST — a conversation with a pretend assistant on the shipped `default` screen. It
 # is the program in this tree that calls what only a router outside it used to: the settings layer

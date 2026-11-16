@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rolltui in a browser</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<style>
+  :root { --bg: #101317; --ink: #d8dce2; --muted: #8a929c; --rule: #262b31; --accent: #6cc4b0; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f5f2; --ink: #1d2125; --muted: #5b636b; --rule: #d9ddd8; --accent: #0d6b5b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         display: grid; grid-template-rows: auto 1fr auto; padding: 16px; gap: 12px; }
+  header h1 { font-size: 20px; margin: 0; }
+  header p, footer { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  footer kbd { font: 12px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; color: var(--ink); }
+  a { color: var(--accent); }
+  #screen { min-height: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: #000; }
+  #screen .xterm { height: 100%; padding: 6px; }
+  #note { color: var(--muted); padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>rolltui</h1>
+  <p>A terminal UI library in C, compiled to WebAssembly and drawn on xterm.js. This is <code>rolltui-tour</code>: every window is
+     one of the library's own kinds, and the table, the charts and the page of Markdown are a few lines of data.</p>
+</header>
+<div id="screen"><div id="note">Loading…</div></div>
+<footer>
+  <kbd>F2</kbd> settings: every theme, light and dark, vim keys · <kbd>F4</kbd> the theme editor · <kbd>F5</kbd> the keys editor ·
+  <kbd>F1</kbd> every key · <kbd>Tab</kbd> the next window · a click shows a tab, sorts a column or picks a row.
+  <a href="https://github.com/itscool/rolltui">The library on GitHub</a>.
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script src="rolltui_web.js"></script>
+<script>
+  (async () => {
+    const box = document.getElementById("screen");
+    const term = new Terminal({
+      fontFamily: 'ui-monospace, Menlo, "DejaVu Sans Mono", Consolas, monospace',
+      fontSize: 14,
+      cursorBlink: false,
+      allowProposedApi: false,
+      macOptionIsMeta: true,
+    });
+    const fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    box.textContent = "";
+    term.open(box);
+    fit.fit();
+    term.focus();
+    try {
+      const run = await rolltuiWeb.start(term, "rolltui-tour.wasm", {
+        onStop: () => term.write("\r\n\x1b[0m  The tour has stopped. Reload the page to start it again.\r\n"),
+      });
+      const refit = () => { fit.fit(); run.resize(term.cols, term.rows); };
+      new ResizeObserver(refit).observe(box);
+    } catch (err) {
+      term.write(`\x1b[0mThe tour could not start: ${err.message}\r\n`);
+    }
+  })();
+</script>
+</body>
+</html>

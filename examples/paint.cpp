@@ -832,7 +832,10 @@ struct App {
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t alen = 0;
       const char* a = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen);
-      if (a && rolltui_window_stack_action_popup(stack, layout, a, alen)) return;
+      if (a && rolltui_window_stack_action_popup(stack, layout, a, alen)) {
+        rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
+        return;
+      }
     }
     RolltuiStr window{};
     const unsigned char kind =
@@ -862,6 +865,7 @@ struct App {
       // OPEN AND SAVE ARE THE DIALOGS the layout declares — the same popups the chords open.
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "open") rolltui_window_stack_action_popup(stack, layout, "app.filepicker", 14);
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "save") rolltui_window_stack_action_popup(stack, layout, "app.save", 8);
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && (id == "open" || id == "save")) rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
       rolltui_menu_event_release(&ev);
     }
   }

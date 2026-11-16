@@ -37,6 +37,9 @@
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
 #define ROLLTUI_USABLE_SIZE(p) malloc_usable_size(p)
+#elif defined(__wasi__)
+#include <malloc.h> /* wasi-libc's dlmalloc */
+#define ROLLTUI_USABLE_SIZE(p) malloc_usable_size(p)
 #else
 #error "rolltui_mem needs a usable-size function to report live_bytes; add one for this libc"
 #endif

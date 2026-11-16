@@ -1803,6 +1803,7 @@ struct App {
     if (found.size() > 200) found.resize(200);
     hint = budget == 0 ? "found among the first few thousand entries only" : "";  // the dialog says the rest
     rolltui_window_stack_push_popup(stack, layout, "matches", 7);
+    rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
     matches_dirty = true;
   }
   // THE DIALOG'S LIST: the menu's rows are the matches, the menu file itself holding none. Each
@@ -2083,6 +2084,7 @@ struct App {
     const std::size_t len = std::strlen(id);
     if (rolltui_window_stack_depth(stack) > 1) { rolltui_window_stack_pop(stack); return; }
     rolltui_window_stack_push_popup(stack, layout, id, len);
+    rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
   }
 
   void run_action(StrView action) {
@@ -2093,6 +2095,7 @@ struct App {
     // this file does not have.
     else if (rolltui_window_stack_action_popup(stack, layout, action.data(), action.size())) {
       if (action == "app.menu") menu_dirty = true;
+      rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
     }
     else if (action == "app.hidden") set_hidden(!opt.hidden);
     else if (action == "app.sort") {

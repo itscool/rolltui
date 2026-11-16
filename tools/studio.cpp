@@ -797,6 +797,7 @@ struct App {
     rolltui_menu_reset(menu());
     rolltui_menu_set_palette(menu(), palette ? 1 : 0);
     rolltui_window_stack_push_popup(stack, &effective_layout(), "menu", 4);
+    rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
   }
   void close_popup(StrView id) {
     while (rolltui_window_stack_depth(stack) > 1) {
@@ -823,7 +824,8 @@ struct App {
       case ROLLTUI_MENU_EVENT_ACTIVATE:
         close_popup("menu");
         if (ev.id == "reload") load_fixture();
-        else if (ev.id == "open") rolltui_window_stack_action_popup(stack, &effective_layout(), "app.filepicker", 14);
+        else if (ev.id == "open" && rolltui_window_stack_action_popup(stack, &effective_layout(), "app.filepicker", 14))
+          rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
         else if (ev.id == "save_as") open_save_dialog();
         else if (ev.id == "help") toggle_help();
         else if (ev.id == "editor") toggle_editor();
@@ -1930,6 +1932,7 @@ struct App {
       return;
     }
     rolltui_window_stack_push_popup(stack, &effective_layout(), "help", 4);
+    rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
   }
 
   // The find bar. It is an ordinary `input:` window in an ordinary popup —
@@ -1955,8 +1958,10 @@ struct App {
       rolltui_transcript_set_query(transcript(), "", 0);
       return;
     }
-    if (rolltui_window_stack_push_popup(stack, &effective_layout(), "find", 4))
+    if (rolltui_window_stack_push_popup(stack, &effective_layout(), "find", 4)) {
       rolltui_window_stack_focus(stack, "find", 4);
+      rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
+    }
   }
 
   // A layout's state in ONE spelling. The panel and the status line show the same subject and
@@ -2207,8 +2212,10 @@ struct App {
       // Any other `app.<id>` naming a popup this screen declares is the library's to open. The
       // four above stay here because each does more than push — building menu items, syncing the
       // find query, choosing between two help sources.
-      if (rolltui_window_stack_action_popup(stack, &effective_layout(), app_a.data(), app_a.size()))
+      if (rolltui_window_stack_action_popup(stack, &effective_layout(), app_a.data(), app_a.size())) {
+        rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
         return true;
+      }
     }
     ensure_layout();
     if (ev.kind == ROLLTUI_EVENT_PASTE) {

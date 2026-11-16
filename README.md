@@ -13,7 +13,7 @@ A terminal UI library in C, with a C++ API on top.
 
 | | rolltui | Textual | ratatui | Bubble Tea | notcurses | FTXUI |
 |---|---|---|---|---|---|---|
-| Platforms | 🍎 🐧 🪟 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
+| Platforms | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
 | Language | C, C++ API | Python | Rust | Go | C | C++ |
 | Dependencies | none | rich, Pygments, markdown-it, … | crossterm, ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
 | **Configuration** | | | | | | |
@@ -55,6 +55,12 @@ A terminal UI library in C, with a C++ API on top.
 | dirktui keys · ember | rolltui-studio theme editor · orchard |
 | ![dirktui previewing a Python file](docs/images/code.png) | ![rolltui-chat: the command palette filtering for "theme"](docs/images/palette.png) |
 | dirktui code preview · harbour, light | rolltui-chat command palette · mono |
+
+## In a browser
+
+`rolltui-tour` (`examples/tour.c`) is the library in one screen: a table that sorts, filters and marks, a dashboard of live charts,
+a page of Markdown with code and a diagram, every shipped theme, and the vim keys. `tools/web/build.sh` builds it for wasm32-wasi
+with zig and puts it beside a page that runs it on xterm.js. The program is the same file a terminal runs.
 
 ## Speed
 

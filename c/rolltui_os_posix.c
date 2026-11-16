@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_os_posix.c — rolltui_os.h on macOS, Linux and the BSDs. */
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__wasi__)
 
 #if defined(__linux__) && !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
@@ -530,4 +530,4 @@ void rolltui_os_tty_listen_resize(RolltuiOsTty* t) {
   sigaction(SIGWINCH, &sa, NULL);
 }
 
-#endif /* !_WIN32 */
+#endif /* !_WIN32 && !__wasi__ */

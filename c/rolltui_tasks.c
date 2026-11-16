@@ -89,9 +89,9 @@ RolltuiTasks* rolltui_tasks_new(int workers, void (*wake_fn)(void* ctx), void* w
   rolltui_cond_init(&t->more);
   t->wake = wake_fn;
   t->wake_ctx = wake_ctx;
-  if (workers < 1) workers = 1;
+  if (workers < 0) workers = 0;
   if (workers > 16) workers = 16;
-  t->workers = (RolltuiThread**)rolltui_mem_alloc((size_t)workers * sizeof *t->workers);
+  t->workers = workers ? (RolltuiThread**)rolltui_mem_alloc((size_t)workers * sizeof *t->workers) : NULL;
   for (i = 0; i < workers; ++i) {
     t->workers[i] = rolltui_thread_start(worker_main, t);
     if (t->workers[i]) ++t->worker_n;
@@ -108,9 +108,34 @@ static void forget_live(RolltuiTasks* t, const Job* j) {
     }
 }
 
+/* NO WORKER RUNS THEM: each job pending runs here, on the thread that drains, as a worker would have. */
+static void run_pending_here(RolltuiTasks* t) {
+  for (;;) {
+    Job* j;
+    rolltui_mutex_lock(&t->lock);
+    j = t->pending;
+    if (j) {
+      t->pending = j->next;
+      if (!t->pending) t->pending_tail = NULL;
+      j->next = NULL;
+      j->started = 1;
+    }
+    rolltui_mutex_unlock(&t->lock);
+    if (!j) return;
+    if (!j->cancelled && j->work) j->work(j->ctx, j);
+    rolltui_mutex_lock(&t->lock);
+    j->finished = 1;
+    if (t->finished_tail) t->finished_tail->next = j;
+    else t->finished = j;
+    t->finished_tail = j;
+    rolltui_mutex_unlock(&t->lock);
+  }
+}
+
 size_t rolltui_tasks_drain(RolltuiTasks* t) {
   size_t ran = 0;
   if (!t) return 0;
+  if (t->worker_n == 0) run_pending_here(t);
   for (;;) {
     Job* done;
     Posted* post;
@@ -191,6 +216,7 @@ unsigned int rolltui_tasks_start(RolltuiTasks* t, RolltuiJobWork work, RolltuiJo
   t->pending_tail = j;
   rolltui_cond_signal(&t->more);
   rolltui_mutex_unlock(&t->lock);
+  if (t->worker_n == 0) wake(t); /* nothing else will: the drain is where it runs */
   return id;
 }
 

@@ -236,8 +236,31 @@ void test_preview_off_thread() {
 
 }  // namespace
 
+// NO WORKERS: a browser starts no thread, so each job runs on the thread that drains, and nothing waits forever.
+void test_no_workers() {
+  g_wakes = 0;
+  RolltuiTasks* t = rolltui_tasks_new(0, count_wake, nullptr);
+  std::vector<Job> jobs(5);
+  for (int i = 0; i < 5; ++i) {
+    jobs[i].input = i + 2;
+    rolltui_tasks_start(t, work, done, &jobs[i]);
+  }
+  check(g_wakes >= 5 && !jobs[0].ran, "with no workers a job waits for the drain, and starting it wakes the loop to drain");
+  const std::thread::id here = std::this_thread::get_id();
+  check(rolltui_tasks_drain(t) == 5 && rolltui_tasks_busy(t) == 0, "one drain runs every job and delivers it");
+  bool all = true;
+  for (int i = 0; i < 5; ++i) all = all && jobs[i].output == (i + 2) * (i + 2) && jobs[i].done_calls == 1 && jobs[i].done_on == here;
+  check(all, "…each on the draining thread, with what its work made");
+  Job dropped;
+  const unsigned int id = rolltui_tasks_start(t, work, done, &dropped);
+  rolltui_tasks_cancel(t, id);
+  check(rolltui_tasks_wait_idle(t, 1000) == 1 && !dropped.ran && dropped.cancelled == 1, "a job cancelled before the drain never runs, and is told");
+  rolltui_tasks_free(t);
+}
+
 int main() {
   test_jobs();
+  test_no_workers();
   test_run_timers();
   test_preview_off_thread();
   return testkit::report("tasks_test");

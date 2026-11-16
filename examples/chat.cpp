@@ -1053,6 +1053,7 @@ struct App {
   void push_popup(const char* id) {
     if (!rolltui_window_stack_push_popup(stack, shown, id, std::strlen(id)))
       rolltui_window_stack_push_popup(stack, rolltui_layout_shipped(ctx, "default", 7), id, std::strlen(id));
+    rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
   }
 
   void fill_choice(const char* key, const RolltuiPresetListRaw& list) {
@@ -1119,7 +1120,10 @@ struct App {
     if (action == "app.editor") { editor_wanted = true; return; }
     if (action == "app.find") { open_find(); return; }
     if (action == "app.details") { open_details(); return; }
-    if (!action.empty() && rolltui_window_stack_action_popup(stack, shown, action.data(), action.size())) return;
+    if (!action.empty() && rolltui_window_stack_action_popup(stack, shown, action.data(), action.size())) {
+      rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
+      return;
+    }
     // Everything else is a slash command, exactly as if typed: one dispatcher.
     command(RolltuiStr("/") + name);
   }
@@ -1464,7 +1468,10 @@ struct App {
         if (act == "app.details") { open_details(); return; }
         // ANY OTHER `app.<id>` NAMING A POPUP THIS SCREEN DECLARES opens it: help, the theme and keys
         // editors, the file picker. A panel is a layout entry and a chord, and no code here.
-        if (!act.empty() && rolltui_window_stack_action_popup(stack, shown, act.data(), act.size())) return;
+        if (!act.empty() && rolltui_window_stack_action_popup(stack, shown, act.data(), act.size())) {
+          rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
+          return;
+        }
       }
     }
     RolltuiStr window;

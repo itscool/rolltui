@@ -380,5 +380,74 @@ int main() {
   check(s.resizes == 1 && s.resized_w == 100 && s.resized_h == 30, "resized is called with the new size, once");
   check(s.render_w == 100 && s.render_h == 30, "and the next frame was drawn at it");
 
+  // ---- THE SAME LOOP, A STEP AT A TIME: a host whose own loop must never block (a web page) steps it -------------------------
+  // One process plays both sides: a step never waits, so the test types on the master, steps, and reads what was drawn.
+  {
+    int sm = -1, ss = -1;
+    winsize sws{};
+    sws.ws_row = 24;
+    sws.ws_col = 80;
+    check(::openpty(&sm, &ss, nullptr, nullptr, &sws) == 0, "openpty");
+    ::fcntl(sm, F_SETFL, O_NONBLOCK);
+    std::string out;
+    auto drain = [&]() {
+      char b[8192];
+      for (ssize_t n; (n = ::read(sm, b, sizeof b)) > 0;) out.append(b, static_cast<std::size_t>(n));
+    };
+    auto type = [&](const char* keys) { (void)!::write(sm, keys, std::strlen(keys)); };
+    // Steps until `done` or two seconds pass: what the master wrote reaches the slave when the system gets to it, not at once.
+    auto step_until = [&](RolltuiRun* r, auto done) {
+      int last = 0;
+      for (int i = 0; i < 400 && !done(); ++i) {
+        last = rolltui_run_step(r);
+        if (last == ROLLTUI_RUN_STEP_STOPPED) break;
+        ::usleep(5000);
+      }
+      return last;
+    };
+    const std::size_t sbase = live_bytes();
+    State st;
+    st.ds = rolltui_draw_scratch_new();
+    RolltuiTerminalOptions so;
+    so.no_cache = 1;
+    so.handle_signals = 0;
+    RolltuiRunApp sapp = make_app(&st);
+    int result = -1;
+    check(rolltui_run_begin(ss, ss, so, nullptr, &result) == nullptr && result == ROLLTUI_RUN_BAD_APP, "begin refuses no app, as run does");
+    RolltuiRun* run = rolltui_run_begin(ss, ss, so, &sapp, &result);
+    check(run && result == ROLLTUI_RUN_STOPPED && st.starts == 1 && st.renders == 0, "begin enters the terminal and calls start, and draws nothing");
+    int ms = rolltui_run_step(run);
+    drain();
+    check(ms == 25 && st.renders == 1 && out.find("READY 80x24 keys=0") != std::string::npos,
+          "the first step draws a frame and answers how long the frame asked to wait");
+    type("ab");
+    step_until(run, [&] { return st.typed == "ab"; });
+    check(st.typed == "ab" && st.renders >= 2, "a step takes the keys that arrived, without waiting, then draws");
+    const int settled = st.settles;
+    rolltui_run_step(run);
+    check(st.settles == settled + 1, "a step with nothing arrived still settles");
+    int fired = 0;
+    // The frame asks to wait 25 ms; a timer due in 20 makes the step answer no more than 20 (and 25 only if it already fired, late).
+    rolltui_run_after(run, 20, [](void* c, RolltuiRun*) { ++*static_cast<int*>(c); }, &fired);
+    ms = rolltui_run_step(run);
+    check((ms >= 0 && ms <= 20) || fired == 1, "a timer due sooner than the frame's wait shortens what the step answers (" + std::to_string(ms) + ")");
+    step_until(run, [&] { return fired != 0; });
+    check(fired == 1, "…and a step once it is due fires it, once");
+    type("q");
+    ms = step_until(run, [&] { return false; });
+    check(ms == ROLLTUI_RUN_STEP_STOPPED && st.typed == "abq", "the app stopping makes the step answer ROLLTUI_RUN_STEP_STOPPED");
+    check(rolltui_run_step(run) == ROLLTUI_RUN_STEP_STOPPED, "…and every step after it");
+    const std::size_t before_finish = out.size();
+    check(rolltui_run_finish(run) == ROLLTUI_RUN_STOPPED, "finish returns ROLLTUI_RUN_STOPPED");
+    drain();
+    check(out.find("\x1b[?1049l", before_finish) != std::string::npos, "…having left the terminal as it found it");
+    termios stio{};
+    check(::tcgetattr(ss, &stio) == 0 && (stio.c_lflag & ICANON), "…cooked again");
+    rolltui_draw_scratch_free(st.ds);
+    check(live_bytes() == sbase, "…and nothing is left allocated");
+    ::close(sm);
+    ::close(ss);
+  }
+
   return report("rolltui_run_test");
 }

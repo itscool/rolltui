@@ -4,7 +4,7 @@
  * A PROGRAM IS STARTED WITH fork AND execve, its path found on PATH and its environment built BEFORE the fork, so the child runs
  * only calls that are safe between a fork and an exec in a process that has threads (a host's worker may hold the allocator's lock).
  * Whether the exec happened comes back through a close-on-exec pipe: nothing read means it ran, an errno read means it did not. */
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__wasi__)
 #if defined(__linux__) && !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
 #endif
@@ -529,4 +529,4 @@ void rolltui_os_close_terminal(int in_fd, int out_fd) {
   if (out_fd >= 0 && out_fd != in_fd) close(out_fd);
 }
 
-#endif /* !_WIN32 */
+#endif /* !_WIN32 && !__wasi__ */

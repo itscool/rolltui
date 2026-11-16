@@ -147,6 +147,57 @@ An app with threads of its own builds its loop from `rolltui_terminal_new`,
 `rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and
 `rolltui_terminal_suspend` / `_resume`. `examples/chat.cpp` does this.
 
+### A step at a time
+
+A host whose own loop must never block (a web page, a game engine, a toolkit's event loop) runs
+the same loop a step at a time:
+
+```c
+int result;
+RolltuiRun* run = rolltui_run_begin(in_fd, out_fd, opts, &app, &result);
+/* in the host's loop, when input arrives and when the last step asked: */
+int ms = rolltui_run_step(run);
+if (ms == ROLLTUI_RUN_STEP_STOPPED) rolltui_run_finish(run);
+```
+
+- `rolltui_run_begin` enters the terminal and calls `start`. It returns NULL, with `result` set as
+  `rolltui_run` would return it, for an app or a descriptor it refuses.
+- Each `rolltui_run_step` takes what has arrived without waiting (events, workers' results, due
+  timers, `settle`), then draws and presents one frame. It returns the milliseconds the frame
+  asked to wait, sooner where a timer is due, or -1 for "until input arrives". Step again then,
+  or as soon as input arrives.
+- Once the app stops, every step returns `ROLLTUI_RUN_STEP_STOPPED`. `rolltui_run_finish` leaves
+  the terminal as it was found and frees the run.
+- `rolltui_run_program` and `rolltui_run_suspend_job` wait, so a stepped host does not call them.
+
+## In a web page
+
+`tools/web/build.sh` builds `rolltui-tour` (`examples/tour.c`) for wasm32-wasi with zig and puts
+it beside a page that runs it on xterm.js:
+
+```sh
+cmake -S . -B build && cmake --build build
+tools/web/build.sh build              # writes build/web
+python3 -m http.server -d build/web   # a page loads a .wasm over HTTP, not from file://
+```
+
+The library's sources come from the native build's own list (`rolltui_sources.txt`, written by
+CMake), so the page is built from what the native build compiles. In the browser:
+
+- Descriptor 1 is the terminal. `tools/web/rolltui_web.js` hands what xterm.js sends to the
+  program with `rolltui_web_input`, and a new size with `rolltui_web_resize`, and steps the
+  loop when input arrives and when the last step asked.
+- The OS layer is `c/rolltui_os_web.c`. A page runs no other programs and has no threads, so a
+  task pool runs each job on the thread that drains it. It has no files: every preset is the
+  library's embedded copy, and nothing a person changes is kept.
+- A page cannot wait for the terminal's answers while the program enters, so the program asks
+  nothing (`no_probe`) and the page answers DA1 for xterm.js before it starts. Colour depth and
+  light or dark come from the environment the page sets: `COLORTERM=truecolor`, and `COLORFGBG`
+  from the browser's colour scheme.
+
+A host of its own built this way exports a start and a step and calls `rolltui_run_begin` and
+`rolltui_run_step`, as `examples/tour.c` does under `__wasi__`.
+
 ## Inline mode
 
 An inline program is drawn in the normal screen, below the shell prompt, instead of on the
