@@ -177,6 +177,7 @@ static RolltuiStyle overlay_style(RolltuiStyle base, RolltuiStyle over) {
   base.underline |= over.underline;
   base.dim |= over.dim;
   base.reverse |= over.reverse;
+  base.strike |= over.strike;
   return base;
 }
 

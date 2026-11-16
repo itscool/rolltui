@@ -111,6 +111,7 @@ static RolltuiStyleColorRaw okl(double L, double C, double h) {
 static RolltuiStyle mkstyle(RolltuiStyleColorRaw fg, RolltuiStyleColorRaw bg, int bold, int italic, int underline,
                             int dim, int reverse) {
   RolltuiStyle s;
+  memset(&s, 0, sizeof s); /* every attribute the generator does not choose is off, whatever the struct gains */
   s.fg = fg;
   s.bg = bg;
   s.bold = (unsigned char)bold;

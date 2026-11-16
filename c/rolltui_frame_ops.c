@@ -180,7 +180,7 @@ int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int 
   if (max_cells < 2 || x < 0 || y < 0 || y >= rolltui_frame_height(f) || x + 2 > rolltui_frame_width(f)) return 0;
   if (rolltui_termfacts_clamp_depth(ROLLTUI_DEPTH_TRUECOLOR) == ROLLTUI_DEPTH_MONO) return 0;
   st.bg = colour.kind != 0 ? colour : frame.bg; /* `none` is the frame alone, on the ground it sits on */
-  st.bold = st.italic = st.underline = st.dim = st.reverse = 0; /* an outline, not text: `reverse` would swap the fill out */
+  st.bold = st.italic = st.underline = st.dim = st.reverse = st.strike = 0; /* an outline, not text: `reverse` would swap the fill out */
   if (ambiguous_wide || rolltui_termfacts_active_wide()) {
     rolltui_frame_put(f, x, y, "[", 1, 1, st, 0);
     rolltui_frame_put(f, x + 1, y, "]", 1, 1, st, 0);
@@ -301,6 +301,7 @@ void rolltui_frame_shade(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, dou
       st.underline |= style.underline;
       st.dim |= style.dim | dim_fg; /* a background has no dim to fall back on */
       st.reverse |= style.reverse;
+      st.strike |= style.strike;
       rolltui_frame_set_style(f, xx, yy, st);
     }
 }
@@ -331,6 +332,7 @@ void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style) {
       st.underline |= style.underline;
       st.dim |= style.dim;
       st.reverse |= style.reverse;
+      st.strike |= style.strike;
       rolltui_frame_set_style(f, xx, yy, st);
     }
 }

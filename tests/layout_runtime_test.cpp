@@ -46,6 +46,7 @@ struct Screen {
   Screen(const Screen&) = delete;
   Screen& operator=(const Screen&) = delete;
   ~Screen() {
+    if (last) rolltui_frame_free(last);
     rolltui_effect_map_free(fx);
     rolltui_window_stack_free(stack);
     rolltui_windows_free(w);

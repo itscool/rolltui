@@ -541,7 +541,7 @@ static void draw_blocks(RolltuiFrame* f, const RolltuiImage* img, int x0, int y0
         }
         st.fg = top[3] < 8 ? ground.bg : over_ground(top, ground.bg);
         st.bg = bot[3] < 8 ? ground.bg : over_ground(bot, ground.bg);
-        st.bold = st.italic = st.underline = st.dim = st.reverse = 0;
+        st.bold = st.italic = st.underline = st.dim = st.reverse = st.strike = 0;
         rolltui_frame_put(f, x0 + x, y0 + y, "\xe2\x96\x80", 3, 1, st, 0);
       } else {
         st.bg = top[3] < 8 ? ground.bg : over_ground(top, ground.bg);
@@ -555,7 +555,7 @@ static void draw_placeholders(RolltuiFrame* f, const RolltuiImage* img, int x0, 
   RolltuiStyle st = ground;
   int x, y;
   st.fg = rgb((img->id >> 16) & 255, (img->id >> 8) & 255, img->id & 255);
-  st.bold = st.italic = st.underline = st.dim = st.reverse = 0;
+  st.bold = st.italic = st.underline = st.dim = st.reverse = st.strike = 0;
   for (y = 0; y < rows; ++y)
     for (x = 0; x < cols; ++x) {
       char cell[16];

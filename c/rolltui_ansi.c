@@ -299,11 +299,13 @@ static void sgr(RolltuiAnsiText* t, const char* p, size_t n) {
         t->cur.underline = !(i + 1 < k && sub[i + 1] && v[i + 1] == 0);
         break;
       case 7: t->cur.reverse = 1; break;
+      case 9: t->cur.strike = 1; break;
       case 21: t->cur.underline = 1; break;
       case 22: t->cur.bold = 0; t->cur.dim = 0; break;
       case 23: t->cur.italic = 0; break;
       case 24: t->cur.underline = 0; break;
       case 27: t->cur.reverse = 0; break;
+      case 29: t->cur.strike = 0; break;
       case 39: memset(&t->cur.fg, 0, sizeof t->cur.fg); break;
       case 49: memset(&t->cur.bg, 0, sizeof t->cur.bg); break;
       default:
@@ -311,7 +313,7 @@ static void sgr(RolltuiAnsiText* t, const char* p, size_t n) {
         else if (x >= 40 && x <= 47) colour_indexed(&t->cur.bg, x - 40);
         else if (x >= 90 && x <= 97) colour_indexed(&t->cur.fg, x - 90 + 8);
         else if (x >= 100 && x <= 107) colour_indexed(&t->cur.bg, x - 100 + 8);
-        break; /* blink, conceal, strike, fonts: read and dropped */
+        break; /* blink, conceal, fonts: read and dropped */
     }
   }
 }
@@ -448,6 +450,7 @@ static RolltuiStyle over_base(const RolltuiStyle* run, const RolltuiStyle* base)
   s.dim |= run->dim;
   s.italic |= run->italic;
   s.underline |= run->underline;
+  s.strike |= run->strike;
   if (run->reverse) { /* reversed: the colours trade places, the base's standing in for one the run did not give */
     const RolltuiStyleColorRaw fg = s.fg;
     s.fg = s.bg;

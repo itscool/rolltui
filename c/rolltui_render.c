@@ -77,7 +77,7 @@ static int same(const Base* b, const RolltuiFrame* next, int x, int y) {
  * THE SHORT FORMS stand on the terminal erasing in the background colour
  * (`rolltui_termfacts_active_erase`): a run of blank cells is an ECH and a move, a row's blank rest
  * an EL, and a block of rows that moved is a scrolled region. A blank is a space with no link,
- * underline or reverse: an erase draws exactly that. */
+ * underline, strikethrough or reverse: an erase draws exactly that. */
 typedef struct Out {
   RolltuiStr* s;
   SgrState sgr;
@@ -150,7 +150,7 @@ static void advance(Out* o, int cells) {
 
 static int is_blank(const RolltuiCellRaw* c) {
   return !c->continuation && c->width == 1 && c->len == 1 && c->bytes[0] == ' ' && c->link == 0 && !c->style.underline &&
-         !c->style.reverse;
+         !c->style.reverse && !c->style.strike;
 }
 
 /* Cells [x0, x1) of row y: moved to, then their links, styles and glyphs, a run of blanks as an erase where that is shorter. */
@@ -278,7 +278,7 @@ int rolltui_render_row_extent(const RolltuiFrame* f, int y) {
     if (c.continuation) continue;
     g = rolltui_frame_glyph(f, x, y, &glen);
     if ((glen == 0 || (glen == 1 && g[0] == ' ')) && (c.style.bg.kind == 0 || color_eq(&c.style.bg, &ground.bg)) &&
-        !c.style.reverse && !c.style.underline)
+        !c.style.reverse && !c.style.underline && !c.style.strike)
       continue; /* a blank on the ground: the terminal keeps nothing there */
     extent = x + (c.width > 1 ? c.width : 1);
   }

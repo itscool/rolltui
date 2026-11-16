@@ -113,7 +113,7 @@ class Screen {
         const char* u = rolltui_frame_link(f, raw.link, &ulen);
         if (c.link != std::string(u ? u : "", ulen)) return where(x, y) + "links '" + c.link + "'";
         if (c.erased) { /* a space looks the same in any foreground: its background, and nothing drawn over it, is what shows */
-          if (want != " " || raw.style.underline || raw.style.reverse || !color_eq(c.style.bg, raw.style.bg))
+          if (want != " " || raw.style.underline || raw.style.reverse || raw.style.strike || !color_eq(c.style.bg, raw.style.bg))
             return where(x, y) + "was erased, and the frame's cell is not a plain space on that background";
           continue;
         }

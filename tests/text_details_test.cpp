@@ -142,6 +142,11 @@ void test_footers() {
 
 // ---- a line through the text ------------------------------------------------------------------------------------------------------
 
+RolltuiDrawScratch* ds2() {
+  static RolltuiDrawScratch* s = rolltui_draw_scratch_new();
+  return s;
+}
+
 void test_strike() {
   RolltuiStyle plain{}, struck{};
   struck.strike = 1;
@@ -161,6 +166,31 @@ void test_strike() {
   rolltui_str_free(&bytes);
   rolltui_draw_scratch_free(ds);
   rolltui_frame_free(f);
+  // A STRUCK SPACE IS NOT A BLANK: a terminal draws the line across it, and an erase would not.
+  rolltui_termfacts_set_active_erase(1);
+  f = rolltui_frame_new(20, 1, plain);
+  rolltui_frame_put_text(f, ds2(), 0, 0, "a", 1, plain, 20, 0, 0);
+  rolltui_frame_put_text(f, ds2(), 1, 0, "          ", 10, struck, 20, 0, 0);
+  rolltui_frame_put_text(f, ds2(), 11, 0, "b", 1, plain, 20, 0, 0);
+  rolltui_render_full(f, ROLLTUI_DEPTH_TRUECOLOR, &bytes);
+  vt::Screen wide(20, 1);
+  check(wide.apply(str_of(bytes)) && wide.at(5, 0).style.strike && !wide.at(5, 0).erased,
+        "a run of struck spaces is drawn, never sent as an erase that would drop its line");
+  rolltui_str_free(&bytes);
+  rolltui_frame_free(f);
+  rolltui_termfacts_set_active_erase(-1);
+  // another program's struck text
+  RolltuiAnsiText* at = rolltui_ansi_new();
+  static const char kStruck[] = "\x1b[9mgone\x1b[29m kept\n";
+  rolltui_ansi_feed(at, kStruck, sizeof kStruck - 1);
+  f = rolltui_frame_new(12, 1, plain);
+  rolltui_ansi_draw(at, f, RolltuiRect{0, 0, 12, 1}, 0, 0, 0, plain, 0);
+  RolltuiCellRaw c0{}, c6{};
+  rolltui_frame_cell(f, 0, 0, &c0);
+  rolltui_frame_cell(f, 6, 0, &c6);
+  check(c0.style.strike && !c6.style.strike, "another program's SGR 9 is struck in the pane, and SGR 29 ends it");
+  rolltui_frame_free(f);
+  rolltui_ansi_free(at);
   // the shipped themes strike Markdown's struck text
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
