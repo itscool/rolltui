@@ -12,6 +12,9 @@
 │ Widget kind: rows                              ││                                                                    │
 │ Source: status                                 ││                                                                    │
 │ Menu file:                                     ││                                                                    │
+│ Tabs (Title = content | …):                    ││                                                                    │
+│ Shown tab                                    ▸ ││                                                                    │
+│ Shown from (width x height):                   ││                                                                    │
 │ Size (Alt+arrows nudge): 70                    ││                                                                    │
 │ [ ] Focusable                                  ││                                                                    │
 │ Tree — split, swap, delete                   ▸ ││                                                                    │
@@ -19,9 +22,6 @@
 │ Layout file — new, load, save                ▸ ││                                                                    │
 │ Undo                                    Ctrl-Z ││                                                                    │
 │ Redo                                    Ctrl-Y ││                                                                    │
-│                                                ││                                                                    │
-│                                                ││                                                                    │
-│                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │

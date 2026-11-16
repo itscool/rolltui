@@ -19,16 +19,16 @@
 │ │ styled     │            │            │ ││   Left                  │ Widget kind: help                              │
 │ │ wrapped    │            │            │ ││ grapheme left           │ Source:                                        │
 │ │ lines)     │            │            │ ││   Right                 │ Menu file:                                     │
-│ │ Theme      │ build      │ single     │ ││ grapheme right          │ Size (Alt+arrows nudge): fill                  │
-│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ [✓] Focusable                                  │
-│ │ styles,    │            │            │ ││ left                    │ Tree — split, swap, delete                   ▸ │
-│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ loader,    │            │            │ ││ right                   │ Layout file — new, load, save                ▸ │
-│ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ Undo                                    Ctrl-Z │
-│ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ Redo                                    Ctrl-Y │
-│                                          ││   End, Ctrl-E           │                                                │
-│ Here is the function you asked for:      ││ line (scrolls when empty│                                                │
-│                                          ╻│   Up                    │                                                │
+│ │ Theme      │ build      │ single     │ ││ grapheme right          │ Tabs (Title = content | …):                    │
+│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ Shown tab                                    ▸ │
+│ │ styles,    │            │            │ ││ left                    │ Shown from (width x height):                   │
+│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ Size (Alt+arrows nudge): fill                  │
+│ │ loader,    │            │            │ ││ right                   │ [✓] Focusable                                  │
+│ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ Tree — split, swap, delete                   ▸ │
+│ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ This screen — sizes, focus, popups, actions  ▸ │
+│                                          ││   End, Ctrl-E           │ Layout file — new, load, save                ▸ │
+│ Here is the function you asked for:      ││ line (scrolls when empty│ Undo                                    Ctrl-Z │
+│                                          ╻│   Up                    │ Redo                                    Ctrl-Y │
 │ ┌ cpp ─────────────────────────────────┐ ┃│ the previous history ent│                                                │
 │ │ int add(int a, int b) {              │ ┃│   Down                  │                                                │
 │ │   return a + b;                      │ ┃│ the next history entry  │                                                │

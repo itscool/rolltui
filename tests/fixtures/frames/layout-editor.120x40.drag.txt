@@ -19,16 +19,16 @@
 │ │ s →   │        │        │ ││ │ content slots)   │             │ re│ Widget kind: transcript                        │
 │ │ style │        │        │ ││ │ Markdown block   │ build       │ si│ Source: session                                │
 │ │ s,    │        │        │ ││ │ renderer (blocks │             │ ov│ Menu file:                                     │
-│ │ JSON  │        │        │ ││ │ → styled wrapped │             │   │ Size (Alt+arrows nudge): 31                    │
-│ │ loade │        │        │ ││ │ lines)           │             │   │ [✓] Focusable                                  │
-│ │ r,    │        │        │ ││ │ Theme (roles →   │ build       │ si│ Tree — split, swap, delete                   ▸ │
-│ │ built │        │        │ ││ │ styles, JSON     │             │   │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ Layout file — new, load, save                ▸ │
-│ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ Undo                                    Ctrl-Z │
-│                             ││ └──────────────────┴─────────────┴───│ Redo                                    Ctrl-Y │
-│ Here is the function you    ││                                      │                                                │
-│ asked for:                  ││ Here is the function you asked for:  │                                                │
-│                             ││                                      │                                                │
+│ │ JSON  │        │        │ ││ │ → styled wrapped │             │   │ Tabs (Title = content | …):                    │
+│ │ loade │        │        │ ││ │ lines)           │             │   │ Shown tab                                    ▸ │
+│ │ r,    │        │        │ ││ │ Theme (roles →   │ build       │ si│ Shown from (width x height):                   │
+│ │ built │        │        │ ││ │ styles, JSON     │             │   │ Size (Alt+arrows nudge): 31                    │
+│ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ [✓] Focusable                                  │
+│ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ Tree — split, swap, delete                   ▸ │
+│                             ││ └──────────────────┴─────────────┴───│ This screen — sizes, focus, popups, actions  ▸ │
+│ Here is the function you    ││                                      │ Layout file — new, load, save                ▸ │
+│ asked for:                  ││ Here is the function you asked for:  │ Undo                                    Ctrl-Z │
+│                             ││                                      │ Redo                                    Ctrl-Y │
 │ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│                                                │
 │ │ int add(int a, int b) { │ ┃│ │ int add(int a, int b) {            │                                                │
 │ │   return a + b;         │ ┃│ │   return a + b;                    │                                                │

@@ -456,6 +456,12 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::input("kind", "Widget kind", name.clone()));
   top.push_back(MenuItem::input("source", "Source", text.clone()));
   top.push_back(MenuItem::input("menu_file", "Menu file", name.clone()));
+  // TABS: a window with alternative contents, typed as the strip reads, `Title = content | Title = content`; the shown one is a
+  // choice over their titles, and Widget kind and Source above edit the shown one. Empty takes the tabs off.
+  top.push_back(MenuItem::input("tabs", "Tabs (Title = content | \xE2\x80\xA6)", text.clone()));
+  top.push_back(MenuItem::choice("tab", "Shown tab", ""));
+  // A BREAKPOINT: shown only on a screen at least this big, typed `width`, `width x height` or `x height`; empty for always.
+  top.push_back(MenuItem::input("breakpoint", "Shown from (width x height)", text.clone()));
   top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
   top.push_back(MenuItem::toggle("focusable", "Focusable", false));
   // A LABEL SAYS WHAT IS BEHIND IT. `Tree`, `This screen` and `Layout file` name categories, and
@@ -525,6 +531,23 @@ bool LayoutEditor::set_content(StrView kind_name, StrView source) {
   rolltui::assign(c.kind, kind_name);
   rolltui::assign(c.source, source);
   n->content = content_to_string(ctx_, c);
+  if (n->tab_count) { /* the shown tab's content is the one edited */
+    RolltuiStr tabs;
+    unsigned char count = 0;
+    for (std::size_t i = 0; i < n->tab_count; ++i) {
+      const char *t = nullptr, *tc = nullptr;
+      std::size_t tl = 0, cl = 0;
+      rolltui_node_tab_at(n, i, &t, &tl, &tc, &cl);
+      tabs.append(t, tl);
+      tabs.append("", 1);
+      if (i == n->tab) tabs.append(n->content.data(), n->content.size());
+      else tabs.append(tc, cl);
+      tabs.append("", 1);
+      ++count;
+    }
+    n->tabs = std::move(tabs);
+    n->tab_count = count;
+  }
   if (!content_for_kind(ctx_, kind_name))
     status_ = rolltui::format("'%.*s' is not a kind this tool can build — it previews as a placeholder", static_cast<int>(kind_name.size()), kind_name.data());
   return true;
@@ -602,6 +625,32 @@ void LayoutEditor::sync_values() {
   set_value(menu_, "size", split_size_to_string(n->size));
   set_checked(menu_, "focusable", n->focusable);
   set_enabled(menu_, "focusable", n->is_window());
+  {
+    RolltuiStr spelled;
+    std::vector<MenuItem> titles;
+    RolltuiStr shown;
+    for (std::size_t i = 0; i < n->tab_count; ++i) {
+      const char *t = nullptr, *c = nullptr;
+      std::size_t tl = 0, cl = 0;
+      rolltui_node_tab_at(n, i, &t, &tl, &c, &cl);
+      if (i) spelled += " | ";
+      spelled.append(t, tl);
+      spelled += " = ";
+      spelled.append(c, cl);
+      const RolltuiStr title = rolltui::own(StrView(t, tl));
+      titles.push_back(MenuItem::action(title.c_str(), title.c_str()));
+      if (i == n->tab) shown = rolltui::own(StrView(t, tl));
+    }
+    set_value(menu_, "tabs", spelled);
+    set_options(menu_, "tab", std::move(titles));
+    set_value(menu_, "tab", shown);
+    set_enabled(menu_, "tabs", n->is_window());
+    set_enabled(menu_, "tab", n->tab_count > 1);
+    RolltuiStr bp;
+    if (n->show_width) bp += rolltui::to_str(n->show_width);
+    if (n->show_height) rolltui::appendf(bp, "x%d", n->show_height);
+    set_value(menu_, "breakpoint", bp);
+  }
   sync_content_fields();
   if (MenuItem* root = find(menu_, "root")) {
     // WHICH TREE THE SELECTION IS IN, said rather than inferred. Popup nodes became selectable
@@ -1020,6 +1069,89 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       return commit_current();
     }
     if (id == "title") { begin_preview(); if (Node* n = sel_node()) n->title.assign(value); return commit_current(); }
+    if (id == "tabs") {
+      Node* n = sel_node();
+      if (!n || !n->is_window()) return {O::Changed, {}};
+      RolltuiStr tabs;
+      unsigned char count = 0;
+      const StrView all(value.data(), value.size());
+      std::size_t at = 0;
+      auto trim = [](StrView v) {
+        std::size_t a = 0, b = v.size();
+        while (a < b && v[a] == ' ') ++a;
+        while (b > a && v[b - 1] == ' ') --b;
+        return v.substr(a, b - a);
+      };
+      while (at < all.size()) {
+        const std::size_t bar = all.find('|', at);
+        const StrView part = trim(all.substr(at, bar == StrView::npos ? StrView::npos : bar - at));
+        const std::size_t eq = part.find('=');
+        const StrView title = trim(eq == StrView::npos ? part : part.substr(0, eq));
+        const StrView content = trim(eq == StrView::npos ? part : part.substr(eq + 1));
+        if (content.empty() || count == 255) {
+          status_ = "each tab is Title = content, the tabs apart by |";
+          return {O::Changed, {}};
+        }
+        tabs.append(title.data(), title.size());
+        tabs.append("", 1);
+        tabs.append(content.data(), content.size());
+        tabs.append("", 1);
+        ++count;
+        if (bar == StrView::npos) break;
+        at = bar + 1;
+      }
+      begin_preview();
+      n->tabs = std::move(tabs);
+      n->tab_count = count;
+      if (n->tab >= count) n->tab = 0;
+      if (count) {
+        const char* c = nullptr;
+        std::size_t cl = 0;
+        rolltui_node_tab_at(n, n->tab, nullptr, nullptr, &c, &cl);
+        n->content.assign(c, cl);
+        if (n->border == rolltui::Border::None) n->border = rolltui::Border::Single; /* the strip is drawn in the border */
+      }
+      return commit_current();
+    }
+    if (id == "tab") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      for (std::size_t i = 0; i < n->tab_count; ++i) {
+        const char *t = nullptr, *c = nullptr;
+        std::size_t tl = 0, cl = 0;
+        rolltui_node_tab_at(n, i, &t, &tl, &c, &cl);
+        if (StrView(t, tl) == StrView(value.data(), value.size())) {
+          begin_preview();
+          n->tab = static_cast<unsigned char>(i);
+          n->content.assign(c, cl);
+          return commit_current();
+        }
+      }
+      return {O::Changed, {}};
+    }
+    if (id == "breakpoint") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      const StrView v(value.data(), value.size());
+      const std::size_t x = v.find('x');
+      auto number = [](StrView d, int& out) {
+        out = 0;
+        for (char ch : d) {
+          if (ch < '0' || ch > '9' || out > 100000) return false;
+          out = out * 10 + (ch - '0');
+        }
+        return true;
+      };
+      int w = 0, h = 0;
+      if (!number(x == StrView::npos ? v : v.substr(0, x), w) || (x != StrView::npos && (!number(v.substr(x + 1), h) || x + 1 == v.size()))) {
+        status_ = RolltuiStr("'") + value + "' is not a size (width, width x height, or x height)";
+        return {O::Changed, {}};
+      }
+      begin_preview();
+      n->show_width = w;
+      n->show_height = h;
+      return commit_current();
+    }
     // The kind carries the source over (`carried_source`), so retyping a kind does not silently
     // drop the name beside it — the one exception is `help`, whose source is a key scope.
     if (id == "kind") {

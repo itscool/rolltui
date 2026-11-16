@@ -138,6 +138,64 @@ with `rolltui_transcript_entry_frame`, committed, and removed from the document 
 on the alternate screen. Choosing `inline` again writes only what the terminal does not already
 hold. Leaving commits a reply still arriving, as far as it got.
 
+## The layout at run time
+
+A layout file says what a screen holds. The window stack changes what it shows while the program
+runs, by window or split id; each call answers 0 when nothing has that id.
+
+### Tabs
+
+A window with `"tabs"` in place of `"content"` shows one of several contents:
+
+```json
+{ "id": "side", "focusable": true,
+  "tabs": [ { "title": "Files", "content": "list:files" },
+            { "title": "Log", "content": "output:log" } ] }
+```
+
+- The titles are a strip in the window's top border: the shown one bold and underlined in the
+  `title` role, the others in the border's. A window with tabs has a border: single unless the
+  file names another, and `"none"` is refused. `"tab"` names the tab shown first.
+- A press on a title shows that tab. `stack.next_tab` (Ctrl-PageDown) and `stack.prev_tab`
+  (Ctrl-PageUp) cycle the focused window's tabs. `rolltui_window_stack_set_tab` shows one, and
+  `rolltui_window_stack_tab` says which is shown and how many there are.
+- Each tab's widget keeps its state while another is shown: a list's cursor, a transcript's
+  scroll.
+- A new base keeps each window's tab.
+
+### Breakpoints
+
+`"breakpoint": { "width": 100, "height": 30 }` on any node shows it only while the screen is at
+least that big. Below it, the node takes no space and focus passes over it. Either bound may be
+left out.
+
+### Hiding, resizing and maximising
+
+- `rolltui_window_stack_set_visible(stack, id, len, visible)` shows or hides a node. A hidden node
+  takes no space.
+- `rolltui_window_stack_set_size(stack, id, len, size, size_len)` sizes a node as the file spells
+  it: `"30"` cells, `"40%"`, `"fill"` or `"fill 2"`.
+- `rolltui_window_stack_maximize(stack, id, len)` makes one window fill its layer, and gives it the
+  focus; a NULL id puts the layout back. `stack.maximize` (Alt-Z) does both for the focused window.
+  `rolltui_window_stack_maximized` names the window.
+
+Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
+over to a new base while its window is in it.
+
+A press or key that changed what is shown makes `rolltui_window_stack_route` answer
+`ROLLTUI_ROUTE_LAYOUT_CHANGED`, naming the window.
+
+### A screen too small
+
+On a screen smaller than the layout's `min_width` by `min_height`, the stack draws a note in place
+of the layout: "the screen is 40×6; this needs 60×8", or "40×6 < 60×8" where the sentence does not
+fit. Presses reach nothing; keys still reach the focused window, so a quit key works. A host with
+a layout for smaller screens sets it as the base first: rolltui-chat and the studio switch to the
+shipped `stacked` layout.
+
+The studio's layout editor edits tabs (typed `Title = content | Title = content`), the shown tab,
+and a breakpoint (typed `width`, `width x height` or `x height`).
+
 ## Hover
 
 Set `RolltuiTerminalOptions.hover` and the terminal also reports the pointer as it moves with no

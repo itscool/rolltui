@@ -78,6 +78,7 @@ void rolltui_layout_node_release(RolltuiLayoutNode* n) {
   rolltui_str_free(&n->content);
   rolltui_str_free(&n->title);
   rolltui_str_free(&n->live_title);
+  rolltui_str_free(&n->tabs);
   rolltui_node_list_release(&n->children);
   rolltui_layout_node_init(n);
 }
@@ -99,7 +100,36 @@ void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* fr
   to->visible = from->visible;
   to->background = from->background;
   to->size = from->size;
+  to->tab = from->tab;
+  to->tab_count = from->tab_count;
+  rolltui_str_set(&to->tabs, from->tabs.p, from->tabs.n);
+  to->show_width = from->show_width;
+  to->show_height = from->show_height;
   rolltui_node_list_copy(&to->children, &from->children);
+}
+
+int rolltui_node_tab_at(const RolltuiLayoutNode* n, size_t i, const char** title, size_t* title_len, const char** content,
+                        size_t* content_len) {
+  const char* p = n->tabs.p;
+  const char* end = n->tabs.p + n->tabs.n;
+  size_t k;
+  if (!p || i >= n->tab_count) return 0;
+  for (k = 0; k < 2 * i; ++k) p += strlen(p) + 1; /* past i titles and i contents */
+  if (p >= end) return 0;
+  if (title) *title = p;
+  if (title_len) *title_len = strlen(p);
+  p += strlen(p) + 1;
+  if (content) *content = p;
+  if (content_len) *content_len = strlen(p);
+  return 1;
+}
+
+void rolltui_node_tab_add(RolltuiLayoutNode* n, const char* title, size_t title_len, const char* content, size_t content_len) {
+  rolltui_str_append(&n->tabs, title, title_len);
+  rolltui_str_append(&n->tabs, "", 1);
+  rolltui_str_append(&n->tabs, content, content_len);
+  rolltui_str_append(&n->tabs, "", 1);
+  ++n->tab_count;
 }
 
 static int str_equal(const RolltuiStr* a, const RolltuiStr* b) {
@@ -120,6 +150,8 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
   if (!str_equal(&a->id, &b->id) || !str_equal(&a->content, &b->content) || !str_equal(&a->title, &b->title))
     return 0;
   if (!split_size_equal(&a->size, &b->size)) return 0;
+  if (a->tab != b->tab || a->tab_count != b->tab_count || a->show_width != b->show_width || a->show_height != b->show_height) return 0;
+  if (!str_equal(&a->tabs, &b->tabs)) return 0;
   if (a->children.n != b->children.n) return 0;
   for (i = 0; i < a->children.n; ++i)
     if (!rolltui_layout_node_equal(a->children.v[i], b->children.v[i])) return 0;
@@ -151,6 +183,8 @@ void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from) {
   to->placement = from->placement;
   to->modal = from->modal;
   to->dismiss = from->dismiss;
+  to->min_width = from->min_width;
+  to->min_height = from->min_height;
   rolltui_layout_node_copy(&to->root, &from->root);
 }
 
@@ -166,7 +200,7 @@ void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from) {
 int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b) {
   if (a == b) return 1;
   if (!str_equal(&a->id, &b->id) || !str_equal(&a->focus, &b->focus)) return 0;
-  if (a->modal != b->modal) return 0;
+  if (a->modal != b->modal || a->min_width != b->min_width || a->min_height != b->min_height) return 0;
   if (memcmp(&a->placement, &b->placement, sizeof a->placement) != 0) {
     /* A field compare rather than the memcmp's answer: padding inside the struct is not
      * part of a placement, and a raw compare would make two equal placements differ. */

@@ -31,7 +31,7 @@ A terminal UI library in C, with a C++ API on top.
 | **Widgets** | | | | | | |
 | Data table | ✓ | ✓ | ✓ | ✓ | ✗ | partial |
 | Tree | ✓ | ✓ | ✗ | ✓ | ✓ | partial |
-| Tabs | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
+| Tabs | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Charts | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Multi-line text editor | ✓ | ✓ | ratatui-textarea | ✓ | ✓ | partial |
 | Progress bar and spinner | ✓ | ✓ | gauge only | ✓ | bar only | ✓ |

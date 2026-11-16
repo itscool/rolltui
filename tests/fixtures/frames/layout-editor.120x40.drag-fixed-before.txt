@@ -19,16 +19,16 @@
 │                   ││ │ rel per axis), focus                  │      │ Widget kind: rows                              │
 │                   ││ │ Menu widget (hierarchical,            │ build│ Source: status                                 │
 │                   ││ │ filterable) + list/text widgets       │      │ Menu file:                                     │
-│                   ││ │ Layout files (JSON: windows +         │ build│ Size (Alt+arrows nudge): 21                    │
-│                   ││ │ placements + content slots)           │      │ [ ] Focusable                                  │
-│                   ││ │ Markdown block renderer (blocks →     │ build│ Tree — split, swap, delete                   ▸ │
-│                   ││ │ styled wrapped lines)                 │      │ This screen — sizes, focus, popups, actions  ▸ │
-│                   ││ │ Theme (roles → styles, JSON loader,   │ build│ Layout file — new, load, save                ▸ │
-│                   ││ │ built-ins)                            │      │ Undo                                    Ctrl-Z │
-│                   ││ └───────────────────────────────────────┴──────│ Redo                                    Ctrl-Y │
-│                   ││                                                │                                                │
-│                   ││ Here is the function you asked for:            │                                                │
-│                   ││                                                │                                                │
+│                   ││ │ Layout files (JSON: windows +         │ build│ Tabs (Title = content | …):                    │
+│                   ││ │ placements + content slots)           │      │ Shown tab                                    ▸ │
+│                   ││ │ Markdown block renderer (blocks →     │ build│ Shown from (width x height):                   │
+│                   ││ │ styled wrapped lines)                 │      │ Size (Alt+arrows nudge): 21                    │
+│                   ││ │ Theme (roles → styles, JSON loader,   │ build│ [ ] Focusable                                  │
+│                   ││ │ built-ins)                            │      │ Tree — split, swap, delete                   ▸ │
+│                   ││ └───────────────────────────────────────┴──────│ This screen — sizes, focus, popups, actions  ▸ │
+│                   ││                                                │ Layout file — new, load, save                ▸ │
+│                   ││ Here is the function you asked for:            │ Undo                                    Ctrl-Z │
+│                   ││                                                │ Redo                                    Ctrl-Y │
 │                   ││ ┌ cpp ─────────────────────────────────────────│                                                │
 │                   ││ │ int add(int a, int b) {                      │                                                │
 │                   ││ │   return a + b;                              │                                                │

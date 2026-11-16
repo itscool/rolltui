@@ -133,7 +133,10 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(list,      filter,            "list.filter",                 "type to narrow the rows") \
   X(stack,     close_popup,       "stack.close_popup",           "close the topmost popup") \
   X(stack,     focus_next,        "stack.focus_next",            "move focus to the next window") \
-  X(stack,     focus_prev,        "stack.focus_prev",            "move focus to the previous window")
+  X(stack,     focus_prev,        "stack.focus_prev",            "move focus to the previous window") \
+  X(stack,     next_tab,          "stack.next_tab",              "show the focused window's next tab") \
+  X(stack,     prev_tab,          "stack.prev_tab",              "show the focused window's previous tab") \
+  X(stack,     maximize,          "stack.maximize",              "make the focused window fill the screen, and put it back")
 
 static const LibAction kLibraryActions[] = {
 #define ROLLTUI_LA_ROW_(group, field, name, desc) {name, desc},

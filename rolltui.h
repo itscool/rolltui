@@ -1496,11 +1496,15 @@ typedef struct RolltuiLayoutAction {
  * `rolltui::Layout` IS this struct. Every member has correct value semantics (`RolltuiStr`, the two lists above, `RolltuiLayer`), so
  * it declares no constructor, destructor or copy/move; `popup()` is the one convenience member. */
 
-/* THE THREE ACTION NAMES, handed in — this file knows the RULES and none of the words. */
+/* THE ACTION NAMES, handed in — this file knows the RULES and none of the words. `next_tab` and `prev_tab` show the focused window's
+ * next or previous tab, `maximize` makes the focused window fill its layer and puts it back; NULL leaves the rule out. */
 typedef struct RolltuiStackActions {
   const char* close_popup;
   const char* focus_next;
   const char* focus_prev;
+  const char* next_tab;
+  const char* prev_tab;
+  const char* maximize;
 } RolltuiStackActions;
 
 #define ROLLTUI_ROUTE_DELIVER 0
@@ -1514,6 +1518,8 @@ typedef struct RolltuiStackActions {
 /* The close key, or a press outside a dismissing popup, closed ONE LEVEL inside the focused
  * window's widget (a dropdown, a menu level) and the popup stays; `window` names that window. */
 #define ROLLTUI_ROUTE_CLOSED_LEVEL 4
+/* A press on a window's tab strip, or a tab or maximise key, changed what the screen shows; `window` names the window. */
+#define ROLLTUI_ROUTE_LAYOUT_CHANGED 5
 
 /* WHO ANSWERS "CLOSE ONE LEVEL" — the shape; the setter is with the stack's other setup. */
 typedef int (*RolltuiStackLevelFn)(void* ctx, const char* window, size_t len);
@@ -3734,6 +3740,26 @@ void rolltui_window_stack_set_level_fn(RolltuiWindowStack* s, RolltuiStackLevelF
 int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len);
 
 int rolltui_window_stack_pop(RolltuiWindowStack* s); /* 0 when only the base remains */
+
+/* ---- the layout at run time --------------------------------------------------------------------------
+ * WHAT A SCREEN SHOWS CHANGES WITHOUT A NEW LAYOUT. Each call names a window or a split by id, finds it in any layer, and answers 0
+ * when nothing has that id. Visibility and size hold until the next `rolltui_window_stack_set_base`; the tab each window shows and
+ * the maximised window carry over to a new base wherever their window is still there. */
+/* Shown or hidden: a hidden node takes no space, as `"visible": false` in the file. */
+int rolltui_window_stack_set_visible(RolltuiWindowStack* s, const char* id, size_t len, int visible);
+/* A node's size, spelled as the file spells it: cells ("30"), a share ("40%"), "fill" or "fill N". 0 for a spelling that is none. */
+int rolltui_window_stack_set_size(RolltuiWindowStack* s, const char* id, size_t len, const char* size, size_t size_len);
+/* The window fills its layer alone, and takes the focus, until it is maximised again or a NULL `id` puts the layout back. The
+ * `stack.maximize` key does this for the focused window. */
+int rolltui_window_stack_maximize(RolltuiWindowStack* s, const char* id, size_t len);
+/* The maximised window's id; empty when none is. */
+const char* rolltui_window_stack_maximized(const RolltuiWindowStack* s, size_t* len);
+/* TABS: a window the file gives `"tabs"` shows one at a time, its titles a strip in its top border. A press on a title, or the
+ * `stack.next_tab` and `stack.prev_tab` keys on the focused window, show another, and the route answers
+ * ROLLTUI_ROUTE_LAYOUT_CHANGED. Each tab's widget keeps its state while another is shown. */
+int rolltui_window_stack_set_tab(RolltuiWindowStack* s, const char* id, size_t len, size_t tab);
+/* The tab a window shows, and in `*count` (may be NULL) how many it has: 0 for a window without tabs. */
+size_t rolltui_window_stack_tab(const RolltuiWindowStack* s, const char* id, size_t len, size_t* count);
 
 size_t rolltui_window_stack_depth(const RolltuiWindowStack* s);
 

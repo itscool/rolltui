@@ -19,6 +19,7 @@
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/nsplit.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/testkit/testctl.h"
@@ -294,11 +295,16 @@ static unsigned char seam_of(unsigned char border) { return border == ROLLTUI_BO
  * window's contents draw as if they were a container's; the JSON loader and the layout editor
  * both already guarantee a window never has children, but this is the one place that matters if
  * that were ever untrue, so it does not merely assume it. */
-static void sync_nsplit_tree(RolltuiLayoutNode* n) {
+/* Shown on a screen this big: visible, and the screen at its breakpoint or past it. */
+static int shown_at(const RolltuiLayoutNode* n, int sw, int sh) {
+  return n->visible && (n->show_width <= 0 || sw >= n->show_width) && (n->show_height <= 0 || sh >= n->show_height);
+}
+
+static void sync_nsplit_tree(RolltuiLayoutNode* n, int sw, int sh) {
   size_t i;
   n->base.axis = (unsigned char)(n->kind == ROLLTUI_NODE_ROW);
   n->base.seam = seam_of(n->border);
-  n->base.visible = n->visible;
+  n->base.visible = (unsigned char)shown_at(n, sw, sh);
   n->base.size.fill = n->size.fill;
   n->base.size.weight = n->size.weight;
   n->base.size.fraction = n->size.dim.fraction;
@@ -312,7 +318,7 @@ static void sync_nsplit_tree(RolltuiLayoutNode* n) {
   n->base.children = (struct NSplitNode**)n->children.v;
   n->base.n = n->children.n;
   n->base.cap = n->children.cap;
-  for (i = 0; i < n->children.n; ++i) sync_nsplit_tree(n->children.v[i]);
+  for (i = 0; i < n->children.n; ++i) sync_nsplit_tree(n->children.v[i], sw, sh);
 }
 
 /* What `nsplit_resolve`'s sink threads through `ctx`: everything `place()`'s own signature used
@@ -357,8 +363,8 @@ void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, Rolltu
                           RolltuiResolvedSink emit, void* ctx) {
   ResolveCtx rc;
   NSplitRect nbox;
-  if (!root->visible) return;
-  sync_nsplit_tree((RolltuiLayoutNode*)root); /* `base` is scratch (see its declaration): rewriting
+  if (!shown_at(root, screen.w, screen.h)) return;
+  sync_nsplit_tree((RolltuiLayoutNode*)root, screen.w, screen.h); /* `base` is scratch (see its declaration): rewriting
                                                * it through a tree the caller lent us `const` is not
                                                * a mutation of the node's own logical state. */
   rc.screen = screen;
@@ -491,6 +497,48 @@ void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect 
   draw_border_impl(f, draw, outer, border, line, title, title_n, title_style, ambiguous_wide);
 }
 
+/* ---- tabs ------------------------------------------------------------------------------- */
+
+/* THE STRIP'S LABELS on a tabbed window's top border, from just inside its corner: " title " each, one border cell between. `xs[i]`
+ * and `ws[i]` place label i; a label that does not fit, and every one after it, is left out. Returns how many are placed. Drawing and
+ * a press on the strip both go through here, so a label is pressed where it is drawn. */
+#define TAB_MAX 32
+static size_t tab_labels(const RolltuiLayoutNode* n, RolltuiRect outer, RolltuiDrawScratch* draw, int aw, int* xs, int* ws) {
+  int x = outer.x + 1;
+  const int end = outer.x + outer.w - 1;
+  size_t i, k = 0;
+  for (i = 0; i < n->tab_count && k < TAB_MAX; ++i) {
+    const char* t;
+    size_t tl = 0;
+    int w;
+    rolltui_node_tab_at(n, i, &t, &tl, NULL, NULL);
+    w = rolltui_frame_text_width(draw, t, tl, aw) + 2;
+    if (x + w > end) break;
+    xs[k] = x, ws[k] = w, ++k;
+    x += w + 1;
+  }
+  return k;
+}
+
+/* The strip: the shown tab's title in the title's role, bold and underlined so it reads in every theme; the others in the border's. */
+static void draw_tabs(RolltuiFrame* f, RolltuiDrawScratch* draw, const RolltuiLayoutNode* n, RolltuiRect outer, RolltuiStyle line,
+                      RolltuiStyle title, int aw) {
+  int xs[TAB_MAX], ws[TAB_MAX];
+  const size_t k = tab_labels(n, outer, draw, aw, xs, ws);
+  size_t i;
+  for (i = 0; i < k; ++i) {
+    const char* t;
+    size_t tl = 0;
+    RolltuiStyle st = i == n->tab ? title : line;
+    rolltui_node_tab_at(n, i, &t, &tl, NULL, NULL);
+    rolltui_frame_put_text(f, draw, xs[i], outer.y, " ", 1, st, 1, aw, 0);
+    if (i == n->tab) st.bold = 1, st.underline = 1;
+    rolltui_frame_put_text(f, draw, xs[i] + 1, outer.y, t, tl, st, ws[i] - 2, aw, 0);
+    st.underline = 0;
+    rolltui_frame_put_text(f, draw, xs[i] + ws[i] - 1, outer.y, " ", 1, st, 1, aw, 0);
+  }
+}
+
 /* ---- compose ----------------------------------------------------------------------------- */
 
 /* A resolved-node buffer, GROWING AMORTISED. Declared before the scratch because the
@@ -547,8 +595,11 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     line.bg = ground.bg;
     title = styles[roles->title];
     title.bg = ground.bg;
-    /* The widget's own title when it has one this frame, else the file's. */
-    {
+    /* A tabbed window's strip in place of a title; else the widget's own title when it has one this frame, else the file's. */
+    if (n->tab_count) {
+      draw_border_impl(f, scratch->draw, rn->outer, n->border, line, NULL, 0, title, ambiguous_wide);
+      if (n->border != ROLLTUI_BORDER_NONE) draw_tabs(f, scratch->draw, n, rn->outer, line, title, ambiguous_wide);
+    } else {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
       draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
     }
@@ -1387,7 +1438,7 @@ static void collect_ids(const RolltuiLayoutNode* n, SeenIds* seen, const char* w
  * silently leaked). Direct port of `node_from_json`. */
 static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t where_len,
                            const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report, RolltuiLayoutNode* n) {
-  int has_row, has_col, has_content;
+  int has_row, has_col, has_content, has_tabs, tab_given = 0, border_given = 0;
   size_t i, cnt;
 
   if (!rolltui_json_is_object(v)) {
@@ -1397,7 +1448,12 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
   has_row = rolltui_json_has(v, K("row"));
   has_col = rolltui_json_has(v, K("column"));
   has_content = rolltui_json_has(v, K("content"));
-  if (has_row + has_col + has_content != 1) {
+  has_tabs = rolltui_json_has(v, K("tabs"));
+  if (has_content && has_tabs) {
+    bad_at(report, where, where_len, ": a window has \"content\" or \"tabs\", not both");
+    return;
+  }
+  if (has_row + has_col + (has_content || has_tabs) != 1) {
     bad_at(report, where, where_len, ": a node has exactly one of \"content\", \"row\", \"column\"");
     return;
   }
@@ -1436,6 +1492,44 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
     } else if (streq(k, klen, "content")) {
       if (!rolltui_json_is_string(x)) bad_at(report, at.p, at.n, ": expected a string");
       else set_str_field(&n->content, x);
+    } else if (streq(k, klen, "tabs")) {
+      const size_t tn = rolltui_json_is_array(x) ? rolltui_json_array_size(x) : 0;
+      size_t ti;
+      if (tn == 0) bad_at(report, at.p, at.n, ": expected an array of tabs, each { \"title\": ..., \"content\": ... }");
+      for (ti = 0; ti < tn; ++ti) {
+        const RolltuiJsonValue* t = rolltui_json_array_at(x, ti);
+        const RolltuiJsonValue* tc = rolltui_json_is_object(t) && rolltui_json_has(t, K("content")) ? rolltui_json_get(t, K("content")) : NULL;
+        const RolltuiJsonValue* tt = rolltui_json_is_object(t) && rolltui_json_has(t, K("title")) ? rolltui_json_get(t, K("title")) : NULL;
+        size_t cl = 0, tl = 0;
+        const char* cs = tc && rolltui_json_is_string(tc) ? rolltui_json_as_string(tc, "", 0, &cl) : NULL;
+        const char* ts = tt && rolltui_json_is_string(tt) ? rolltui_json_as_string(tt, "", 0, &tl) : NULL;
+        if (!cs || (tt && !ts) || memchr(cs, 0, cl) || (ts && memchr(ts, 0, tl)) || n->tab_count == 255) {
+          bad_at(report, at.p, at.n, ": each tab is { \"title\": a string, \"content\": a string }");
+          continue;
+        }
+        rolltui_node_tab_add(n, ts ? ts : cs, ts ? tl : cl, cs, cl); /* untitled: its content names it */
+      }
+    } else if (streq(k, klen, "tab")) {
+      if (!rolltui_json_is_number(x) || rolltui_json_as_number(x, 0) < 0) bad_at(report, at.p, at.n, ": expected a tab's index");
+      else n->tab = (unsigned char)rolltui_json_as_number(x, 0), tab_given = 1;
+    } else if (streq(k, klen, "breakpoint")) {
+      const size_t bn = rolltui_json_is_object(x) ? rolltui_json_object_size(x) : 0;
+      size_t bi;
+      if (!rolltui_json_is_object(x)) bad_at(report, at.p, at.n, ": expected { \"width\": cells, \"height\": cells }");
+      for (bi = 0; bi < bn; ++bi) {
+        size_t bkl = 0;
+        const char* bk = rolltui_json_object_key_at(x, bi, &bkl);
+        const RolltuiJsonValue* bv = rolltui_json_object_value_at(x, bi);
+        RolltuiStr bat = {0};
+        appn(&bat, at.p, at.n);
+        app(&bat, ".");
+        appn(&bat, bk, bkl);
+        if (!streq(bk, bkl, "width") && !streq(bk, bkl, "height")) unknown_at(report, bat.p, bat.n);
+        else if (!rolltui_json_is_number(bv) || rolltui_json_as_number(bv, 0) < 0) bad_at(report, bat.p, bat.n, ": expected cells");
+        else if (streq(bk, bkl, "width")) n->show_width = (int)rolltui_json_as_number(bv, 0);
+        else n->show_height = (int)rolltui_json_as_number(bv, 0);
+        rolltui_str_free(&bat);
+      }
     } else if (streq(k, klen, "id")) {
       if (!rolltui_json_is_string(x)) bad_at(report, at.p, at.n, ": expected a string");
       else set_str_field(&n->id, x);
@@ -1448,7 +1542,7 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       const char* s = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &sl) : NULL;
       if (!s || !rolltui_border_from_name(s, sl, &b))
         bad_at(report, at.p, at.n, ": expected none | single | rounded | double | heavy");
-      else n->border = b;
+      else n->border = b, border_given = 1;
     } else if (streq(k, klen, "background")) {
       unsigned char role;
       size_t sl = 0;
@@ -1491,10 +1585,29 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
     rolltui_str_free(&at);
   }
 
+  /* A TABBED WINDOW SHOWS ONE: its content is the shown tab's, and its strip is drawn in its top border, so it has one. */
+  if (n->tab_count) {
+    const char* c;
+    size_t cl = 0;
+    if (!border_given) n->border = ROLLTUI_BORDER_SINGLE;
+    else if (n->border == ROLLTUI_BORDER_NONE) bad_at(report, where, where_len, ".border: a window with tabs draws them in its border");
+    if (n->tab >= n->tab_count) {
+      if (tab_given) bad_at(report, where, where_len, ".tab: there is no tab of that index");
+      n->tab = 0;
+    }
+    rolltui_node_tab_at(n, n->tab, NULL, NULL, &c, &cl);
+    rolltui_str_set(&n->content, c, cl);
+  } else if (tab_given) {
+    bad_at(report, where, where_len, ".tab: only a window with \"tabs\" has a tab");
+  }
   /* Content is kind[:source] (Layout.hpp). Anything the table does not know is a bad value
-   * that names the fix. */
+   * that names the fix. Every tab's content is checked, shown or not. */
   if (n->kind == ROLLTUI_NODE_WINDOW) {
-    {
+    size_t ci;
+    for (ci = 0; ci < (n->tab_count ? n->tab_count : 1); ++ci) {
+      RolltuiStr shown_content = n->content;
+      const RolltuiStr* content = &shown_content;
+      if (n->tab_count) rolltui_node_tab_at(n, ci, NULL, NULL, (const char**)&shown_content.p, &shown_content.n);
       /* An UNKNOWN KIND is deliberately NOT a bad value here — rung 2 belongs to the host,
        * and this loader runs before a host has necessarily registered anything; `Windows`
        * reports it, by name, with the error panel drawn. Every other problem is a fact
@@ -1506,7 +1619,7 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       size_t cnamelen = 0, csrclen = 0;
       RolltuiStr why = {0};
       const int ok =
-          rolltui_content_parse(NULL, n->content.p, n->content.n, &row, &is_host, &cname, &cnamelen, &csrc,
+          rolltui_content_parse(NULL, content->p, content->n, &row, &is_host, &cname, &cnamelen, &csrc,
                                 &csrclen, &problem, &why);
       if (!ok && problem != ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND) {
         RolltuiStr msg = {0};
@@ -1792,6 +1905,8 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
   }
 
   layer_from_json(base, "", 0, 0, hooks, report, &out->base);
+  out->base.min_width = out->min_width;
+  out->base.min_height = out->min_height;
   rolltui_json_free(base);
 
   /* A file that declares no actions — a hand-written one, or any saved before the key
@@ -1856,7 +1971,22 @@ static RolltuiJsonValue* dim_to_json(RolltuiDim d) {
 
 static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiLayoutHooks* hooks) {
   RolltuiJsonValue* o = rolltui_json_object();
-  if (n->kind == ROLLTUI_NODE_WINDOW) {
+  if (n->kind == ROLLTUI_NODE_WINDOW && n->tab_count) { /* tabs: the id always, since the shown content changes */
+    RolltuiJsonValue* arr = rolltui_json_array();
+    size_t i;
+    rolltui_json_set(o, K("id"), rolltui_json_string(n->id.p, n->id.n));
+    for (i = 0; i < n->tab_count; ++i) {
+      RolltuiJsonValue* t = rolltui_json_object();
+      const char *tt, *tc;
+      size_t tl = 0, cl = 0;
+      rolltui_node_tab_at(n, i, &tt, &tl, &tc, &cl);
+      rolltui_json_set(t, K("title"), rolltui_json_string(tt, tl));
+      rolltui_json_set(t, K("content"), rolltui_json_string(tc, cl));
+      rolltui_json_array_push(arr, t);
+    }
+    rolltui_json_set(o, K("tabs"), arr);
+    if (n->tab) rolltui_json_set(o, K("tab"), rolltui_json_number(n->tab));
+  } else if (n->kind == ROLLTUI_NODE_WINDOW) {
     const int same = n->id.n == n->content.n && (n->id.n == 0 || memcmp(n->id.p, n->content.p, n->id.n) == 0);
     if (!same) rolltui_json_set(o, K("id"), rolltui_json_string(n->id.p, n->id.n));
     rolltui_json_set(o, K("content"), rolltui_json_string(n->content.p, n->content.n));
@@ -1871,6 +2001,12 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
   if (n->title.n) rolltui_json_set(o, K("title"), rolltui_json_string(n->title.p, n->title.n));
   if (n->focusable) rolltui_json_set(o, K("focusable"), rolltui_json_bool(1));
   if (!n->visible) rolltui_json_set(o, K("visible"), rolltui_json_bool(0));
+  if (n->show_width || n->show_height) {
+    RolltuiJsonValue* bp = rolltui_json_object();
+    if (n->show_width) rolltui_json_set(bp, K("width"), rolltui_json_number(n->show_width));
+    if (n->show_height) rolltui_json_set(bp, K("height"), rolltui_json_number(n->show_height));
+    rolltui_json_set(o, K("breakpoint"), bp);
+  }
   if (n->background != ROLLTUI_ROLE_DEFAULT_BACKGROUND) {
     char namebuf[ROLLTUI_ROLE_NAME_MAX];
     size_t nl = 0;
@@ -1984,6 +2120,10 @@ struct RolltuiWindowStack {
    * left. */
   unsigned char pointer_known;
   int pointer_x, pointer_y;
+  /* AT RUN TIME: the window that fills its layer while maximised ("" for none), and the screen the stack last routed for, which a
+   * breakpoint is judged against when focus moves (0 until then: every breakpoint met). */
+  RolltuiStr maximized;
+  int screen_w, screen_h;
 };
 
 int rolltui_window_stack_pointer(const RolltuiWindowStack* s, int* x, int* y) {
@@ -2014,51 +2154,68 @@ static const RolltuiLayoutNode* find_in(const RolltuiLayoutNode* n, const char* 
   return NULL;
 }
 
+/* What a layer shows: its root, or while a window of it is maximised, that window alone. */
+static const RolltuiLayoutNode* shown_root(const RolltuiWindowStack* s, size_t i) {
+  if (s->maximized.n) {
+    const RolltuiLayoutNode* m = find_in(&s->layers[i].root, s->maximized.p, s->maximized.n);
+    if (m) return m;
+  }
+  return &s->layers[i].root;
+}
+
 /* No list. This runs once per layer per resolve — three times a frame — and only ever needs
  * the FIRST focusable or the one matching a name. */
-static const RolltuiLayoutNode* first_focusable(const RolltuiLayoutNode* n) {
+static const RolltuiLayoutNode* first_focusable(const RolltuiLayoutNode* n, int sw, int sh) {
   size_t i;
-  if (!n->visible) return NULL;
+  if (!n->visible || (sw > 0 && !shown_at(n, sw, sh))) return NULL;
   if (n->kind == ROLLTUI_NODE_WINDOW) return n->focusable ? n : NULL;
   for (i = 0; i < n->children.n; ++i) {
-    const RolltuiLayoutNode* f = first_focusable(n->children.v[i]);
+    const RolltuiLayoutNode* f = first_focusable(n->children.v[i], sw, sh);
     if (f) return f;
   }
   return NULL;
 }
 
-static const RolltuiLayoutNode* focusable_named(const RolltuiLayoutNode* n, const char* id, size_t len) {
+static const RolltuiLayoutNode* focusable_named(const RolltuiLayoutNode* n, const char* id, size_t len, int sw, int sh) {
   size_t i;
-  if (!n->visible) return NULL;
+  if (!n->visible || (sw > 0 && !shown_at(n, sw, sh))) return NULL;
   if (n->kind == ROLLTUI_NODE_WINDOW) return (n->focusable && rolltui_str_eq(&n->id, id, len)) ? n : NULL;
   for (i = 0; i < n->children.n; ++i) {
-    const RolltuiLayoutNode* f = focusable_named(n->children.v[i], id, len);
+    const RolltuiLayoutNode* f = focusable_named(n->children.v[i], id, len, sw, sh);
     if (f) return f;
   }
   return NULL;
 }
 
-static const RolltuiLayoutNode* layer_focused(const RolltuiLayer* l) {
+/* The window that holds the keys in layer `i`: the one named, while it is shown, else the first shown. */
+static const RolltuiLayoutNode* layer_focused(const RolltuiWindowStack* s, size_t i) {
+  const RolltuiLayer* l = &s->layers[i];
+  const RolltuiLayoutNode* root = shown_root(s, i);
   if (l->focus.n) {
-    const RolltuiLayoutNode* named = focusable_named(&l->root, l->focus.p, l->focus.n);
+    const RolltuiLayoutNode* named = focusable_named(root, l->focus.p, l->focus.n, s->screen_w, s->screen_h);
     if (named) return named;
   }
-  return first_focusable(&l->root);
+  return first_focusable(root, s->screen_w, s->screen_h);
 }
 
 /* The focusables of one layer, in tree order, into a caller's array. Returns how many there
  * ARE, so a caller that only wants the count passes a zero cap — the shape that lets
  * `cycle_focus` and `route` share one walk without either building a list. */
-static size_t focusables(const RolltuiLayoutNode* n, const RolltuiLayoutNode** out, size_t cap, size_t at) {
+static size_t focusables_at(const RolltuiLayoutNode* n, const RolltuiLayoutNode** out, size_t cap, size_t at, int sw, int sh) {
   size_t i;
-  if (!n->visible) return at;
+  if (!n->visible || (sw > 0 && !shown_at(n, sw, sh))) return at;
   if (n->kind == ROLLTUI_NODE_WINDOW) {
     if (!n->focusable) return at;
     if (at < cap) out[at] = n;
     return at + 1;
   }
-  for (i = 0; i < n->children.n; ++i) at = focusables(n->children.v[i], out, cap, at);
+  for (i = 0; i < n->children.n; ++i) at = focusables_at(n->children.v[i], out, cap, at, sw, sh);
   return at;
+}
+
+/* The focusable windows layer `i` shows, on the screen last routed for. */
+static size_t focusables(const RolltuiWindowStack* s, size_t i, const RolltuiLayoutNode** out, size_t cap) {
+  return focusables_at(shown_root(s, i), out, cap, 0, s->screen_w, s->screen_h);
 }
 
 RolltuiWindowStack* rolltui_window_stack_new(void) {
@@ -2081,14 +2238,101 @@ void rolltui_window_stack_free(RolltuiWindowStack* s) {
   rolltui_mem_free(s);
 }
 
+/* The tab each tabbed window of `n` shows, by window id, into `ids`/`tabs`. */
+#define KEEP_TABS 32
+static size_t tabs_of(const RolltuiLayoutNode* n, RolltuiStr* ids, unsigned char* tabs, size_t at) {
+  size_t i;
+  if (n->tab_count && at < KEEP_TABS) {
+    memset(&ids[at], 0, sizeof ids[at]);
+    rolltui_str_set(&ids[at], n->id.p, n->id.n);
+    tabs[at++] = n->tab;
+  }
+  for (i = 0; i < n->children.n; ++i) at = tabs_of(n->children.v[i], ids, tabs, at);
+  return at;
+}
+
+static void show_tab(RolltuiLayoutNode* n, size_t tab) {
+  const char* c;
+  size_t cl = 0;
+  if (!rolltui_node_tab_at(n, tab, NULL, NULL, &c, &cl)) return;
+  n->tab = (unsigned char)tab;
+  rolltui_str_set(&n->content, c, cl);
+}
+
+/* A NEW BASE keeps what the person chose on the old one where it still applies: the focus, each tabbed window's tab, the maximised
+ * window. What the stack was told at run time about a window's visibility or size is the file's again. */
 void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* base) {
-  RolltuiStr keep;
+  RolltuiStr keep, ids[KEEP_TABS];
+  unsigned char tabs[KEEP_TABS];
+  size_t i, nt;
   memset(&keep, 0, sizeof keep);
   rolltui_str_set(&keep, s->layers[0].focus.p, s->layers[0].focus.n);
+  nt = tabs_of(&s->layers[0].root, ids, tabs, 0);
   rolltui_layer_copy(&s->layers[0], base);
   if (base->focus.n == 0 && keep.n && find_in(&s->layers[0].root, keep.p, keep.n))
     rolltui_str_move(&s->layers[0].focus, &keep);
   rolltui_str_free(&keep);
+  for (i = 0; i < nt; ++i) {
+    RolltuiLayoutNode* n = (RolltuiLayoutNode*)find_in(&s->layers[0].root, ids[i].p, ids[i].n);
+    if (n && tabs[i] < n->tab_count) show_tab(n, tabs[i]);
+    rolltui_str_free(&ids[i]);
+  }
+  if (s->maximized.n && !find_in(&s->layers[0].root, s->maximized.p, s->maximized.n)) rolltui_str_clear(&s->maximized);
+}
+
+int rolltui_window_stack_set_visible(RolltuiWindowStack* s, const char* id, size_t len, int visible) {
+  RolltuiLayoutNode* n = rolltui_window_stack_find(s, id, len);
+  if (!n) return 0;
+  n->visible = (unsigned char)(visible != 0);
+  return 1;
+}
+
+int rolltui_window_stack_set_size(RolltuiWindowStack* s, const char* id, size_t len, const char* size, size_t size_len) {
+  RolltuiLayoutNode* n = rolltui_window_stack_find(s, id, len);
+  RolltuiSplitSizeRaw ss;
+  size_t i;
+  int cells = 0;
+  if (!n || !size || size_len == 0) return 0;
+  for (i = 0; i < size_len && size[i] >= '0' && size[i] <= '9' && cells < 100000; ++i) cells = cells * 10 + (size[i] - '0');
+  if (i == size_len) { /* cells, which a file writes as a number */
+    n->size.fill = 0;
+    n->size.weight = 1;
+    n->size.dim.fraction = 0;
+    n->size.dim.cells = cells;
+    return 1;
+  }
+  if (!rolltui_parse_split_size(size, size_len, &ss)) return 0;
+  n->size = ss;
+  return 1;
+}
+
+int rolltui_window_stack_maximize(RolltuiWindowStack* s, const char* id, size_t len) {
+  if (!id || len == 0) {
+    rolltui_str_clear(&s->maximized);
+    return 1;
+  }
+  {
+    const RolltuiLayoutNode* n = rolltui_window_stack_find(s, id, len);
+    if (!n || n->kind != ROLLTUI_NODE_WINDOW) return 0;
+    rolltui_str_set(&s->maximized, id, len);
+    if (n->focusable) rolltui_window_stack_focus(s, id, len); /* the keys go where everything else went */
+  }
+  return 1;
+}
+
+const char* rolltui_window_stack_maximized(const RolltuiWindowStack* s, size_t* len) { return rolltui_str_get(&s->maximized, len); }
+
+int rolltui_window_stack_set_tab(RolltuiWindowStack* s, const char* id, size_t len, size_t tab) {
+  RolltuiLayoutNode* n = rolltui_window_stack_find(s, id, len);
+  if (!n || tab >= n->tab_count) return 0;
+  show_tab(n, tab);
+  return 1;
+}
+
+size_t rolltui_window_stack_tab(const RolltuiWindowStack* s, const char* id, size_t len, size_t* count) {
+  const RolltuiLayoutNode* n = rolltui_window_stack_find((RolltuiWindowStack*)s, id, len);
+  if (count) *count = n ? n->tab_count : 0;
+  return n ? n->tab : 0;
 }
 
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s) { return &s->layers[0]; }
@@ -2177,17 +2421,18 @@ size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s) {
    * somewhere behind it, which looks like the modal ignoring input rather than like a bug. */
   if (!testkit_ctl_on("layout.a_modal_does_not_confine_focus") && s->layers[top].modal) return top;
   for (i = s->n; i-- > 0;)
-    if (layer_focused(&s->layers[i])) return i;
+    if (layer_focused(s, i)) return i;
   return top;
 }
 
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s) {
-  return layer_focused(&s->layers[rolltui_window_stack_focus_layer(s)]);
+  return layer_focused(s, rolltui_window_stack_focus_layer(s));
 }
 
 void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len) {
-  RolltuiLayer* l = &s->layers[rolltui_window_stack_focus_layer(s)];
-  if (focusable_named(&l->root, id, len)) rolltui_str_set(&l->focus, id, len);
+  const size_t li = rolltui_window_stack_focus_layer(s);
+  RolltuiLayer* l = &s->layers[li];
+  if (focusable_named(shown_root(s, li), id, len, s->screen_w, s->screen_h)) rolltui_str_set(&l->focus, id, len);
 }
 
 /* THE ONE PLACE A LIST OF FOCUSABLES IS ACTUALLY NEEDED — cycling has to know the NEXT one.
@@ -2196,20 +2441,21 @@ void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t le
 #define FOCUS_INLINE 16
 
 void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards) {
-  RolltuiLayer* l = &s->layers[rolltui_window_stack_focus_layer(s)];
+  const size_t li = rolltui_window_stack_focus_layer(s);
+  RolltuiLayer* l = &s->layers[li];
   const RolltuiLayoutNode* inline_f[FOCUS_INLINE];
   const RolltuiLayoutNode** f = inline_f;
   const RolltuiLayoutNode** spill = NULL;
   const RolltuiLayoutNode* cur;
-  size_t count = focusables(&l->root, NULL, 0, 0);
+  size_t count = focusables(s, li, NULL, 0);
   size_t i;
   if (count == 0) return;
   if (count > FOCUS_INLINE) {
     spill = (const RolltuiLayoutNode**)rolltui_mem_alloc(count * sizeof *spill);
     f = spill;
   }
-  focusables(&l->root, f, count, 0);
-  cur = layer_focused(l);
+  focusables(s, li, f, count);
+  cur = layer_focused(s, li);
   for (i = 0; i < count; ++i)
     if (f[i] == cur) break;
   if (i >= count) i = 0;
@@ -2274,7 +2520,7 @@ static void stack_hover(const RolltuiWindowStack* s, RolltuiRect screen, StackSi
   for (i = 0; i < s->n; ++i) {
     RolltuiRect box;
     rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-    rolltui_resolve_tree(&s->layers[i].root, box, screen, i, hover_sink, &h);
+    rolltui_resolve_tree(shown_root(s, i), box, screen, i, hover_sink, &h);
   }
   if (!h.node || (h.layer != top && (s->layers[top].modal || s->layers[top].dismiss))) return;
   w->hover = h.node;
@@ -2293,7 +2539,7 @@ void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect scree
   for (i = 0; i < s->n; ++i) {
     RolltuiRect box;
     rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-    rolltui_resolve_tree(&s->layers[i].root, box, screen, i, stack_sink, &w);
+    rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
   }
 }
 
@@ -2306,6 +2552,27 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
    * budget exists to make impossible to leave in. */
   StackSink w;
   size_t i;
+  /* A SCREEN SMALLER THAN THE LAYOUT NEEDS is told so, centred on the layout's ground, rather than given a layout squeezed past use. */
+  if (s->layers[0].min_width > screen.w || s->layers[0].min_height > screen.h) {
+    char msg[96];
+    const char* x = ambiguous_wide ? "x" : "\xC3\x97"; /* × */
+    int n = snprintf(msg, sizeof msg, "the screen is %d%s%d; this needs %d%s%d", screen.w, x, screen.h, s->layers[0].min_width, x,
+                     s->layers[0].min_height);
+    int mw;
+    RolltuiStyle ground = styles[s->layers[0].root.background], text = styles[roles->title];
+    text.bg = ground.bg;
+    rolltui_frame_fill(f, scratch->draw, screen, ground, NULL, 0);
+    if (n < 0) return;
+    mw = rolltui_frame_text_width(scratch->draw, msg, (size_t)n, ambiguous_wide);
+    if (mw > screen.w) { /* the short form */
+      n = snprintf(msg, sizeof msg, "%d%s%d < %d%s%d", screen.w, x, screen.h, s->layers[0].min_width, x, s->layers[0].min_height);
+      mw = n > 0 ? rolltui_frame_text_width(scratch->draw, msg, (size_t)n, ambiguous_wide) : 0;
+    }
+    if (n > 0 && mw <= screen.w)
+      rolltui_frame_put_text(f, scratch->draw, screen.x + (screen.w - mw) / 2, screen.y + (screen.h - 1) / 2, msg, (size_t)n, text, mw,
+                             ambiguous_wide, 0);
+    return;
+  }
   w.emit = collect_sink;
   w.ctx = &scratch->nodes;
   w.focused = rolltui_window_stack_focused(s);
@@ -2318,7 +2585,7 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
     /* The cells this popup covers are its now: a mark a lower layer left on them would put
      * that layer's motion onto the popup when the effects are applied to the finished frame. */
     if (i > 0) rolltui_frame_unmark_rect(f, box);
-    rolltui_resolve_tree(&s->layers[i].root, box, screen, i, stack_sink, &w);
+    rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
     rolltui_compose_layer(f, scratch->nodes.v, scratch->nodes.n, styles, roles, render, ctx, ambiguous_wide,
                           scratch);
   }
@@ -2328,7 +2595,11 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
                                          const RolltuiBindings* bindings, const RolltuiStackActions* actions,
                                          RolltuiStr* window) {
   rolltui_str_clear(window);
-  if (e->kind == ROLLTUI_EVENT_MOUSE) {
+  s->screen_w = screen.w; /* what a breakpoint is judged against when focus moves */
+  s->screen_h = screen.h;
+  if (s->layers[0].min_width > screen.w || s->layers[0].min_height > screen.h) { /* the note is up: keys still reach the focus */
+    if (e->kind == ROLLTUI_EVENT_MOUSE) return ROLLTUI_ROUTE_DROPPED;
+  } else if (e->kind == ROLLTUI_EVENT_MOUSE) {
     const RolltuiMouseEvent* m = &e->mouse;
     NodeCollect c;
     const size_t top = s->n - 1;
@@ -2367,7 +2638,7 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       for (i = 0; i < s->n; ++i) {
         RolltuiRect box;
         rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-        rolltui_resolve_tree(&s->layers[i].root, box, screen, i, stack_sink, &w);
+        rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
       }
     }
     for (k = c.n; k-- > 0;) {
@@ -2376,6 +2647,24 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
         continue;
       if (rn->layer != top && m->kind == 0 && s->layers[top].dismiss) break; /* outside: closes, below */
       if (s->layers[top].modal && rn->layer != top) break; /* dropped under a modal */
+      if (m->kind == 0 /* Press */ && m->button == 1 && rn->node->tab_count && m->y == rn->outer.y && rn->node->border) {
+        /* A PRESS ON THE STRIP shows that tab: the strip is the window's own border, not its content */
+        int xs[TAB_MAX], ws[TAB_MAX];
+        RolltuiDrawScratch* draw = rolltui_draw_scratch_new();
+        const size_t nl = tab_labels(rn->node, rn->outer, draw, rolltui_termfacts_active_wide(), xs, ws);
+        size_t t;
+        rolltui_draw_scratch_free(draw);
+        for (t = 0; t < nl; ++t)
+          if (m->x >= xs[t] && m->x < xs[t] + ws[t]) {
+            RolltuiLayoutNode* nd = rolltui_window_stack_find(s, rn->node->id.p, rn->node->id.n);
+            if (nd) show_tab(nd, t);
+            if (rn->node->focusable && rn->layer == rolltui_window_stack_focus_layer(s))
+              rolltui_window_stack_focus(s, rn->node->id.p, rn->node->id.n);
+            rolltui_str_set(window, rn->node->id.p, rn->node->id.n);
+            rolltui_mem_free(c.v);
+            return ROLLTUI_ROUTE_LAYOUT_CHANGED;
+          }
+      }
       if (m->kind == 0 /* Press */) {
         if (rn->node->focusable && rn->layer == rolltui_window_stack_focus_layer(s))
           rolltui_window_stack_focus(s, rn->node->id.p, rn->node->id.n);
@@ -2408,11 +2697,33 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
         return ROLLTUI_ROUTE_CLOSED_POPUP;
       }
       {
+        /* THE FOCUSED WINDOW'S TABS, and filling its layer: a window that has no tabs lets the key go on to it */
+        const RolltuiLayoutNode* f = rolltui_window_stack_focused(s);
+        const int next_tab = actions->next_tab && alen == strlen(actions->next_tab) && memcmp(action, actions->next_tab, alen) == 0;
+        const int prev_tab = actions->prev_tab && alen == strlen(actions->prev_tab) && memcmp(action, actions->prev_tab, alen) == 0;
+        const int maximize = actions->maximize && alen == strlen(actions->maximize) && memcmp(action, actions->maximize, alen) == 0;
+        if (f && (next_tab || prev_tab) && f->tab_count > 1) {
+          RolltuiLayoutNode* nd = rolltui_window_stack_find(s, f->id.p, f->id.n);
+          const size_t count = f->tab_count;
+          show_tab(nd, next_tab ? (f->tab + 1) % count : (f->tab + count - 1) % count);
+          rolltui_str_set(window, nd->id.p, nd->id.n);
+          return ROLLTUI_ROUTE_LAYOUT_CHANGED;
+        }
+        if (f && maximize) {
+          size_t ml = 0;
+          const char* m = rolltui_window_stack_maximized(s, &ml);
+          if (ml) rolltui_window_stack_maximize(s, NULL, 0);
+          else rolltui_window_stack_maximize(s, f->id.p, f->id.n);
+          (void)m;
+          rolltui_str_set(window, f->id.p, f->id.n);
+          return ROLLTUI_ROUTE_LAYOUT_CHANGED;
+        }
+      }
+      {
         const int next = alen == strlen(actions->focus_next) && memcmp(action, actions->focus_next, alen) == 0;
         const int prev = alen == strlen(actions->focus_prev) && memcmp(action, actions->focus_prev, alen) == 0;
         if (next || prev) {
-          const RolltuiLayer* l = &s->layers[rolltui_window_stack_focus_layer(s)];
-          if (focusables(&l->root, NULL, 0, 0) > 1) {
+          if (focusables(s, rolltui_window_stack_focus_layer(s), NULL, 0) > 1) {
             const RolltuiLayoutNode* f;
             rolltui_window_stack_cycle_focus(s, prev);
             f = rolltui_window_stack_focused(s);

@@ -19,16 +19,16 @@
 │ │                                 │             │ Rect is a pure fun│ Widget kind: input                             │
 │ │ Menu widget (hierarchical,      │ build       │ single header each│ Source: prompt                                 │
 │ │ filterable) + list/text widgets │             │ set is deliberatel│ Menu file:                                     │
-│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Size (Alt+arrows nudge): 3                     │
-│ │ placements + content slots)     │             │ parser; hot-reload│ [✓] Focusable                                  │
-│ │ Markdown block renderer (blocks │ build       │ single header over│ Tree — split, swap, delete                   ▸ │
-│ │ → styled wrapped lines)         │             │                   │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ Theme (roles → styles, JSON     │ build       │ single header     │ Layout file — new, load, save                ▸ │
-│ │ loader, built-ins)              │             │                   │ Undo                                    Ctrl-Z │
-│ └─────────────────────────────────┴─────────────┴───────────────────│ Redo                                    Ctrl-Y │
-│                                                                     │                                                │
-│ Here is the function you asked for:                                 │                                                │
-│                                                                     │                                                │
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Tabs (Title = content | …):                    │
+│ │ placements + content slots)     │             │ parser; hot-reload│ Shown tab                                    ▸ │
+│ │ Markdown block renderer (blocks │ build       │ single header over│ Shown from (width x height):                   │
+│ │ → styled wrapped lines)         │             │                   │ Size (Alt+arrows nudge): 3                     │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │ [✓] Focusable                                  │
+│ │ loader, built-ins)              │             │                   │ Tree — split, swap, delete                   ▸ │
+│ └─────────────────────────────────┴─────────────┴───────────────────│ This screen — sizes, focus, popups, actions  ▸ │
+│                                                                     │ Layout file — new, load, save                ▸ │
+│ Here is the function you asked for:                                 │ Undo                                    Ctrl-Z │
+│                                                                     │ Redo                                    Ctrl-Y │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
 │ │ int add(int a, int b) {                                           │                                                │
 │ │   return a + b;                                                   │                                                │

@@ -276,6 +276,15 @@
     "stack.close_popup": [
       "escape"
     ],
+    "stack.next_tab": [
+      "ctrl+pagedown"
+    ],
+    "stack.prev_tab": [
+      "ctrl+pageup"
+    ],
+    "stack.maximize": [
+      "alt+z"
+    ],
     "stack.focus_next": [
       "tab"
     ],

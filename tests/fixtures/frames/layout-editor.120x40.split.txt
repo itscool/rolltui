@@ -19,16 +19,16 @@
 │ │ styled     │            │            │ ││ │ styled     │          │ Widget kind: transcript                        │
 │ │ wrapped    │            │            │ ││ │ wrapped    │          │ Source: session                                │
 │ │ lines)     │            │            │ ││ │ lines)     │          │ Menu file:                                     │
-│ │ Theme      │ build      │ single     │ ││ │ Theme      │ build    │ Size (Alt+arrows nudge): fill                  │
-│ │ (roles →   │            │ header     │ ││ │ (roles →   │          │ [✓] Focusable                                  │
-│ │ styles,    │            │            │ ││ │ styles,    │          │ Tree — split, swap, delete                   ▸ │
-│ │ JSON       │            │            │ ││ │ JSON       │          │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ loader,    │            │            │ ││ │ loader,    │          │ Layout file — new, load, save                ▸ │
-│ │ built-ins) │            │            │ ││ │ built-ins) │          │ Undo                                    Ctrl-Z │
-│ └────────────┴────────────┴────────────┘ ││ └────────────┴──────────│ Redo                                    Ctrl-Y │
-│                                          ││                         │                                                │
-│ Here is the function you asked for:      ││ Here is the function you│                                                │
-│                                          ╻│                         │                                                │
+│ │ Theme      │ build      │ single     │ ││ │ Theme      │ build    │ Tabs (Title = content | …):                    │
+│ │ (roles →   │            │ header     │ ││ │ (roles →   │          │ Shown tab                                    ▸ │
+│ │ styles,    │            │            │ ││ │ styles,    │          │ Shown from (width x height):                   │
+│ │ JSON       │            │            │ ││ │ JSON       │          │ Size (Alt+arrows nudge): fill                  │
+│ │ loader,    │            │            │ ││ │ loader,    │          │ [✓] Focusable                                  │
+│ │ built-ins) │            │            │ ││ │ built-ins) │          │ Tree — split, swap, delete                   ▸ │
+│ └────────────┴────────────┴────────────┘ ││ └────────────┴──────────│ This screen — sizes, focus, popups, actions  ▸ │
+│                                          ││                         │ Layout file — new, load, save                ▸ │
+│ Here is the function you asked for:      ││ Here is the function you│ Undo                                    Ctrl-Z │
+│                                          ╻│                         │ Redo                                    Ctrl-Y │
 │ ┌ cpp ─────────────────────────────────┐ ┃│ ┌ cpp ──────────────────│                                                │
 │ │ int add(int a, int b) {              │ ┃│ │ int add(int a, int b) │                                                │
 │ │   return a + b;                      │ ┃│ │   return a + b;       │                                                │

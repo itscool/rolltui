@@ -623,6 +623,14 @@ ROLLTUI_API(rolltui_picker_faded_cells, INTERNAL)
 ROLLTUI_API(rolltui_window_stack_layer, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_new, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_set_visible, PUBLIC)  /* a host shows or hides a panel at run time */
+ROLLTUI_API(rolltui_window_stack_set_size, PUBLIC)  /* a host resizes a panel at run time */
+ROLLTUI_API(rolltui_window_stack_maximize, PUBLIC)  /* a host's own command fills the screen with one window */
+ROLLTUI_API(rolltui_window_stack_maximized, PUBLIC)  /* which one, for a status line */
+ROLLTUI_API(rolltui_window_stack_set_tab, PUBLIC)  /* a host shows a tab: a search result in its tab */
+ROLLTUI_API(rolltui_window_stack_tab, PUBLIC)  /* which tab is shown, after the route says the layout changed */
+ROLLTUI_API(rolltui_node_tab_at, INTERNAL)  /* a tabbed window's tabs, read where the loader, the stack and the editor need them */
+ROLLTUI_API(rolltui_node_tab_add, INTERNAL)
 ROLLTUI_API(rolltui_window_stack_push, INTERNAL)
 ROLLTUI_API(rolltui_window_stack_push_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_resolve, PUBLIC)

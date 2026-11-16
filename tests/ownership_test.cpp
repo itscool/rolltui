@@ -293,8 +293,9 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 150}, /* +3: `RolltuiChildOptions`'s argv, cwd and env, each a BORROW for the `rolltui_child_spawn` call
-                              alone. Before that 147, +7: the input's seven new action names (`RolltuiInputActions::yank` to `::overwrite`), each a
+        {"rolltui.h", 153}, /* +3: `RolltuiStackActions::next_tab`, `::prev_tab` and `::maximize`, each a BORROW of a name the
+                              host keeps for the stack's life, like the three before them. Before that 150, +3: `RolltuiChildOptions`'s argv, cwd
+                              and env, each a BORROW for the `rolltui_child_spawn` call alone. Before that 147, +7: the input's seven new action names (`RolltuiInputActions::yank` to `::overwrite`), each a
                               BORROW of a name the host keeps for the input's life, like the thirty before them. Before that 140, +2: `RolltuiMenuCells::v` (a row's cells) and `RolltuiMenuColumns::v` (a level's columns), each an
                               OWNED array freed by its `_release`, which the type's C++ destructor calls. Before that, 138 —
                               +18, and NOT new members: every one is a defaulted member (`T* v ROLLTUI_DEFAULT(nullptr);`) the scanner
@@ -453,8 +454,9 @@ int main() {
     // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above. 193 -> 195: a menu
     // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
     // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options. 210 -> 215:
-    // the four environment strings pictures are chosen by, and a frame's picture. 216: a condition variable.
-    check(total == 216, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // the four environment strings pictures are chosen by, and a frame's picture. 216: a condition variable. 219: the stack's three
+    // new action names.
+    check(total == 219, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

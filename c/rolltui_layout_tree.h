@@ -234,6 +234,14 @@ typedef struct RolltuiLayoutNode {
 #endif
   RolltuiSplitSizeRaw size;
   RolltuiNodeList children;
+  /* TABS: a window with alternative contents, one shown: `tab_count` of them, each a title and a content, held in `tabs` as
+   * title NUL content NUL in order (`rolltui_node_tab_at` reads one; a string moves as a value in both languages, which a list here
+   * would not). `content` is always the shown one's, so everything that reads a window's content reads the tab's. */
+  RolltuiStr tabs;
+  unsigned char tab_count ROLLTUI_DEFAULT(0), tab ROLLTUI_DEFAULT(0);
+  /* A BREAKPOINT: shown only while the SCREEN is at least this wide and this tall; 0 for no bound. A node below its breakpoint takes
+   * no space, as a hidden one. */
+  int show_width ROLLTUI_DEFAULT(0), show_height ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   bool is_window() const { return kind == Kind::Window; }
@@ -258,6 +266,9 @@ typedef struct RolltuiLayer {
    * popup that asks a question (an approval) must be answered, not clicked away. */
   unsigned char dismiss ROLLTUI_DEFAULT(0);
   RolltuiStr focus; /* the focused window id; "" → first focusable in tree order */
+  /* The screen this layer needs, the layout's `min_width` and `min_height` on its base: smaller, the stack draws a note saying so
+   * instead of a layout squeezed past use. 0 on a popup. */
+  int min_width ROLLTUI_DEFAULT(0), min_height ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   RolltuiLayer();
@@ -312,6 +323,18 @@ typedef struct RolltuiLayerList {
  private:
 #endif
 } RolltuiLayerList;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+/* A tabbed window's tab `i`: its title and its content, BORROWED from the node; 0 when there is no tab `i`. */
+int rolltui_node_tab_at(const RolltuiLayoutNode* n, size_t i, const char** title, size_t* title_len, const char** content,
+                        size_t* content_len);
+/* Appends a tab. Neither string may hold a NUL. */
+void rolltui_node_tab_add(RolltuiLayoutNode* n, const char* title, size_t title_len, const char* content, size_t content_len);
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 /* ---- forward declarations the C++ members just below call ---------------------------------*/
 void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
@@ -428,9 +451,12 @@ inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
       root(std::move(o.root)),
       modal(o.modal),
       dismiss(o.dismiss),
-      focus(std::move(o.focus)) {
+      focus(std::move(o.focus)),
+      min_width(o.min_width),
+      min_height(o.min_height) {
   o.modal = 0;
   o.dismiss = 0;
+  o.min_width = o.min_height = 0;
 }
 inline RolltuiLayer RolltuiLayer::clone() const {
   RolltuiLayer out;
@@ -446,8 +472,11 @@ inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
     modal = o.modal;
     dismiss = o.dismiss;
     focus = std::move(o.focus);
+    min_width = o.min_width;
+    min_height = o.min_height;
     o.modal = 0;
     o.dismiss = 0;
+    o.min_width = o.min_height = 0;
   }
   return *this;
 }
