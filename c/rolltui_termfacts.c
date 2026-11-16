@@ -242,6 +242,10 @@ static _Atomic int g_active_mode = -1;
 void rolltui_termfacts_set_active_wide(int wide) { g_active_wide = wide < 0 ? -1 : (wide ? 1 : 0); }
 int rolltui_termfacts_active_wide(void) { return g_active_wide == 1; }
 
+static _Atomic int g_active_focused = 1;
+void rolltui_termfacts_set_active_focused(int focused) { g_active_focused = focused ? 1 : 0; }
+int rolltui_termfacts_active_focused(void) { return g_active_focused; }
+
 static _Atomic int g_active_images = 0;
 static _Atomic int g_active_cell_w = 0;
 static _Atomic int g_active_cell_h = 0;

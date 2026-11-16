@@ -276,12 +276,14 @@ int main() {
     check(cell_at(f.get(), 0, 0).width == 2 && cell_at(f.get(), 1, 0).continuation,
           "…keeping its width and its continuation cell");
 
-    // A ten-byte cluster is the boundary and must NOT spill — an off-by-one here would
-    // send every flag emoji through the slow path and nobody would notice.
+    // A nine-byte cluster (ROLLTUI_CELL_INLINE_GLYPH) is the boundary and must NOT spill — an off-by-one here would send every
+    // flag (eight bytes) and skin-toned emoji through the slow path and nobody would notice.
     FramePtr g = new_frame(4, 1);
+    put(g.get(), 0, 0, "012345678", 1, RolltuiStyle{});
+    check(!cell_at(g.get(), 0, 0).spilled() && glyph_at(g.get(), 0, 0) == "012345678",
+          "exactly nine bytes stays INLINE: the boundary is >, not >=");
     put(g.get(), 0, 0, "0123456789", 1, RolltuiStyle{});
-    check(!cell_at(g.get(), 0, 0).spilled() && glyph_at(g.get(), 0, 0) == "0123456789",
-          "exactly ten bytes stays INLINE: the boundary is >, not >=");
+    check(cell_at(g.get(), 0, 0).spilled() && glyph_at(g.get(), 0, 0) == "0123456789", "…and ten spills, read back whole");
 
     // The frame diff compares glyphs BY VALUE across frames, so a spill index minted in
     // one frame is never mistaken for the same index in another.

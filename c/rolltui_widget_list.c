@@ -580,6 +580,22 @@ static void sorted(RolltuiList* l) {
 
 int rolltui_list_typing(const RolltuiList* l) { return l && l->filtering; }
 
+int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
+  char buf[96];
+  int n = 0;
+  size_t marked, shown;
+  ensure(l); /* asked before the frame lays it out: the rows as they are now */
+  marked = rolltui_map_count(&l->marks);
+  shown = shown_n(l);
+  rolltui_str_clear(out);
+  if (shown > 0 && (shown > (size_t)(l->body_h > 0 ? l->body_h : 0) || l->filter.n))
+    n = snprintf(buf, sizeof buf, "%zu of %zu", l->cursor + 1, shown);
+  if (marked) n += snprintf(buf + n, sizeof buf - (size_t)n, "%s%zu marked", n ? " \xc2\xb7 " : "", marked);
+  if (n <= 0) return 0;
+  rolltui_str_set(out, buf, (size_t)n);
+  return 1;
+}
+
 int rolltui_list_back(RolltuiList* l) {
   if (l->filtering || l->filter.n) { /* one level at a time: the filter, then the marks */
     l->filtering = 0;
@@ -867,14 +883,7 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
 
 /* `s` in at most `max` cells, cut at an ellipsis where it does not fit. Returns the cells used. */
 static int put_cut(RolltuiList* l, RolltuiFrame* f, int x, int y, const char* s, size_t n, RolltuiStyle st, int max, int aw) {
-  const int ew = rolltui_u_display_width(l->u, ELLIPSIS, 3, aw);
-  int cells = 0, used;
-  size_t fit;
-  if (max <= 0 || n == 0) return 0;
-  if (rolltui_frame_text_width(l->draw, s, n, aw) <= max || max <= ew) return rolltui_frame_put_text(f, l->draw, x, y, s, n, st, max, aw, 0);
-  fit = rolltui_u_fit(l->u, s, n, max - ew, aw, &cells);
-  used = rolltui_frame_put_text(f, l->draw, x, y, s, fit, st, cells, aw, 0);
-  return used + rolltui_frame_put_text(f, l->draw, x + used, y, ELLIPSIS, 3, st, ew, aw, 0);
+  return rolltui_frame_put_text_cut(f, l->draw, x, y, s, n, st, max, ROLLTUI_CUT_END, aw, 0);
 }
 
 /* The row's guides: a bar where an ancestor has a later sibling, its own branch, then a node's opener. Returns the cells used. */

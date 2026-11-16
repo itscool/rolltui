@@ -237,6 +237,7 @@
         "bg": "bg"
       },
       "md_strikethrough": {
+        "strikethrough": true,
         "fg": "dim",
         "bg": "bg",
         "dim": true

@@ -16,20 +16,20 @@
 │ │                                 │             │ header            │ Background role                   background ▸ │
 │ │ Windows, layers, placement (Dim │ build       │ single header;    │ Node id: transcript                            │
 │ │ abs/rel per axis), focus        │             │ resolve(Placement,│ Title: transcript                              │
-│ │                                 │             │ Rect is a pure fun│ Widget kind: transcript                        │
-│ │ Menu widget (hierarchical,      │ build       │ single header each│ Source: session                                │
-│ │ filterable) + list/text widgets │             │ set is deliberatel│ Menu file:                                     │
-│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Tabs (Title = content | …):                    │
-│ │ placements + content slots)     │             │ parser; hot-reload│ Shown tab                                    ▸ │
-│ │ Markdown block renderer (blocks │ build       │ single header over│ Shown from (width x height):                   │
-│ │ → styled wrapped lines)         │             │                   │ Size (Alt+arrows nudge): fill                  │
-│ │ Theme (roles → styles, JSON     │ build       │ single header     │ [✓] Focusable                                  │
-│ │ loader, built-ins)              │             │                   │ Tree — split, swap, delete                   ▸ │
-│ └─────────────────────────────────┴─────────────┴───────────────────│ This screen — sizes, focus, popups, actions  ▸ │
-│                                                                     │ Layout file — new, load, save                ▸ │
-│ Here is the function you asked for:                                 │ Undo                                    Ctrl-Z │
-│                                                                     │ Redo                                    Ctrl-Y │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │                                 │             │ Rect is a pure fun│ Footer (in the bottom border, at its right):   │
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ Widget kind: transcript                        │
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ Source: session                                │
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Menu file:                                     │
+│ │ placements + content slots)     │             │ parser; hot-reload│ Tabs (Title = content | …):                    │
+│ │ Markdown block renderer (blocks │ build       │ single header over│ Shown tab                                    ▸ │
+│ │ → styled wrapped lines)         │             │                   │ Shown from (width x height):                   │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │ Size (Alt+arrows nudge): fill                  │
+│ │ loader, built-ins)              │             │                   │ [✓] Focusable                                  │
+│ └─────────────────────────────────┴─────────────┴───────────────────│ Tree — split, swap, delete                   ▸ │
+│                                                                     │ This screen — sizes, focus, popups, actions  ▸ │
+│ Here is the function you asked for:                                 │ Layout file — new, load, save                ▸ │
+│                                                                     │ Undo                                    Ctrl-Z │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ Redo                                    Ctrl-Y │
 │ │ int add(int a, int b) {                                           │                                                │
 │ │   return a + b;                                                   │                                                │
 │ └───────────────────────────────────────────────────────────────────│ selected: transcript  size fill  border single │

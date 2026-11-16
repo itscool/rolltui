@@ -452,6 +452,25 @@ static unsigned char own_mask(RolltuiRect o, int x, int y) {
   return ARM_U | ARM_D;
 }
 
+/* A FOOTER on the bottom edge, at its right, inside the corner: " text ", cut at its start where it does not fit, since its end (a
+ * count, a position) is what says most. */
+static void draw_footer(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, const char* text, size_t n, RolltuiStyle st,
+                        int aw) {
+  const int fh = rolltui_frame_height(f);
+  const int y = outer.y + outer.h - 1;
+  int avail, w;
+  if (n == 0 || outer.w < 7 || outer.h < 2 || y < 0 || y >= fh) return;
+  avail = outer.w - 4; /* a corner and a cell of the line each side */
+  w = rolltui_frame_text_width(draw, text, n, aw);
+  if (w > avail) w = avail;
+  {
+    const int x = outer.x + outer.w - 2 - w - 2;
+    rolltui_frame_put_text(f, draw, x, y, " ", 1, st, 1, aw, 0);
+    rolltui_frame_put_text_cut(f, draw, x + 1, y, text, n, st, w, ROLLTUI_CUT_START, aw, 0);
+    rolltui_frame_put_text(f, draw, x + 1 + w, y, " ", 1, st, 1, aw, 0);
+  }
+}
+
 static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char b,
                              RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
                              int ascii) {
@@ -602,6 +621,10 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     } else {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
       draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
+    }
+    if (n->border != ROLLTUI_BORDER_NONE) { /* the widget's footer this frame, else the file's, in the border's colour */
+      const RolltuiStr* ft = n->live_footer.n ? &n->live_footer : &n->footer;
+      if (ft->n) draw_footer(f, scratch->draw, rn->outer, ft->p, ft->n, line, ambiguous_wide);
     }
   }
   if (!render) return;
@@ -1558,6 +1581,9 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
     } else if (streq(k, klen, "title")) {
       if (!rolltui_json_is_string(x)) bad_at(report, at.p, at.n, ": expected a string");
       else set_str_field(&n->title, x);
+    } else if (streq(k, klen, "footer")) {
+      if (!rolltui_json_is_string(x)) bad_at(report, at.p, at.n, ": expected a string");
+      else set_str_field(&n->footer, x);
     } else if (streq(k, klen, "border")) {
       unsigned char b;
       size_t sl = 0;
@@ -2021,6 +2047,7 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
     rolltui_json_set(o, K("border"), rolltui_json_string(bn, bl));
   }
   if (n->title.n) rolltui_json_set(o, K("title"), rolltui_json_string(n->title.p, n->title.n));
+  if (n->footer.n) rolltui_json_set(o, K("footer"), rolltui_json_string(n->footer.p, n->footer.n));
   if (n->focusable) rolltui_json_set(o, K("focusable"), rolltui_json_bool(1));
   if (!n->visible) rolltui_json_set(o, K("visible"), rolltui_json_bool(0));
   if (n->show_width || n->show_height) {
@@ -2499,7 +2526,8 @@ typedef struct StackSink {
 static void stack_sink(void* ctx, const RolltuiResolvedNode* rn) {
   StackSink* s = (StackSink*)ctx;
   RolltuiResolvedNode out = *rn;
-  out.focused = (unsigned char)(rn->node == s->focused);
+  /* While the terminal's window has lost the person's focus, no window here has it: every border and cursor draws as away. */
+  out.focused = (unsigned char)(rn->node == s->focused && rolltui_termfacts_active_focused());
   if (s->hover && rn->node == s->hover) {
     out.hover = 1;
     out.hover_x = s->hover_x;

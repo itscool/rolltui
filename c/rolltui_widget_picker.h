@@ -62,8 +62,9 @@ void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner);
 /* THE POINTER, for the next draw (`RolltuiResolvedNode::hover`): the entry a click there would select is drawn in the `hover` role,
  * unless it is the cursor's own. Nothing moves. */
 void rolltui_picker_set_hover(RolltuiPicker* p, int on, int x, int y);
+/* `focused`: the window has the person's focus; 0 draws the cursor as the parent columns' selection. */
 void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* styles,
-                         const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide);
+                         const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide, int focused);
 /* 1 when the event was consumed. Keys are resolved in the `picker` scope of `b` against `a`. */
 int rolltui_picker_handle(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBindings* b,
                           const RolltuiPickerActions* a);

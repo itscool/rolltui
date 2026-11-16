@@ -16,20 +16,20 @@
 │ │ )     │        │        │ ││ │ Layout files     │ build       │ re│ Background role                   background ▸ │
 │ │ Theme │ build  │ single │ ││ │ (JSON: windows + │             │ lo│ Node id: transcript                            │
 │ │ (role │        │ header │ ││ │ placements +     │             │ pa│ Title: transcript                              │
-│ │ s →   │        │        │ ││ │ content slots)   │             │ re│ Widget kind: transcript                        │
-│ │ style │        │        │ ││ │ Markdown block   │ build       │ si│ Source: session                                │
-│ │ s,    │        │        │ ││ │ renderer (blocks │             │ ov│ Menu file:                                     │
-│ │ JSON  │        │        │ ││ │ → styled wrapped │             │   │ Tabs (Title = content | …):                    │
-│ │ loade │        │        │ ││ │ lines)           │             │   │ Shown tab                                    ▸ │
-│ │ r,    │        │        │ ││ │ Theme (roles →   │ build       │ si│ Shown from (width x height):                   │
-│ │ built │        │        │ ││ │ styles, JSON     │             │   │ Size (Alt+arrows nudge): 31                    │
-│ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ [✓] Focusable                                  │
-│ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ Tree — split, swap, delete                   ▸ │
-│                             ││ └──────────────────┴─────────────┴───│ This screen — sizes, focus, popups, actions  ▸ │
-│ Here is the function you    ││                                      │ Layout file — new, load, save                ▸ │
-│ asked for:                  ││ Here is the function you asked for:  │ Undo                                    Ctrl-Z │
-│                             ││                                      │ Redo                                    Ctrl-Y │
-│ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│                                                │
+│ │ s →   │        │        │ ││ │ content slots)   │             │ re│ Footer (in the bottom border, at its right):   │
+│ │ style │        │        │ ││ │ Markdown block   │ build       │ si│ Widget kind: transcript                        │
+│ │ s,    │        │        │ ││ │ renderer (blocks │             │ ov│ Source: session                                │
+│ │ JSON  │        │        │ ││ │ → styled wrapped │             │   │ Menu file:                                     │
+│ │ loade │        │        │ ││ │ lines)           │             │   │ Tabs (Title = content | …):                    │
+│ │ r,    │        │        │ ││ │ Theme (roles →   │ build       │ si│ Shown tab                                    ▸ │
+│ │ built │        │        │ ││ │ styles, JSON     │             │   │ Shown from (width x height):                   │
+│ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ Size (Alt+arrows nudge): 31                    │
+│ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ [✓] Focusable                                  │
+│                             ││ └──────────────────┴─────────────┴───│ Tree — split, swap, delete                   ▸ │
+│ Here is the function you    ││                                      │ This screen — sizes, focus, popups, actions  ▸ │
+│ asked for:                  ││ Here is the function you asked for:  │ Layout file — new, load, save                ▸ │
+│                             ││                                      │ Undo                                    Ctrl-Z │
+│ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│ Redo                                    Ctrl-Y │
 │ │ int add(int a, int b) { │ ┃│ │ int add(int a, int b) {            │                                                │
 │ │   return a + b;         │ ┃│ │   return a + b;                    │                                                │
 │ └─────────────────────────┘ ╹│ └────────────────────────────────────│ selected: transcript  size 31  border single   │

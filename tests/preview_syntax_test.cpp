@@ -544,7 +544,7 @@ int main() {
       auto shot = [&](Theme& t) {
         RolltuiFrame* f = rolltui_frame_new(90, 8, t.styles[ROLLTUI_ROLE_BACKGROUND]);
         rolltui_picker_layout(p, RolltuiRect{0, 0, 90, 8});
-        rolltui_picker_draw(p, f, t.styles, &glyphs, 0);
+        rolltui_picker_draw(p, f, t.styles, &glyphs, 0, 1);
         // the coloured cells anywhere on the frame that are the keyword's colour
         int kw = 0;
         for (int y = 0; y < 8; ++y)

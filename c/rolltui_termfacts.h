@@ -112,6 +112,10 @@ unsigned char rolltui_termfacts_clamp_depth(unsigned char requested);
  * -1 withdraws either: no terminal is entered. */
 void rolltui_termfacts_set_active_wide(int wide);
 int rolltui_termfacts_active_wide(void); /* 1 only when a terminal measured (or was told) two cells */
+/* Whether the terminal's window has the person's focus, as its last focus report said: 1 until a terminal reports losing it, so a
+ * terminal that never reports is always focused. While it is 0 no window draws as focused. */
+void rolltui_termfacts_set_active_focused(int focused);
+int rolltui_termfacts_active_focused(void);
 /* SPLIT CLUSTERS: a terminal that gives every code point cells of its own (Windows' console host)
  * is never sent a zero-width code point. Its pseudo console re-draws its own buffer for whatever
  * terminal reads it, and that terminal joins an accent to its letter where the console gave it a

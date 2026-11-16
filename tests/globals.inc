@@ -168,6 +168,9 @@ ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_wide", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_split", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_erase", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_mode", PROCESS)
+/* …and whether its window has the person's focus, by its last focus report: 1 when nothing reported otherwise, and no window draws
+ * as focused while it is 0. */
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_focused", PROCESS)
 /* …and how it draws a picture, and its cell's size in pixels, which `rolltui_frame_image` fits a picture with. */
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_images", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_cell_w", PROCESS)

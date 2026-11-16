@@ -79,7 +79,7 @@ int main() {
   auto draw = [&](int w, int h) {
     RolltuiFrame* f = rolltui_frame_new(w, h, styles[ROLLTUI_ROLE_BACKGROUND]);
     rolltui_picker_layout(p, RolltuiRect{0, 0, w, h});
-    rolltui_picker_draw(p, f, styles, &glyphs, 0);
+    rolltui_picker_draw(p, f, styles, &glyphs, 0, 1);
     return f;
   };
 
@@ -745,7 +745,7 @@ int main() {
         rolltui_picker_go_to(q, path.data(), path.size());
         RolltuiFrame* fr = rolltui_frame_new(110, 30, styles[ROLLTUI_ROLE_BACKGROUND]);
         rolltui_picker_layout(q, RolltuiRect{0, 0, 110, 30});
-        rolltui_picker_draw(q, fr, styles, &glyphs, 0);
+        rolltui_picker_draw(q, fr, styles, &glyphs, 0, 1);
         rolltui_frame_free(fr);
       }
       rolltui_picker_free(q);

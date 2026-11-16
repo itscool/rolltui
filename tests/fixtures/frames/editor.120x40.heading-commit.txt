@@ -9,7 +9,7 @@
 │ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│ [ ] underline                                  │
 │ │ paste, mouse mode)              │             │                   │ [ ] dim                                        │
 │ │ Key + mouse decoding            │ build       │ single header, pur│ [ ] reverse                                    │
-│ │                                 │             │ Event, table-teste│                                                │
+│ │                                 │             │ Event, table-teste│ [ ] strikethrough                              │
 │ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│                                                │
 │ │ colour downgrade                │             │ tested            │                                                │
 │ │ Wrap engine                     │ build       │ single header over│                                                │

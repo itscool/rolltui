@@ -427,9 +427,10 @@ typedef struct RolltuiStyle {
   RolltuiStyleColorRaw fg ROLLTUI_DEFAULT({}), bg ROLLTUI_DEFAULT({});
   unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0), underline ROLLTUI_DEFAULT(0),
       dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
+  unsigned char strike ROLLTUI_DEFAULT(0); /* a line through the text: what was removed, what is done */
 } RolltuiStyle;
 
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 15, "RolltuiStyle must be fifteen bytes with no padding in either language");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 16, "RolltuiStyle must be sixteen bytes with no padding in either language");
 
 /* ---- THE MODE AND DEPTH VOCABULARY ---------------------------------------------------------
  * Same move as `ROLLTUI_ROLE_LIST` and `ROLLTUI_EFFECT_STATE_LIST`: a vocabulary the C refuses to carry relocates into every caller
@@ -508,7 +509,7 @@ size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
  * accented Latin, CJK, an emoji with a variation selector or skin tone, and a flag; anything longer (a ZWJ family is 25+ bytes)
  * SPILLS into a table the frame owns, its index kept where the bytes would be (`len` reads ROLLTUI_CELL_SPILLED), the same shape
  * `link` uses. */
-#define ROLLTUI_CELL_INLINE_GLYPH 10
+#define ROLLTUI_CELL_INLINE_GLYPH 9
 
 #define ROLLTUI_CELL_SPILLED 0xFF
 
@@ -524,7 +525,7 @@ typedef struct RolltuiCellRaw {
 } RolltuiCellRaw;
 
 /* THE CELL HAS NO PADDING, asserted: `rolltui_frame_equal` compares cells with `memcmp`, which is only right when every byte was written. */
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 16 + ROLLTUI_CELL_INLINE_GLYPH + 3,
                       "RolltuiCellRaw has padding; memcmp equality would compare bytes nobody wrote");
 
 typedef struct RolltuiFrame RolltuiFrame;
@@ -585,6 +586,17 @@ typedef struct RolltuiRows RolltuiRows;
 int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
                              RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
                              int ambiguous_wide);
+
+/* TEXT CUT TO FIT, with an ellipsis where it was cut: at its END ("a long na…"), in its MIDDLE ("~/src/…/main.c", a path keeping
+ * both ends) or at its START ("…/main.c"). Text that fits is drawn whole. The ellipsis is one cell, or two where ambiguous glyphs are
+ * wide, and a wide glyph is never cut in half. Returns the cells used. */
+#define ROLLTUI_CUT_END 0
+#define ROLLTUI_CUT_MIDDLE 1
+#define ROLLTUI_CUT_START 2
+int rolltui_frame_put_text_cut(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len, RolltuiStyle style,
+                               int max_cells, int where, int ambiguous_wide, unsigned int link);
+/* The same cut, as text: REPLACES `*out` with `utf8` cut to `max_cells`; returns the cells it takes. */
+int rolltui_text_cut(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, int where, int ambiguous_wide, RolltuiStr* out);
 
 /* The cells `utf8` WOULD occupy, measured with the same cluster walk that draws it (`rolltui_frame_put_text` answers only after drawing,
  * and a caller sizing a column must know first). Same walk, same ambiguous-width rule, same result. */
@@ -2686,6 +2698,9 @@ typedef struct RolltuiMenuRoles {
   unsigned char label;
   unsigned char value;
   unsigned char hover; /* the row under the pointer (`RolltuiResolvedNode::hover`) */
+  /* The selected row while the menu's window does not have focus, as a list's cursor dims: the person sees where they were, and that
+   * keys go elsewhere. 0 draws it as `selected`. */
+  unsigned char selected_away;
 } RolltuiMenuRoles;
 
 /* The report, transparent like `RolltuiBindingsReport` and `RolltuiLayoutReport`: `RolltuiStr` values in growing amortised arrays,
@@ -3142,6 +3157,9 @@ typedef struct RolltuiWidgetPlugin {
   /* Does what a key bound to `action` does; 1 when it did something. Asked only for an action no single chord is bound to: the table
    * hands the widget that chord otherwise. NULL: such an action does nothing here. */
   int (*perform)(void* ctx, const char* action, size_t len);
+  /* The window's FOOTER this frame, into `out`: what only the widget knows, at the right of its bottom border (a list's "12 of 340").
+   * 0 keeps the layout's own. Read once per frame by `rolltui_windows_autosize`. NULL: the layout's. */
+  int (*footer)(void* ctx, RolltuiStr* out);
 } RolltuiWidgetPlugin;
 
 /* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the

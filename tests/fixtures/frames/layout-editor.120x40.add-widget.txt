@@ -16,20 +16,20 @@
 │ │ block      │            │ header     │ ││ start of the line       │ Background role                   background ▸ │
 │ │ renderer   │            │ over md4c  │ ││   Ctrl-K                │ Node id: transcript-2                          │
 │ │ (blocks →  │            │ + wrap     │ ││ end of the line         │ Title: transcript-2                            │
-│ │ styled     │            │            │ ││   Left                  │ Widget kind: help                              │
-│ │ wrapped    │            │            │ ││ grapheme left           │ Source:                                        │
-│ │ lines)     │            │            │ ││   Right                 │ Menu file:                                     │
-│ │ Theme      │ build      │ single     │ ││ grapheme right          │ Tabs (Title = content | …):                    │
-│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ Shown tab                                    ▸ │
-│ │ styles,    │            │            │ ││ left                    │ Shown from (width x height):                   │
-│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ Size (Alt+arrows nudge): fill                  │
-│ │ loader,    │            │            │ ││ right                   │ [✓] Focusable                                  │
-│ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ Tree — split, swap, delete                   ▸ │
-│ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ This screen — sizes, focus, popups, actions  ▸ │
-│                                          ││   End, Ctrl-E           │ Layout file — new, load, save                ▸ │
-│ Here is the function you asked for:      ││ line (scrolls when empty│ Undo                                    Ctrl-Z │
-│                                          ╻│   Up                    │ Redo                                    Ctrl-Y │
-│ ┌ cpp ─────────────────────────────────┐ ┃│ the previous history ent│                                                │
+│ │ styled     │            │            │ ││   Left                  │ Footer (in the bottom border, at its right):   │
+│ │ wrapped    │            │            │ ││ grapheme left           │ Widget kind: help                              │
+│ │ lines)     │            │            │ ││   Right                 │ Source:                                        │
+│ │ Theme      │ build      │ single     │ ││ grapheme right          │ Menu file:                                     │
+│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ Tabs (Title = content | …):                    │
+│ │ styles,    │            │            │ ││ left                    │ Shown tab                                    ▸ │
+│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ Shown from (width x height):                   │
+│ │ loader,    │            │            │ ││ right                   │ Size (Alt+arrows nudge): fill                  │
+│ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ [✓] Focusable                                  │
+│ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ Tree — split, swap, delete                   ▸ │
+│                                          ││   End, Ctrl-E           │ This screen — sizes, focus, popups, actions  ▸ │
+│ Here is the function you asked for:      ││ line (scrolls when empty│ Layout file — new, load, save                ▸ │
+│                                          ╻│   Up                    │ Undo                                    Ctrl-Z │
+│ ┌ cpp ─────────────────────────────────┐ ┃│ the previous history ent│ Redo                                    Ctrl-Y │
 │ │ int add(int a, int b) {              │ ┃│   Down                  │                                                │
 │ │   return a + b;                      │ ┃│ the next history entry  │                                                │
 │ └──────────────────────────────────────┘ ╹│   Shift-Left            │ selected: transcript-2  size fill  border sing │

@@ -46,6 +46,9 @@ int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char
 int rolltui_list_back(RolltuiList* l);
 /* 1 while the filter is being typed: a printable key is the filter's. */
 int rolltui_list_typing(const RolltuiList* l);
+/* What the list says in its window's footer, into `out` (replaced): "12 of 340" while it shows more rows than fit or a filter
+ * narrows it, and "5 marked". 0 when it has nothing to say. */
+int rolltui_list_footer(RolltuiList* l, RolltuiStr* out);
 void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int ambiguous_wide);
 /* Draws what the last layout placed. `hover_y` is the row under the pointer, -1 for none. */
 void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int focused,

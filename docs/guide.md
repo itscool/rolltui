@@ -28,6 +28,30 @@ allocator. `clear()` keeps the buffer for the next fill.
 
 Use these rather than converting to and from `std::string`.
 
+## Cut text, footers, strikethrough and focus
+
+`rolltui_frame_put_text_cut(frame, scratch, x, y, text, len, style, max_cells, where,
+ambiguous_wide, link)` draws text in at most `max_cells`, with an ellipsis where it was cut:
+`ROLLTUI_CUT_END` ("a long na…"), `ROLLTUI_CUT_MIDDLE` ("~/src/r…main.c", a path keeping both
+ends) or `ROLLTUI_CUT_START` ("…/c/main.c"). Text that fits is drawn whole. The ellipsis is one cell,
+or two where ambiguous glyphs are wide, and a wide glyph is never cut in half.
+`rolltui_text_cut` gives the same cut as text. The menu, the list and the column browser cut
+their text this way.
+
+A window's FOOTER is at the right of its bottom border: `"footer"` in the layout file, or what the
+widget says that frame through the plugin's `footer` slot. A list says where the cursor is, "12
+of 340", while it shows fewer rows than it has or a filter narrows it, and how many rows are
+marked. A footer too long for the border is cut at its start, since its end says most.
+
+A selection dims while keys go elsewhere. A list's cursor, a menu's selected row and the column
+browser's cursor draw in the `selection` role while their window does not have focus
+(`RolltuiMenuRoles.selected_away`; 0 draws it as `selected`).
+
+A style's `strike` draws a line through the text (SGR 9). A theme file sets it per role with
+`"strikethrough": true`, the theme editor has it beside bold and italic, and every shipped theme
+strikes Markdown's `~~struck~~` text (`md_strikethrough`). A terminal that has no strikethrough
+draws the text plain.
+
 ## Terminal detection
 
 `rolltui_terminal_new` asks the terminal, in the same round trip that sets up the keyboard, how
@@ -105,6 +129,8 @@ Every terminal entered is asked to report two things as they change:
 
 - Its window gaining or losing the person's focus (mode 1004). `rolltui_run` calls the app's
   `focus` with 1 or 0; a loop of its own gets a `ROLLTUI_TERM_EVENT_FOCUS` event with `focused`.
+  While the window has lost focus no window on the screen is focused: every border, cursor and
+  selection draws as away until it comes back.
 - Its background turning light or dark (mode 2031), when the system's appearance changes. The
   terminal's facts change and the app's `facts_changed` re-resolves the theme, as for a stale
   cached answer, so a theme in `auto` mode follows.

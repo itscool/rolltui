@@ -28,8 +28,8 @@ static const char* mode_word(unsigned char m) { return m == ROLLTUI_MODE_LIGHT ?
 
 /* The five attribute names a role carries, in the order the menu lists them. One table, read
  * by the menu builder, the value sync and the toggle handler. */
-static const char* const kAttrs[] = {"bold", "italic", "underline", "dim", "reverse"};
-#define ATTR_COUNT 5
+static const char* const kAttrs[] = {"bold", "italic", "underline", "dim", "reverse", "strikethrough"};
+#define ATTR_COUNT 6
 
 static unsigned char* attr_of(RolltuiStyle* s, const char* name, size_t len) {
   if (len == 4 && memcmp(name, "bold", 4) == 0) return &s->bold;
@@ -37,6 +37,7 @@ static unsigned char* attr_of(RolltuiStyle* s, const char* name, size_t len) {
   if (len == 9 && memcmp(name, "underline", 9) == 0) return &s->underline;
   if (len == 3 && memcmp(name, "dim", 3) == 0) return &s->dim;
   if (len == 7 && memcmp(name, "reverse", 7) == 0) return &s->reverse;
+  if (len == 13 && memcmp(name, "strikethrough", 13) == 0) return &s->strike;
   return NULL;
 }
 

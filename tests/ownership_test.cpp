@@ -602,9 +602,9 @@ int main() {
     // POSIX, 2 Windows), gone on to after a crash puts the terminal back.
     // 35 -> 39: the entered terminal's way of drawing pictures and its cell's pixels (three), and the pictures' id counter.
     // 40: whether the entered terminal erases in the background colour, which the renderer's short forms stand on. 41: whether a stop
-    // from outside has been continued.
-    check(ctx == 0 && proc == 41,
-          "the boundary is 0 CONTEXT + 41 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // from outside has been continued. 42: whether the entered terminal's window has the person's focus.
+    check(ctx == 0 && proc == 42,
+          "the boundary is 0 CONTEXT + 42 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

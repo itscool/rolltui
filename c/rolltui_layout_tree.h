@@ -225,6 +225,10 @@ typedef struct RolltuiLayoutNode {
    * it is non-empty. Screen state, not layout: never read from a file, never written to one,
    * never compared, never copied with the node. */
   RolltuiStr live_title;
+  /* A FOOTER, at the right of the window's bottom border: the file's, or what the widget says this frame (a list's "12 of 340"),
+   * which `live_footer` holds as `live_title` holds a title. */
+  RolltuiStr footer;
+  RolltuiStr live_footer;
   unsigned char focusable ROLLTUI_DEFAULT(0);
   unsigned char visible ROLLTUI_DEFAULT(1); /* hidden: takes no space, draws nothing */
 #ifdef __cplusplus

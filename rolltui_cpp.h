@@ -59,7 +59,7 @@ constexpr bool operator==(const RolltuiMouseEvent& a, const RolltuiMouseEvent& b
 
 constexpr bool operator==(const RolltuiStyle& a, const RolltuiStyle& b) {
   return a.fg == b.fg && a.bg == b.bg && a.bold == b.bold && a.italic == b.italic && a.underline == b.underline &&
-         a.dim == b.dim && a.reverse == b.reverse;
+         a.dim == b.dim && a.reverse == b.reverse && a.strike == b.strike;
 }
 
 inline bool operator==(const RolltuiMenuOptions& a, const RolltuiMenuOptions& b) {

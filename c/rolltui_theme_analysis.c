@@ -903,6 +903,7 @@ int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsign
     append_fmt(&out->what, best, 2);
     rolltui_str_append(&out->what, K("); add "));
     if (after.underline != sb.underline) rolltui_str_append(&out->what, K("underline"));
+    if (after.strike != sb.strike) rolltui_str_append(&out->what, K("strikethrough"));
     else if (after.bold != sb.bold) rolltui_str_append(&out->what, K("bold"));
     else rolltui_str_append(&out->what, K("italic"));
     rolltui_str_append(&out->what, K(" to "));

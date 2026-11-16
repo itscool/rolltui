@@ -9,6 +9,7 @@
 │ Background role             panel_background ▸ ││ focus      editor                                                  │
 │ Node id: status                                ││                                                                    │
 │ Title: status                                  ││                                                                    │
+│ Footer (in the bottom border, at its right):   ││                                                                    │
 │ Widget kind: rows                              ││                                                                    │
 │ Source: status                                 ││                                                                    │
 │ Menu file:                                     ││                                                                    │
@@ -22,7 +23,6 @@
 │ Layout file — new, load, save                ▸ ││                                                                    │
 │ Undo                                    Ctrl-Z ││                                                                    │
 │ Redo                                    Ctrl-Y ││                                                                    │
-│                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │

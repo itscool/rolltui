@@ -44,7 +44,7 @@ static int style_eq(const RolltuiStyle* a, const RolltuiStyle* b) {
    * identical styles different — the same reason `rolltui_screen.h` gives for frames. */
   return color_eq(&a->fg, &b->fg) && color_eq(&a->bg, &b->bg) && a->bold == b->bold &&
          a->italic == b->italic && a->underline == b->underline && a->dim == b->dim &&
-         a->reverse == b->reverse;
+         a->reverse == b->reverse && a->strike == b->strike;
 }
 
 /* WHAT THE SCREEN HOLDS where it is compared with the next frame: the previous frame, or after a scrolled region, its rows moved by

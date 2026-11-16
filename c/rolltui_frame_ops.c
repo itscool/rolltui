@@ -84,6 +84,70 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
   return used;
 }
 
+#define ELLIPSIS "\xe2\x80\xa6"
+
+/* Where to cut `utf8` to `max` cells: keep [0, head) and [tail, len), with an ellipsis between. 0 when it fits whole. */
+static int cut_points(RolltuiDrawScratch* s, const char* utf8, size_t len, int max, int where, int aw, size_t* head, size_t* tail,
+                      int* ew_out) {
+  const int width = rolltui_frame_text_width(s, utf8, len, aw);
+  const int ew = rolltui_u_display_width(s->u, ELLIPSIS, 3, aw);
+  int room, head_cells, tail_cells, used = 0;
+  size_t i, count;
+  *head = len, *tail = len, *ew_out = ew;
+  if (width <= max) return 0;
+  room = max - ew;
+  if (room < 0) room = 0;
+  head_cells = where == ROLLTUI_CUT_END ? room : where == ROLLTUI_CUT_START ? 0 : room - room / 2;
+  tail_cells = room - head_cells;
+  *head = head_cells > 0 ? rolltui_u_fit(s->u, utf8, len, head_cells, aw, &used) : 0;
+  if (head_cells > 0) tail_cells = room - used; /* what the head could not use goes to the tail */
+  *tail = len;
+  if (tail_cells > 0) { /* the clusters from the end that fit in `tail_cells` */
+    int got = 0;
+    s->gs = (RolltuiUnicodeGrapheme*)rolltui_grow(s->gs, &s->gs_cap, len, sizeof *s->gs);
+    count = rolltui_u_graphemes(s->u, utf8, len, aw, s->gs);
+    for (i = count; i-- > 0;) {
+      const RolltuiUnicodeGrapheme* g = &s->gs[i];
+      if (g->offset < *head || got + g->width > tail_cells) break;
+      got += g->width;
+      *tail = g->offset;
+    }
+  }
+  return 1;
+}
+
+int rolltui_frame_put_text_cut(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len, RolltuiStyle style,
+                               int max_cells, int where, int ambiguous_wide, unsigned int link) {
+  size_t head, tail;
+  int ew, used;
+  if (max_cells <= 0 || len == 0) return 0;
+  if (!cut_points(s, utf8, len, max_cells, where, ambiguous_wide, &head, &tail, &ew) || max_cells <= ew)
+    return rolltui_frame_put_text(f, s, x, y, utf8, len, style, max_cells, ambiguous_wide, link);
+  used = rolltui_frame_put_text(f, s, x, y, utf8, head, style, max_cells, ambiguous_wide, link);
+  used += rolltui_frame_put_text(f, s, x + used, y, ELLIPSIS, 3, style, ew, ambiguous_wide, link);
+  return used + rolltui_frame_put_text(f, s, x + used, y, utf8 + tail, len - tail, style, max_cells - used, ambiguous_wide, link);
+}
+
+int rolltui_text_cut(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, int where, int ambiguous_wide, RolltuiStr* out) {
+  size_t head, tail;
+  int ew;
+  rolltui_str_clear(out);
+  if (max_cells <= 0 || len == 0) return 0;
+  if (!cut_points(s, utf8, len, max_cells, where, ambiguous_wide, &head, &tail, &ew)) {
+    rolltui_str_set(out, utf8, len);
+    return rolltui_frame_text_width(s, utf8, len, ambiguous_wide);
+  }
+  if (max_cells <= ew) { /* no room for the mark: as much as fits */
+    int cells = 0;
+    rolltui_str_set(out, utf8, rolltui_u_fit(s->u, utf8, len, max_cells, ambiguous_wide, &cells));
+    return cells;
+  }
+  rolltui_str_set(out, utf8, head);
+  rolltui_str_append(out, ELLIPSIS, 3);
+  rolltui_str_append(out, utf8 + tail, len - tail);
+  return rolltui_frame_text_width(s, out->p, out->n, ambiguous_wide);
+}
+
 int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide) {
   size_t count, i;
   int w = 0;

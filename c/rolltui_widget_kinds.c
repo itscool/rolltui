@@ -323,6 +323,7 @@ static const RolltuiWidgetPlugin kTextPlugin = {
     text_ctx_destroy, text_ctx_layout, text_ctx_draw, NULL, NULL, NULL, text_ctx_handle, text_ctx_scroll_extent,
     text_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -441,6 +442,7 @@ static const RolltuiWidgetPlugin kFilePlugin = {
     file_ctx_destroy, file_ctx_layout, file_ctx_draw, file_ctx_problem, NULL, NULL, file_ctx_handle,
     file_ctx_scroll_extent, file_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -705,6 +707,7 @@ static const RolltuiWidgetPlugin kHelpPlugin = {
     help_ctx_destroy, help_ctx_layout, help_ctx_draw, help_ctx_problem, NULL, NULL, help_ctx_handle,
     help_ctx_scroll_extent, help_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -824,6 +827,7 @@ static void rows_ctx_destroy(void* ctx) {
 static const RolltuiWidgetPlugin kRowsPlugin = {
     rows_ctx_destroy, rows_ctx_layout, rows_ctx_draw, rows_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
+    NULL,
     NULL
 };
 
@@ -873,6 +877,7 @@ static void gauge_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kGaugePlugin = {
     gauge_ctx_destroy, gauge_ctx_layout, gauge_ctx_draw, gauge_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
+    NULL,
     NULL,
     NULL
 };
@@ -999,6 +1004,7 @@ static const RolltuiWidgetPlugin kMessagesPlugin = {
     messages_ctx_destroy, messages_ctx_layout, messages_ctx_draw, NULL, NULL, NULL, messages_ctx_handle,
     messages_ctx_scroll_extent, messages_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -1118,6 +1124,7 @@ static const RolltuiWidgetPlugin kOutputPlugin = {
     output_ctx_destroy, output_ctx_layout, output_ctx_draw, output_ctx_problem, NULL, NULL, output_ctx_handle,
     output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -1207,6 +1214,7 @@ static void image_ctx_destroy(void* ctx) {
 static const RolltuiWidgetPlugin kImagePlugin = {
     image_ctx_destroy, image_ctx_layout, image_ctx_draw, image_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
+    NULL,
     NULL
 };
 
@@ -1284,6 +1292,10 @@ static int list_ctx_keys(void* ctx, const char** scope, size_t* len) {
   *scope = "list", *len = 4;
   return l && !rolltui_list_typing(l); /* a digit typed into the filter is the filter's */
 }
+static int list_ctx_footer(void* ctx, RolltuiStr* out) {
+  RolltuiList* l = list_of((RolltuiListCtx*)ctx);
+  return l ? rolltui_list_footer(l, out) : 0;
+}
 static int list_ctx_perform(void* ctx, const char* action, size_t len) {
   RolltuiList* l = list_of((RolltuiListCtx*)ctx);
   return l ? rolltui_list_perform(l, rolltui_list_default_actions(), action, len) : 0;
@@ -1297,7 +1309,8 @@ static void list_ctx_destroy(void* ctx) {
 static const RolltuiWidgetPlugin kListPlugin = {
     list_ctx_destroy, list_ctx_layout, list_ctx_draw, list_ctx_problem, NULL, NULL, list_ctx_handle,
     list_ctx_scroll_extent, list_ctx_scroll_to, NULL /* title: the layout's */, list_ctx_back /* the filter, then the marks */,
-    list_ctx_keys, list_ctx_perform
+    list_ctx_keys, list_ctx_perform,
+    list_ctx_footer
 };
 
 
@@ -1347,6 +1360,7 @@ static void chart_ctx_destroy(void* ctx) {
 static const RolltuiWidgetPlugin kChartPlugin = {
     chart_ctx_destroy, chart_ctx_layout, chart_ctx_draw, chart_ctx_problem, NULL, NULL, NULL,
     NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
+    NULL,
     NULL,
     NULL
 };
@@ -1407,6 +1421,7 @@ static void error_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
 
 static const RolltuiWidgetPlugin kErrorPlugin = {
     error_ctx_destroy, error_ctx_layout, error_ctx_draw, error_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
+    NULL,
     NULL,
     NULL
 };
@@ -1779,7 +1794,7 @@ static void picker_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFra
   const RolltuiWidgetEnv* env = rolltui_windows_env(c->w);
   picker_ctx_layout(ctx, rn);
   rolltui_picker_set_hover(c->p, rn->hover, rn->hover_x, rn->hover_y);
-  rolltui_picker_draw(c->p, f, rolltui_windows_styles(c->w), rolltui_windows_scrollbar_glyphs(c->w), env->ambiguous_wide);
+  rolltui_picker_draw(c->p, f, rolltui_windows_styles(c->w), rolltui_windows_scrollbar_glyphs(c->w), env->ambiguous_wide, rn->focused);
 }
 /* Notes do NOT stop the widget drawing — the dotfile count is exactly that kind of remark. */
 static int picker_ctx_note_at(void* ctx, size_t i, RolltuiStr* out) {
@@ -1812,6 +1827,7 @@ static const RolltuiWidgetPlugin kPickerPlugin = {
     picker_ctx_destroy, picker_ctx_layout, picker_ctx_draw, NULL, picker_ctx_note_at,
     NULL,               picker_ctx_handle, picker_ctx_scroll_extent, picker_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_picker,
+    NULL,
     NULL
 };
 
@@ -1960,6 +1976,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*label=*/ROLLTUI_ROLE_LABEL,
       /*value=*/ROLLTUI_ROLE_VALUE,
       /*hover=*/ROLLTUI_ROLE_HOVER,
+      /*selected_away=*/ROLLTUI_ROLE_SELECTION,
   };
   if (!ctx) return;
   /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds
@@ -2184,6 +2201,7 @@ static const RolltuiWidgetPlugin kInputPlugin = {
     input_ctx_destroy,  input_ctx_layout, input_ctx_draw, input_ctx_problem, NULL,
     input_ctx_desired_outer, input_ctx_handle, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_input,
+    NULL,
     NULL
 };
 
@@ -2318,6 +2336,7 @@ static const RolltuiWidgetPlugin kTranscriptPlugin = {
     transcript_ctx_destroy, transcript_ctx_layout, transcript_ctx_draw, transcript_ctx_problem, NULL,
     NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
+    NULL,
     NULL
 };
 
@@ -2677,6 +2696,7 @@ static const RolltuiWidgetPlugin kMenuPlugin = {
     menu_ctx_destroy, menu_ctx_layout, menu_ctx_draw, menu_ctx_problem, menu_ctx_note_at,
     NULL,             NULL,            menu_ctx_scroll_extent, menu_ctx_scroll_to, menu_ctx_title, menu_ctx_back,
     keys_menu,
+    NULL,
     NULL
 };
 
@@ -3035,10 +3055,10 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     clen = rolltui_color_to_string(s.bg, buf, sizeof buf);
     rolltui_str_append(&tc->line, buf, clen);
     {
-      /* The five attributes, in the order the editor's menu lists them. */
-      const char* const attrs[5] = {"bold", "italic", "underline", "dim", "reverse"};
-      const unsigned char on[5] = {s.bold, s.italic, s.underline, s.dim, s.reverse};
-      for (a = 0; a < 5; ++a)
+      /* The six attributes, in the order the editor's menu lists them. */
+      const char* const attrs[6] = {"bold", "italic", "underline", "dim", "reverse", "strikethrough"};
+      const unsigned char on[6] = {s.bold, s.italic, s.underline, s.dim, s.reverse, s.strike};
+      for (a = 0; a < 6; ++a)
         if (on[a]) {
           rolltui_str_append(&tc->line, K("  "));
           rolltui_str_append(&tc->line, attrs[a], strlen(attrs[a]));
@@ -3118,6 +3138,7 @@ static const RolltuiWidgetPlugin kThemePlugin = {
     theme_ctx_destroy, theme_ctx_layout, theme_ctx_draw, NULL, NULL,
     NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL, theme_ctx_title, theme_ctx_back,
     keys_menu,
+    NULL,
     NULL
 };
 
@@ -3522,6 +3543,7 @@ static const RolltuiWidgetPlugin kKeysPlugin = {
     keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, NULL, NULL,
     NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL, keys_ctx_title, keys_ctx_back,
     keys_menu,
+    NULL,
     NULL
 };
 

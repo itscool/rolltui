@@ -110,7 +110,7 @@ struct Rig {
   std::string frame() {
     RolltuiFrame* f = rolltui_frame_new(w, h, styles[ROLLTUI_ROLE_BACKGROUND]);
     rolltui_picker_layout(p, RolltuiRect{0, 0, w, h});
-    rolltui_picker_draw(p, f, styles, &glyphs, 0);
+    rolltui_picker_draw(p, f, styles, &glyphs, 0, 1);
     const std::string t = text_of(f);
     rolltui_frame_free(f);
     return t;

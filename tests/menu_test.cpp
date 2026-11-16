@@ -419,6 +419,7 @@ constexpr RolltuiMenuRoles kMenuRoles = {
     /*label=*/static_cast<unsigned char>(Role::label),
     /*value=*/static_cast<unsigned char>(Role::value),
     /*hover=*/static_cast<unsigned char>(Role::hover),
+    /*selected_away=*/static_cast<unsigned char>(Role::selection),
 };
 constexpr RolltuiInputRoles kInputRoles = {
     /*text=*/static_cast<unsigned char>(Role::input_text),

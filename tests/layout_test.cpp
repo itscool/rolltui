@@ -795,7 +795,7 @@ void mine_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 constexpr RolltuiWidgetPlugin kMinePlugin = {
     /*destroy=*/mine_destroy, /*layout=*/mine_layout, /*draw=*/mine_draw,
     /*problem=*/nullptr,      /*note_at=*/nullptr,    /*desired_outer=*/nullptr,
-    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
+    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
 };
 RolltuiWidget mine_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   return RolltuiWidget{&kMinePlugin, new MineCtx(*static_cast<const MineCtx*>(ctx))};
@@ -848,7 +848,7 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*destroy=*/canvas_destroy,   /*layout=*/canvas_layout, /*draw=*/canvas_draw,
     /*problem=*/canvas_problem,   /*note_at=*/nullptr,      /*desired_outer=*/canvas_desired_outer,
-    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
+    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
 };
 struct CanvasFactoryCtx {
   RolltuiWindows* windows;

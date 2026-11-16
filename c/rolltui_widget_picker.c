@@ -110,14 +110,7 @@ static size_t skip_bytes(RolltuiPicker* p, const char* s, size_t n, int cells, i
 }
 /* `s`, or a prefix of it with a single-cell ellipsis, fitting `cells` — into `out`. */
 static void fit_into(RolltuiPicker* p, const char* s, size_t n, int cells, RolltuiStr* out) {
-  rolltui_str_clear(out);
-  if (cells <= 0) return;
-  if (width_of(p, s, n) <= cells) { rolltui_str_set(out, s, n); return; }
-  {
-    const size_t keep = prefix_bytes(p, s, n, cells - 1);
-    rolltui_str_set(out, s, keep);
-    rolltui_str_append(out, "\xE2\x80\xA6", 3);
-  }
+  rolltui_text_cut(p->draw, s, n, cells, ROLLTUI_CUT_END, 0, out);
 }
 
 /* ---- columns -------------------------------------------------------------------------------- */
@@ -1031,7 +1024,7 @@ void rolltui_picker_set_hover(RolltuiPicker* p, int on, int x, int y) {
 }
 
 void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* styles,
-                         const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide) {
+                         const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide, int focused) {
   Draw d;
   size_t ci;
   int first_drawn = 0;
@@ -1040,7 +1033,8 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   /* THE HEAD ROW IS A TITLE ROW: one background across every column, the panel's, so the row
    * that does not scroll reads as the row that names the columns rather than as their first line. */
   RolltuiStyle head = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_LABEL);
-  const RolltuiStyle here = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_MENU_SELECTED);
+  const RolltuiStyle here =
+      *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, focused ? ROLLTUI_ROLE_MENU_SELECTED : ROLLTUI_ROLE_SELECTION);
   const RolltuiStyle trail = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SELECTION);
   const RolltuiStyle hover = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_HOVER);
   const RolltuiStyle err_style = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_ERROR);

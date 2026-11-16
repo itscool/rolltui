@@ -1307,6 +1307,10 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
       if (nd && !wd->vt->title(wd->ctx, nd->title.p ? nd->title.p : "", nd->title.n, &nd->live_title))
         rolltui_str_clear(&nd->live_title);
     }
+    if (wd->vt->footer) {
+      RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
+      if (nd && !wd->vt->footer(wd->ctx, &nd->live_footer)) rolltui_str_clear(&nd->live_footer);
+    }
     if (!wd->vt->desired_outer) continue;
     /* The parent split is the INNERMOST one that contains this window — the last in tree
      * order, since a container precedes its children and siblings never overlap. */

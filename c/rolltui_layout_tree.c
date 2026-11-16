@@ -78,6 +78,8 @@ void rolltui_layout_node_release(RolltuiLayoutNode* n) {
   rolltui_str_free(&n->content);
   rolltui_str_free(&n->title);
   rolltui_str_free(&n->live_title);
+  rolltui_str_free(&n->footer);
+  rolltui_str_free(&n->live_footer);
   rolltui_str_free(&n->tabs);
   rolltui_node_list_release(&n->children);
   rolltui_layout_node_init(n);
@@ -95,6 +97,7 @@ void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* fr
   rolltui_str_set(&to->id, from->id.p, from->id.n);
   rolltui_str_set(&to->content, from->content.p, from->content.n);
   rolltui_str_set(&to->title, from->title.p, from->title.n);
+  rolltui_str_set(&to->footer, from->footer.p, from->footer.n);
   to->border = from->border;
   to->focusable = from->focusable;
   to->visible = from->visible;
@@ -147,7 +150,8 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
   if (a->kind != b->kind || a->border != b->border || a->focusable != b->focusable ||
       a->visible != b->visible || a->background != b->background)
     return 0;
-  if (!str_equal(&a->id, &b->id) || !str_equal(&a->content, &b->content) || !str_equal(&a->title, &b->title))
+  if (!str_equal(&a->id, &b->id) || !str_equal(&a->content, &b->content) || !str_equal(&a->title, &b->title) ||
+      !str_equal(&a->footer, &b->footer))
     return 0;
   if (!split_size_equal(&a->size, &b->size)) return 0;
   if (a->tab != b->tab || a->tab_count != b->tab_count || a->show_width != b->show_width || a->show_height != b->show_height) return 0;

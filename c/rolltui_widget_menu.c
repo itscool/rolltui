@@ -1473,16 +1473,7 @@ static int item_shows_swatch(const RolltuiMenuItem* it) {
  * too long says so instead of stopping mid-word. Returns the cells used. */
 static int put_text_ellipsis(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* s,
                              size_t n, RolltuiStyle st, int max_cells) {
-  const int aw = m->opt.ambiguous_wide;
-  const int ew = rolltui_u_display_width(m->u, ELLIPSIS, 3, aw); /* one cell, or two where ambiguous glyphs are wide */
-  int cells = 0, used;
-  size_t fit;
-  if (max_cells <= 0 || n == 0) return 0;
-  if (rolltui_u_display_width(m->u, s, n, aw) <= max_cells || max_cells <= ew)
-    return rolltui_frame_put_text(f, draw, x, y, s, n, st, max_cells, aw, 0);
-  fit = rolltui_u_fit(m->u, s, n, max_cells - ew, aw, &cells);
-  used = rolltui_frame_put_text(f, draw, x, y, s, fit, st, cells, aw, 0);
-  return used + rolltui_frame_put_text(f, draw, x + used, y, ELLIPSIS, 3, st, ew, aw, 0);
+  return rolltui_frame_put_text_cut(f, draw, x, y, s, n, st, max_cells, ROLLTUI_CUT_END, m->opt.ambiguous_wide, 0);
 }
 
 /* ---- a level that is a table (rolltui.h, ROLLTUI_MENU_COLUMNS) -------------------------------------------------------------- */
@@ -2268,6 +2259,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
   RolltuiMenu* mm = (RolltuiMenu*)m;
   const RolltuiRect a = m->area;
   const int aw = m->opt.ambiguous_wide;
+  const unsigned char sel_role = !focused && roles->selected_away ? roles->selected_away : roles->selected;
   const int x0 = a.x + m->opt.inset, w = a.w - 2 * m->opt.inset;
   /* `shortcut`'s OWN role states "none" for a background that means "whatever I am drawn on" —
    * a theme file's word for it, not a value this widget invents. Every site below that borrows
@@ -2364,7 +2356,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     }
     if (m->vis[i] == BACK_ROW) {
       RolltuiRect back_rect;
-      RolltuiStyle back = styles[i == m->sel ? roles->selected : i == hov ? roles->hover : roles->shortcut], blank;
+      RolltuiStyle back = styles[i == m->sel ? sel_role : i == hov ? roles->hover : roles->shortcut], blank;
       rolltui_style_on(&back, ground);
       /* THE ROW'S BLANK IS NOT PART OF THE WORD. Unselected, the way back is drawn in the shortcut
        * role, which a theme with no colour to spare marks (mono underlines it): the blank to the
@@ -2386,7 +2378,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     it = item_at(mm, i);
     if (!it) break;
     is_sel = i == m->sel;
-    base = styles[is_sel ? roles->selected : i == hov ? roles->hover : (usable(it) ? roles->item : roles->text_muted)];
+    base = styles[is_sel ? sel_role : i == hov ? roles->hover : (usable(it) ? roles->item : roles->text_muted)];
     row_rect.x = x0;
     row_rect.y = y + r;
     row_rect.w = w;

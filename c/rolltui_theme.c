@@ -274,6 +274,7 @@ size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, si
   if (style->italic) { out[n++] = ';'; out[n++] = '3'; }
   if (style->underline) { out[n++] = ';'; out[n++] = '4'; }
   if (style->reverse) { out[n++] = ';'; out[n++] = '7'; }
+  if (style->strike) { out[n++] = ';'; out[n++] = '9'; }
   n += emit_color(out + n, style->fg, 0, depth);
   n += emit_color(out + n, style->bg, 1, depth);
   out[n++] = 'm';
@@ -296,6 +297,7 @@ size_t rolltui_sgr_delta(const RolltuiStyle* from, const RolltuiStyle* to, unsig
   if (!from->italic != !to->italic) memcpy(d + n, to->italic ? ";3" : ";23", to->italic ? 2 : 3), n += to->italic ? 2 : 3;
   if (!from->underline != !to->underline) memcpy(d + n, to->underline ? ";4" : ";24", to->underline ? 2 : 3), n += to->underline ? 2 : 3;
   if (!from->reverse != !to->reverse) memcpy(d + n, to->reverse ? ";7" : ";27", to->reverse ? 2 : 3), n += to->reverse ? 2 : 3;
+  if (!from->strike != !to->strike) memcpy(d + n, to->strike ? ";9" : ";29", to->strike ? 2 : 3), n += to->strike ? 2 : 3;
   /* a colour by what it is SENT as, so two that the depth draws alike are no change */
   la = emit_color(ca, from->fg, 0, depth);
   lb = emit_color(cb, to->fg, 0, depth);
@@ -702,7 +704,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
         else out->bg = c;
       }
     } else if (streq(k, klen, "bold") || streq(k, klen, "italic") || streq(k, klen, "underline") ||
-              streq(k, klen, "dim") || streq(k, klen, "reverse")) {
+              streq(k, klen, "dim") || streq(k, klen, "reverse") || streq(k, klen, "strikethrough")) {
       const RolltuiJsonValue* b = x;
       if (rolltui_json_is_object(x)) {
         const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
@@ -724,6 +726,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
         else if (streq(k, klen, "italic")) out->italic = bv;
         else if (streq(k, klen, "underline")) out->underline = bv;
         else if (streq(k, klen, "dim")) out->dim = bv;
+        else if (streq(k, klen, "strikethrough")) out->strike = bv;
         else out->reverse = bv;
       }
     } else {
@@ -1201,6 +1204,7 @@ static RolltuiJsonValue* style_to_json(const RolltuiStyle* s, const RolltuiStyle
   set_attr(o, "underline", s->underline, light != NULL, light ? light->underline : s->underline);
   set_attr(o, "dim", s->dim, light != NULL, light ? light->dim : s->dim);
   set_attr(o, "reverse", s->reverse, light != NULL, light ? light->reverse : s->reverse);
+  set_attr(o, "strikethrough", s->strike, light != NULL, light ? light->strike : s->strike);
   return o;
 }
 

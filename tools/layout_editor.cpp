@@ -453,6 +453,7 @@ void LayoutEditor::rebuild_menu() {
   // tree operation in this menu says node ("Select the next node", "Delete this node").
   top.push_back(MenuItem::input("id", "Node id", name.clone()));
   top.push_back(MenuItem::input("title", "Title", text.clone()));
+  top.push_back(MenuItem::input("footer", "Footer (in the bottom border, at its right)", text.clone()));
   top.push_back(MenuItem::input("kind", "Widget kind", name.clone()));
   top.push_back(MenuItem::input("source", "Source", text.clone()));
   top.push_back(MenuItem::input("menu_file", "Menu file", name.clone()));
@@ -617,6 +618,7 @@ void LayoutEditor::sync_values() {
   set_value(menu_, "border", border_name(n->border));
   set_value(menu_, "id", sel_);
   set_value(menu_, "title", n->title);
+  set_value(menu_, "footer", n->footer);
   {
     std::size_t rn = 0;
     const char* nm = rolltui_role_name(static_cast<unsigned char>(n->background), &rn);
@@ -1069,6 +1071,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       return commit_current();
     }
     if (id == "title") { begin_preview(); if (Node* n = sel_node()) n->title.assign(value); return commit_current(); }
+    if (id == "footer") { begin_preview(); if (Node* n = sel_node()) n->footer.assign(value); return commit_current(); }
     if (id == "tabs") {
       Node* n = sel_node();
       if (!n || !n->is_window()) return {O::Changed, {}};

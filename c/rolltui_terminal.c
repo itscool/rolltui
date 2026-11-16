@@ -175,6 +175,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ev.text_len = e->text_len;
   ev.focused = e->focused;
   if (ec->t && !inline_mouse(ec->t, &ev)) return; /* outside an inline region: not this program's */
+  if (ec->t && ec->t->publishing && e->kind == ROLLTUI_EVENT_FOCUS) rolltui_termfacts_set_active_focused(e->focused);
   ec->fn(ec->ctx, &ev);
   if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
     RolltuiTerminal* t = ec->t;
@@ -308,6 +309,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
     rolltui_termfacts_set_active_erase(-1);
     rolltui_termfacts_set_active_mode(-1);
     rolltui_termfacts_set_active_images(0, 0, 0);
+    rolltui_termfacts_set_active_focused(1);
   }
   rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
   rolltui_key_decoder_free(t->decoder);
@@ -447,6 +449,7 @@ static void publish_depth(RolltuiTerminal* t) {
   rolltui_termfacts_set_active_erase(!(t->env.sty && *t->env.sty && !(t->env.tmux && *t->env.tmux)));
   rolltui_termfacts_set_active_mode(t->facts.mode);
   rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
+  if (!t->publishing) rolltui_termfacts_set_active_focused(1); /* entered: the person is typing into it */
   t->publishing = 1;
 }
 

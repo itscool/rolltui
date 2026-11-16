@@ -5,6 +5,7 @@
 │                                                                     │ Background role                   background ▸ │
 │                                                                     │ Node id: main                                  │
 │                                                                     │ Title:                                         │
+│                                                                     │ Footer (in the bottom border, at its right):   │
 │                                                                     │ Widget kind: text                              │
 │                                                                     │ Source:                                        │
 │                                                                     │ Menu file:                                     │
@@ -18,7 +19,6 @@
 │                                                                     │ Layout file — new, load, save                ▸ │
 │                                                                     │ Undo                                    Ctrl-Z │
 │                                                                     │ Redo                                    Ctrl-Y │
-│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

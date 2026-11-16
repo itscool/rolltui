@@ -1328,7 +1328,7 @@ struct App {
     return 1;
   }
   static constexpr RolltuiWidgetPlugin kApprovalPlugin = {
-      approval_destroy, approval_layout, approval_draw, nullptr, nullptr, nullptr, approval_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+      approval_destroy, approval_layout, approval_draw, nullptr, nullptr, nullptr, approval_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
   static RolltuiWidget approval_factory(void* c, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kApprovalPlugin, c}; }
 
   // ---- the details kind: the session report --------------------------------------------------
@@ -1429,7 +1429,7 @@ struct App {
     return 0;
   }
   static constexpr RolltuiWidgetPlugin kDetailsPlugin = {
-      details_destroy, details_layout, details_draw, nullptr, nullptr, nullptr, details_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+      details_destroy, details_layout, details_draw, nullptr, nullptr, nullptr, details_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
   static RolltuiWidget details_factory(void* c, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kDetailsPlugin, c}; }
 
   // ---- input ---------------------------------------------------------------------------------

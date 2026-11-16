@@ -337,6 +337,7 @@
         }
       },
       "md_strikethrough": {
+        "strikethrough": true,
         "fg": {
           "dark": "#858d99",
           "light": "#575d67"

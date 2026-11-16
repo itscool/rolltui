@@ -420,6 +420,9 @@ ROLLTUI_API(rolltui_bindings_sequence_for, INTERNAL)  /* the window table's keys
 ROLLTUI_API(rolltui_bindings_sequence_next, INTERNAL)  /* the panel of what can follow */
 ROLLTUI_API(rolltui_chord_bound_form, INTERNAL)  /* every lookup's form of a pressed key */
 ROLLTUI_API(rolltui_list_typing, INTERNAL)  /* the list kind says a digit is the filter's */
+ROLLTUI_API(rolltui_list_footer, INTERNAL)  /* the list kind's footer */
+ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a name with an ellipsis, at its end, middle or start */
+ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
 ROLLTUI_API(rolltui_bindings_add_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_bind, PUBLIC)
 ROLLTUI_API(rolltui_bindings_breaks_enter_rule, INTERNAL)  /* a step of bind */
@@ -1683,6 +1686,7 @@ ROLLTUI_API(rolltui_termenv_no_24bit_known, INTERNAL)
 ROLLTUI_API(rolltui_termenv_read, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_mode, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_wide, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_active_focused, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_split, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_apply_replies, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_clamp_depth, INTERNAL)
@@ -1692,6 +1696,7 @@ ROLLTUI_API(rolltui_termfacts_from_env, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_mode, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_wide, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active_focused, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_split, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_erase, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_erase, INTERNAL)  /* the renderer's short forms stand on it */

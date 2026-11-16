@@ -16,20 +16,20 @@
 │                   ││ │ downgrade                             │      │ Background role             panel_background ▸ │
 │                   ││ │ Wrap engine                           │ build│ Node id: status                                │
 │                   ││ │ Windows, layers, placement (Dim abs/  │ build│ Title: status                                  │
-│                   ││ │ rel per axis), focus                  │      │ Widget kind: rows                              │
-│                   ││ │ Menu widget (hierarchical,            │ build│ Source: status                                 │
-│                   ││ │ filterable) + list/text widgets       │      │ Menu file:                                     │
-│                   ││ │ Layout files (JSON: windows +         │ build│ Tabs (Title = content | …):                    │
-│                   ││ │ placements + content slots)           │      │ Shown tab                                    ▸ │
-│                   ││ │ Markdown block renderer (blocks →     │ build│ Shown from (width x height):                   │
-│                   ││ │ styled wrapped lines)                 │      │ Size (Alt+arrows nudge): 21                    │
-│                   ││ │ Theme (roles → styles, JSON loader,   │ build│ [ ] Focusable                                  │
-│                   ││ │ built-ins)                            │      │ Tree — split, swap, delete                   ▸ │
-│                   ││ └───────────────────────────────────────┴──────│ This screen — sizes, focus, popups, actions  ▸ │
-│                   ││                                                │ Layout file — new, load, save                ▸ │
-│                   ││ Here is the function you asked for:            │ Undo                                    Ctrl-Z │
-│                   ││                                                │ Redo                                    Ctrl-Y │
-│                   ││ ┌ cpp ─────────────────────────────────────────│                                                │
+│                   ││ │ rel per axis), focus                  │      │ Footer (in the bottom border, at its right):   │
+│                   ││ │ Menu widget (hierarchical,            │ build│ Widget kind: rows                              │
+│                   ││ │ filterable) + list/text widgets       │      │ Source: status                                 │
+│                   ││ │ Layout files (JSON: windows +         │ build│ Menu file:                                     │
+│                   ││ │ placements + content slots)           │      │ Tabs (Title = content | …):                    │
+│                   ││ │ Markdown block renderer (blocks →     │ build│ Shown tab                                    ▸ │
+│                   ││ │ styled wrapped lines)                 │      │ Shown from (width x height):                   │
+│                   ││ │ Theme (roles → styles, JSON loader,   │ build│ Size (Alt+arrows nudge): 21                    │
+│                   ││ │ built-ins)                            │      │ [ ] Focusable                                  │
+│                   ││ └───────────────────────────────────────┴──────│ Tree — split, swap, delete                   ▸ │
+│                   ││                                                │ This screen — sizes, focus, popups, actions  ▸ │
+│                   ││ Here is the function you asked for:            │ Layout file — new, load, save                ▸ │
+│                   ││                                                │ Undo                                    Ctrl-Z │
+│                   ││ ┌ cpp ─────────────────────────────────────────│ Redo                                    Ctrl-Y │
 │                   ││ │ int add(int a, int b) {                      │                                                │
 │                   ││ │   return a + b;                              │                                                │
 │                   ││ └──────────────────────────────────────────────│ selected: status  size 21  border single  rows │
