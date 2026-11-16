@@ -131,6 +131,9 @@ ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_leave_len", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_saved_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_have_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_handlers_installed", PROCESS)
+/* What handled each crash signal before the library: a crash puts the terminal back, then goes on to it. A process has one
+ * disposition per signal. */
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_crash_prev", PROCESS)
 /* The same terminal on Windows: the console handles and modes to restore, the leave sequence, whether the
  * console control handler is installed, and the performance counter's frequency, read once. */
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_in", PROCESS)
@@ -143,6 +146,9 @@ ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_in_cp", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_saved_out_cp", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_have_mode", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_handlers_installed", PROCESS)
+/* What handled an abort and an unhandled exception before the library, gone on to after the console is put back. */
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_abort_prev", PROCESS)
+ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_filter_prev", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "freq", PROCESS)
 
 /* THE DEPTH OF THE TERMINAL THIS PROCESS DRAWS TO, published so that `rolltui_swap_present` can hold

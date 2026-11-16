@@ -1,5 +1,6 @@
 /* rolltui/c/rolltui_layout.c — the C side of placement, composition and the stack. See
  * rolltui_layout.h; the rules are rolltui/Layout.hpp's. */
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_str.h"
 
@@ -504,8 +505,8 @@ static void collect_sink(void* ctx, const RolltuiResolvedNode* rn) {
 }
 
 struct RolltuiComposeScratch {
-  NodeCollect nodes;        /* ONE layer's resolved nodes — a third ROLE, reused per layer */
-  RolltuiDrawScratch* draw; /* OWNED: the cluster walk a title needs — a fourth */
+  NodeCollect nodes;        /* ONE layer's resolved nodes, reused per layer */
+  RolltuiDrawScratch* draw; /* OWNED: the cluster walk a title needs */
 };
 
 RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
@@ -2526,9 +2527,7 @@ static void builtin_layouts_fill(RolltuiContext* c) {
         !rolltui_layout_report_clean(&rep)) {
       /* A built-in that does not load cleanly is a PROGRAMMING ERROR: say so loudly rather
        * than serve half a layout. The C++ did the same, and its test asserts clean() per name. */
-      fprintf(stderr, "rolltui: built-in layout '%s' is broken: %s\n", name,
-              rep.error.n ? rep.error.p : "(unclean report)");
-      abort();
+      rolltui_fatal("built-in layout '%s' is broken: %s", name, rep.error.n ? rep.error.p : "(unclean report)");
     }
     rolltui_layout_report_release(&rep);
     lc->layouts[i].name = name;

@@ -5,6 +5,7 @@
  * Everything allocates through the closed set in `rolltui_alloc.h`. A table is one handle
  * and holds nothing process-wide, so nothing here registers a shutdown releaser; the report
  * likewise owns nothing beyond one call's arrays. */
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_str.h"
 
@@ -990,9 +991,7 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c) {
     const char* stext;
     rolltui_bindings_report_summary(&rep, &summary);
     stext = rolltui_str_get(&summary, &slen);
-    fprintf(stderr, "rolltui: the shipped default bindings are broken: %.*s\n", (int)slen, stext);
-    rolltui_str_free(&summary);
-    abort();
+    rolltui_fatal("the shipped default bindings are broken: %.*s", (int)slen, stext);
   }
   rolltui_bindings_report_release(&rep);
 
@@ -1009,11 +1008,9 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c) {
     size_t alen = 0;
     const char* a = rolltui_bindings_row_at(b, i, &alen);
     if (!rolltui_bindings_has(b, a, alen)) {
-      fprintf(stderr,
-              "rolltui: the shipped default bindings bind '%.*s', which no shipped layout "
-              "declares (a mounted tool's chords belong to the tool)\n",
-              (int)alen, a);
-      abort();
+      rolltui_fatal("the shipped default bindings bind '%.*s', which no shipped layout declares (a mounted tool's chords "
+                    "belong to the tool)",
+                    (int)alen, a);
     }
   }
 

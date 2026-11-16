@@ -6,6 +6,7 @@
  * straight into this file's own arrays, where the C++ ones cast a `void*` and moved bytes
  * out of an `MD_ATTRIBUTE` into a `std::string`.
  */
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_mermaid.h"
 
@@ -52,10 +53,7 @@ static int ascii_ieq(const char* a, const char* b, size_t n) {
 #define A_CENTER 2
 #define A_RIGHT 3
 
-static void die(const char* what) {
-  fprintf(stderr, "rolltui: markdown: %s\n", what);
-  abort();
-}
+static _Noreturn void die(const char* what) { rolltui_fatal("markdown: %s", what); }
 
 /* ======================================================================================
  * THE BLOCK TREE

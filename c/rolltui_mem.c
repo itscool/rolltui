@@ -9,8 +9,11 @@
  * module is the BOTTOM of the allocation-strategy stack (see rolltui_mem.h), and nothing
  * here calls anything `rolltui_alloc.c` provides. */
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/rolltui.h"
+
+#include <stdarg.h>
 
 #include <stdatomic.h>
 #include <stddef.h>
@@ -69,8 +72,17 @@ static void drop_live(void* p) {
 /* Nothing useful is available here: a half-drawn frame is worse than a clean death, and
  * there is no caller in a terminal-UI library that can do better with a failed 200-byte
  * request. Said out loud so the exit is not mysterious. */
-static _Noreturn void out_of_memory(size_t bytes) {
-  fprintf(stderr, "rolltui: out of memory requesting %zu bytes\n", bytes);
+static _Noreturn void out_of_memory(size_t bytes) { rolltui_fatal("out of memory requesting %zu bytes", bytes); }
+
+_Noreturn void rolltui_fatal(const char* fmt, ...) {
+  va_list ap;
+  rolltui_os_tty_restore_now();
+  fputs("rolltui: ", stderr);
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
+  fflush(stderr);
   abort();
 }
 

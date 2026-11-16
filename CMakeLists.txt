@@ -471,7 +471,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
-  width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp
+  width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp fatal_test.cpp
   screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp watch_test.cpp hints_test.cpp regex_test.cpp syntax_test.cpp syntax_langs_test.cpp syntax_test_helpers.hpp preview_syntax_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
@@ -525,6 +525,11 @@ add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 if(ROLLTUI_BUILD_TESTS)
   set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+endif()
+# A STOP PUTS THE TERMINAL BACK FIRST: the library's fatal errors, an abort, a crash, each in a child on a pty.
+add_rolltui_test(rolltui-fatal-test tests/fatal_test.cpp)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-fatal-test PROPERTIES TIMEOUT 60)
 endif()
 add_rolltui_test(rolltui-run-test tests/run_test.cpp)
 if(ROLLTUI_BUILD_TESTS)
@@ -800,6 +805,13 @@ target_compile_definitions(rolltui-dirktui-watch-test PRIVATE DIRKTUI_PRODUCT_BI
 add_dependencies(rolltui-dirktui-watch-test dirktui)
 if(ROLLTUI_BUILD_TESTS)
   set_tests_properties(rolltui-dirktui-watch-test PROPERTIES TIMEOUT 90)
+endif()
+# A PROGRAM dirktui RUNS ON THE TERMINAL HAS CTRL-C TO ITSELF: the real dirktui on a pty, a script interrupted under it.
+add_rolltui_test(rolltui-dirktui-child-test tests/dirktui_child_test.cpp)
+target_compile_definitions(rolltui-dirktui-child-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-dirktui-child-test dirktui)
+if(ROLLTUI_BUILD_TESTS)
+  set_tests_properties(rolltui-dirktui-child-test PROPERTIES TIMEOUT 60)
 endif()
 add_rolltui_test(rolltui-dirktui-theme-test tests/dirktui_theme_test.cpp)
 target_compile_definitions(rolltui-dirktui-theme-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"

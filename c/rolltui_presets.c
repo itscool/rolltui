@@ -342,17 +342,15 @@ static void build_cache(RolltuiPresetDomain* d) {
        * loader's standard); say so and stop rather than run half of one. */
       Buf why = {NULL, 0, 0};
       d->report->get_error(scratch, buf_put, &why);
-      fprintf(stderr, "rolltui: shipped %.*s preset '%.*s' is broken: %.*s\n", (int)d->kind_len, d->kind, (int)nlen,
-              name, (int)why.len, why.p ? why.p : "");
-      abort();
+      rolltui_fatal("shipped %.*s preset '%.*s' is broken: %.*s", (int)d->kind_len, d->kind, (int)nlen, name, (int)why.len,
+                    why.p ? why.p : "");
     }
     buf_set(&c->names[i], name, nlen);
     c->values[i] = v;
     if (nlen == 7 && memcmp(name, "default", 7) == 0) have_default = 1;
   }
   if (!have_default) {
-    fprintf(stderr, "rolltui: no shipped %.*s preset named 'default' (rule 5)\n", (int)d->kind_len, d->kind);
-    abort();
+    rolltui_fatal("no shipped %.*s preset named 'default' (rule 5)", (int)d->kind_len, d->kind);
   }
   d->report->destroy(scratch);
   d->cache = c;

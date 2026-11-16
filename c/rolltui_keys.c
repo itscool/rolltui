@@ -232,7 +232,12 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
     m.ctrl = (unsigned char)((b & 16) != 0);
     low = b & 3;
     motion = b & 32;
-    if (b & 64) {
+    if (b & 128) {
+      /* xterm buttons 8-11, a mouse's back and forward and the two past them: reported as themselves, never as a left, middle
+       * or right press the person did not make. */
+      m.kind = (unsigned char)(motion ? 2 : final == 'm' ? 1 : 0);
+      m.button = 8 + low;
+    } else if (b & 64) {
       /* xterm buttons 4-7: 64 up, 65 down, 66 left, 67 right. Left/right are a trackpad's
        * sideways ticks and must never become vertical scrolling. */
       static const unsigned char wheel[4] = {4, 5, 6, 7};

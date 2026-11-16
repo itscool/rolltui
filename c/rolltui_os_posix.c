@@ -388,12 +388,32 @@ static void on_winch(int sig) {
   }
 }
 
+/* A CRASH (an abort, an assert, a bad access) puts the terminal back too, then goes on to whatever handled the signal before, so a
+ * host's crash reporter still runs, and the process ends as that signal ends it. */
+static const int kCrashSignals[] = {SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL};
+#define CRASH_SIGNALS (sizeof kCrashSignals / sizeof kCrashSignals[0])
+static struct sigaction g_crash_prev[CRASH_SIGNALS];
+
+static void on_crash_signal(int sig) {
+  size_t i;
+  rolltui_os_tty_restore_now();
+  for (i = 0; i < CRASH_SIGNALS; ++i)
+    if (kCrashSignals[i] == sig) sigaction(sig, &g_crash_prev[i], NULL);
+  raise(sig); /* blocked while this runs: delivered to the previous action as it returns */
+}
+
 void rolltui_os_tty_install_handlers(void) {
+  size_t i;
+  struct sigaction sa;
   if (atomic_exchange(&g_handlers_installed, 1)) return;
   signal(SIGINT, on_fatal_signal);
   signal(SIGTERM, on_fatal_signal);
   signal(SIGHUP, on_fatal_signal);
   signal(SIGQUIT, on_fatal_signal);
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = on_crash_signal;
+  sigemptyset(&sa.sa_mask);
+  for (i = 0; i < CRASH_SIGNALS; ++i) sigaction(kCrashSignals[i], &sa, &g_crash_prev[i]);
 }
 
 void rolltui_os_tty_listen_resize(RolltuiOsTty* t) {

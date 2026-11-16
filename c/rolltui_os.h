@@ -142,6 +142,23 @@ void rolltui_os_tty_restore_now(void);
 void rolltui_os_tty_install_handlers(void);
 void rolltui_os_tty_listen_resize(RolltuiOsTty* t);
 
+/* A FATAL ERROR, SAID WHERE IT CAN BE READ: the terminal is put back (the alternate screen left, the mode restored) before the
+ * message goes to stderr with a "rolltui: " prefix and a newline, and then the process aborts. Every stop in the library goes
+ * through here: a message printed first would be drawn on the screen that leaving discards. */
+#if defined(__cplusplus)
+#define ROLLTUI_NORETURN [[noreturn]]
+#else
+#define ROLLTUI_NORETURN _Noreturn
+#endif
+#if defined(__MINGW32__) /* the UCRT's printf, which has %zu; GCC's `printf` there means Microsoft's older one */
+#define ROLLTUI_PRINTF_LIKE __attribute__((format(gnu_printf, 1, 2)))
+#elif defined(__GNUC__)
+#define ROLLTUI_PRINTF_LIKE __attribute__((format(printf, 1, 2)))
+#else
+#define ROLLTUI_PRINTF_LIKE
+#endif
+ROLLTUI_NORETURN void rolltui_fatal(const char* fmt, ...) ROLLTUI_PRINTF_LIKE;
+
 #ifdef __cplusplus
 }
 #endif

@@ -18,6 +18,7 @@
  * property moving fails a test instead of passing everywhere. */
 #include "rolltui/testkit/testctl.h"
 
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */
 #include "rolltui/c/rolltui_theme.h"
@@ -455,10 +456,9 @@ const char* rolltui_theme_builtin_name(size_t i) {
 
 /* Says which shipped file was unusable and stops. Reached only when a file compiled into this
  * binary does not load, which is a build that should not have been produced. */
-static void builtin_broken(const char* preset, size_t preset_len, const char* why, size_t why_len) {
-  fprintf(stderr, "rolltui: the shipped theme '%.*s' a built-in reads is broken: %.*s\n", (int)preset_len, preset,
-          (int)why_len, why_len ? why : "");
-  abort();
+static _Noreturn void builtin_broken(const char* preset, size_t preset_len, const char* why, size_t why_len) {
+  rolltui_fatal("the shipped theme '%.*s' a built-in reads is broken: %.*s", (int)preset_len, preset, (int)why_len,
+                why_len ? why : "");
 }
 
 RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, RolltuiStyle* styles,

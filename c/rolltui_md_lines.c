@@ -1,4 +1,5 @@
 /* rolltui/c/rolltui_md_lines.c — the span store. Contract in rolltui_md_lines.h. */
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_md_lines.h"
 
 #include <stdio.h>
@@ -83,10 +84,7 @@ struct RolltuiMdLines {
   size_t gs_cap;
 };
 
-static void die(const char* what) {
-  fprintf(stderr, "rolltui: md_lines: %s\n", what);
-  abort();
-}
+static _Noreturn void die(const char* what) { rolltui_fatal("md_lines: %s", what); }
 
 RolltuiMdLines* rolltui_md_lines_new(void) {
   RolltuiMdLines* L = (RolltuiMdLines*)rolltui_mem_alloc(sizeof *L);

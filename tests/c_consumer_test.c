@@ -432,6 +432,25 @@ int main(void) {
     rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &bytes);
     check(bytes.n == 0, "an identical second frame emits nothing");
 
+    /* A HYPERLINK OF THE HOST'S OWN: the id from the frame, the text drawn with it, and the present sends it as OSC 8. */
+    rolltui_str_clear(&bytes);
+    f = rolltui_swap_begin(swap, app.w, app.h,
+                           *rolltui_theme_style(app.styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_BACKGROUND));
+    {
+      RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+      const unsigned int link = rolltui_frame_link_id(f, "https://example.invalid/c", 25);
+      RolltuiStyle plain;
+      memset(&plain, 0, sizeof plain);
+      check(link != 0 && rolltui_frame_link_id(f, "https://example.invalid/c", 25) == link &&
+                rolltui_frame_link_id(f, "", 0) == 0,
+            "a host gets a link id for a URL, the same one again for the same URL, and none for an empty one");
+      rolltui_frame_put_text(f, d, 0, 0, "docs", 4, plain, 4, 0, link);
+      rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &bytes);
+      check(bytes.p != NULL && strstr(bytes.p, "\x1b]8;;https://example.invalid/c") != NULL && strstr(bytes.p, "docs") != NULL,
+            "…and text drawn with it is sent as an OSC 8 hyperlink");
+      rolltui_draw_scratch_free(d);
+    }
+
     rolltui_str_free(&text);
     rolltui_str_free(&bytes);
     rolltui_swap_free(swap);

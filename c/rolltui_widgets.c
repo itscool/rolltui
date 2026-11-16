@@ -9,6 +9,8 @@
 #include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
+#include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_widget_menu.h"
@@ -271,16 +273,48 @@ struct RolltuiWindows {
   RolltuiMdHighlightFn highlight_fn;
   void* highlight_ctx;
   void (*highlight_free_ctx)(void*);
+  unsigned char highlight_on_block; /* the library's own languages stand on the block; a host's highlighter does not */
 
   RolltuiMap inputs;      /* source -> RolltuiInput*, OWNED */
   RolltuiMap transcripts; /* source -> RolltuiTranscript*, OWNED */
   RolltuiMap menus;       /* source -> RolltuiMenu*, OWNED */
 };
 
+/* THE LIBRARY'S OWN LANGUAGES, the highlighter a table starts with: the shipped ones and the person's from
+ * `<config>/rolltui/syntax/`, the set the picker's preview uses. Parsed when the first code line is drawn, so a screen that
+ * shows no code pays nothing for them. */
+typedef struct DefaultHighlight {
+  RolltuiSyntax* syn;
+  RolltuiSyntaxMd* md;
+} DefaultHighlight;
+
+static void default_highlight(void* ctx, const char* lang, size_t lang_n, const RolltuiMdCodeLine* lines, size_t line_count,
+                              size_t index, RolltuiMdSpanSink emit, void* sink) {
+  DefaultHighlight* d = (DefaultHighlight*)ctx;
+  if (!d->md) {
+    d->syn = rolltui_syntax_new_standard(NULL);
+    d->md = rolltui_syntax_md_new(d->syn, rolltui_md_roles()->code_block);
+  }
+  rolltui_syntax_md_highlight(d->md, lang, lang_n, lines, line_count, index, emit, sink);
+}
+
+static void default_highlight_free(void* ctx) {
+  DefaultHighlight* d = (DefaultHighlight*)ctx;
+  if (!d) return;
+  rolltui_syntax_md_free(d->md);
+  rolltui_syntax_free(d->syn);
+  rolltui_mem_free(d);
+}
+
 RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   RolltuiWindows* w = (RolltuiWindows*)rolltui_mem_alloc(sizeof *w);
   memset(w, 0, sizeof *w);
   w->ctx = ctx;
+  w->highlight_fn = default_highlight;
+  w->highlight_ctx = rolltui_mem_alloc(sizeof(DefaultHighlight));
+  memset(w->highlight_ctx, 0, sizeof(DefaultHighlight));
+  w->highlight_free_ctx = default_highlight_free;
+  w->highlight_on_block = 1;
   /* The session's configuration, made on first use like every other subsystem it owns. A second
    * `RolltuiWindows` on the same context gets the SAME one, which is the point of the split:
    * two screens in one session are configured once, not twice. */
@@ -482,7 +516,7 @@ RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* sou
   t = rolltui_transcript_new(); /* its roles are its own defaults now (rolltui_widget_transcript.c) */
   /* The live highlighter, applied at CREATION so a transcript first asked for after
    * `set_highlight` is not silently the one that misses it. */
-  if (w->highlight_fn) rolltui_transcript_set_highlight(t, w->highlight_fn, w->highlight_ctx);
+  if (w->highlight_fn) rolltui_transcript_set_highlight(t, w->highlight_fn, w->highlight_ctx, w->highlight_on_block);
   rolltui_map_put(&w->transcripts, source, len, t);
   return t;
 }
@@ -494,10 +528,11 @@ void rolltui_windows_set_highlight(RolltuiWindows* w, RolltuiMdHighlightFn fn, v
   w->highlight_fn = fn;
   w->highlight_ctx = ctx;
   w->highlight_free_ctx = free_ctx;
+  w->highlight_on_block = 0;
   /* PUSHED onto every transcript that already exists, rather than left for each to pull on
    * its own next frame: nothing here polls an epoch, so nothing is left to miss a change. */
   for (i = 0; i < rolltui_map_count(&w->transcripts); ++i)
-    rolltui_transcript_set_highlight((RolltuiTranscript*)rolltui_map_value_at(&w->transcripts, i), fn, ctx);
+    rolltui_transcript_set_highlight((RolltuiTranscript*)rolltui_map_value_at(&w->transcripts, i), fn, ctx, 0);
 }
 
 /* The menu's own map half, WITHOUT the file refresh — this is what the `menu` factory calls,

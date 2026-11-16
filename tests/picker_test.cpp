@@ -228,6 +228,47 @@ int main() {
     rolltui_picker_status_release(&before);
     rolltui_picker_status_release(&after);
   }
+  // ---- only the left button chooses: a right, middle, back or forward press is the host's ------
+  {
+    const std::string deep = (root / "alpha").string();
+    rolltui_picker_go_to(p, deep.data(), deep.size());
+    rolltui_frame_free(draw(120, 20));
+    auto selected = [&]() {
+      RolltuiStr s{};
+      int d = 0;
+      rolltui_picker_selected(p, &s, &d);
+      const std::string r = str(s);
+      rolltui_str_free(&s);
+      return r;
+    };
+    auto mouse = [&](RolltuiMouseEvent::Kind kind, int button, int y) {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_MOUSE;
+      e.mouse.kind = kind;
+      e.mouse.button = button;
+      e.mouse.x = 2;
+      e.mouse.y = y;
+      return rolltui_picker_handle(p, &e, b, A) != 0;
+    };
+    const std::string was = selected();
+    bool moved = false, claimed = false, took = false;
+    for (int button : {2, 3, 8, 9})
+      for (int y = 1; y <= 6; ++y)
+        for (auto kind : {RolltuiMouseEvent::Kind::Press, RolltuiMouseEvent::Kind::DoubleClick}) {
+          claimed = mouse(kind, button, y) || claimed;
+          moved = moved || selected() != was;
+          took = rolltui_picker_event(p, &ev) || took;
+        }
+    check(!moved && !took && !claimed,
+          "a press or double-click with any button but the left selects nothing, opens nothing, and is left to the host");
+    bool left_moved = false;
+    for (int y = 1; y <= 6 && !left_moved; ++y) {
+      mouse(RolltuiMouseEvent::Kind::Press, 1, y);
+      left_moved = selected() != was;
+    }
+    check(left_moved, "CONTROL: the left button on the same rows does select");
+    rolltui_picker_go_to(p, deep.data(), deep.size());
+  }
   // ---- focusing a column by index: a breadcrumb's segment ------------------------------------
   {
     const std::string deep = (root / "alpha").string();

@@ -267,7 +267,7 @@ typedef struct RolltuiMouseEvent {
   unsigned char kind; /* 0 press, 1 release, 2 drag, 3 move, 4-7 wheel up/down/left/right, 8 double-click */
 #endif
   int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0); /* 0-based cells */
-  int button ROLLTUI_DEFAULT(0);                  /* 1 left, 2 middle, 3 right; 0 for motion/wheel */
+  int button ROLLTUI_DEFAULT(0); /* 1 left, 2 middle, 3 right, 8 back, 9 forward (10, 11 the buttons past them); 0 for motion/wheel */
   unsigned char ctrl ROLLTUI_DEFAULT(0), alt ROLLTUI_DEFAULT(0), shift ROLLTUI_DEFAULT(0);
 } RolltuiMouseEvent;
 
@@ -509,7 +509,7 @@ size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
 /* RolltuiCellRaw: the plain data. `rolltui_cpp.h` declares `class RolltuiCell : public
  * RolltuiCellRaw` reclaiming the name, with `spilled()` and the two constexpr constants. */
 typedef struct RolltuiCellRaw {
-  unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from rolltui_frame_link_id */
+  unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from `rolltui_frame_link_id` */
   RolltuiStyle style;
   char bytes[ROLLTUI_CELL_INLINE_GLYPH] ROLLTUI_DEFAULT({' '}); /* the cluster, or its spill index */
   unsigned char len ROLLTUI_DEFAULT(1);   /* bytes in `bytes`; 0 on a continuation cell */
@@ -546,6 +546,10 @@ void rolltui_draw_scratch_free(RolltuiDrawScratch* s); /* a no-op on NULL */
  * edge, or before a wide glyph that would be cut in half. Returns the cells used. */
 int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
                            RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
+/* A HYPERLINK: the id `rolltui_frame_put_text` takes as `link`, for `url` in this frame. Text drawn with it is sent as an OSC 8
+ * hyperlink, which a terminal that has them opens on a click. The same URL gets the same id; an empty one gets 0, no link. Ids
+ * belong to the frame and a new frame starts with none, so a host asks for its links each time it draws. */
+unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len);
 
 /* ---- a colour, shown ---------------------------------------------------------------------
  * A COLOUR VALUE'S SWATCH, wherever one is drawn (a theme editor's role, a menu's colour input, a painter's ink): two cells showing
@@ -1375,8 +1379,8 @@ typedef struct RolltuiLayoutRoles {
  * nothing, which is what a golden-frame harness wants. */
 typedef void (*RolltuiSlotFn)(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f);
 
-/* WORKING MEMORY THE CALLER OWNS: two screen-sized arm maps (the joins written so far, and what was under the ring before this window
- * cleared it) plus the draw scratch a title needs. One buffer per ROLE, so the compose's maps and the text walk's clusters cannot alias. */
+/* WORKING MEMORY THE CALLER OWNS: one layer's resolved windows, and the draw scratch a title needs. One buffer per ROLE, so the
+ * compose's nodes and the text walk's clusters cannot alias. */
 typedef struct RolltuiComposeScratch RolltuiComposeScratch;
 
 #define ROLLTUI_SOURCE_REQUIRED 0
@@ -2497,9 +2501,10 @@ inline RolltuiMenuItem RolltuiMenuItem::separator(const char* id) {
 
 #define ROLLTUI_MENU_EVENT_CLOSED 5
 
-/* The focus moved to a different item — an arrow key, a typed filter narrowing the match, a mouse hover or drag, a dropdown's own
- * up/down — with nothing else to report: `id` is the newly-focused item's, `value`/`checked` are untouched. Never fires while
- * editing a typed field (that is not browsing), and never alongside another kind: ACTIVATE/TOGGLE/CHOOSE/INPUT/CLOSED always win. */
+/* The focus moved to a different item — an arrow key, a typed filter narrowing the match, a dropdown's own up/down — with nothing
+ * else to report: `id` is the newly-focused item's, `value`/`checked` are untouched. A click moves the focus and acts, so it reports
+ * what it did instead. Never fires while editing a typed field (that is not browsing), and never alongside another kind:
+ * ACTIVATE/TOGGLE/CHOOSE/INPUT/CLOSED always win. */
 #define ROLLTUI_MENU_EVENT_MOVED 6
 
 typedef struct RolltuiMenuEvent {
@@ -3148,9 +3153,11 @@ void rolltui_windows_free(RolltuiWindows* w);
 void rolltui_context_register_kind(RolltuiContext* ctx, const char* name, size_t len,
                                    RolltuiWidgetFactory factory, void* kind_ctx, void (*free_ctx)(void*));
 
-/* THE SYNTAX HIGHLIGHTER every transcript this table owns renders code blocks through: a HOST fact, off until set. Pushed onto every
- * transcript that exists AND onto each one created afterwards, so the order a host calls this and `rolltui_windows_transcript` in cannot
- * matter. `ctx` is released through `free_ctx` when this is called again or when `w` is freed. */
+/* THE SYNTAX HIGHLIGHTER every transcript this table owns renders code blocks through. A table starts with the library's own
+ * languages: the shipped ones and the person's from `<config>/rolltui/syntax/`, read when the first code line is drawn. A host's
+ * highlighter replaces them, and `fn` NULL turns highlighting off. Pushed onto every transcript that exists AND onto each one
+ * created afterwards, so the order a host calls this and `rolltui_windows_transcript` in cannot matter. `ctx` is released through
+ * `free_ctx` when this is called again or when `w` is freed. */
 void rolltui_windows_set_highlight(RolltuiWindows* w, RolltuiMdHighlightFn fn, void* ctx,
                                    void (*free_ctx)(void*));
 

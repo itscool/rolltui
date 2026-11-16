@@ -201,6 +201,9 @@ int main() {
   table("\x1b[<67;1;1M", "Mouse WheelRight @0,0");
   table("\x1b[<70;3;4M", "Mouse Shift+WheelLeft @2,3");
   table("\x1b[<16;1;1M", "Mouse Ctrl+Press 1 @0,0");
+  table("\x1b[<128;5;5M", "Mouse Press 8 @4,4");   // back: never a left press the person did not make
+  table("\x1b[<129;5;5m", "Mouse Release 9 @4,4");  // forward
+  table("\x1b[<160;5;5M", "Mouse Drag 8 @4,4");
   table("\x1b[<4;1;1M", "Mouse Shift+Press 1 @0,0");
   table("\x1b[200~hello\x1b[201~", "Paste(5 bytes)");
   table("\x1b[200~a\x1b" "b\x1b[201~x", "Paste(3 bytes) | x");

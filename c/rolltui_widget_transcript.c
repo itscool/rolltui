@@ -132,6 +132,7 @@ struct RolltuiTranscript {
 
   RolltuiMdHighlightFn highlight_;
   void* highlight_ctx_;
+  unsigned char highlight_on_block_; /* coloured code stands on the code block's shading (`RolltuiMdRenderOptions`) */
   unsigned long long highlight_epoch_;
 
   RolltuiStr query_;
@@ -306,6 +307,7 @@ static void lay_out(RolltuiTranscript* t, RolltuiEntryLayout* L, const RolltuiDo
     ro.roles = *rolltui_md_roles();
     ro.highlight = t->highlight_;
     ro.highlight_ctx = t->highlight_ctx_;
+    ro.highlight_on_block = t->highlight_on_block_;
     ro.fold_over_lines = opt->code_fold_over_lines;
     ro.cap_lines = opt->code_cap_lines;
     if (f && f->n) {
@@ -1605,9 +1607,10 @@ void rolltui_transcript_set_copy(RolltuiTranscript* t, RolltuiCopyFn fn, void* c
   t->copy_ctx_ = ctx;
 }
 
-void rolltui_transcript_set_highlight(RolltuiTranscript* t, RolltuiMdHighlightFn fn, void* ctx) {
+void rolltui_transcript_set_highlight(RolltuiTranscript* t, RolltuiMdHighlightFn fn, void* ctx, int on_block) {
   t->highlight_ = fn;
   t->highlight_ctx_ = ctx;
+  t->highlight_on_block_ = (unsigned char)(on_block != 0);
   /* Bumped so a LATER highlighter re-lays everything instead of being silently ignored. */
   ++t->highlight_epoch_;
 }
@@ -1653,6 +1656,7 @@ RolltuiFrame* rolltui_transcript_entry_frame(const RolltuiTranscript* like, cons
   rolltui_doc_entry_copy(rolltui_document_add(&doc), e);
   t->highlight_ = like->highlight_;
   t->highlight_ctx_ = like->highlight_ctx_;
+  t->highlight_on_block_ = like->highlight_on_block_;
   t->highlight_epoch_ = like->highlight_epoch_;
   opt.gap = 0; /* one entry: nothing to keep apart */
   if (width < 1) width = 1;

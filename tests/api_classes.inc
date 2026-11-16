@@ -131,7 +131,8 @@ ROLLTUI_API(rolltui_frame_free, PUBLIC)  /* the pair of `_new` */
 ROLLTUI_API(rolltui_frame_glyph, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_height, INTERNAL)  /* Phase 24: the pair of `_width`, and it went with it */
 ROLLTUI_API(rolltui_frame_link, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_link_id, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
+ROLLTUI_API(rolltui_frame_link_id, PUBLIC)  /* KEPT: the only way to fill `rolltui_frame_put_text`'s `link`, so a host that draws a
+                                               * hyperlink of its own needs it; until 2026-11-15 a host could pass 0 and nothing else */
 ROLLTUI_API(rolltui_frame_mark, PUBLIC)  /* KEPT: matching part — `rolltui_effects_apply` is consumer-used, and this is the WIDGET half of that contract — motion is the theme's, a state is the widget's */
 ROLLTUI_API(rolltui_frame_mark_at, INTERNAL)  /* a step of mark */
 ROLLTUI_API(rolltui_frame_mark_count, PUBLIC)
@@ -1296,6 +1297,7 @@ ROLLTUI_API(rolltui_os_tty_withdraw, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_restore_now, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_install_handlers, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_listen_resize, INTERNAL)
+ROLLTUI_API(rolltui_fatal, INTERNAL)  /* every stop in the library: the terminal put back, then the message */
 ROLLTUI_API(rolltui_terminal_wake, PUBLIC)
 ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)

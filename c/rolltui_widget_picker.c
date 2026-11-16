@@ -1362,7 +1362,7 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
         m->y < p->pv_rect.y + p->pv_rect.h) {
       if (k == 4) { rolltui_preview_scroll_by(p->pv, -3); return 1; }
       if (k == 5) { rolltui_preview_scroll_by(p->pv, 3); return 1; }
-      if (k == 0 || k == 8) { p->pv_focus = 1; return 1; }
+      if ((k == 0 || k == 8) && m->button == 1) { p->pv_focus = 1; return 1; }
       if (k == 1 || k == 2) return 1;
     }
     if (k == 4 /* WheelUp */ || k == 5 /* WheelDown */) {
@@ -1386,7 +1386,8 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
       return 1;
     }
     if (k == 1 /* Release */) { const int was = p->drag_col >= 0; p->drag_col = -1; return was; }
-    if (k != 0 /* Press */ && k != 8 /* DoubleClick */) return 0;
+    /* ONLY THE LEFT BUTTON CHOOSES, as in every widget: a right, middle, back or forward press is the host's. */
+    if ((k != 0 /* Press */ && k != 8 /* DoubleClick */) || m->button != 1) return 0;
     dc = divider_at(p, m->x, m->y);
     if (dc >= 0) {
       /* ON THE THUMB: grab it where it was pressed. ON THE TRACK: bring the thumb's middle to the

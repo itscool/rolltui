@@ -747,6 +747,7 @@ struct RolltuiHighlight {
   RolltuiRegexSlot* memo; /* what each rule's regex proved earlier on the line in hand (rolltui_regex_match_memo) */
   size_t memo_cap;
   unsigned memo_gen;      /* the line's number for the memo: a new one per line, so nothing is ever cleared */
+  struct Runner* runner;  /* the run's state and its context stack, made at the first run and reused by every one after */
 };
 
 RolltuiHighlight* rolltui_highlight_new(void) {
@@ -760,6 +761,7 @@ void rolltui_highlight_free(RolltuiHighlight* h) {
   rolltui_mem_free(h->runs);
   rolltui_mem_free(h->first);
   rolltui_mem_free(h->memo);
+  rolltui_mem_free(h->runner);
   rolltui_mem_free(h);
 }
 
@@ -996,7 +998,8 @@ long rolltui_highlight_run(RolltuiHighlight* h, RolltuiSyntax* s, int lang, cons
      * — this run's or another's — never reads as this line's */
     h->memo = (RolltuiRegexSlot*)rolltui_grow_zeroed(h->memo, &h->memo_cap, s->memo_total, sizeof *h->memo);
   }
-  R = (Runner*)rolltui_mem_alloc(sizeof *R);
+  if (!h->runner) h->runner = (Runner*)rolltui_mem_alloc(sizeof *h->runner);
+  R = h->runner;
   memset(R, 0, sizeof *R);
   R->s = s;
   R->out = h;
@@ -1015,7 +1018,6 @@ long rolltui_highlight_run(RolltuiHighlight* h, RolltuiSyntax* s, int lang, cons
   }
   h->first = (size_t*)rolltui_grow(h->first, &h->first_cap, h->nlines + 2, sizeof *h->first);
   h->first[h->nlines] = h->n;
-  rolltui_mem_free(R);
   return (long)h->nlines;
 }
 

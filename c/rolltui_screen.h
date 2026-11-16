@@ -82,8 +82,6 @@ int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t g
  * `*len` receives the byte count. Never NULL; a continuation cell gives length 0. */
 const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len);
 /* ---- the link table ---------------------------------------------------------------------- */
-/* Interns a URL for this frame; the same URL gets the same id. 0 for an empty URL. */
-unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len);
 /* A BORROW, valid until the next reset. Empty for id 0 or an unknown id. */
 const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len);
 void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);

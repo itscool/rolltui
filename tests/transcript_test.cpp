@@ -1080,6 +1080,41 @@ int main() {
           "…and the next entry added reuses the released one, as a clear's are");
   }
 
+  // ---- A TABLE'S TRANSCRIPT HIGHLIGHTS CODE with the library's own languages, until a host says otherwise ----
+  {
+    RolltuiDocument doc;
+    doc.push_back(md("c1", "```c\nint total = 0;\n```"));
+    auto styles_of = [&](RolltuiWindows* w) {
+      RolltuiTranscript* tr = rolltui_windows_transcript(w, "s", 1);
+      layout(tr, doc, {0, 0, 40, 6}, opt);
+      Frame f(40, 6);
+      draw(tr, f, theme, scratch);
+      for (int y = 0; y < 6; ++y) {
+        const std::string row = row_text(f, y);
+        const std::size_t at = row.find("int total");
+        if (at == std::string::npos) continue;
+        int x = 0;  // the cell the match starts in: a glyph before it may be more than one byte
+        for (std::size_t i = 0; x < f.width(); ++x)
+          if (!f.at(x, y).continuation) {
+            if (i == at) break;
+            i += f.glyph(x, y).size();
+          }
+        // `int total = 0;`: the keyword at 0, the name at 4, the `=` at 10, the number at 12
+        return std::array<RolltuiStyle, 4>{f.at(x, y).style, f.at(x + 4, y).style, f.at(x + 10, y).style, f.at(x + 12, y).style};
+      }
+      return std::array<RolltuiStyle, 4>{};
+    };
+    RolltuiWindows* w = rolltui_windows_new(rolltui_test::test_context());
+    const auto lit = styles_of(w);
+    check(!(lit[0] == lit[1]), "a code block in a table's transcript is highlighted with no host highlighter: `int` and `total` differ");
+    check(!(lit[3].fg == lit[2].fg) && lit[3].bg == lit[2].bg && lit[0].bg == lit[2].bg,
+          "…and coloured code stands on the block's shading: the number and the keyword have their own colour and the block's ground");
+    rolltui_windows_set_highlight(w, nullptr, nullptr, nullptr);
+    const auto plain = styles_of(w);
+    check(plain[0] == plain[1] && plain[3] == plain[2], "CONTROL: with highlighting turned off they are drawn alike");
+    rolltui_windows_free(w);
+  }
+
   rolltui_draw_scratch_free(scratch);
   return report("rolltui_transcript_test");
 }

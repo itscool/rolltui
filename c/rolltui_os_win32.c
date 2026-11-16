@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <io.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -596,9 +597,28 @@ static BOOL WINAPI on_console_event(DWORD kind) {
   return FALSE; /* the default handler then ends the process */
 }
 
+/* A CRASH (an abort, an assert, an access violation) puts the console back too, then goes on to whatever handled it before. */
+typedef void(__cdecl* AbortHandler)(int);
+static AbortHandler g_abort_prev;
+static LPTOP_LEVEL_EXCEPTION_FILTER g_filter_prev;
+
+static void __cdecl on_abort(int sig) {
+  rolltui_os_tty_restore_now();
+  signal(sig, g_abort_prev ? g_abort_prev : SIG_DFL);
+  raise(sig);
+}
+
+static LONG WINAPI on_unhandled(EXCEPTION_POINTERS* info) {
+  rolltui_os_tty_restore_now();
+  return g_filter_prev ? g_filter_prev(info) : EXCEPTION_CONTINUE_SEARCH;
+}
+
 void rolltui_os_tty_install_handlers(void) {
   if (InterlockedExchange(&g_handlers_installed, 1)) return;
   SetConsoleCtrlHandler(on_console_event, TRUE);
+  g_abort_prev = signal(SIGABRT, on_abort);
+  if (g_abort_prev == SIG_ERR) g_abort_prev = NULL;
+  g_filter_prev = SetUnhandledExceptionFilter(on_unhandled);
 }
 
 /* A size change arrives in the input queue (ENABLE_WINDOW_INPUT), which `wait` already reads. */

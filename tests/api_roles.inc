@@ -1,4 +1,5 @@
 ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
+ROLLTUI_ROLE(rolltui_frame_link_id, WIDGET)
 /*
  * rolltui/tests/api_roles.inc — WHICH READER EACH PUBLIC FUNCTION IS FOR.
  *

@@ -63,6 +63,7 @@
 #include <mach-o/dyld.h>
 #endif
 #include <fcntl.h>
+#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -591,11 +592,36 @@ static bool run_and_wait(const char* const* argv, int tty, int* status) {
     posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
   }
+  // A PROGRAM ON THE TERMINAL HAS ITS CTRL-C TO ITSELF, as `system` gives it: the terminal is back in its ordinary mode, so the key
+  // signals the whole foreground group, this process included. dirktui ignores SIGINT and SIGQUIT while it waits, and the
+  // program starts with both at their defaults.
+  struct sigaction ignore {}, old_int {}, old_quit {};
+  posix_spawnattr_t attr;
+  posix_spawnattr_init(&attr);
+  if (tty >= 0) {
+    ignore.sa_handler = SIG_IGN;
+    sigemptyset(&ignore.sa_mask);
+    sigaction(SIGINT, &ignore, &old_int);
+    sigaction(SIGQUIT, &ignore, &old_quit);
+    sigset_t defaults;
+    sigemptyset(&defaults);
+    sigaddset(&defaults, SIGINT);
+    sigaddset(&defaults, SIGQUIT);
+    posix_spawnattr_setsigdefault(&attr, &defaults);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGDEF);
+  }
   pid_t pid = 0;
-  const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+  const int rc = posix_spawnp(&pid, argv[0], &fa, &attr, const_cast<char* const*>(argv), environ);
   posix_spawn_file_actions_destroy(&fa);
+  posix_spawnattr_destroy(&attr);
   int st = 0;
-  if (rc == 0) waitpid(pid, &st, 0);
+  if (rc == 0)
+    while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {
+    }
+  if (tty >= 0) {
+    sigaction(SIGINT, &old_int, nullptr);
+    sigaction(SIGQUIT, &old_quit, nullptr);
+  }
   if (status) *status = rc == 0 && WIFEXITED(st) ? WEXITSTATUS(st) : -1;
   return rc == 0;
 #endif

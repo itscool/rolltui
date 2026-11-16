@@ -67,7 +67,9 @@ int rolltui_selection_range_in(const RolltuiSelectionRaw* s, size_t entry, size_
 /* THE SYNTAX HIGHLIGHTER, forwarded straight to `rolltui_md_render` — one seam, not two.
  * Setting it bumps an epoch, so a LATER highlighter re-lays everything rather than being
  * silently ignored (set-once is a host convention, not a guarantee). */
-void rolltui_transcript_set_highlight(RolltuiTranscript* t, RolltuiMdHighlightFn fn, void* ctx);
+/* `on_block`: coloured code stands on the code block's shading (the library's own languages); 0 leaves each span on its role's
+ * own ground (a highlighter whose roles have a look of their own). */
+void rolltui_transcript_set_highlight(RolltuiTranscript* t, RolltuiMdHighlightFn fn, void* ctx, int on_block);
 
 /* THE SIX ROLES THIS WIDGET NEEDS, handed over ONCE rather than per draw — because one of
  * them (`text_muted`, the fold summary's ▸/▾ and its " (N lines)") is used while LAYING OUT
