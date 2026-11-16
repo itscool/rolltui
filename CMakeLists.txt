@@ -158,7 +158,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_widget_input.c c/rolltui_widget_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_widget_transcript.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_image.c c/rolltui_widget_transcript.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -475,7 +475,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
   layout_editor.cpp layout_editor.hpp menu_editor.cpp menu_editor.hpp tool_actions.hpp undo_stack.hpp
   # suites that test an implementation
-  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp process_test.cpp
+  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp image_test.cpp process_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp fatal_test.cpp
@@ -525,6 +525,7 @@ add_rolltui_test(rolltui-preview-syntax-test tests/preview_syntax_test.cpp)
 add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
 add_rolltui_test(rolltui-feedback-test tests/feedback_test.cpp)
 add_rolltui_test(rolltui-process-test tests/process_test.cpp)
+add_rolltui_test(rolltui-image-test tests/image_test.cpp)
 add_rolltui_test(rolltui-str-hpp-test tests/str_hpp_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
@@ -633,7 +634,7 @@ target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SHIPPED_DIR="
 # synthesises a press, the drags between and a release, so a canvas can be shown to
 # receive them with no terminal.
 add_executable(rolltui-paint examples/paint.cpp)
-# PNG decoding is stb_image's (third_party/stb), compiled into paint.cpp alone.
+# Pictures are decoded by the library (c/rolltui_image.c, over third_party/stb).
 target_link_libraries(rolltui-paint PRIVATE rolltui)
 
 # The SELF-TEST build: the same source plus its scripted strokes and headless frame.

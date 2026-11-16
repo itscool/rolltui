@@ -48,8 +48,6 @@ int rolltui_os_open_with_system(const char* target, RolltuiStr* err);
 int rolltui_os_clipboard_native(const char* text, size_t len);
 int rolltui_os_open_terminal(int* in_fd, int* out_fd);
 void rolltui_os_close_terminal(int in_fd, int out_fd);
-/* This machine's name, for a file:// URL; 0 when it has none to give. */
-int rolltui_os_hostname(char* buf, size_t cap);
 
 /* ---- time ---------------------------------------------------------------------------------- */
 
@@ -146,6 +144,8 @@ int rolltui_os_tty_raw(RolltuiOsTty* t);
 void rolltui_os_tty_restore(RolltuiOsTty* t);
 /* Columns and rows; 0 when the size cannot be read. */
 int rolltui_os_tty_size(const RolltuiOsTty* t, int* w, int* h);
+/* The window's size in pixels, where the terminal says (TIOCGWINSZ's xpixel and ypixel); 0 where it does not. */
+int rolltui_os_tty_pixels(const RolltuiOsTty* t, int* xpix, int* ypix);
 void rolltui_os_tty_write(RolltuiOsTty* t, const char* bytes, size_t len);
 
 /* Waits up to `timeout_ms` (-1: forever). Returns 0 on a timeout, a set of ROLLTUI_OS_TTY_* bits

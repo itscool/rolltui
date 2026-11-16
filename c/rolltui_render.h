@@ -35,6 +35,8 @@ void rolltui_render_full_at(const RolltuiFrame* next, unsigned char depth, int o
  * region (rolltui_terminal.c). */
 void rolltui_swap_present_at(RolltuiSwap* s, unsigned char depth, int origin, int ground, RolltuiStr* out);
 const RolltuiFrame* rolltui_swap_pending(const RolltuiSwap* s);
+/* The cells of `r` in the baseline made unlike anything, so the next present writes them whole. */
+void rolltui_swap_forget_rect(RolltuiSwap* s, RolltuiRect r);
 /* How far along row `y` the terminal keeps anything: its last cell that is not a blank on the
  * default background or the frame's ground, plus one. Those blanks are nothing a terminal rewraps. */
 int rolltui_render_row_extent(const RolltuiFrame* f, int y);

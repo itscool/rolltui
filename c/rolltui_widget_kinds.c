@@ -1082,6 +1082,93 @@ static const RolltuiWidgetPlugin kOutputPlugin = {
     output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */
 };
 
+
+/* ============================================================================================
+ * image:<path> — a picture: the one the host bound under that name, or the file, read again when it changes.
+ * ============================================================================================ */
+
+typedef struct RolltuiImageCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  RolltuiImage* file; /* OWNED: what the file held when it was last read */
+  RolltuiStr read_path, why;
+  long long stamp;
+  int read;
+  RolltuiDrawScratch* draw;
+} RolltuiImageCtx;
+
+static void image_ctx_refresh(RolltuiImageCtx* ic) {
+  RolltuiStr p;
+  const char* dir;
+  size_t dir_len = 0;
+  long long m;
+  memset(&p, 0, sizeof p);
+  dir = rolltui_windows_dir(ic->w, &dir_len);
+  if ((ic->source.n && ic->source.p[0] == '/') || dir_len == 0) {
+    rolltui_str_set(&p, ic->source.p ? ic->source.p : "", ic->source.n);
+  } else {
+    rolltui_str_set(&p, dir, dir_len);
+    rolltui_str_append(&p, "/", 1);
+    rolltui_str_append_str(&p, &ic->source);
+  }
+  m = file_ctx_stamp(p.p ? p.p : "");
+  if (ic->read && m == ic->stamp && rolltui_str_eq(&ic->read_path, p.p ? p.p : "", p.n)) {
+    rolltui_str_free(&p);
+    return;
+  }
+  ic->read = 1;
+  ic->stamp = m;
+  rolltui_str_move(&ic->read_path, &p);
+  rolltui_image_free(ic->file);
+  ic->file = rolltui_image_load(ic->read_path.p ? ic->read_path.p : "", ic->read_path.n, &ic->why);
+}
+
+static const RolltuiImage* image_ctx_picture(RolltuiImageCtx* ic) {
+  const RolltuiImage* bound = rolltui_windows_image(ic->w, ic->source.p ? ic->source.p : "", ic->source.n);
+  if (bound) return bound;
+  image_ctx_refresh(ic);
+  return ic->file;
+}
+
+static int image_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiImageCtx* ic = (RolltuiImageCtx*)ctx;
+  if (image_ctx_picture(ic)) return 0;
+  rolltui_str_set(out, ic->why.p ? ic->why.p : "", ic->why.n);
+  return 1;
+}
+static void image_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
+static void image_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiImageCtx* ic = (RolltuiImageCtx*)ctx;
+  const RolltuiImage* img = image_ctx_picture(ic);
+  const RolltuiStyle* styles = rolltui_windows_styles(ic->w);
+  RolltuiRect r, at;
+  RolltuiStyle ground;
+  int uc = 0, ur = 0;
+  rolltui_content_rect(rn, &r);
+  if (!img || r.w <= 0 || r.h <= 0) return;
+  ground = styles[rolltui_windows_builtin_roles(ic->w)->text];
+  ground.bg = scroll_text_ground(f, r.x, r.y); /* what shows through a transparent pixel is the window's own ground */
+  rolltui_image_cells(img, r.w, r.h, &uc, &ur);
+  at.x = r.x + (r.w - uc) / 2; /* centred in the window */
+  at.y = r.y + (r.h - ur) / 2;
+  at.w = uc;
+  at.h = ur;
+  rolltui_frame_image(f, at, img, ground, NULL);
+}
+static void image_ctx_destroy(void* ctx) {
+  RolltuiImageCtx* ic = (RolltuiImageCtx*)ctx;
+  rolltui_str_free(&ic->source);
+  rolltui_str_free(&ic->read_path);
+  rolltui_str_free(&ic->why);
+  rolltui_image_free(ic->file);
+  rolltui_draw_scratch_free(ic->draw);
+  rolltui_mem_free(ic);
+}
+
+static const RolltuiWidgetPlugin kImagePlugin = {
+    image_ctx_destroy, image_ctx_layout, image_ctx_draw, image_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */
+};
+
 /* ============================================================================================
  * the error panel — the window that could not be understood, never blank (Layout.hpp).
  * ============================================================================================ */
@@ -1251,6 +1338,34 @@ static RolltuiWidget output_widget_factory(void* c, RolltuiWindows* w, const cha
   o->actions = *rolltui_windows_scroll_text_actions(w);
   out.vt = &kOutputPlugin;
   out.ctx = o;
+  return out;
+}
+
+static RolltuiWidget image_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiImageCtx* ic;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  ic = (RolltuiImageCtx*)rolltui_mem_alloc(sizeof *ic);
+  memset(ic, 0, sizeof *ic);
+  ic->w = w;
+  rolltui_str_set(&ic->source, source, source_len);
+  ic->draw = rolltui_draw_scratch_new();
+  out.vt = &kImagePlugin;
+  out.ctx = ic;
   return out;
 }
 
@@ -1550,6 +1665,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "gauge", 5, gauge_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "messages", 8, messages_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "output", 6, output_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "image", 5, image_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }

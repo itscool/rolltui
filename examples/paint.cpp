@@ -77,11 +77,6 @@
 #include "rolltui/rolltui_cpp.h"
 #include "rolltui/str.hpp"
 
-// PNG decoding: stb_image (third_party/stb), PNG only, reading from memory.
-#define STBI_ONLY_PNG
-#define STBI_NO_STDIO
-#define STB_IMAGE_IMPLEMENTATION
-#include "rolltui/third_party/stb/stb_image.h"
 
 // ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the
 // same one the studio and the explorer use, so one spelling drives all three.
@@ -232,8 +227,9 @@ constexpr const char* kCanvasDescribes = "a sheet the app paints on";
 RolltuiStr read_file(const RolltuiStr& path, bool& ok);
 
 // ---- a PNG, as ASCII ------------------------------------------------------------------------
-// Any PNG (palette, grey, 16-bit, interlaced, with or without alpha) is decoded to 8-bit RGB;
-// alpha is dropped. A file stb_image cannot read is refused with its reason.
+// Any PNG (palette, grey, 16-bit, interlaced, with or without alpha) is decoded by the library
+// (`rolltui_image_decode`) and kept as 8-bit RGB; alpha is dropped. A file it cannot read is
+// refused with its reason.
 struct Image {
   int w = 0, h = 0;
   std::vector<unsigned char> rgb;  // GROWING HEAP, one per load: w*h*3, freed with the vector
@@ -245,14 +241,20 @@ RolltuiStr load_png(const RolltuiStr& path, Image& out) {
   if (!ok) return RolltuiStr("cannot open ") + path;
   if (bytes.size() < 8 || std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) != 0) return RolltuiStr("not a PNG: ") + path;
   if (bytes.size() > static_cast<std::size_t>(INT_MAX)) return RolltuiStr("too large to open: ") + path;
-  int w = 0, h = 0, channels = 0;
-  stbi_uc* px = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()), &w, &h,
-                                      &channels, 3);
-  if (!px) return RolltuiStr("cannot read ") + path + ": " + stbi_failure_reason();
+  RolltuiStr why;
+  RolltuiImage* img = rolltui_image_decode(reinterpret_cast<const unsigned char*>(bytes.data()), bytes.size(), &why);
+  if (!img) return RolltuiStr("cannot read ") + path + ": " + why;
+  int w = 0, h = 0;
+  const unsigned char* px = rolltui_image_rgba(img, &w, &h);
   out.w = w;
   out.h = h;
-  out.rgb.assign(px, px + static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 3);
-  stbi_image_free(px);
+  out.rgb.resize(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 3);
+  for (std::size_t i = 0, n = static_cast<std::size_t>(w) * static_cast<std::size_t>(h); i < n; ++i) {
+    out.rgb[i * 3] = px[i * 4];
+    out.rgb[i * 3 + 1] = px[i * 4 + 1];
+    out.rgb[i * 3 + 2] = px[i * 4 + 2];
+  }
+  rolltui_image_free(img);
   return {};
 }
 

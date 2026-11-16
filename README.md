@@ -27,7 +27,7 @@ A terminal UI library in C, with a C++ API on top.
 | Mermaid diagrams | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Syntax highlighting | ✓ | ✓ | ✗ | in Glamour | ✗ | ✗ |
 | File browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Images | ✗ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
+| Images (kitty, iTerm2, sixel, blocks) | ✓ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
 | **Widgets** | | | | | | |
 | Data table | partial | ✓ | ✓ | ✓ | ✗ | partial |
 | Tree | ✗ | ✓ | ✗ | ✓ | ✓ | partial |

@@ -14,7 +14,9 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_image.h"
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_render.h" /* an inline region: drawing from a row, committing lines */
 #include "rolltui/c/rolltui_str.h"
@@ -90,6 +92,11 @@ struct RolltuiTerminal {
   int sync_open;     /* a commit opened a synchronized frame the next present closes */
   int* extent;       /* each row's drawn width: its last cell that is not a default blank, plus one */
   size_t extent_cap;
+  /* ---- pictures (rolltui_frame_image) ---- */
+  struct KittyImage { unsigned int id; int cols, rows; } * kitty; /* sent to the terminal, and the placement it last had */
+  size_t kitty_n, kitty_cap;
+  struct ShownImage { unsigned int id; RolltuiRect r; } * pics;   /* drawn outside the grid, and still there */
+  size_t pics_n, pics_cap;
   /* ---- the window's title (rolltui_terminal_set_title) ---- */
   RolltuiStr title;            /* what the app set; empty: the terminal's own */
   unsigned char title_pushed;  /* the terminal's own title is on its stack, to be put back on leaving */
@@ -191,6 +198,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
 
 static void run_negotiation(RolltuiTerminal* t);
 static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts);
+static void refresh_cell_pixels(RolltuiTerminal* t);
 static void on_reply(void* ctx, const char* bytes, size_t len);
 
 static void term_enter(RolltuiTerminal* t, int handle_signals) {
@@ -226,6 +234,16 @@ static void term_leave(RolltuiTerminal* t) {
     t->dirty = 1;
   }
   rolltui_terminal_write(t, t->leave_seq, t->leave_len);
+  if (t->kitty_n) { /* the pictures sent go with this program: a terminal keeps them until told */
+    RolltuiStr del;
+    size_t i;
+    memset(&del, 0, sizeof del);
+    for (i = 0; i < t->kitty_n; ++i) rolltui_image_kitty_delete(t->kitty[i].id, t->multiplexed, &del);
+    rolltui_terminal_write(t, del.p, del.n);
+    rolltui_str_free(&del);
+    t->kitty_n = 0;
+  }
+  t->pics_n = 0; /* a picture outside the grid does not outlive the screen it was drawn on */
   if (t->title_pushed) { /* an empty title, then the terminal's own popped back: where popping is not known, it is at least cleared */
     rolltui_terminal_write(t, "\x1b]2;\x1b\\\x1b[23;0t", sizeof "\x1b]2;\x1b\\\x1b[23;0t" - 1);
     t->title_pushed = 0;
@@ -284,11 +302,14 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
     rolltui_termfacts_set_active_wide(-1);
     rolltui_termfacts_set_active_split(-1);
     rolltui_termfacts_set_active_mode(-1);
+    rolltui_termfacts_set_active_images(0, 0, 0);
   }
   rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
   rolltui_key_decoder_free(t->decoder);
   rolltui_str_free(&t->cache_path);
   rolltui_str_free(&t->title);
+  rolltui_mem_free(t->kitty);
+  rolltui_mem_free(t->pics);
   rolltui_mem_free(t->queued);
   rolltui_mem_free(t->queued_text);
   rolltui_mem_free(t->extent);
@@ -307,6 +328,8 @@ void rolltui_terminal_refresh_size(RolltuiTerminal* t) {
     t->w = w;
     t->h = h;
   }
+  refresh_cell_pixels(t);
+  if (t->publishing) rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
 }
 
 void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { rolltui_os_tty_write(t->os, bytes, len); }
@@ -345,7 +368,7 @@ void rolltui_terminal_report_cwd(RolltuiTerminal* t, const char* path, size_t le
   size_t i;
   if (!t || !t->tty || !path || len == 0) return;
   memset(&seq, 0, sizeof seq);
-  if (!rolltui_os_hostname(host, sizeof host)) host[0] = 0;
+  if (rolltui_os_host_name(host, sizeof host) != 0) host[0] = 0;
   rolltui_str_append(&seq, "\x1b]7;file://", sizeof "\x1b]7;file://" - 1);
   rolltui_str_append(&seq, host, strlen(host));
   if (path[0] != '/') rolltui_str_append(&seq, "/", 1); /* C:/Users/... is /C:/Users/... in a URL */
@@ -416,7 +439,17 @@ static void publish_depth(RolltuiTerminal* t) {
   rolltui_termfacts_set_active_wide(t->facts.ambiguous_wide);
   rolltui_termfacts_set_active_split(t->facts.split_clusters);
   rolltui_termfacts_set_active_mode(t->facts.mode);
+  rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
   t->publishing = 1;
+}
+
+/* A cell's size in pixels, from the window's, where the terminal gives it. */
+static void refresh_cell_pixels(RolltuiTerminal* t) {
+  int xp = 0, yp = 0;
+  if (t->w > 0 && t->h > 0 && rolltui_os_tty_pixels(t->os, &xp, &yp)) {
+    t->facts.cell_w = (unsigned short)(xp / t->w);
+    t->facts.cell_h = (unsigned short)(yp / t->h);
+  }
 }
 
 /* Everything the environment says, the remembered answers for THIS fingerprint if there are any
@@ -430,6 +463,10 @@ static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts) {
   t->timeout_ms = 80;
   rolltui_termenv_read(&t->env);
   rolltui_termfacts_from_env(&t->env, &t->facts);
+  if (opts->images >= ROLLTUI_IMAGES_BLOCKS && opts->images <= ROLLTUI_IMAGES_SIXEL) { /* the host's word, which is the person's */
+    t->facts.images = opts->images;
+    t->facts.images_source = ROLLTUI_FACT_FORCED;
+  }
   t->multiplexed = rolltui_termenv_multiplexed(&t->env);
   /* Over ssh a reply takes a network round trip, and 80 ms is a timeout that a working terminal
    * across a slow link would miss — after which the keyboard is judged Legacy and the answers
@@ -798,17 +835,109 @@ void rolltui_terminal_commit(RolltuiTerminal* t, const RolltuiFrame* lines) {
   rolltui_str_free(&out);
 }
 
+/* ---- pictures at present -------------------------------------------------------------------- */
+
+/* Every cell of an outside-the-grid picture is still its own blank: nothing has been drawn over it this frame. */
+static int image_intact(const RolltuiFrame* f, const RolltuiFrameImage* p) {
+  int x, y;
+  for (y = p->cells.y; y < p->cells.y + p->cells.h; ++y)
+    for (x = p->cells.x; x < p->cells.x + p->cells.w; ++x) {
+      RolltuiCellRaw c;
+      if (x < 0 || y < 0 || x >= rolltui_frame_width(f) || y >= rolltui_frame_height(f)) return 0;
+      memset(&c, 0, sizeof c);
+      rolltui_frame_cell(f, x, y, &c);
+      if (c.len != 1 || c.bytes[0] != ' ' || memcmp(&c.style, &p->ground, sizeof c.style) != 0) return 0;
+    }
+  return 1;
+}
+
+static int rect_same(RolltuiRect a, RolltuiRect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; }
+
+/* BEFORE THE DIFF: a kitty picture's pixels the first time it is drawn and its placement whenever its cells change size, so the
+ * placeholder cells the diff writes find it; and an outside-the-grid picture no longer there, or no longer whole, has its cells
+ * forgotten, so the diff writes what they hold now over it. */
+static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame* next, RolltuiStr* out) {
+  const size_t n = rolltui_frame_image_count(next);
+  size_t i, k;
+  for (i = 0; i < n; ++i) {
+    const RolltuiFrameImage* p = rolltui_frame_image_at(next, i);
+    const unsigned int id = rolltui_image_id(p->img);
+    if (p->protocol != ROLLTUI_IMAGES_KITTY) continue;
+    for (k = 0; k < t->kitty_n && t->kitty[k].id != id; ++k) {
+    }
+    if (k == t->kitty_n) {
+      t->kitty = (struct KittyImage*)rolltui_grow(t->kitty, &t->kitty_cap, t->kitty_n + 1, sizeof *t->kitty);
+      t->kitty[k].id = id;
+      t->kitty[k].cols = t->kitty[k].rows = -1;
+      ++t->kitty_n;
+      rolltui_image_kitty_upload(p->img, t->multiplexed, out);
+    }
+    if (t->kitty[k].cols != p->cells.w || t->kitty[k].rows != p->cells.h) {
+      rolltui_image_kitty_place(id, p->cells.w, p->cells.h, t->multiplexed, out);
+      t->kitty[k].cols = p->cells.w;
+      t->kitty[k].rows = p->cells.h;
+    }
+  }
+  if (!rolltui_swap_front(s)) { /* drawn whole: nothing drawn outside the grid survives it */
+    t->pics_n = 0;
+    return;
+  }
+  for (k = 0; k < t->pics_n;) {
+    int kept = 0;
+    for (i = 0; i < n && !kept; ++i) {
+      const RolltuiFrameImage* p = rolltui_frame_image_at(next, i);
+      kept = rolltui_image_id(p->img) == t->pics[k].id && rect_same(p->cells, t->pics[k].r) && image_intact(next, p);
+    }
+    if (kept) {
+      ++k;
+      continue;
+    }
+    rolltui_swap_forget_rect(s, t->pics[k].r);
+    t->pics[k] = t->pics[--t->pics_n];
+  }
+}
+
+/* AFTER THE DIFF: an outside-the-grid picture whose cells are whole and that is not on the screen already is drawn, the cursor kept
+ * where the diff left it. */
+static void images_after(RolltuiTerminal* t, const RolltuiFrame* drawn, int origin, RolltuiStr* out) {
+  const size_t n = rolltui_frame_image_count(drawn);
+  size_t i, k;
+  for (i = 0; i < n; ++i) {
+    const RolltuiFrameImage* p = rolltui_frame_image_at(drawn, i);
+    const unsigned int id = rolltui_image_id(p->img);
+    char at[32];
+    int len;
+    if (p->protocol != ROLLTUI_IMAGES_ITERM2 && p->protocol != ROLLTUI_IMAGES_SIXEL) continue;
+    if (!image_intact(drawn, p)) continue; /* something is drawn over it: it waits until that goes */
+    for (k = 0; k < t->pics_n && !(t->pics[k].id == id && rect_same(t->pics[k].r, p->cells)); ++k) {
+    }
+    if (k < t->pics_n) continue;
+    len = snprintf(at, sizeof at, "\x1b" "7\x1b[%d;%dH", origin + p->cells.y + 1, p->cells.x + 1);
+    if (len > 0) rolltui_str_append(out, at, (size_t)len);
+    if (p->protocol == ROLLTUI_IMAGES_ITERM2) rolltui_image_iterm2(p->img, p->cells.w, p->cells.h, t->multiplexed, out);
+    else rolltui_image_sixel(p->img, p->px_w, p->px_h, out);
+    rolltui_str_append(out, "\x1b" "8", 2);
+    t->pics = (struct ShownImage*)rolltui_grow(t->pics, &t->pics_cap, t->pics_n + 1, sizeof *t->pics);
+    t->pics[t->pics_n].id = id;
+    t->pics[t->pics_n].r = p->cells;
+    ++t->pics_n;
+  }
+}
+
 void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch) {
   const unsigned char depth = present_depth(t);
   const int sync = t->tty && t->facts.sync_output;
   const int inl = t->inl && t->tty;
   const int opened = t->sync_open;
+  const RolltuiFrame* next = rolltui_swap_pending(s);
   size_t lead;
   rolltui_str_clear(scratch);
   if (sync && !opened) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
+  if (t->tty) images_before(t, s, next, scratch);
   if (inl) inline_place(t, s, scratch);
   lead = scratch->n;
   rolltui_swap_present_at(s, depth, inl ? t->top : 0, inl, scratch);
+  if (t->tty) images_after(t, next, inl ? t->top : 0, scratch); /* `next` is the frame just drawn, now the baseline */
   if (inl && scratch->n > lead) inline_park(t, s, scratch);
   if (sync && !opened && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */
   else if (sync) rolltui_str_append(scratch, SYNC_END, sizeof SYNC_END - 1);

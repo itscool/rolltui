@@ -14,6 +14,8 @@
  *             file is, so the scrollbar is honest and End means the end.
  *   markdown  rendered, not listed — headings, lists, tables, code blocks, and a mermaid block as
  *             the diagram it describes. Same limit.
+ *   image     a picture, known by its first bytes (PNG, JPEG, GIF, BMP) or its extension (TGA, PNM), decoded and drawn the
+ *             terminal's best way (`rolltui_frame_image`), the head saying its size in pixels.
  *   hex       a file with a NUL in it, or mostly bytes that are not text, as offset, byte pairs
  *             and an ASCII gutter. The size is known, so nothing is read but what is on screen
  *             (a seek per frame) and a file of any size scrolls at once.
@@ -44,6 +46,8 @@ typedef struct RolltuiPreview RolltuiPreview;
 #define ROLLTUI_PREVIEW_HEX 3
 #define ROLLTUI_PREVIEW_EMPTY 4
 #define ROLLTUI_PREVIEW_UNREADABLE 5
+#define ROLLTUI_PREVIEW_IMAGE 6 /* a picture (PNG, JPEG, GIF, BMP, TGA, PNM) up to ROLLTUI_PREVIEW_IMAGE_LIMIT, drawn as one */
+#define ROLLTUI_PREVIEW_IMAGE_LIMIT (64 * 1024 * 1024)
 
 RolltuiPreview* rolltui_preview_new(void);
 void rolltui_preview_free(RolltuiPreview* pv); /* a no-op on NULL */

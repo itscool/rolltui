@@ -269,6 +269,7 @@ struct RolltuiWindows {
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
+  RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
@@ -396,6 +397,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   rolltui_map_release(&w->gauges);
   for (i = 0; i < rolltui_map_count(&w->outputs); ++i) rolltui_mem_free(rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
+  rolltui_map_release(&w->images);
   rolltui_message_log_release(&w->messages);
   for (i = 0; i < rolltui_map_count(&w->submits); ++i) {
     SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->submits, i);
@@ -768,6 +770,15 @@ void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t
     rolltui_map_put(&w->outputs, name, len, b);
   }
   b->wrap = wrap != 0;
+}
+
+void rolltui_windows_bind_image(RolltuiWindows* w, const char* name, size_t len, const RolltuiImage* img) {
+  if (!w) return;
+  if (img) rolltui_map_put(&w->images, name, len, (void*)img);
+  else rolltui_map_take(&w->images, name, len);
+}
+const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* name, size_t len) {
+  return (const RolltuiImage*)rolltui_map_get(&w->images, name, len);
 }
 
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap) {

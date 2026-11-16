@@ -65,6 +65,7 @@ struct RolltuiPreview {
   /* WATCHING: the file as it was when read, and when, so `rolltui_preview_refresh` can tell that it moved. */
   RolltuiFileSig sig;
   long long sig_read_secs;
+  RolltuiImage* image; /* IMAGE: the picture, OWNED */
 };
 
 RolltuiPreview* rolltui_preview_new(void) {
@@ -93,6 +94,8 @@ static void release_content(RolltuiPreview* pv) {
   pv->hl_lang = -1;
   rolltui_str_clear(&pv->message);
   rolltui_str_clear(&pv->body);
+  rolltui_image_free(pv->image);
+  pv->image = NULL;
 }
 
 void rolltui_preview_free(RolltuiPreview* pv) {
@@ -190,6 +193,21 @@ static int looks_binary(const unsigned char* b, size_t n) {
     i += d.length ? d.length : 1;
   }
   return weird * 10 > n * 3;
+}
+
+/* A PICTURE: by its first bytes where the format has a signature, by its extension where it has none. */
+static int is_picture(const RolltuiStr* path, const unsigned char* b, size_t n) {
+  static const char* const kExt[] = {".tga", ".ppm", ".pgm", ".pnm", ".pbm"};
+  size_t i;
+  if (n >= 8 && memcmp(b, "\x89PNG\r\n\x1a\n", 8) == 0) return 1;
+  if (n >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return 1;
+  if (n >= 6 && (memcmp(b, "GIF87a", 6) == 0 || memcmp(b, "GIF89a", 6) == 0)) return 1;
+  if (n >= 2 && b[0] == 'B' && b[1] == 'M' && path->n > 4 && strcmp(path->p + path->n - 4, ".bmp") == 0) return 1;
+  for (i = 0; i < sizeof kExt / sizeof kExt[0]; ++i) {
+    const size_t k = strlen(kExt[i]);
+    if (path->n > k && strcmp(path->p + path->n - k, kExt[i]) == 0) return 1;
+  }
+  return 0;
 }
 
 static int has_markdown_extension(const RolltuiStr* path) {
@@ -415,6 +433,32 @@ static void load(RolltuiPreview* pv) {
     pv->kind = ROLLTUI_PREVIEW_EMPTY;
     rolltui_os_close(fd);
     return;
+  }
+  if (is_picture(&pv->path, sniff, got)) {
+    if (st.size > ROLLTUI_PREVIEW_IMAGE_LIMIT) {
+      rolltui_os_close(fd);
+      fail(pv, "a picture too large to preview");
+      return;
+    }
+    {
+      unsigned char* buf = (unsigned char*)rolltui_mem_alloc((size_t)st.size + 1);
+      RolltuiStr why;
+      size_t have = got;
+      memset(&why, 0, sizeof why);
+      memcpy(buf, sniff, got);
+      have += read_upto(fd, buf + have, (size_t)st.size - have);
+      rolltui_os_close(fd);
+      pv->image = rolltui_image_decode(buf, have, &why);
+      rolltui_mem_free(buf);
+      if (!pv->image) {
+        fail(pv, why.p ? why.p : "not a picture");
+        rolltui_str_free(&why);
+        return;
+      }
+      rolltui_str_free(&why);
+      pv->kind = ROLLTUI_PREVIEW_IMAGE;
+      return;
+    }
   }
   if (looks_binary(sniff, got)) {
     pv->kind = ROLLTUI_PREVIEW_HEX;
@@ -863,6 +907,14 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       break;
     }
     case ROLLTUI_PREVIEW_EMPTY: snprintf(info, sizeof info, "empty"); break;
+    case ROLLTUI_PREVIEW_IMAGE: {
+      char sz[24];
+      int iw = 0, ih = 0;
+      human_size(pv->size, sz, sizeof sz);
+      rolltui_image_rgba(pv->image, &iw, &ih);
+      snprintf(info, sizeof info, "picture \xC2\xB7 %dx%d \xC2\xB7 %s", iw, ih, sz);
+      break;
+    }
     default: info[0] = '\0'; break;
   }
   name = base_name(&pv->path, &name_n);
@@ -903,6 +955,9 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       break;
     case ROLLTUI_PREVIEW_HEX:
       draw_hex(pv, f, body, text, dim, ambiguous_wide, pinned);
+      break;
+    case ROLLTUI_PREVIEW_IMAGE:
+      rolltui_frame_image(f, body, pv->image, text, NULL);
       break;
     case ROLLTUI_PREVIEW_MARKDOWN:
       draw_markdown(pv, f, body, styles, ground, ambiguous_wide, pinned);

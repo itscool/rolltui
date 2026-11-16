@@ -529,10 +529,4 @@ void rolltui_os_close_terminal(int in_fd, int out_fd) {
   if (out_fd >= 0 && out_fd != in_fd) close(out_fd);
 }
 
-int rolltui_os_hostname(char* buf, size_t cap) {
-  if (cap == 0 || gethostname(buf, cap) != 0) return 0;
-  buf[cap - 1] = 0;
-  return buf[0] != 0;
-}
-
 #endif /* !_WIN32 */

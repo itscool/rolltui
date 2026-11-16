@@ -341,6 +341,48 @@ console's CONIN$ and CONOUT$), whatever stdin and stdout are. A program whose st
 to a shell (a file chooser, cd-on-exit) draws there and prints its answer to stdout. dirktui runs
 this way.
 
+## Pictures
+
+`rolltui_image_load(path)` and `rolltui_image_decode(bytes)` decode PNG, JPEG, GIF (its first
+frame), BMP, TGA and PNM to RGBA. A picture larger than `ROLLTUI_IMAGE_MAX_SIDE` (10,000) pixels
+on a side, or than `ROLLTUI_IMAGE_MAX_BYTES` (512 MB) decoded, is refused before it is decoded,
+with the reason. `rolltui_image_from_rgba` takes pixels a host made.
+
+`rolltui_frame_image(frame, area, img, ground, &used)` fits a picture into a rectangle of cells,
+its aspect kept and never enlarged past its own pixels, and draws it the way the terminal draws
+pictures. `ground` shows through transparent pixels. `rolltui_image_cells` gives the cells it
+would take, for centring.
+
+| Way | Terminals | How |
+|---|---|---|
+| `ROLLTUI_IMAGES_BLOCKS` | every terminal, tmux, ssh | half blocks, two pixels to a cell in their colours |
+| `ROLLTUI_IMAGES_KITTY` | kitty, Ghostty | Unicode placeholders: the picture is in the cells |
+| `ROLLTUI_IMAGES_ITERM2` | iTerm2, WezTerm | OSC 1337, drawn by the terminal at a cell |
+| `ROLLTUI_IMAGES_SIXEL` | foot, mlterm, Konsole, Windows Terminal, xterm with sixel | sixel, drawn by the terminal at a cell |
+
+The terminal is chosen by its name (`TERM`, `TERM_PROGRAM` and the like), then by its Primary DA
+reply naming sixel. Inside tmux, pictures are drawn in blocks unless the window is kitty's, when
+the placeholders and their pixels are passed through. `ROLLTUI_IMAGES` (`blocks`, `kitty`,
+`iterm2`, `sixel`) or `RolltuiTerminalOptions.images` chooses outright, and
+`RolltuiTermFacts.images` says what was chosen. A cell's size in pixels comes from the
+terminal's window size (`cell_w`, `cell_h`); where it does not say, a cell is taken to be about
+twice as tall as wide.
+
+- A kitty picture's pixels are sent once, before the frame that first shows it, and its
+  placement whenever its cells change size. Its cells are text to everything else: a popup over
+  it covers it, the diff sends only what changed, and leaving deletes what was sent.
+- A sixel or iTerm2 picture is drawn after the diff, the cursor kept, when every one of its
+  cells is still its own blank and it was not already on the screen. While anything is drawn
+  over part of it, it is not sent; once that is gone, it is sent whole again. When it goes, its
+  cells are written again, which erases it.
+- A sixel is kept off the screen's last row, where the terminal would scroll the screen to move
+  the cursor below it.
+
+An `image:<path>` window shows a picture, centred: the one `rolltui_windows_bind_image` bound
+under that name, or the file the path names (relative to the preset directory, as `file:` is),
+read again when it changes. The column browser's preview shows a picture file the same way, with
+its size in pixels in the head.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.

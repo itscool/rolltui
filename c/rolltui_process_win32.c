@@ -562,10 +562,4 @@ void rolltui_os_close_terminal(int in_fd, int out_fd) {
   if (out_fd >= 0 && out_fd != in_fd) _close(out_fd);
 }
 
-int rolltui_os_hostname(char* buf, size_t cap) {
-  DWORD n = (DWORD)cap;
-  if (cap == 0 || !GetComputerNameExA(ComputerNameDnsHostname, buf, &n)) return 0;
-  return buf[0] != 0;
-}
-
 #endif /* _WIN32 */

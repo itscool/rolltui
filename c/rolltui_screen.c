@@ -61,6 +61,8 @@ struct RolltuiFrame {
   size_t glyph_count, glyph_cap;
   Mark* marks;
   size_t mark_count, mark_cap;
+  RolltuiFrameImage* images; /* pictures drawn this frame (rolltui_frame_image), each a BORROW until it is presented */
+  size_t image_count, image_cap;
   int cx, cy, cvis;
   RolltuiStyle fill; /* what `reset` filled it with: its ground */
 };
@@ -121,6 +123,7 @@ void rolltui_frame_free(RolltuiFrame* f) {
   rolltui_mem_free(f->links);
   rolltui_mem_free(f->glyphs);
   rolltui_mem_free(f->marks);
+  rolltui_mem_free(f->images);
   rolltui_mem_free(f->cells);
   rolltui_mem_free(f);
 }
@@ -141,8 +144,41 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   f->link_count = 0;
   f->glyph_count = 0;
   f->mark_count = 0;
+  f->image_count = 0;
   f->cx = f->cy = 0;
   f->cvis = 0;
+}
+
+void rolltui_frame_add_image(RolltuiFrame* f, const RolltuiImage* img, RolltuiRect cells, int protocol, int px_w, int px_h,
+                             RolltuiStyle ground) {
+  RolltuiFrameImage* p;
+  if (!f || !img || cells.w <= 0 || cells.h <= 0) return;
+  f->images = (RolltuiFrameImage*)rolltui_grow(f->images, &f->image_cap, f->image_count + 1, sizeof *f->images);
+  p = &f->images[f->image_count++];
+  p->img = img;
+  p->cells = cells;
+  p->protocol = protocol;
+  p->px_w = px_w;
+  p->px_h = px_h;
+  p->ground = ground;
+}
+size_t rolltui_frame_image_count(const RolltuiFrame* f) { return f ? f->image_count : 0; }
+const RolltuiFrameImage* rolltui_frame_image_at(const RolltuiFrame* f, size_t i) {
+  return f && i < f->image_count ? &f->images[i] : NULL;
+}
+
+void rolltui_frame_forget_rect(RolltuiFrame* f, RolltuiRect r) {
+  int x, y;
+  for (y = r.y; y < r.y + r.h; ++y)
+    for (x = r.x; x < r.x + r.w; ++x)
+      if (in_bounds(f, x, y)) {
+        /* a cell no draw makes: the next diff against this frame writes whatever is there now */
+        RolltuiCellRaw* c = at_mut(f, x, y);
+        c->bytes[0] = '\x01';
+        c->len = 1;
+        c->width = 1;
+        c->continuation = 0;
+      }
 }
 
 void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill) {

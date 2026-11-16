@@ -56,6 +56,10 @@ void rolltui_swap_present_at(RolltuiSwap* s, unsigned char depth, int origin, in
 
 void rolltui_swap_invalidate(RolltuiSwap* s) { s->have_front = 0; }
 
+void rolltui_swap_forget_rect(RolltuiSwap* s, RolltuiRect r) {
+  if (s && s->have_front) rolltui_frame_forget_rect(s->front, r);
+}
+
 const RolltuiFrame* rolltui_swap_front(const RolltuiSwap* s) {
   return s->have_front ? s->front : NULL;
 }

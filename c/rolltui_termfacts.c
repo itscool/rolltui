@@ -38,6 +38,10 @@ void rolltui_termenv_read(RolltuiTermEnv* e) {
   e->locale = nz(getenv("LC_ALL"));
   if (!e->locale) e->locale = nz(getenv("LC_CTYPE"));
   if (!e->locale) e->locale = nz(getenv("LANG"));
+  e->kitty_window_id = nz(getenv("KITTY_WINDOW_ID"));
+  e->konsole_version = nz(getenv("KONSOLE_VERSION"));
+  e->wt_session = nz(getenv("WT_SESSION"));
+  e->force_images = nz(getenv("ROLLTUI_IMAGES"));
   if (rolltui_os_release(e->os_release, sizeof e->os_release) != 0) e->os_release[0] = '\0';
   if (rolltui_os_host_name(e->host, sizeof e->host) != 0) e->host[0] = '\0';
 }
@@ -131,6 +135,34 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
     f->ambiguous_source = ROLLTUI_FACT_FORCED;
   }
 
+  /* PICTURES: by what the terminal is called, then (rolltui_termfacts_apply_replies) by whether its Primary DA names sixel.
+   * Behind a multiplexer only kitty's placeholders get through (passed through, and they are cells), and only when the window it
+   * runs in is kitty's. */
+  {
+    const char* fi = e->force_images;
+    const char* t = e->term ? e->term : "";
+    const char* prog = e->term_program ? e->term_program : "";
+    f->images = ROLLTUI_IMAGES_BLOCKS;
+    f->images_source = ROLLTUI_FACT_DEFAULT;
+    if (rolltui_termenv_multiplexed(e)) {
+      if (e->kitty_window_id) f->images = ROLLTUI_IMAGES_KITTY, f->images_source = ROLLTUI_FACT_ENV;
+    } else if (strstr(t, "kitty") || e->kitty_window_id || eq(prog, "ghostty") || strstr(t, "ghostty")) {
+      f->images = ROLLTUI_IMAGES_KITTY;
+      f->images_source = ROLLTUI_FACT_ENV;
+    } else if (eq(prog, "iTerm.app") || (e->lc_terminal && eq(e->lc_terminal, "iTerm2")) || eq(prog, "WezTerm")) {
+      f->images = ROLLTUI_IMAGES_ITERM2;
+      f->images_source = ROLLTUI_FACT_ENV;
+    } else if (strncmp(t, "foot", 4) == 0 || strncmp(t, "mlterm", 6) == 0 || e->konsole_version || e->wt_session) {
+      f->images = ROLLTUI_IMAGES_SIXEL;
+      f->images_source = ROLLTUI_FACT_ENV;
+    }
+    if (fi) {
+      const int v = eq(fi, "blocks") ? ROLLTUI_IMAGES_BLOCKS : eq(fi, "kitty") ? ROLLTUI_IMAGES_KITTY
+                    : eq(fi, "iterm2") ? ROLLTUI_IMAGES_ITERM2 : eq(fi, "sixel") ? ROLLTUI_IMAGES_SIXEL : 0;
+      if (v) f->images = (unsigned char)v, f->images_source = ROLLTUI_FACT_FORCED;
+    }
+  }
+
   /* NAME, for a person reading `dirktui check-terminal`. */
   if (e->term_program) {
     if (e->term_program_version) snprintf(f->name, sizeof f->name, "%s %s", e->term_program, e->term_program_version);
@@ -209,6 +241,20 @@ static _Atomic int g_active_mode = -1;
 
 void rolltui_termfacts_set_active_wide(int wide) { g_active_wide = wide < 0 ? -1 : (wide ? 1 : 0); }
 int rolltui_termfacts_active_wide(void) { return g_active_wide == 1; }
+
+static _Atomic int g_active_images = 0;
+static _Atomic int g_active_cell_w = 0;
+static _Atomic int g_active_cell_h = 0;
+void rolltui_termfacts_set_active_images(int images, int cell_w, int cell_h) {
+  g_active_images = images > 0 ? images : 0;
+  g_active_cell_w = cell_w > 0 ? cell_w : 0;
+  g_active_cell_h = cell_h > 0 ? cell_h : 0;
+}
+int rolltui_termfacts_active_images(void) { return g_active_images; }
+void rolltui_termfacts_active_cell_pixels(int* cell_w, int* cell_h) {
+  if (cell_w) *cell_w = g_active_cell_w;
+  if (cell_h) *cell_h = g_active_cell_h;
+}
 
 static _Atomic int g_active_split = -1;
 void rolltui_termfacts_set_active_split(int split) { g_active_split = split < 0 ? -1 : (split ? 1 : 0); }
@@ -314,8 +360,15 @@ static size_t take_csi(const char* p, size_t n, int expect_cpr, RolltuiTermRepli
   total = i + 1;
   if (params_end > 2 && (p[2] == '?' || p[2] == '>' || p[2] == '<' || p[2] == '=')) lead = p[2];
 
-  if (lead == '?' && fin == 'c') { /* Primary DA — the terminator */
+  if (lead == '?' && fin == 'c') { /* Primary DA — the terminator; attribute 4 is sixel */
+    size_t k = 3;
     r->da1 = 1;
+    while (k < params_end) {
+      int v = 0, digits = 0;
+      while (k < params_end && p[k] >= '0' && p[k] <= '9') v = v * 10 + (p[k++] - '0'), ++digits;
+      if (digits && v == 4) r->da1_sixel = 1;
+      ++k;
+    }
     return total;
   }
   if (lead == '>' && fin == 'c') return total; /* Secondary DA: swallowed, never a key */
@@ -469,6 +522,10 @@ size_t rolltui_termreplies_take(char* buf, size_t len, int expect_cpr, RolltuiTe
 
 void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermReplies* r, unsigned asked) {
   if (r->da1) f->responsive = 1;
+  if (r->da1_sixel && f->images_source == ROLLTUI_FACT_DEFAULT) { /* a terminal no name told of, that says it draws sixel */
+    f->images = ROLLTUI_IMAGES_SIXEL;
+    f->images_source = ROLLTUI_FACT_PROBE;
+  }
   if ((asked & ROLLTUI_TERMQ_BACKGROUND) && r->has_bg) {
     f->background = r->bg;
     f->has_background = 1;

@@ -693,6 +693,8 @@ ROLLTUI_API(rolltui_windows_bind_gauge, PUBLIC)  /* KEPT: a host with work that 
 ROLLTUI_API(rolltui_windows_bind_output, PUBLIC)  /* KEPT: a host shows a program's output in an `output:` window (a build log, a previewer's pane) */
 ROLLTUI_API(rolltui_windows_set_output_wrap, PUBLIC)  /* KEPT: a log that scrolls sideways rather than wrapping */
 ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is bound */
+ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture it made in an `image:` window */
+ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
 ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
 ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
 ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
@@ -753,6 +755,34 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+/* ---- rolltui_image.c — pictures, fitted and drawn the terminal's best way --- */
+ROLLTUI_API(rolltui_image_load, PUBLIC)  /* KEPT: a host shows a picture from a path (the `image:` kind reads files itself) */
+ROLLTUI_API(rolltui_image_decode, PUBLIC)  /* paint opens a PNG */
+ROLLTUI_API(rolltui_image_from_rgba, PUBLIC)  /* KEPT: a host shows pixels it made (a chart rendered, a thumbnail scaled) */
+ROLLTUI_API(rolltui_image_free, PUBLIC)
+ROLLTUI_API(rolltui_image_rgba, PUBLIC)  /* paint reads the pixels it turns into glyphs */
+ROLLTUI_API(rolltui_frame_image, PUBLIC)  /* KEPT: a host's own widget draws a picture (the preview and the `image:` kind draw it for a window) */
+ROLLTUI_API(rolltui_image_cells, PUBLIC)  /* KEPT: a host sizes or centres a picture before drawing it */
+ROLLTUI_API(rolltui_image_id, INTERNAL)  /* kitty's id, for the cells and the terminal */
+ROLLTUI_API(rolltui_image_fit, INTERNAL)
+ROLLTUI_API(rolltui_image_scale, INTERNAL)
+ROLLTUI_API(rolltui_image_kitty_upload, INTERNAL)  /* the terminal sends these at present */
+ROLLTUI_API(rolltui_image_kitty_place, INTERNAL)
+ROLLTUI_API(rolltui_image_kitty_delete, INTERNAL)
+ROLLTUI_API(rolltui_image_sixel, INTERNAL)
+ROLLTUI_API(rolltui_image_iterm2, INTERNAL)
+ROLLTUI_API(rolltui_image_diacritic_count, INTERNAL)  /* a test checks the table against the Unicode tables */
+ROLLTUI_API(rolltui_image_diacritic, INTERNAL)
+ROLLTUI_API(rolltui_frame_add_image, INTERNAL)  /* a picture drawn, recorded for the terminal */
+ROLLTUI_API(rolltui_frame_image_count, INTERNAL)
+ROLLTUI_API(rolltui_frame_image_at, INTERNAL)
+ROLLTUI_API(rolltui_frame_forget_rect, INTERNAL)  /* a picture drawn outside the grid is erased by writing its cells again */
+ROLLTUI_API(rolltui_swap_forget_rect, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active_images, INTERNAL)  /* the entered terminal publishes how it draws pictures */
+ROLLTUI_API(rolltui_termfacts_active_images, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_active_cell_pixels, INTERNAL)
+ROLLTUI_API(rolltui_os_tty_pixels, INTERNAL)
+
 /* ---- rolltui_ansi.c — another program's coloured output, read as styled lines --- */
 ROLLTUI_API(rolltui_ansi_new, PUBLIC)  /* chat reads an approved command's output */
 ROLLTUI_API(rolltui_ansi_free, PUBLIC)
@@ -1339,7 +1369,6 @@ ROLLTUI_API(rolltui_os_open_with_system, INTERNAL)
 ROLLTUI_API(rolltui_os_clipboard_native, INTERNAL)  /* a host copies through rolltui_clipboard_copy */
 ROLLTUI_API(rolltui_os_open_terminal, INTERNAL)
 ROLLTUI_API(rolltui_os_close_terminal, INTERNAL)
-ROLLTUI_API(rolltui_os_hostname, INTERNAL)  /* OSC 7's host */
 ROLLTUI_API(rolltui_os_localtime, INTERNAL)
 ROLLTUI_API(rolltui_mutex_init, INTERNAL)
 ROLLTUI_API(rolltui_mutex_destroy, INTERNAL)

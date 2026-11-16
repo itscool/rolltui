@@ -39,7 +39,7 @@ int main() {
 
   // These hold NO menu: a text page, a file, help, a rows list, an error, the column browser (its levels are columns, which
   // Left steps through), a single-line input, the transcript, a gauge and the message history.
-  const std::set<std::string> flat = {"Text", "File", "Help", "Rows", "Error", "Picker", "Input", "Transcript", "Gauge", "Messages", "Output"};
+  const std::set<std::string> flat = {"Text", "File", "Help", "Rows", "Error", "Picker", "Input", "Transcript", "Gauge", "Messages", "Output", "Image"};
   // These hold a menu with levels, so each closes one level before the popup closes.
   const std::set<std::string> menus = {"Menu", "Theme", "Keys"};
   check(no_levels == flat, "the kinds that declare `no levels` are exactly the ones that hold no menu: adding one, or giving one a menu, means deciding here [" + std::to_string(no_levels.size()) + " found]");

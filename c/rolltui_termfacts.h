@@ -52,6 +52,10 @@ typedef struct RolltuiTermEnv {
   const char* sty;                 /* GNU screen */
   const char* ssh_connection;
   const char* locale;              /* LC_ALL, else LC_CTYPE, else LANG */
+  const char* kitty_window_id;     /* kitty sets it in every window, and a tmux session started inside one keeps it */
+  const char* konsole_version;
+  const char* wt_session;          /* Windows Terminal */
+  const char* force_images;        /* ROLLTUI_IMAGES: blocks, kitty, iterm2 or sixel */
   char os_release[64];             /* uname(2) release: "25.6.0" on macOS 26 */
   char host[64];
 } RolltuiTermEnv;
@@ -120,6 +124,11 @@ void rolltui_termfacts_set_active_split(int split);
 int rolltui_termfacts_active_split(void); /* 1 only when a terminal measured it */
 void rolltui_termfacts_set_active_mode(int mode);
 int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no terminal is entered */
+/* How the entered terminal draws a picture (ROLLTUI_IMAGES_*), and its cell's size in pixels (0 when not known). 0 and 0 while no
+ * terminal is entered: pictures are drawn in blocks. */
+void rolltui_termfacts_set_active_images(int images, int cell_w, int cell_h);
+int rolltui_termfacts_active_images(void);
+void rolltui_termfacts_active_cell_pixels(int* cell_w, int* cell_h);
 
 /* ---- the questions -------------------------------------------------------------------------- */
 #define ROLLTUI_TERMQ_KEYBOARD 1   /* CSI ? u, CSI ? 4 m */
@@ -162,6 +171,7 @@ typedef struct RolltuiTermReplies {
   int sync;         /* …and the mode is one the terminal has: set, reset, or permanently set */
   int sgr;          /* ROLLTUI_TERMR_SGR_* */
   char version[64]; /* XTVERSION: "ghostty 1.1.3" */
+  int da1_sixel;    /* Primary DA named attribute 4: the terminal draws sixel */
 } RolltuiTermReplies;
 
 /* Removes every RECOGNISED terminal reply from `buf[0..len)` in place, folds what they said into

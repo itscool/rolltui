@@ -443,6 +443,14 @@ void rolltui_os_tty_restore(RolltuiOsTty* t) {
   SetConsoleOutputCP(t->saved_out_cp);
 }
 
+int rolltui_os_tty_pixels(const RolltuiOsTty* t, int* xpix, int* ypix) {
+  /* the console says nothing of its pixels */
+  (void)t;
+  (void)xpix;
+  (void)ypix;
+  return 0;
+}
+
 int rolltui_os_tty_size(const RolltuiOsTty* t, int* w, int* h) {
   CONSOLE_SCREEN_BUFFER_INFO info;
   if (!GetConsoleScreenBufferInfo(t->out, &info)) return 0;

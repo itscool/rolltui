@@ -58,6 +58,24 @@ extern "C" {
 #endif
 void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int* cells,
                            int* state, unsigned long long* since_ms, double* fraction);
+
+/* ---- pictures (rolltui_frame_image) ----------------------------------------------------------------
+ * A picture drawn by a protocol the terminal draws outside the cell grid, or one it must be sent first, is recorded with the cells
+ * it covers; the terminal reads the list at present (rolltui_terminal.c). The picture is a BORROW the host keeps alive until then. */
+typedef struct RolltuiFrameImage {
+  const RolltuiImage* img;
+  RolltuiRect cells;
+  int protocol;    /* ROLLTUI_IMAGES_* */
+  int px_w, px_h;  /* the pixel box it fills */
+  RolltuiStyle ground; /* the blanks under an out-of-grid picture: while every cell is one, nothing is drawn over it */
+} RolltuiFrameImage;
+void rolltui_frame_add_image(RolltuiFrame* f, const RolltuiImage* img, RolltuiRect cells, int protocol, int px_w, int px_h,
+                             RolltuiStyle ground);
+size_t rolltui_frame_image_count(const RolltuiFrame* f);
+const RolltuiFrameImage* rolltui_frame_image_at(const RolltuiFrame* f, size_t i);
+/* Marks the cells of `r` as unlike anything drawn, so the next diff against this frame writes them: a picture drawn outside the
+ * grid is erased by writing what the cells hold now. */
+void rolltui_frame_forget_rect(RolltuiFrame* f, RolltuiRect r);
 /* Clips every mark to what lies OUTSIDE `r`: what a window drawn over marked cells calls, so
  * an effect never paints through it. Whole marks under it go; a mark it cuts keeps the part
  * that shows, in two pieces when the rect takes its middle. */

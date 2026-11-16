@@ -361,7 +361,8 @@ int main() {
            which is the one raw pointer this header declares. */
         
         {"c/rolltui_md_lines.h", 5},
-        {"c/rolltui_screen.h", 0},
+        {"c/rolltui_screen.h", 1},  /* `RolltuiFrameImage::img`: a BORROW of the host's picture until the frame is presented */
+        {"c/rolltui_image.h", 0},
         {"c/rolltui_render.h", 0},
         {"c/rolltui_wrap.h", 0},
         {"c/rolltui_frame_ops.h", 0},
@@ -383,7 +384,7 @@ int main() {
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_os.h", 1},  /* `RolltuiMutex.lock` on Windows: an SRWLOCK, one pointer-sized value the system owns and nothing here follows */
-        {"c/rolltui_termfacts.h", 13},  /* `RolltuiTermEnv`: twelve `const char*` that BORROW from `getenv` (NULL when unset) and the thirteenth, the ssh string, the same — read once into a struct so a test can BE the environment; nothing here owns or outlives the call */
+        {"c/rolltui_termfacts.h", 17},  /* +4: KITTY_WINDOW_ID, KONSOLE_VERSION, WT_SESSION and ROLLTUI_IMAGES, the same BORROWS. `RolltuiTermEnv`: twelve `const char*` that BORROW from `getenv` (NULL when unset) and the thirteenth, the ssh string, the same — read once into a struct so a test can BE the environment; nothing here owns or outlives the call */
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_widget_menu_tree.h", 0},
         {"c/rolltui_lifetime.h", 0},
@@ -450,8 +451,9 @@ int main() {
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
     // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above. 193 -> 195: a menu
     // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
-    // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options.
-    check(total == 210, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options. 210 -> 215:
+    // the four environment strings pictures are chosen by, and a frame's picture.
+    check(total == 215, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
@@ -594,8 +596,9 @@ int main() {
     // Windows set (11, rolltui_os_win32.c), which a build compiles instead of the POSIX one. 32: whether
     // the terminal splits grapheme clusters, beside its glyph width. 35: what handled the crash signals before the library (1
     // POSIX, 2 Windows), gone on to after a crash puts the terminal back.
-    check(ctx == 0 && proc == 35,
-          "the boundary is 0 CONTEXT + 35 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // 35 -> 39: the entered terminal's way of drawing pictures and its cell's pixels (three), and the pictures' id counter.
+    check(ctx == 0 && proc == 39,
+          "the boundary is 0 CONTEXT + 39 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

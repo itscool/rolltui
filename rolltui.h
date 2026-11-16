@@ -815,6 +815,7 @@ typedef struct RolltuiWindowStack RolltuiWindowStack;
 typedef struct RolltuiTerminal RolltuiTerminal;
 typedef struct RolltuiSwap RolltuiSwap;
 typedef struct RolltuiAnsiText RolltuiAnsiText;
+typedef struct RolltuiImage RolltuiImage;
 typedef struct RolltuiBindings RolltuiBindings;
 typedef struct RolltuiLayout RolltuiLayout;
 typedef struct RolltuiLayoutNode RolltuiLayoutNode;
@@ -3297,6 +3298,10 @@ void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len,
  * while it is bound; binding again replaces it. Lines wrap at the window's edge unless `set_output_wrap` says 0, when the window
  * scrolls sideways (the wheel's left and right). */
 void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text);
+/* image: a picture the host made, shown in an `image:<name>` window, centred, instead of the file that name would be read from.
+ * `img` is a BORROW the host keeps alive while it is bound; NULL unbinds it. An `image:` window with nothing bound reads the file
+ * its source names (relative to the preset directory, as `file:` does) and reads it again when it changes. */
+void rolltui_windows_bind_image(RolltuiWindows* w, const char* name, size_t len, const RolltuiImage* img);
 void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t len, int wrap);
 
 /* ---- progress a host draws itself ---------------------------------------------------------- */
@@ -3477,6 +3482,43 @@ int rolltui_ansi_width(const RolltuiAnsiText* t);
  * default colours are the theme's; the frame's depth maps the rest down at present. Returns the rows drawn. */
 int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect area, size_t first, int left, int wrap,
                       RolltuiStyle base, int ambiguous_wide);
+
+/* ========================================================================================
+ * images — pictures, fitted to a window and drawn the best way the terminal has
+ * ======================================================================================== */
+
+/* HOW A TERMINAL DRAWS PICTURES, chosen when it is entered (`RolltuiTermFacts::images`):
+ *   BLOCKS  half blocks, two pixels to a cell in their colours: every terminal, every multiplexer, ssh.
+ *   KITTY   the kitty graphics protocol's Unicode placeholders (kitty, Ghostty): the picture is IN the cells, so a popup over it,
+ *           the diff and tmux treat it as text, and its pixels are sent once.
+ *   ITERM2  OSC 1337 (iTerm2, WezTerm): drawn by the terminal at a cell, outside the grid.
+ *   SIXEL   (foot, xterm -ti 340, mlterm, Konsole, Windows Terminal; any terminal whose Primary DA names sixel): likewise.
+ * An outside-the-grid picture is sent whenever its cells are all its own blanks and were not last frame, and never while anything is
+ * drawn over it; when it goes, its cells are written again, erasing it. `ROLLTUI_IMAGES` (blocks, kitty, iterm2, sixel) chooses
+ * outright. 0 is "not known": no terminal is entered, and pictures are drawn in blocks. */
+#define ROLLTUI_IMAGES_BLOCKS 1
+#define ROLLTUI_IMAGES_KITTY 2
+#define ROLLTUI_IMAGES_ITERM2 3
+#define ROLLTUI_IMAGES_SIXEL 4
+/* A picture larger than this on a side, or than this many bytes decoded, is refused before it is decoded. */
+#define ROLLTUI_IMAGE_MAX_SIDE 10000
+#define ROLLTUI_IMAGE_MAX_BYTES (512u * 1024u * 1024u)
+
+/* A PICTURE, decoded to RGBA: PNG, JPEG, GIF (its first frame), BMP, TGA and PNM. OWNED. NULL with the reason in `*err` (may be
+ * NULL): "not a picture this library reads", "too large to decode: 12000x9000". */
+RolltuiImage* rolltui_image_load(const char* path, size_t len, RolltuiStr* err);
+RolltuiImage* rolltui_image_decode(const unsigned char* bytes, size_t len, RolltuiStr* err);
+/* `w` x `h` RGBA pixels, copied. NULL when the size is not one a picture may be. */
+RolltuiImage* rolltui_image_from_rgba(const unsigned char* rgba, int w, int h);
+void rolltui_image_free(RolltuiImage* img); /* a no-op on NULL */
+/* The pixels, RGBA, row by row: a BORROW valid until the picture is freed. */
+const unsigned char* rolltui_image_rgba(const RolltuiImage* img, int* w, int* h);
+/* DRAWS `img` into `area`, its aspect kept and never enlarged past its own pixels, at the area's top left, by the terminal's way
+ * (BLOCKS while none is entered). `ground` is what shows through a transparent pixel and what an outside-the-grid picture's cells
+ * hold. `*used` (may be NULL) is the cells it took. `img` is a BORROW the host keeps alive until the frame has been presented. */
+void rolltui_frame_image(RolltuiFrame* f, RolltuiRect area, const RolltuiImage* img, RolltuiStyle ground, RolltuiRect* used);
+/* The cells `rolltui_frame_image` would take for `img` in a `cols` x `rows` area, now: what a host centres a picture with. */
+void rolltui_image_cells(const RolltuiImage* img, int cols, int rows, int* used_cols, int* used_rows);
 
 /* ========================================================================================
  * marker — the "N more" rule
@@ -3958,6 +4000,8 @@ typedef struct RolltuiTerminalOptions {
   /* Where the remembered answers live. A BORROW for the call only. NULL: the person's rolltui configuration directory (ROLL_CONFIG_DIR,
    * else XDG_CONFIG_HOME/roll/rolltui, else ~/.config/roll/rolltui). */
   const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* HOW PICTURES ARE DRAWN, said outright (ROLLTUI_IMAGES_*): a host's setting the person chose. 0: found out (`RolltuiTermFacts`). */
+  unsigned char images ROLLTUI_DEFAULT(0);
 } RolltuiTerminalOptions;
 
 /* ---- events ----------------------------------------------------------------------------- */
@@ -4011,6 +4055,9 @@ typedef struct RolltuiTermFacts {
   unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
   unsigned char remembered;     /* this run used remembered answers rather than asking */
   char name[64];                /* how the terminal introduced itself, for humans: "Apple_Terminal 455" */
+  unsigned char images;         /* ROLLTUI_IMAGES_*: how it draws a picture */
+  unsigned char images_source;  /* ROLLTUI_FACT_* */
+  unsigned short cell_w, cell_h; /* a cell's size in pixels, 0 when the terminal does not say */
 } RolltuiTermFacts;
 
 /* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.

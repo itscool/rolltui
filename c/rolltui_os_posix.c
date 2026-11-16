@@ -314,6 +314,15 @@ int rolltui_os_tty_size(const RolltuiOsTty* t, int* w, int* h) {
   return 1;
 }
 
+int rolltui_os_tty_pixels(const RolltuiOsTty* t, int* xpix, int* ypix) {
+  struct winsize ws;
+  memset(&ws, 0, sizeof ws);
+  if (ioctl(t->out_fd, TIOCGWINSZ, &ws) != 0 || ws.ws_xpixel == 0 || ws.ws_ypixel == 0) return 0;
+  *xpix = ws.ws_xpixel;
+  *ypix = ws.ws_ypixel;
+  return 1;
+}
+
 void rolltui_os_tty_write(RolltuiOsTty* t, const char* bytes, size_t len) { write_all_fd(t->out_fd, bytes, len); }
 
 int rolltui_os_tty_wait(RolltuiOsTty* t, int timeout_ms, int with_wake) {

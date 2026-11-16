@@ -155,6 +155,8 @@ int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t 
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
 /* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
+/* The picture an `image:<name>` window shows instead of reading the file; NULL when none is bound. */
+const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* name, size_t len);
 /* The table's message log, which its `messages` kind reads. */
 const struct RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w);
 
