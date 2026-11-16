@@ -429,7 +429,7 @@ std::optional<RolltuiLayout> load_layout_c(std::string_view json_text, RolltuiLa
 }
 std::string layout_to_json_c(const RolltuiLayout& layout) {
   Str out;
-  rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
+  rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height, layout.inline_mode,
                               layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
                               layout.popups.size(), rolltui_layout_default_hooks(), &out);
   return str_of(out);
@@ -2434,6 +2434,30 @@ int main() {
         }
     check(ends_exact, "wherever the thumb has 2+ cells of travel: it touches an end IF AND ONLY IF the view is at that end" + first_bad);
     check(degenerate_seen, "…and the sweep did reach the too-short case the guard excludes, so the guard is not hiding an empty set");
+  }
+
+  // ---- "inline": a screen drawn below the prompt, in the normal screen ----
+  {
+    LayoutReport rep;
+    const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"i","inline":true,"root":{"content":"a"}})", rep);
+    check(l && rep.clean() && rolltui_layout_inline(&*l) == 1, "`\"inline\": true` is read, and the layout says it is drawn inline");
+    LayoutReport rep2;
+    const std::optional<RolltuiLayout> plain = load_layout_c(R"({"name":"p","root":{"content":"a"}})", rep2);
+    check(plain && rolltui_layout_inline(&*plain) == 0 && layout_to_json_c(*plain).find("\"inline\"") == std::string::npos,
+          "…a layout that says nothing is the whole screen, and its file says nothing either");
+    LayoutReport rep3;
+    const std::optional<RolltuiLayout> bad = load_layout_c(R"({"name":"b","inline":"yes","root":{"content":"a"}})", rep3);
+    check(bad && rep3.bad_values_n == 1 && view_of(rep3.bad_values[0]).find("inline: expected true or false") != std::string_view::npos &&
+              rolltui_layout_inline(&*bad) == 0,
+          "…a value that is not true or false is reported, and the screen stays whole");
+    const std::string text = layout_to_json_c(*l);
+    LayoutReport rep4;
+    const std::optional<RolltuiLayout> again = load_layout_c(text, rep4);
+    check(text.find("\"inline\": true") != std::string::npos && again && rolltui_layout_inline(&*again) == 1 &&
+              rolltui_layout_equal(&*again, &*l),
+          "…and it survives being written and read back, as a saved copy must");
+    const RolltuiLayout* shipped = builtin_layout_c("inline");
+    check(shipped && rolltui_layout_inline(shipped) == 1, "the shipped `inline` layout is drawn inline");
   }
 
   return report("rolltui_layout_test");

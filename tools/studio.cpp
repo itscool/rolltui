@@ -1025,7 +1025,7 @@ struct App {
         what = "layout";
         const RolltuiLayout* l = lstore ? rolltui_layout_store_working(lstore) : nullptr;
         if (!l) return false;
-        rolltui_layout_to_json_text(l->name.p, l->name.n, l->min_width, l->min_height, l->actions.v, l->actions.n,
+        rolltui_layout_to_json_text(l->name.p, l->name.n, l->min_width, l->min_height, l->inline_mode, l->actions.v, l->actions.n,
                                     &l->base, l->popups.v, l->popups.n, rolltui_layout_default_hooks(), &out);
         return true;
       }

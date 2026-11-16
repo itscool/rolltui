@@ -1078,7 +1078,7 @@ int main() {
     // the layout is its own domain, so there is nothing that key can mean here.
     const RolltuiLayout* stacked = builtin_layout_c("stacked");
     RolltuiJsonValue* stacked_json =
-        rolltui_layout_to_json_value(stacked->name.data(), stacked->name.size(), stacked->min_width, stacked->min_height,
+        rolltui_layout_to_json_value(stacked->name.data(), stacked->name.size(), stacked->min_width, stacked->min_height, stacked->inline_mode,
                                      stacked->actions.data(), stacked->actions.size(), &stacked->base, stacked->popups.data(),
                                      stacked->popups.size(), rolltui_layout_default_hooks());
     rolltui_json_set(whole, "layout", 6, stacked_json);
@@ -1223,7 +1223,7 @@ int main() {
           "a fresh directory starts from the shipped default layout (rule 5), label 'default'");
     // The shipped presets ARE the built-ins: one definition site, asserted anyway.
     std::vector<std::string> names = LayoutStore::shipped_names();
-    check(names.size() == 4 && names[0] == "default", "four shipped layouts, 'default' first");
+    check(names.size() == 5 && names[0] == "default", "five shipped layouts, 'default' first");
     bool all_builtin = true;
     for (const std::string& n : names) {
       const std::string on_disk = read_file(fs::path(ROLLTUI_LAYOUTS_DIR) / (n + ".json"));
@@ -1253,7 +1253,7 @@ int main() {
     // domain's own mechanics now.
     const RolltuiLayout* no_panel = builtin_layout_c("no-panel");
     RolltuiStr np_text{};
-    rolltui_layout_to_json_text(no_panel->name.data(), no_panel->name.size(), no_panel->min_width, no_panel->min_height,
+    rolltui_layout_to_json_text(no_panel->name.data(), no_panel->name.size(), no_panel->min_width, no_panel->min_height, no_panel->inline_mode,
                                 no_panel->actions.data(), no_panel->actions.size(), &no_panel->base, no_panel->popups.data(),
                                 no_panel->popups.size(), rolltui_layout_default_hooks(), &np_text);
     write_file(fs::path(ldir) / "layouts" / "two.json", str_of(np_text));

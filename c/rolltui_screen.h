@@ -95,13 +95,9 @@ int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
 
 /* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
  * needs them. ---- */
-void rolltui_frame_free(RolltuiFrame* f);
-
 int rolltui_frame_height(const RolltuiFrame* f);
-
-/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
- * rolltui::mem, because a half-built frame is worse than a clean death. */
-RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill);
+/* The style the frame was filled with: its ground. An inline region draws it as the terminal's own background. */
+void rolltui_frame_ground(const RolltuiFrame* f, RolltuiStyle* out);
 
 int rolltui_frame_width(const RolltuiFrame* f);
 

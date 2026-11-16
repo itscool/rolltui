@@ -489,8 +489,12 @@ int main() {
     // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. 413/712 on 2026-11-13, when the 94 functions the
     // modules added after the split had declared without a row were classified (85 INTERNAL, 9 PUBLIC). 410 the same day, when
     // the reach rule found three studio-tier functions nothing called, not even a test (`rolltui_theme_store_set_working`,
-    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went. INTERNAL 755 with rolltui_os.h's 43, 756 with `rolltui_labelf`, 758 with the active split fact, 762 with UAX #15 normalization.
-    check(totals["PUBLIC"] == 410 && totals["INTERNAL"] == 762 && totals.size() == 2,
+    // `rolltui_layout_store_edit`, `rolltui_bindings_store_edit`), and they went. INTERNAL 755 with rolltui_os.h's 43, 756 with `rolltui_labelf`, 758 with the active split fact, 762 with UAX #15 normalization, 766 with rendering from a screen row. 2026-11-15, inline
+    // mode: PUBLIC 415 (`rolltui_terminal_commit`, `rolltui_frame_new`/`_free` for the rows it commits,
+    // `rolltui_transcript_entry_frame` to draw one and `_total_lines`, now public, to size the region,
+    // `rolltui_document_remove` to drop it once committed, `rolltui_layout_inline` for a layout that says so),
+    // INTERNAL 766.
+    check(totals["PUBLIC"] == 417 && totals["INTERNAL"] == 766 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -653,10 +657,10 @@ int main() {
     // rolltui.h without a row until the class census came back (2026-11-13): vocab +1 (`rolltui_style_on`), settings +1 (the
     // keys editor's presets switch), bind +1 (`rolltui_rows_add_colour`), run +5 (the terminal facts, their cache, reprobe, depth,
     // present), widget +1 (`rolltui_frame_put_swatch`). Then settings 94 -> 91: the three studio-tier functions nothing called.
-    check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 101 && rt["HOST_RUN"] == 113 && rt["HOST_RELEASE"] == 10 &&
+    check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
+              rt["HOST_BIND"] == 102 && rt["HOST_RUN"] == 118 && rt["HOST_RELEASE"] == 10 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 28,
-          "the roles are the recorded shape — vocab 37, host load 30 / settings 91 / bind 101 / run 113 / "
+          "the roles are the recorded shape — vocab 37, host load 31 / settings 91 / bind 102 / run 118 / "
           "release 10, tool interop 0, widget 28 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

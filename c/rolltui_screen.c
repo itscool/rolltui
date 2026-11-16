@@ -62,6 +62,7 @@ struct RolltuiFrame {
   Mark* marks;
   size_t mark_count, mark_cap;
   int cx, cy, cvis;
+  RolltuiStyle fill; /* what `reset` filled it with: its ground */
 };
 
 /* ---- helpers ----------------------------------------------------------------------------- */
@@ -133,6 +134,7 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   /* EXACT (strategy 3): a reset knows w * h, and this is the biggest buffer in the library —
    * doubling would make a 120x40 grid reserve 8,192 cells for the 4,800 it needs. */
   f->cells = rolltui_fit(f->cells, &f->cell_cap, n, sizeof *f->cells);
+  f->fill = fill;
   cell_init(&proto, fill);
   for (i = 0; i < n; ++i) f->cells[i] = proto;
   /* The tables keep their bytes; only the COUNT is reset. */
@@ -410,3 +412,5 @@ int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b) {
       return 0;
   return 1;
 }
+
+void rolltui_frame_ground(const RolltuiFrame* f, RolltuiStyle* out) { *out = f->fill; }

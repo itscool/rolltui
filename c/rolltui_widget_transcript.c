@@ -1639,6 +1639,42 @@ RolltuiTranscript* rolltui_transcript_new(void) {
   return t;
 }
 
+RolltuiFrame* rolltui_transcript_entry_frame(const RolltuiTranscript* like, const RolltuiDocEntryRaw* e, int width,
+                                             const RolltuiStyle* styles, RolltuiStyle fill) {
+  RolltuiTranscript* t = rolltui_transcript_new();
+  RolltuiDocumentRaw doc;
+  RolltuiTranscriptOptions opt = like->opt_;
+  RolltuiDrawScratch* ds;
+  RolltuiFrame* f;
+  RolltuiRect area;
+  size_t rows;
+  const int gap = like->opt_.gap > 0 ? like->opt_.gap : 0;
+  memset(&doc, 0, sizeof doc);
+  rolltui_doc_entry_copy(rolltui_document_add(&doc), e);
+  t->highlight_ = like->highlight_;
+  t->highlight_ctx_ = like->highlight_ctx_;
+  t->highlight_epoch_ = like->highlight_epoch_;
+  opt.gap = 0; /* one entry: nothing to keep apart */
+  if (width < 1) width = 1;
+  /* MEASURED, then drawn at exactly that height: a viewport taller than any entry has no scrollbar to
+   * take a column, and one exactly as tall shows the entry whole from its first line. */
+  area.x = 0;
+  area.y = 0;
+  area.w = width;
+  area.h = 1 << 20;
+  rolltui_transcript_layout(t, &doc, area, &opt);
+  rows = rolltui_transcript_total_lines(t);
+  area.h = rows > 0 ? (int)rows : 1;
+  f = rolltui_frame_new(width, area.h + gap, fill); /* the transcript's gap below, as it keeps between entries */
+  rolltui_transcript_layout(t, &doc, area, &opt);
+  ds = rolltui_draw_scratch_new();
+  rolltui_transcript_draw(t, f, ds, styles);
+  rolltui_draw_scratch_free(ds);
+  rolltui_document_release(&doc);
+  rolltui_transcript_free(t);
+  return f;
+}
+
 void rolltui_transcript_free(RolltuiTranscript* t) {
   size_t i;
   if (!t) return;

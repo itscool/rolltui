@@ -1044,6 +1044,7 @@ void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout*
   rolltui_str_move(&out->name, &loaded->name);
   out->min_width = loaded->min_width;
   out->min_height = loaded->min_height;
+  out->inline_mode = loaded->inline_mode;
   out->actions.v = loaded->actions;
   out->actions.n = loaded->actions_n;
   out->actions.cap = loaded->actions_cap;
@@ -1142,6 +1143,7 @@ void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from) {
   rolltui_str_set(&to->name, from->name.p, from->name.n);
   to->min_width = from->min_width;
   to->min_height = from->min_height;
+  to->inline_mode = from->inline_mode;
   rolltui_action_list_copy(&to->actions, &from->actions);
   rolltui_layer_copy(&to->base, &from->base);
   rolltui_layer_list_copy(&to->popups, &from->popups);
@@ -1149,7 +1151,7 @@ void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from) {
 
 int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b) {
   return rolltui_str_eq(&a->name, b->name.p, b->name.n) && a->min_width == b->min_width &&
-         a->min_height == b->min_height && rolltui_action_list_equal(&a->actions, &b->actions) &&
+         a->min_height == b->min_height && a->inline_mode == b->inline_mode && rolltui_action_list_equal(&a->actions, &b->actions) &&
          rolltui_layer_equal(&a->base, &b->base) && rolltui_layer_list_equal(&a->popups, &b->popups);
 }
 
@@ -1192,6 +1194,8 @@ const RolltuiLayoutAction* rolltui_layout_actions(const RolltuiLayout* l, size_t
   if (n) *n = l ? l->actions.n : 0;
   return l ? l->actions.v : NULL;
 }
+
+int rolltui_layout_inline(const RolltuiLayout* l) { return l && l->inline_mode; }
 
 void rolltui_layout_min_size(const RolltuiLayout* l, int* w, int* h) {
   if (w) *w = l ? l->min_width : 0;
@@ -1673,6 +1677,9 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
       } else {
         out->min_height = (int)num;
       }
+    } else if (streq(k, klen, "inline")) {
+      if (!rolltui_json_is_bool(v)) bad_at(report, "", 0, "inline: expected true or false");
+      else out->inline_mode = (unsigned char)(rolltui_json_as_bool(v, 0) != 0);
     } else if (streq(k, klen, "root") || streq(k, klen, "focus")) {
       rolltui_json_set(base, k, klen, rolltui_json_clone(v));
     } else if (streq(k, klen, "actions")) {
@@ -1911,7 +1918,7 @@ static RolltuiJsonValue* layer_to_json(const RolltuiLayer* l, int is_popup, cons
 }
 
 RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,
-                                               const RolltuiLayoutAction* actions, size_t actions_n,
+                                               int inline_mode, const RolltuiLayoutAction* actions, size_t actions_n,
                                                const RolltuiLayer* base, const RolltuiLayer* popups,
                                                size_t popups_n, const RolltuiLayoutHooks* hooks) {
   RolltuiJsonValue* o = rolltui_json_object();
@@ -1919,6 +1926,7 @@ RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len
   rolltui_json_set(o, K("name"), rolltui_json_string(name, name_len));
   if (min_width) rolltui_json_set(o, K("min_width"), rolltui_json_number(min_width));
   if (min_height) rolltui_json_set(o, K("min_height"), rolltui_json_number(min_height));
+  if (inline_mode) rolltui_json_set(o, K("inline"), rolltui_json_bool(1));
   /* Always written, even when empty: an absent "actions" key means "a file from before they
    * existed" and is filled in by the loader, so a layout that deliberately declares none has
    * to be able to say so. */
@@ -1942,12 +1950,12 @@ RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len
   return o;
 }
 
-void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height, int inline_mode,
                                 const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
                                 const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
                                 RolltuiStr* out) {
   RolltuiJsonValue* v =
-      rolltui_layout_to_json_value(name, name_len, min_width, min_height, actions, actions_n, base, popups,
+      rolltui_layout_to_json_value(name, name_len, min_width, min_height, inline_mode, actions, actions_n, base, popups,
                                    popups_n, hooks);
   rolltui_json_dump(v, 2, out);
   rolltui_json_free(v);

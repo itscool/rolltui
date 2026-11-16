@@ -130,6 +130,11 @@ int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no termin
                                     * the cursor is after each; put the line back */
 #define ROLLTUI_TERMQ_SYNC 32      /* DECRQM for mode 2026: does it draw a frame whole (synchronized output) */
 #define ROLLTUI_TERMQ_ALL 63
+/* Not questions about what the terminal is, so never in ALL. ANCHOR asks where the cursor is (an
+ * inline region starts there). RELATIVE draws the width question on the cursor's own line rather
+ * than on row 1, which an inline region does not own. */
+#define ROLLTUI_TERMQ_ANCHOR 64
+#define ROLLTUI_TERMQ_RELATIVE 128
 
 /* The bytes that ask the questions in `want`, in ONE write, ending in Primary DA — the question
  * every terminal answers, and the reason an answer that never comes is a definite "no" rather than

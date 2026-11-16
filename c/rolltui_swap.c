@@ -37,11 +37,15 @@ RolltuiFrame* rolltui_swap_begin(RolltuiSwap* s, int w, int h, RolltuiStyle fill
   return s->back;
 }
 
-void rolltui_swap_present(RolltuiSwap* s, unsigned char depth, RolltuiStr* out) {
+void rolltui_swap_present(RolltuiSwap* s, unsigned char depth, RolltuiStr* out) { rolltui_swap_present_at(s, depth, 0, 0, out); }
+
+const RolltuiFrame* rolltui_swap_pending(const RolltuiSwap* s) { return s->back; }
+
+void rolltui_swap_present_at(RolltuiSwap* s, unsigned char depth, int origin, int ground, RolltuiStr* out) {
   /* THE DEPTH IS A REQUEST, not a fact: what a host passes is the most it would like, and a terminal
    * that has less is drawn to at what it has (rolltui_termfacts.h). No host has to remember. */
   depth = rolltui_termfacts_clamp_depth(depth);
-  rolltui_render_diff(s->have_front ? s->front : NULL, s->back, depth, out);
+  rolltui_render_diff_at(s->have_front ? s->front : NULL, s->back, depth, origin, ground, out);
   /* Swap the POINTERS. No frame is constructed, destroyed or copied here, which is what
    * makes the steady loop allocate nothing at all. */
   RolltuiFrame* t = s->front;

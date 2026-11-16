@@ -123,7 +123,6 @@ void rolltui_transcript_text_area(const RolltuiTranscript* t, RolltuiRect* out);
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
 void rolltui_transcript_scroll(const RolltuiTranscript* t, RolltuiScrollAnchor* out);
-size_t rolltui_transcript_total_lines(const RolltuiTranscript* t);
 size_t rolltui_transcript_top_line(const RolltuiTranscript* t);
 
 const char* rolltui_transcript_query(const RolltuiTranscript* t, size_t* len);

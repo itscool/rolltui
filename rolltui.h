@@ -1511,6 +1511,9 @@ const RolltuiLayoutAction* rolltui_layout_actions(const RolltuiLayout* l, size_t
 /* DOOR 3 — the minimum terminal size this screen states. Forced by roll (its narrow-terminal
  * fallback picks another layout below it) and by paint (its app profile publishes it). */
 void rolltui_layout_min_size(const RolltuiLayout* l, int* w, int* h);
+/* 1 when the layout is drawn INLINE, below the prompt in the normal screen (`"inline": true`): a host makes its terminal with
+ * `RolltuiTerminalOptions::inline_rows` for it. */
+int rolltui_layout_inline(const RolltuiLayout* l);
 
 /* DOOR 4 — the screen's name. Forced by paint, which draws it in its status line. BORROWED. */
 const char* rolltui_layout_name(const RolltuiLayout* l, size_t* len);
@@ -1958,6 +1961,9 @@ void rolltui_doc_entry_copy(RolltuiDocEntryRaw* to, const RolltuiDocEntryRaw* fr
 RolltuiDocEntryRaw* rolltui_document_add(RolltuiDocumentRaw* d);
 
 void rolltui_document_clear(RolltuiDocumentRaw* d);   /* releases every entry, keeps the array */
+
+/* Removes entry `i`, keeping the order of the rest: an inline host's finished entry, once committed. */
+void rolltui_document_remove(RolltuiDocumentRaw* d, size_t i);
 
 void rolltui_document_release(RolltuiDocumentRaw* d); /* …and the array */
 
@@ -2954,6 +2960,14 @@ int rolltui_transcript_find_prev(RolltuiTranscript* t);
 /* The logical position under screen cell (x, y). 0 only for an empty document or a row above
  * the area. */
 int rolltui_transcript_copy_selection(RolltuiTranscript* t);
+/* How many rows the whole document takes at the width it was last laid out at: what an inline host sizes its region to. */
+size_t rolltui_transcript_total_lines(const RolltuiTranscript* t);
+/* ONE ENTRY drawn as this transcript draws it (its prefix, Markdown, code blocks and diagrams, its highlighter and options) into a
+ * frame of its own, `width` wide and as tall as the entry plus the transcript's gap below it, filled with `fill` first: the rows an
+ * inline host commits when a message is finished (`rolltui_terminal_commit`), spaced as the transcript spaces its entries. `styles`
+ * is indexed by role, as for a draw. OWNED: `rolltui_frame_free`. */
+RolltuiFrame* rolltui_transcript_entry_frame(const RolltuiTranscript* t, const RolltuiDocEntryRaw* e, int width,
+                                             const RolltuiStyle* styles, RolltuiStyle fill);
 
 /* ========================================================================================
  * widgets — the window registry and the plugin-facing half a host kind reaches its sources through
@@ -3717,6 +3731,12 @@ void rolltui_context_free(RolltuiContext* c);
 
 typedef struct RolltuiTerminalOptions {
   unsigned char alt_screen ROLLTUI_DEFAULT(1);
+  /* INLINE: the program is drawn in the normal screen, from the row the cursor was on, instead of on the alternate screen, the way
+   * `fzf --height` and a chat command line are. The region is as tall as the frame presented (`rolltui_run` presents `inline_rows`
+   * rows; a host with its own loop draws the height it wants), room is made below by scrolling, rows a host commits stay above it as
+   * ordinary output (`rolltui_terminal_commit`), and leaving erases it and leaves the cursor where it began. 0: the whole screen.
+   * `alt_screen` is ignored when this is set. */
+  unsigned short inline_rows ROLLTUI_DEFAULT(0);
   unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */
   unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
   unsigned char hide_cursor ROLLTUI_DEFAULT(1);
@@ -3868,6 +3888,12 @@ void rolltui_terminal_set_depth(RolltuiTerminal* t, int depth);
  * holding what was written, so a frame that changed nothing allocates nothing. `rolltui_swap_present` stays for a caller with no
  * terminal (a golden test wants a depth it chose). */
 void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch);
+/* INLINE (`RolltuiTerminalOptions::inline_rows`): writes `lines` into the terminal's own flow above the region, where they stay as
+ * ordinary output and scroll into the history: a finished message, a result. Each row is written up to its last cell that is not a
+ * default blank. The region is drawn again below them by the next present, which is to follow at once; on a terminal with
+ * synchronized output the lines and the redrawn region reach the screen as one frame. Does nothing on the alternate screen. BORROWS
+ * `lines` for the call. */
+void rolltui_terminal_commit(RolltuiTerminal* t, const RolltuiFrame* lines);
 
 /* ASKS AGAIN NOW, ignoring what was remembered, and remembers the new answers. Waits up to `timeout_ms`. 1 when the terminal answered, 0
  * when it did not (a pipe, a silent terminal); either way the facts are as good as they can be made. For a diagnostic
@@ -3891,6 +3917,10 @@ void rolltui_swap_free(RolltuiSwap* s);
 /* Resets the back frame to `w` x `h` and LENDS it for drawing. Valid until the next `begin` or `present`; the caller never frees it. A
  * size change is handled by `rolltui_render_diff` at present time. */
 RolltuiFrame* rolltui_swap_begin(RolltuiSwap* s, int w, int h, RolltuiStyle fill);
+/* A FRAME OF ITS OWN, for what no swap draws: the rows an inline host commits (`rolltui_terminal_commit`). OWNED by the caller, freed
+ * with `rolltui_frame_free`. Never returns NULL: an allocation failure aborts inside rolltui::mem. */
+RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill);
+void rolltui_frame_free(RolltuiFrame* f);
 
 /* Diffs the drawn frame against the previous one, APPENDS the bytes to `out`, and swaps.
  * After this the drawn frame is the baseline and the other is the next `begin`'s target.

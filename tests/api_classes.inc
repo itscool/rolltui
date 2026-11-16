@@ -113,6 +113,13 @@ ROLLTUI_API(rolltui_frame_unmark_rect, INTERNAL)
 ROLLTUI_API(rolltui_frame_to_text, PUBLIC)
 ROLLTUI_API(rolltui_render_diff, INTERNAL)  /* a step of rolltui_swap_present */
 ROLLTUI_API(rolltui_render_full, INTERNAL)
+ROLLTUI_API(rolltui_render_diff_at, INTERNAL)  /* the same from a screen row: an inline region */
+ROLLTUI_API(rolltui_render_full_at, INTERNAL)
+ROLLTUI_API(rolltui_swap_present_at, INTERNAL)
+ROLLTUI_API(rolltui_swap_pending, INTERNAL)
+ROLLTUI_API(rolltui_render_row_extent, INTERNAL)  /* an inline region's rows, measured for a resize */
+ROLLTUI_API(rolltui_render_lines, INTERNAL)  /* an inline region's committed rows */
+ROLLTUI_API(rolltui_frame_ground, INTERNAL)  /* the fill an inline region draws as the terminal's own background */
 
 /* ---- rolltui_screen.h — the cell grid; default PUBLIC ------------------------------------ */
 ROLLTUI_API(rolltui_frame_cell, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
@@ -120,7 +127,7 @@ ROLLTUI_API(rolltui_frame_clear, INTERNAL)  /* a cell-level frame primitive; a h
 ROLLTUI_API(rolltui_frame_clone, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_cursor, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_equal, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_free, INTERNAL)  /* Phase 24: the pair of `_new`, and it went with it */
+ROLLTUI_API(rolltui_frame_free, PUBLIC)  /* the pair of `_new` */
 ROLLTUI_API(rolltui_frame_glyph, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_height, INTERNAL)  /* Phase 24: the pair of `_width`, and it went with it */
 ROLLTUI_API(rolltui_frame_link, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
@@ -128,7 +135,7 @@ ROLLTUI_API(rolltui_frame_link_id, INTERNAL)  /* a cell-level frame primitive; a
 ROLLTUI_API(rolltui_frame_mark, PUBLIC)  /* KEPT: matching part — `rolltui_effects_apply` is consumer-used, and this is the WIDGET half of that contract — motion is the theme's, a state is the widget's */
 ROLLTUI_API(rolltui_frame_mark_at, INTERNAL)  /* a step of mark */
 ROLLTUI_API(rolltui_frame_mark_count, PUBLIC)
-ROLLTUI_API(rolltui_frame_new, INTERNAL)  /* Phase 24: a host gets its frame from `rolltui_swap_begin`, never by building one. Old KEPT reason was a meta-test's reach */
+ROLLTUI_API(rolltui_frame_new, PUBLIC)  /* an inline host builds the rows it commits; every frame it presents still comes from `rolltui_swap_begin` */
 ROLLTUI_API(rolltui_frame_put, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_reset, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_set_cursor, PUBLIC)
@@ -801,6 +808,7 @@ ROLLTUI_API(rolltui_document_at, INTERNAL)  /* a public type's read API */
 ROLLTUI_API(rolltui_document_clear, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
+ROLLTUI_API(rolltui_document_remove, PUBLIC)  /* an inline host drops a committed entry */
 ROLLTUI_API(rolltui_document_copy, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
@@ -1009,7 +1017,8 @@ ROLLTUI_API(rolltui_transcript_text_area, INTERNAL)  /* the transcript widget's 
 ROLLTUI_API(rolltui_transcript_tick, PUBLIC)
 ROLLTUI_API(rolltui_transcript_toggle_fold_nearest_top, PUBLIC)
 ROLLTUI_API(rolltui_transcript_top_line, INTERNAL)
-ROLLTUI_API(rolltui_transcript_total_lines, INTERNAL)
+ROLLTUI_API(rolltui_transcript_total_lines, PUBLIC)  /* an inline host sizes its region by it */
+ROLLTUI_API(rolltui_transcript_entry_frame, PUBLIC)  /* an inline host commits a finished entry drawn by it */
 ROLLTUI_API(rolltui_transcript_viewport_height, INTERNAL)  /* a step of layout */
 ROLLTUI_API(rolltui_transcript_wants_tick, PUBLIC)
 
@@ -1322,6 +1331,7 @@ ROLLTUI_API(rolltui_layout_clone, PUBLIC)
 ROLLTUI_API(rolltui_layout_base, PUBLIC)
 ROLLTUI_API(rolltui_layout_actions, PUBLIC)
 ROLLTUI_API(rolltui_layout_min_size, PUBLIC)
+ROLLTUI_API(rolltui_layout_inline, PUBLIC)  /* a host makes its terminal inline for a layout that says so */
 ROLLTUI_API(rolltui_layout_name, PUBLIC)
 ROLLTUI_API(rolltui_layer_placement, PUBLIC)
 ROLLTUI_API(rolltui_layer_id, PUBLIC)
@@ -1459,6 +1469,7 @@ ROLLTUI_API(rolltui_style_on, PUBLIC)  /* what `none` in a theme means for a rol
 ROLLTUI_API(rolltui_terminal_cache_path, PUBLIC)  /* where the remembered terminal facts live, to show or clear (dirktui) */
 ROLLTUI_API(rolltui_terminal_facts, PUBLIC)  /* what the terminal is, found out once by the library (dirktui, paint, the studio) */
 ROLLTUI_API(rolltui_terminal_present, PUBLIC)  /* KEPT: a frame to the terminal at the depth it draws, as one call whose depth cannot be forgotten — what a host running its own loop presents with (rolltui_run does it for the rest) */
+ROLLTUI_API(rolltui_terminal_commit, PUBLIC)  /* an inline host's finished rows, into the terminal's own history */
 ROLLTUI_API(rolltui_terminal_reprobe, PUBLIC)  /* ask the terminal again (dirktui) */
 ROLLTUI_API(rolltui_terminal_set_depth, PUBLIC)  /* the person's own colour depth over the one found out (dirktui) */
 ROLLTUI_API(rolltui_windows_set_keys_editor_show_presets, PUBLIC)  /* whether the keys editor offers presets (dirktui) */

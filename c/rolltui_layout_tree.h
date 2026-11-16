@@ -535,6 +535,7 @@ typedef struct RolltuiActionList {
 typedef struct RolltuiLoadedLayout {
   RolltuiStr name;
   int min_width, min_height;
+  unsigned char inline_mode;
   RolltuiLayoutAction* actions;
   size_t actions_n, actions_cap;
   RolltuiLayer base;
@@ -546,6 +547,9 @@ typedef struct RolltuiLayout {
   RolltuiStr name;
   int min_width ROLLTUI_DEFAULT(0);
   int min_height ROLLTUI_DEFAULT(0);
+  /* `"inline": true`: the screen is drawn below the prompt in the normal screen, not on the alternate one
+   * (`RolltuiTerminalOptions::inline_rows`). A host that runs it says so to the terminal it makes. */
+  unsigned char inline_mode ROLLTUI_DEFAULT(0);
   RolltuiActionList actions; /* the actions this screen emits, in file order */
   RolltuiLayer base;
   RolltuiLayerList popups; /* declared placements a host pushes by id */

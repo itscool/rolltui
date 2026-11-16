@@ -262,9 +262,12 @@ size_t rolltui_termprobe_queries(unsigned want, char* out, size_t cap) {
    * home, erase the line, DECRC. The first is the exchange `rolltui_terminal_query_ambiguous_wide`
    * makes, now in the same round trip; the second finds a terminal that gives the accent a cell of
    * its own (column 3) rather than joining it to the `e` (column 2). */
-  if (want & ROLLTUI_TERMQ_WIDTH)
+  if ((want & ROLLTUI_TERMQ_WIDTH) && (want & ROLLTUI_TERMQ_RELATIVE)) /* on the cursor's own line */
+    ROLLTUI_TERMQ_ADD("\x1b" "7" "\r" "\xE2\x96\x88" "\x1b[6n" "\r" "e\xCC\x81" "\x1b[6n" "\r" "\x1b[K" "\x1b" "8");
+  else if (want & ROLLTUI_TERMQ_WIDTH)
     ROLLTUI_TERMQ_ADD("\x1b" "7" "\x1b[1;1H" "\xE2\x96\x88" "\x1b[6n" "\x1b[1;1H" "e\xCC\x81" "\x1b[6n"
                       "\x1b[1;1H" "\x1b[K" "\x1b" "8");
+  if (want & ROLLTUI_TERMQ_ANCHOR) ROLLTUI_TERMQ_ADD("\x1b[6n"); /* where the cursor is: CPR */
   if (want & ROLLTUI_TERMQ_SYNC) ROLLTUI_TERMQ_ADD("\x1b[?2026$p"); /* DECRQM: synchronized output */
   ROLLTUI_TERMQ_ADD("\x1b[c"); /* Primary DA: the terminator every terminal answers */
 #undef ROLLTUI_TERMQ_ADD

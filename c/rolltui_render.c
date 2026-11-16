@@ -7,6 +7,7 @@
 
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_render.h"
 
 static void put_lit(RolltuiStr* out, const char* s) { rolltui_str_append(out, s, strlen(s)); }
 
@@ -23,7 +24,20 @@ static void put_cup(RolltuiStr* out, int x, int y) {
 typedef struct {
   RolltuiStyle style;
   int have;
+  int has_ground;              /* a cell whose background is `ground` is drawn on the terminal's own background */
+  RolltuiStyleColorRaw ground; /* (an inline region: it stands in the person's terminal, not on a painted screen) */
 } SgrState;
+
+static int color_eq(const RolltuiStyleColorRaw* a, const RolltuiStyleColorRaw* b);
+
+static void sgr_start(SgrState* s, const RolltuiFrame* f, int ground) {
+  s->have = 0;
+  memset(&s->style, 0, sizeof s->style);
+  RolltuiStyle g;
+  rolltui_frame_ground(f, &g);
+  s->has_ground = ground && g.bg.kind != 0;
+  s->ground = g.bg;
+}
 
 static int color_eq(const RolltuiStyleColorRaw* a, const RolltuiStyleColorRaw* b) {
   return a->kind == b->kind && a->index == b->index && a->r == b->r && a->g == b->g &&
@@ -60,9 +74,20 @@ static int same(const RolltuiFrame* a, const RolltuiFrame* b, int x, int y) {
 
 /* Emit cells [x0, x1) of row y, tracking the SGR state across calls. A hyperlink is opened
  * when a run enters linked cells and always closed before the run ends. */
-static void emit_run(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int x1,
+/* `origin` is the screen row the frame's row 0 is drawn on: 0 for a frame that is the whole screen,
+ * the region's top for an inline one (rolltui_terminal.c). */
+static void emit_cells(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int x1, unsigned char depth,
+                       SgrState* current);
+
+static void emit_run(RolltuiStr* out, const RolltuiFrame* f, int origin, int y, int x0, int x1,
                      unsigned char depth, SgrState* current) {
-  put_cup(out, x0, y);
+  put_cup(out, x0, origin + y);
+  emit_cells(out, f, y, x0, x1, depth, current);
+}
+
+/* Cells x0..x1 of row y, where the cursor already is: their links and styles, then their glyphs. */
+static void emit_cells(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int x1, unsigned char depth,
+                       SgrState* current) {
   unsigned int link = 0;
   for (int x = x0; x < x1; ++x) {
     RolltuiCellRaw c;
@@ -76,6 +101,7 @@ static void emit_run(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int 
       put_lit(out, "\x1b\\");
       link = c.link;
     }
+    if (current->has_ground && color_eq(&c.style.bg, &current->ground)) memset(&c.style.bg, 0, sizeof c.style.bg);
     if (!current->have || !style_eq(&current->style, &c.style)) {
       char sgr[ROLLTUI_SGR_MAX];
       const size_t n = rolltui_sgr(&c.style, depth, sgr, sizeof sgr);
@@ -90,26 +116,63 @@ static void emit_run(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, int 
   if (link != 0) put_lit(out, "\x1b]8;;\x1b\\");
 }
 
-static void finish(RolltuiStr* out, const RolltuiFrame* f) {
+static void finish(RolltuiStr* out, const RolltuiFrame* f, int origin) {
   int cx = 0, cy = 0, vis = 0;
   rolltui_frame_cursor(f, &cx, &cy, &vis);
   put_lit(out, "\x1b[0m");
-  put_cup(out, cx, cy);
+  put_cup(out, cx, origin + cy);
   if (vis) put_lit(out, "\x1b[?25h");
 }
 
 /* A FULL REPAINT WRITES EVERY CELL, each in its own style, so nothing is cleared first: a clear is a
  * blank screen a terminal may show between it and the frame. */
 void rolltui_render_full(const RolltuiFrame* next, unsigned char depth, RolltuiStr* out) {
+  rolltui_render_full_at(next, depth, 0, 0, out);
+}
+
+void rolltui_render_full_at(const RolltuiFrame* next, unsigned char depth, int origin, int ground, RolltuiStr* out) {
   put_lit(out, "\x1b[?25l");
   SgrState current;
-  current.have = 0;
-  memset(&current.style, 0, sizeof current.style);
+  sgr_start(&current, next, ground);
   /* The geometry is read ONCE. `width()`/`height()` are calls that do not inline, so a loop
    * condition calling one is a call per cell — invisible in C++, real here. */
   const int w = rolltui_frame_width(next), h = rolltui_frame_height(next);
-  for (int y = 0; y < h; ++y) emit_run(out, next, y, 0, w, depth, &current);
-  finish(out, next);
+  for (int y = 0; y < h; ++y) emit_run(out, next, origin, y, 0, w, depth, &current);
+  finish(out, next, origin);
+}
+
+int rolltui_render_row_extent(const RolltuiFrame* f, int y) {
+  const int w = rolltui_frame_width(f);
+  RolltuiStyle ground;
+  int x, extent = 0;
+  rolltui_frame_ground(f, &ground);
+  for (x = 0; x < w; ++x) {
+    RolltuiCellRaw c;
+    size_t glen = 0;
+    const char* g;
+    rolltui_frame_cell(f, x, y, &c);
+    if (c.continuation) continue;
+    g = rolltui_frame_glyph(f, x, y, &glen);
+    if ((glen == 0 || (glen == 1 && g[0] == ' ')) && (c.style.bg.kind == 0 || color_eq(&c.style.bg, &ground.bg)) &&
+        !c.style.reverse && !c.style.underline)
+      continue; /* a blank on the ground: the terminal keeps nothing there */
+    extent = x + (c.width > 1 ? c.width : 1);
+  }
+  return extent;
+}
+
+int rolltui_render_lines(const RolltuiFrame* f, unsigned char depth, int screen_w, int ground, RolltuiStr* out) {
+  const int h = rolltui_frame_height(f);
+  int y, rows = 0;
+  for (y = 0; y < h; ++y) {
+    const int extent = rolltui_render_row_extent(f, y);
+    SgrState current;
+    sgr_start(&current, f, ground);
+    emit_cells(out, f, y, 0, extent, depth, &current);
+    put_lit(out, "\x1b[0m\r\n");
+    rows += screen_w > 0 && extent > screen_w ? (extent + screen_w - 1) / screen_w : 1;
+  }
+  return rows;
 }
 
 void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out) {
@@ -136,18 +199,22 @@ void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out) {
 
 void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth,
                          RolltuiStr* out) {
+  rolltui_render_diff_at(prev, next, depth, 0, 0, out);
+}
+
+void rolltui_render_diff_at(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth, int origin, int ground,
+                            RolltuiStr* out) {
   /* RULE 1 (header): a size change repaints in full, and it is checked HERE so no caller has
    * to remember it. */
   if (!prev || rolltui_frame_width(prev) != rolltui_frame_width(next) ||
       rolltui_frame_height(prev) != rolltui_frame_height(next)) {
-    rolltui_render_full(next, depth, out);
+    rolltui_render_full_at(next, depth, origin, ground, out);
     return;
   }
   size_t before = 0;
   (void)rolltui_str_get(out, &before);
   SgrState current;
-  current.have = 0;
-  memset(&current.style, 0, sizeof current.style);
+  sgr_start(&current, next, ground);
   const int w = rolltui_frame_width(next), h = rolltui_frame_height(next);
   for (int y = 0; y < h; ++y) {
     int x = 0;
@@ -176,7 +243,7 @@ void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, uns
       size_t now = 0;
       (void)rolltui_str_get(out, &now);
       if (now == before) put_lit(out, "\x1b[?25l");
-      emit_run(out, next, y, start, end, depth, &current);
+      emit_run(out, next, origin, y, start, end, depth, &current);
       x = end;
     }
   }
@@ -188,5 +255,5 @@ void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, uns
   const int cursor_same = pcx == ncx && pcy == ncy && pvis == nvis;
   if (now == before && cursor_same) return; /* nothing to do: an idle screen costs no bytes */
   if (now == before) put_lit(out, "\x1b[?25l");
-  finish(out, next);
+  finish(out, next, origin);
 }

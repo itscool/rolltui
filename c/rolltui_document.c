@@ -69,6 +69,17 @@ RolltuiDocEntryRaw* rolltui_document_add(RolltuiDocumentRaw* d) {
   return e;
 }
 
+void rolltui_document_remove(RolltuiDocumentRaw* d, size_t i) {
+  RolltuiDocEntryRaw* gone;
+  if (!d || i >= d->n) return;
+  gone = d->v[i];
+  rolltui_doc_entry_release(gone);
+  /* The released entry goes to the end, past `n`, where `add` reuses it: the slots past `n` hold
+   * released entries or NULL, never garbage. */
+  memmove(d->v + i, d->v + i + 1, (d->n - i - 1) * sizeof *d->v);
+  d->v[--d->n] = gone;
+}
+
 void rolltui_document_clear(RolltuiDocumentRaw* d) {
   size_t i;
   for (i = 0; i < d->n; ++i) rolltui_doc_entry_release(d->v[i]);

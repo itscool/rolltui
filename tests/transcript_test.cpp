@@ -1034,6 +1034,52 @@ int main() {
           "a selection over a folded block copies the CODE, because the fold never touched the text");
   }
 
+  // ---- ONE ENTRY, drawn for an inline host to commit: as tall as the transcript lays it out, and its gap ----
+  {
+    RolltuiDocument doc;
+    doc.push_back(user("u1", "hello world"));
+    doc.push_back(md("a1", "# Plan\n\nA paragraph long enough to wrap at thirty cells, it says.\n\n- one\n- two"));
+    TranscriptHandle tr;
+    layout(tr, doc, {0, 0, 30, 24}, opt);
+    RolltuiDocument alone;
+    alone.push_back(md("a1", "# Plan\n\nA paragraph long enough to wrap at thirty cells, it says.\n\n- one\n- two"));
+    TranscriptHandle solo;
+    layout(solo, alone, {0, 0, 30, 24}, opt);
+    const int expected = static_cast<int>(total_lines(solo));
+    RolltuiFrame* one = rolltui_transcript_entry_frame(tr, &doc.back(), 30, theme.styles.data(), RolltuiStyle{});
+    auto raw_row = [](const RolltuiFrame* f, int y) {
+      std::string row;
+      for (int x = 0; x < rolltui_frame_width(f); ++x) {
+        std::size_t n = 0;
+        const char* g = rolltui_frame_glyph(f, x, y, &n);
+        row.append(g, n);
+      }
+      const std::size_t end = row.find_last_not_of(' ');
+      return end == std::string::npos ? std::string() : row.substr(0, end + 1);
+    };
+    const int h = rolltui_frame_height(one);
+    check(rolltui_frame_width(one) == 30 && h == expected + opt.gap,
+          "one entry drawn alone is as tall as the transcript lays it out, and the gap below it (" + std::to_string(h) + " rows for " +
+              std::to_string(expected) + " + " + std::to_string(opt.gap) + ")");
+    check(raw_row(one, 0).find("Plan") != std::string::npos && raw_row(one, h - 1 - opt.gap).find("two") != std::string::npos &&
+              raw_row(one, h - 1).empty(),
+          "…its first row is its heading, its last drawn row the list's end, and the gap is blank");
+    rolltui_frame_free(one);
+    check(total_lines(tr) > static_cast<std::size_t>(expected), "…and the whole document is taller: total lines is the region a host sizes");
+
+    RolltuiDocument three;
+    three.push_back(user("u1", "one"));
+    three.push_back(user("u2", "two"));
+    three.push_back(user("u3", "three"));
+    RolltuiDocEntryRaw* kept = three.v[0];
+    rolltui_document_remove(&three, 0);
+    check(three.size() == 2 && view_of(three[0].id) == "u2" && view_of(three[1].id) == "u3",
+          "removing the first entry keeps the rest in order");
+    three.push_back(user("u4", "four"));
+    check(three.size() == 3 && three.v[2] == kept && view_of(three[2].id) == "u4",
+          "…and the next entry added reuses the released one, as a clear's are");
+  }
+
   rolltui_draw_scratch_free(scratch);
   return report("rolltui_transcript_test");
 }

@@ -39,7 +39,7 @@ A terminal UI library in C, with a C++ API on top.
 | Capabilities probed and remembered per terminal | ✓ | ✗ | ✗ | probed | probed | ✗ |
 | Line breaking tested against Unicode's test files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Synchronized output | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ |
-| Inline mode | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Inline mode | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hyperlinks | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ |
 
 🍎 macOS · 🐧 Linux · 🪟 Windows · 🌐 browser · (🪟) partial

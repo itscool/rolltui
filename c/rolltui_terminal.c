@@ -16,6 +16,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_os.h"
+#include "rolltui/c/rolltui_render.h" /* an inline region: drawing from a row, committing lines */
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
@@ -79,6 +80,16 @@ struct RolltuiTerminal {
   unsigned char facts_dirty;   /* the mode changed after it read: a FACTS event is owed */
   unsigned char publishing;    /* this terminal's facts are the process-wide ones (publish_depth) */
   unsigned char facts_events;  /* the host asked to be told of a change (RolltuiTerminalOptions::facts_events) */
+  /* ---- an INLINE region (RolltuiTerminalOptions::inline_rows): drawn below the prompt, in the
+   * normal screen, its rows found from where the cursor was ---- */
+  int inl;
+  int top;           /* the region's first row on screen, 0-based */
+  int shown;         /* how many rows of it are on screen */
+  int park_x, park_y; /* where the cursor was left after the last frame, region-relative */
+  int dirty;         /* the region is erased and drawn whole at the next present */
+  int sync_open;     /* a commit opened a synchronized frame the next present closes */
+  int* extent;       /* each row's drawn width: its last cell that is not a default blank, plus one */
+  size_t extent_cap;
 };
 
 enum { PLAN_KEYBOARD = 0, PLAN_FULL = 1, PLAN_CACHED = 2 };
@@ -128,6 +139,17 @@ typedef struct EmitCtx {
   RolltuiTerminal* t; /* for the double-click pairing; NULL where there is no terminal */
 } EmitCtx;
 
+/* AN INLINE REGION'S MOUSE: the terminal reports screen rows, and the region starts at `top`. A
+ * press outside the region is on the person's history, not on this program, and is dropped. */
+static int inline_mouse(const RolltuiTerminal* t, RolltuiTermEvent* ev) {
+  int y;
+  if (!t->inl || ev->kind != ROLLTUI_EVENT_MOUSE) return 1;
+  y = ev->mouse.y - t->top;
+  if (y < 0 || y >= t->shown) return 0;
+  ev->mouse.y = y;
+  return 1;
+}
+
 /* A DOUBLE-CLICK IS MADE HERE, from two presses. The decoder sees bytes and knows no clock; this
  * is the one place that has both the event and the time. The press itself is delivered first,
  * as it arrives; the DoubleClick follows it. Pairing is by button and cell, within
@@ -141,6 +163,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ev.mouse = e->mouse;
   ev.text = e->text;
   ev.text_len = e->text_len;
+  if (ec->t && !inline_mouse(ec->t, &ev)) return; /* outside an inline region: not this program's */
   ec->fn(ec->ctx, &ev);
   if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
     RolltuiTerminal* t = ec->t;
@@ -178,10 +201,26 @@ static void term_enter(RolltuiTerminal* t, int handle_signals) {
   if (handle_signals) rolltui_os_tty_install_handlers();
 }
 
+/* SYNCHRONIZED OUTPUT: a terminal that has mode 2026 is sent each frame between its begin and end,
+ * in the same write, and draws it whole. One that does not is never sent the mode. */
+#define SYNC_BEGIN "\x1b[?2026h"
+#define SYNC_END "\x1b[?2026l"
+
 static void term_leave(RolltuiTerminal* t) {
   if (!t->entered) return;
   t->entered = 0;
+  if (t->inl && t->tty) { /* the region goes; the cursor waits where it began, for the prompt */
+    char b[32];
+    const int n = snprintf(b, sizeof b, "\x1b[%d;1H\x1b[J", t->top + 1);
+    if (n > 0) rolltui_terminal_write(t, b, (size_t)n);
+    t->shown = 0;
+    t->dirty = 1;
+  }
   rolltui_terminal_write(t, t->leave_seq, t->leave_len);
+  if (t->sync_open) { /* a commit's frame, with no present after it: the leaving is its end */
+    rolltui_terminal_write(t, SYNC_END, sizeof SYNC_END - 1);
+    t->sync_open = 0;
+  }
   if (t->have_tio) rolltui_os_tty_restore(t->os);
   t->protocol_on = 0; /* the pop just went down: a resume enables it again */
   rolltui_os_tty_withdraw();
@@ -200,6 +239,11 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
    * appends in option order; leave_seq is attributes-off first, then each mode's "off" in
    * the REVERSE of enter_seq's order — undo last-enabled-first, with attributes-off always
    * leading regardless. */
+  if (opts.inline_rows > 0) { /* inline: the normal screen, never the alternate one */
+    t->inl = 1;
+    t->dirty = 1;
+    opts.alt_screen = 0;
+  }
   if (opts.alt_screen) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1049h");
   if (opts.mouse) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1000h\x1b[?1002h\x1b[?1006h");
   if (opts.bracketed_paste) seq_append(t->enter_seq, &t->enter_len, "\x1b[?2004h");
@@ -231,6 +275,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_str_free(&t->cache_path);
   rolltui_mem_free(t->queued);
   rolltui_mem_free(t->queued_text);
+  rolltui_mem_free(t->extent);
   rolltui_mem_free(t);
 }
 
@@ -452,6 +497,7 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
   if (t->tty) {
     asked = want & ~(unsigned)ROLLTUI_TERMQ_KEYBOARD;
     if (forced_protocol < 0) asked |= ROLLTUI_TERMQ_KEYBOARD;
+    if (t->inl && (asked & ROLLTUI_TERMQ_WIDTH)) asked |= ROLLTUI_TERMQ_RELATIVE; /* row 1 is not the region's */
   }
   if (asked) {
     char q[512];
@@ -471,7 +517,7 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
       buf = (char*)rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
       memcpy(buf + buf_len, b, (size_t)k);
       buf_len += (size_t)k;
-      buf_len = rolltui_termreplies_take(buf, buf_len, (asked & ROLLTUI_TERMQ_WIDTH) != 0, &rep);
+      buf_len = rolltui_termreplies_take(buf, buf_len, (asked & (ROLLTUI_TERMQ_WIDTH | ROLLTUI_TERMQ_ANCHOR)) != 0, &rep);
     }
     /* What is left is input, not a reply: decode it for the next poll(). */
     if (buf_len) {
@@ -520,9 +566,12 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
 /* THE FIRST EXCHANGE OF AN ENTRY, by plan: everything when nothing is remembered, nothing when
  * everything is (the keyboard protocol is remembered too, and re-checking the background is
  * deferred to the first poll), and the keyboard alone on a resume or when a host opted out. */
+static void inline_anchor(RolltuiTerminal* t);
+
 static void run_negotiation(RolltuiTerminal* t) {
   RolltuiTermReplies rep;
   memset(&rep, 0, sizeof rep);
+  if (t->inl && t->tty) inline_anchor(t); /* before anything is drawn: where the region starts */
   if (t->plan == PLAN_FULL) {
     unsigned want = ROLLTUI_TERMQ_ALL;
     /* Where the depth is already decided by what the terminal is KNOWN not to do, its colour-depth and
@@ -559,19 +608,142 @@ void rolltui_terminal_set_depth(RolltuiTerminal* t, int depth) {
   publish_depth(t);
 }
 
-/* SYNCHRONIZED OUTPUT: a terminal that has mode 2026 is sent each frame between its begin and end,
- * in the same write, and draws it whole. One that does not is never sent the mode. */
-#define SYNC_BEGIN "\x1b[?2026h"
-#define SYNC_END "\x1b[?2026l"
+static unsigned char present_depth(const RolltuiTerminal* t) {
+  return (unsigned char)(t->depth_override >= 0 ? t->depth_override : t->facts.depth);
+}
+
+/* ---- the inline region ---------------------------------------------------------------------
+ * Drawn in the normal screen from the row the cursor was on, `shown` rows tall: the height of the
+ * frame presented. Its top is a screen row, known exactly because nothing but this program writes
+ * to the terminal while it runs; it moves only when this program moves it (room made at the
+ * bottom, rows committed above) and is asked again after a resize or a resume. */
+
+static void put_row(RolltuiStr* out, int row, const char* then) {
+  char b[48];
+  const int n = snprintf(b, sizeof b, "\x1b[%d;1H%s", row + 1, then);
+  if (n > 0) rolltui_str_append(out, b, (size_t)n);
+}
+
+/* Whether the terminal rewraps its lines when it narrows. Nearly every one does; xterm, st and the
+ * Linux console cut them instead. */
+static int rewraps(const RolltuiTerminal* t) {
+  const char* term = t->env.term ? t->env.term : "";
+  if (strncmp(term, "linux", 5) == 0 || strcmp(term, "st") == 0 || strncmp(term, "st-", 3) == 0) return 0;
+  return strncmp(t->facts.name, "XTerm", 5) != 0;
+}
+
+/* WHERE THE REGION STARTS: the cursor's row, asked. A cursor that is not at the start of its line
+ * (something printed without a newline) moves to the next one first, so nothing already there is
+ * drawn over. A terminal that does not answer gets the bottom row. */
+static void inline_anchor(RolltuiTerminal* t) {
+  RolltuiTermReplies rep;
+  int row, col;
+  memset(&rep, 0, sizeof rep);
+  rolltui_terminal_refresh_size(t);
+  negotiate_batch(t, t->timeout_ms, t->protocol, ROLLTUI_TERMQ_ANCHOR, &rep);
+  row = rep.cpr ? rep.cpr_row : t->h;
+  col = rep.cpr ? rep.cpr_col : 1;
+  if (col > 1) {
+    rolltui_terminal_write(t, "\r\n", 2);
+    if (row < t->h) ++row; /* on the bottom row the screen scrolled instead */
+  }
+  t->top = row - 1;
+  t->shown = 0;
+  t->dirty = 1;
+  t->park_x = t->park_y = 0;
+}
+
+/* AFTER A RESIZE, where the region is now. With the cursor parked at the region's first cell the
+ * answer is exact, whatever the terminal rewrapped. With it at a caret on row `park_y`, the rows
+ * above it that were wider than the new width have each wrapped to more rows on a terminal that
+ * rewraps, and so has the caret's own row before it. */
+static void inline_reanchor(RolltuiTerminal* t, int old_w) {
+  RolltuiTermReplies rep;
+  int g = 0, y;
+  memset(&rep, 0, sizeof rep);
+  negotiate_batch(t, t->timeout_ms, t->protocol, ROLLTUI_TERMQ_ANCHOR, &rep);
+  t->dirty = 1;
+  if (!rep.cpr) return; /* no answer: the region stays where it was believed to be */
+  if (t->w < old_w && t->w > 0 && rewraps(t)) {
+    for (y = 0; y < t->park_y && y < t->shown; ++y)
+      if (t->extent[y] > t->w) g += (t->extent[y] - 1) / t->w;
+    g += t->park_x / t->w;
+  }
+  t->top = rep.cpr_row - 1 - t->park_y - g;
+  if (t->top < 0) t->top = 0;
+}
+
+/* BEFORE A FRAME: the region placed. When its height changed, or something moved it, room is made
+ * below it (at the bottom the screen scrolls, and what was above goes into the history), the old
+ * region is erased, and the frame is drawn whole. */
+static void inline_place(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* out) {
+  int h = rolltui_frame_height(rolltui_swap_pending(s));
+  int k;
+  if (h > t->h) h = t->h;
+  if (h == t->shown && !t->dirty) return;
+  if (t->top + h > t->h) {
+    put_row(out, t->h - 1, "");
+    for (k = t->top + h - t->h; k > 0; --k) rolltui_str_append(out, "\n", 1);
+    t->top = t->h - h;
+    if (t->top < 0) t->top = 0;
+  }
+  put_row(out, t->top, "\x1b[J");
+  rolltui_swap_invalidate(s);
+  t->shown = h;
+  t->dirty = 0;
+}
+
+/* AFTER A FRAME: where the cursor is left, and each row's drawn width, for the next resize. A hidden
+ * cursor waits at the region's first cell, the one place a resize cannot make ambiguous. */
+static void inline_park(RolltuiTerminal* t, const RolltuiSwap* s, RolltuiStr* out) {
+  const RolltuiFrame* f = rolltui_swap_front(s);
+  int cx = 0, cy = 0, vis = 0, y;
+  rolltui_frame_cursor(f, &cx, &cy, &vis);
+  if (vis) {
+    t->park_x = cx;
+    t->park_y = cy;
+  } else {
+    if (cx != 0 || cy != 0) put_row(out, t->top, ""); /* the frame left it elsewhere */
+    t->park_x = t->park_y = 0;
+  }
+  t->extent = (int*)rolltui_grow(t->extent, &t->extent_cap, (size_t)(t->shown > 0 ? t->shown : 1), sizeof *t->extent);
+  for (y = 0; y < t->shown; ++y) t->extent[y] = rolltui_render_row_extent(f, y);
+}
+
+void rolltui_terminal_commit(RolltuiTerminal* t, const RolltuiFrame* lines) {
+  RolltuiStr out;
+  int rows;
+  if (!t->inl || !t->tty || !lines || rolltui_frame_height(lines) <= 0) return;
+  memset(&out, 0, sizeof out);
+  if (t->facts.sync_output && !t->sync_open) { /* closed by the next present, which redraws the region */
+    rolltui_str_append(&out, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
+    t->sync_open = 1;
+  }
+  put_row(&out, t->top, "\x1b[J"); /* the lines take the region's place; it is drawn again below them */
+  rows = rolltui_render_lines(lines, rolltui_termfacts_clamp_depth(present_depth(t)), t->w, 1, &out);
+  t->top += rows;
+  if (t->top > t->h - 1) t->top = t->h - 1; /* past the bottom the screen scrolled */
+  t->shown = 0;
+  t->dirty = 1;
+  rolltui_terminal_write(t, out.p, out.n);
+  rolltui_str_free(&out);
+}
 
 void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch) {
-  const unsigned char depth = (unsigned char)(t->depth_override >= 0 ? t->depth_override : t->facts.depth);
+  const unsigned char depth = present_depth(t);
   const int sync = t->tty && t->facts.sync_output;
+  const int inl = t->inl && t->tty;
+  const int opened = t->sync_open;
+  size_t lead;
   rolltui_str_clear(scratch);
-  if (sync) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
-  rolltui_swap_present(s, depth, scratch);
-  if (sync && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */
+  if (sync && !opened) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
+  if (inl) inline_place(t, s, scratch);
+  lead = scratch->n;
+  rolltui_swap_present_at(s, depth, inl ? t->top : 0, inl, scratch);
+  if (inl && scratch->n > lead) inline_park(t, s, scratch);
+  if (sync && !opened && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */
   else if (sync) rolltui_str_append(scratch, SYNC_END, sizeof SYNC_END - 1);
+  t->sync_open = 0;
   if (scratch->n) rolltui_terminal_write(t, scratch->p, scratch->n);
 }
 
@@ -748,7 +920,7 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
       ev.mouse = qe->mouse;
       ev.text_len = qe->text_len;
       ev.text = qe->text_len ? t->queued_text + qe->text_off : NULL;
-      emit(ctx, &ev);
+      if (inline_mouse(t, &ev)) emit(ctx, &ev);
     }
     t->queued_len = 0;      /* capacity KEPT: a reset is not a free (CLAUDE.md, Phase 13) */
     t->queued_text_len = 0;
@@ -770,7 +942,9 @@ static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn em
     /* Every resize is reported, even when the size reads back the same: the frame may still need
      * a full repaint (some terminals clear on a font change). A plain wake reports nothing. */
     if (n & ROLLTUI_OS_TTY_RESIZED) {
+      const int old_w = t->w;
       rolltui_terminal_refresh_size(t);
+      if (t->inl && t->tty) inline_reanchor(t, old_w);
       RolltuiTermEvent ev;
       memset(&ev, 0, sizeof ev);
       ev.kind = ROLLTUI_TERM_EVENT_RESIZE;

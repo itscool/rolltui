@@ -151,12 +151,12 @@ void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
 const RolltuiLayout* rolltui_layout_builtin(RolltuiContext* c, const char* name, size_t len);
 /* Builds the JSON tree (an OWNED value the caller frees) — `layout_to_json_value`'s port.
  * `base`/`popups` are BORROWS (read-only: this never copies a tree merely to serialise it). */
-RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,
+RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height, int inline_mode,
                                                const RolltuiLayoutAction* actions, size_t actions_n,
                                                const RolltuiLayer* base, const RolltuiLayer* popups,
                                                size_t popups_n, const RolltuiLayoutHooks* hooks);
 /* Dumps straight to TEXT, indent 2, REPLACING `*out` — `layout_to_json`'s port. */
-void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height, int inline_mode,
                                 const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
                                 const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
                                 RolltuiStr* out);

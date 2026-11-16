@@ -139,6 +139,8 @@ struct Script {
   int cpr_col = 2;                           // where the cursor is after the glyph; 0: no answer
   int mark_col = 2;                          // ...after `e` and a combining accent (3: the accent took a cell of its own)
   std::string decrpm;                        // the reply to DECRQM for mode 2026 (synchronized output); "": none
+  std::vector<int> anchor_rows;              // where the cursor is, for each position question in turn (1-based rows)
+  int anchor_col = 1;
   std::string da1 = "\x1b[?1;2c";
   std::string after;                         // written on its own 150 ms after the first DA1 is answered (a LATE reply)
   int idle_ms = 350;                         // how long the terminal lingers once nothing more is coming
@@ -192,6 +194,7 @@ void fake_serve(int master, int report_fd, const Script& sc) {
   bool first_da_answered = false;
   auto ms_now = [] { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
   long long quiet_since = ms_now(), after_due = -1;
+  std::size_t anchors = 0;
   bool after_sent = sc.after.empty();
   for (;;) {
     pollfd p{master, POLLIN, 0};
@@ -223,10 +226,17 @@ void fake_serve(int master, int report_fd, const Script& sc) {
           case 2: out += (++osc11_queries >= 2 && !sc.bg_later.empty()) ? sc.bg_later : sc.bg; break;
           case 3: out += sc.sgr; break;
           case 4: out += sc.version; break;
-          case 5: {  // which question: the one after `e` and an accent, or the one after the ambiguous glyph
+          case 5: {  // which question: after `e` and an accent, after the ambiguous glyph, or where the cursor is
             const bool after_accent = f.first >= 3 && seen.compare(f.first - 3, 3, "e\xCC\x81") == 0;
-            const int col = after_accent ? sc.mark_col : sc.cpr_col;
-            if (sc.cpr_col > 0) out += "\x1b[1;" + std::to_string(col) + "R";
+            const bool after_glyph = f.first >= 3 && seen.compare(f.first - 3, 3, "\xE2\x96\x88") == 0;
+            if (after_accent || after_glyph) {
+              const int col = after_accent ? sc.mark_col : sc.cpr_col;
+              if (sc.cpr_col > 0) out += "\x1b[1;" + std::to_string(col) + "R";
+            } else {
+              const int row = sc.anchor_rows.empty() ? 1 : sc.anchor_rows[std::min(anchors, sc.anchor_rows.size() - 1)];
+              ++anchors;
+              out += "\x1b[" + std::to_string(row) + ";" + std::to_string(sc.anchor_col) + "R";
+            }
             break;
           }
           case 7: out += sc.decrpm; break;
@@ -285,11 +295,14 @@ bool file_exists(const std::string& path) { return ::access(path.c_str(), F_OK) 
 double g_new_ms = 0;  // how long `rolltui_terminal_new` took the last time, in milliseconds
 
 // A terminal on the fake's slave. `body` runs while it is alive; what the fake heard is returned.
+int g_slave = -1;  // the pty's slave while a `with_terminal` body runs: a resize is set on it
+
 template <class Body>
 Heard with_terminal(const Script& sc, const std::vector<std::pair<const char*, const char*>>& env, RolltuiTerminalOptions o, Body body) {
   FakeTerminal ft;
   Heard none;
   if (!ft.start(sc)) return none;
+  g_slave = ft.slave;
   set_env(env);
   o.handle_signals = false;  // this is a test process, not an application
   const auto t0 = std::chrono::steady_clock::now();
@@ -833,6 +846,210 @@ int main() {
     with_terminal(kGhostty, kGhosttyEnv, fresh, [&](RolltuiTerminal* t) { plain = frames(t); });
     check(!plain.empty() && plain[0].find("2026") == std::string::npos && plain[0].find("hi") != std::string::npos,
           "a terminal that does not answer is never sent the mode");
+  }
+
+  // ---- INLINE: drawn in the normal screen from the cursor's row, never the alternate screen
+  {
+    struct Inline {
+      RolltuiSwap* swap = rolltui_swap_new(20, 3, RolltuiStyle{});
+      RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+      ~Inline() {
+        rolltui_draw_scratch_free(d);
+        rolltui_swap_free(swap);
+      }
+      // A frame of `rows` rows with `text` on its first row; a caret at (cx, cy) when cy >= 0.
+      std::string present(RolltuiTerminal* t, int w, int rows, const char* text, int cx = 0, int cy = -1) {
+        RolltuiFrame* fr = rolltui_swap_begin(swap, w, rows, RolltuiStyle{});
+        rolltui_frame_put_text(fr, d, 0, 0, text, std::strlen(text), RolltuiStyle{}, w, 0, 0);
+        if (cy >= 0) rolltui_frame_set_cursor(fr, cx, cy, 1);
+        RolltuiStr out{};
+        rolltui_terminal_present(t, swap, &out);
+        std::string got(out.p ? out.p : "", out.n);
+        rolltui_str_free(&out);
+        return got;
+      }
+    };
+    auto at = [](const std::string& s, int row, const char* text) {
+      return s.find("\x1b[" + std::to_string(row) + ";1H" + text) != std::string::npos;
+    };
+    RolltuiTerminalOptions o;
+    o.no_cache = true;
+    o.inline_rows = 3;
+
+    Script s = kGhostty;
+    s.anchor_rows = {10};
+    s.idle_ms = 1500;
+    std::string first, after;
+    const Heard h = with_terminal(s, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      first = in.present(t, 20, 3, "abc");
+      after = in.present(t, 20, 3, "abd");
+    });
+    check(!h.asked("\x1b[?1049h") && h.asked("\x1b[6n"), "inline: the alternate screen is never entered, and the cursor's row is asked");
+    check(h.asked("\x1b" "7\r\xE2\x96\x88\x1b[6n") && !h.asked("\x1b[1;1H\xE2\x96\x88"),
+          "…the width question is drawn on the cursor's own line, never on row 1, which is the person's history");
+    check(at(first, 10, "\x1b[J") && at(first, 10, "\x1b[0mabc"), "…the region is erased and drawn from the cursor's row, 10 [" + first.substr(0, 40) + "]");
+    check(after.find("\x1b[J") == std::string::npos && after.find("\x1b[10;3H\x1b[0md") != std::string::npos &&
+              after.find("\x1b[10;1H\x1b[10;1H") == std::string::npos,
+          "…and a changed frame is a diff at the region's rows, nothing erased, the cursor left at the region's first cell once");
+    const std::size_t last_frame = h.bytes.rfind("\x1b[10;3H"), erase = h.bytes.rfind("\x1b[10;1H\x1b[J");
+    check(last_frame != std::string::npos && erase != std::string::npos && erase > last_frame,
+          "…and leaving erases the region, leaving the cursor where it began for the prompt");
+
+    // Near the bottom: room is made by scrolling, and the region moves up by what scrolled.
+    Script low = kGhostty;
+    low.anchor_rows = {23};
+    low.idle_ms = 1500;
+    std::string placed;
+    RolltuiTerminalOptions o5 = o;
+    o5.inline_rows = 5;
+    with_terminal(low, kGhosttyEnv, o5, [&](RolltuiTerminal* t) {
+      Inline in;
+      placed = in.present(t, 20, 5, "low");
+    });
+    check(placed.find("\x1b[24;1H\n\n\n") != std::string::npos && at(placed, 20, "\x1b[J") && at(placed, 20, "\x1b[0mlow"),
+          "five rows from row 23 of 24: three lines scrolled at the bottom, and the region drawn from row 20 [" + placed.substr(0, 40) + "]");
+
+    // Mid-line: something was printed without a newline, so the region starts on the next line.
+    Script mid = kGhostty;
+    mid.anchor_rows = {8};
+    mid.anchor_col = 7;
+    mid.idle_ms = 1500;
+    std::string next_line;
+    const Heard hm = with_terminal(mid, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      next_line = in.present(t, 20, 3, "mid");
+    });
+    check(hm.asked("\x1b[6n") && at(next_line, 9, "\x1b[0mmid"), "a cursor at column 7 of row 8: the region starts on row 9, under what was there");
+
+    // Committed rows stay above, and the region is drawn below them.
+    Script c = kGhostty;
+    c.anchor_rows = {10};
+    c.idle_ms = 1500;
+    std::string below;
+    const Heard hc = with_terminal(c, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      in.present(t, 20, 3, "live");
+      RolltuiFrame* lines = rolltui_frame_new(20, 2, RolltuiStyle{});
+      rolltui_frame_put_text(lines, in.d, 0, 0, "hello", 5, RolltuiStyle{}, 20, 0, 0);
+      rolltui_frame_put_text(lines, in.d, 0, 1, "world", 5, RolltuiStyle{}, 20, 0, 0);
+      rolltui_terminal_commit(t, lines);
+      rolltui_frame_free(lines);
+      below = in.present(t, 20, 3, "live");
+    });
+    const std::size_t committed = hc.bytes.find("hello\x1b[0m\r\n");
+    check(committed != std::string::npos && hc.bytes.find("world\x1b[0m\r\n", committed) != std::string::npos,
+          "a commit writes its rows as lines in the terminal's flow, each up to its last cell, then a newline");
+    check(at(below, 12, "\x1b[J") && at(below, 12, "\x1b[0mlive"), "…and the region is drawn again two rows lower, under them [" + below.substr(0, 40) + "]");
+
+    // A COMMIT AND THEN LEAVING, no present between (a host committing what is left as it quits): the frame the commit opened is
+    // closed by the leaving, after the region is erased, so the terminal is never left holding its updates.
+    Script cs = kGhostty;
+    cs.anchor_rows = {10};
+    cs.idle_ms = 1500;
+    cs.decrpm = "\x1b[?2026;2$y";
+    const Heard hq = with_terminal(cs, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      in.present(t, 20, 3, "live");
+      RolltuiFrame* lines = rolltui_frame_new(20, 1, RolltuiStyle{});
+      rolltui_frame_put_text(lines, in.d, 0, 0, "last", 4, RolltuiStyle{}, 20, 0, 0);
+      rolltui_terminal_commit(t, lines);
+      rolltui_frame_free(lines);
+    });
+    const std::size_t opened = hq.bytes.rfind("\x1b[?2026h"), closed = hq.bytes.rfind("\x1b[?2026l");
+    const std::size_t last = hq.bytes.find("last\x1b[0m\r\n", opened == std::string::npos ? 0 : opened);
+    const std::size_t erased = hq.bytes.find("\x1b[J", last == std::string::npos ? 0 : last);
+    check(opened != std::string::npos && last != std::string::npos && erased != std::string::npos && closed != std::string::npos &&
+              opened < last && last < erased && erased < closed,
+          "a commit then leaving: the frame it opened holds the lines and the region's erasing, and the leaving closes it");
+
+    // The mouse: screen rows become region rows, and a press above the region is not this program's.
+    Script m = kGhostty;
+    m.anchor_rows = {10};
+    m.idle_ms = 1500;
+    m.after = "\x1b[<0;5;11M\x1b[<0;5;3M";  // a press on the region's second row, then one on row 3 of the history
+    std::vector<RolltuiTermEvent> mice;
+    with_terminal(m, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      in.present(t, 20, 3, "m");
+      auto keep = [](void* ctx, const RolltuiTermEvent* e) {
+        if (e->kind == ROLLTUI_TERM_EVENT_MOUSE) static_cast<std::vector<RolltuiTermEvent>*>(ctx)->push_back(*e);
+      };
+      for (int i = 0; i < 8 && mice.empty(); ++i) rolltui_terminal_poll(t, 60, keep, &mice);
+      rolltui_terminal_poll(t, 60, keep, &mice);
+    });
+    check(mice.size() == 1 && mice[0].mouse.y == 1 && mice[0].mouse.x == 4,
+          "a press on screen row 11 is the region's row 1, and one above the region is dropped (" + std::to_string(mice.size()) + " events)");
+
+    // A resize: the region is asked for again. Parked at its first cell, the answer is exact whatever was rewrapped.
+    Script r = kGhostty;
+    r.anchor_rows = {10, 15};
+    r.idle_ms = 1500;
+    std::string redrawn;
+    with_terminal(r, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      in.present(t, 20, 3, "wide");
+      winsize ws{};
+      ws.ws_row = 24;
+      ws.ws_col = 60;
+      ::ioctl(g_slave, TIOCSWINSZ, &ws);
+      ::raise(SIGWINCH);
+      (void)names(t, 300);
+      redrawn = in.present(t, 20, 3, "wide");
+    });
+    check(at(redrawn, 15, "\x1b[J") && at(redrawn, 15, "\x1b[0mwide"),
+          "after a resize, a region whose cursor was parked at its first cell is drawn from the row the terminal says, 15 [" +
+              redrawn.substr(0, 40) + "]");
+
+    // …and with a caret on row 2: row 0, 80 wide, wrapped to two rows at 60 on a terminal that rewraps.
+    Script rc = kGhostty;
+    rc.anchor_rows = {10, 20};
+    rc.idle_ms = 1500;
+    std::string caret_redrawn;
+    with_terminal(rc, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      Inline in;
+      in.present(t, 80, 3, std::string(80, 'x').c_str(), 3, 2);
+      winsize ws{};
+      ws.ws_row = 24;
+      ws.ws_col = 60;
+      ::ioctl(g_slave, TIOCSWINSZ, &ws);
+      ::raise(SIGWINCH);
+      (void)names(t, 300);
+      caret_redrawn = in.present(t, 60, 3, "narrow", 3, 2);
+    });
+    // THE GROUND: a cell on the frame's fill stands on the terminal's own background inline; a panel keeps its colour.
+    auto grounded = [&](RolltuiTerminalOptions opts) {
+      Script g = kGhostty;
+      g.anchor_rows = {5};
+      g.idle_ms = 1500;
+      std::string got;
+      with_terminal(g, kGhosttyEnv, opts, [&](RolltuiTerminal* t) {
+        RolltuiStyle ground{}, panel{};
+        ground.bg = RolltuiStyleColor::rgb(20, 22, 26);
+        panel.bg = RolltuiStyleColor::rgb(40, 42, 46);
+        RolltuiSwap* sw = rolltui_swap_new(10, 2, ground);
+        RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+        RolltuiFrame* fr = rolltui_swap_begin(sw, 10, 2, ground);
+        rolltui_frame_put_text(fr, d, 0, 0, "on", 2, ground, 10, 0, 0);
+        rolltui_frame_put_text(fr, d, 0, 1, "panel", 5, panel, 10, 0, 0);
+        RolltuiStr out{};
+        rolltui_terminal_present(t, sw, &out);
+        got.assign(out.p ? out.p : "", out.n);
+        rolltui_str_free(&out);
+        rolltui_draw_scratch_free(d);
+        rolltui_swap_free(sw);
+      });
+      return got;
+    };
+    RolltuiTerminalOptions whole;
+    whole.no_cache = true;
+    const std::string on_screen = grounded(whole), in_line = grounded(o);
+    check(on_screen.find("48;2;20;22;26") != std::string::npos, "CONTROL: on the whole screen the ground is painted, as a screen it owns");
+    check(in_line.find("48;2;20;22;26") == std::string::npos && in_line.find("48;2;40;42;46") != std::string::npos,
+          "inline, the ground is the terminal's own background and a panel's colour stays");
+    check(at(caret_redrawn, 17, "\x1b[J"),
+          "with the caret on row 2 at row 20, and row 0 rewrapped to two rows, the region now starts on row 17 [" +
+              caret_redrawn.substr(0, 40) + "]");
   }
 
   // ---- A terminal that gives a combining accent a cell of its own (Windows' console host)

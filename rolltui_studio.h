@@ -132,7 +132,7 @@ int rolltui_load_layout_text_into(const char* text, size_t len, RolltuiLoadedLay
                                   const RolltuiLayoutAction* default_actions, size_t default_actions_n,
                                   const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
 /* Dumps straight to TEXT, indent 2, REPLACING `*out` — `layout_to_json`'s port. */
-void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height, int inline_mode,
                                 const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
                                 const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
                                 RolltuiStr* out);

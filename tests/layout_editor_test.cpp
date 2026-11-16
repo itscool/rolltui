@@ -110,7 +110,7 @@ std::string edit_reason_of(LayoutEditor& ed) {
 // shape, minus the deleted C++ wrapper.
 std::string dump_layout(const Layout& l) {
   RolltuiStr out{};
-  rolltui_layout_to_json_text(l.name.data(), l.name.size(), l.min_width, l.min_height, l.actions.data(), l.actions.size(),
+  rolltui_layout_to_json_text(l.name.data(), l.name.size(), l.min_width, l.min_height, l.inline_mode, l.actions.data(), l.actions.size(),
                              &l.base, l.popups.data(), l.popups.size(), rolltui_layout_default_hooks(), &out);
   const std::string s(out.p ? out.p : "", out.n);
   rolltui_str_free(&out);

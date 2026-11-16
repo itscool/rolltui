@@ -253,6 +253,12 @@ class Responder {
     term_ = term;
     if (threaded_) worker_ = std::thread([this] { run(); });
   }
+  // THE TERMINAL IT WAKES, changed while it runs: the screen switching between inline and whole. The wake below happens under the
+  // same lock, so once this returns the old terminal is never woken again and may be freed.
+  void retarget(RolltuiTerminal* term) {
+    std::lock_guard<std::mutex> lock(term_mu_);
+    term_ = term;
+  }
   void stop() {
     {
       std::lock_guard<std::mutex> lock(mu_);
@@ -319,13 +325,17 @@ class Responder {
         outbox_ += pieces[i];
         if (i + 1 == pieces.size()) finished_ = true;
         lock.unlock();
-        rolltui_terminal_wake(term_);  // thread-safe: one byte on the terminal's self-pipe
+        {
+          std::lock_guard<std::mutex> t(term_mu_);
+          if (term_) rolltui_terminal_wake(term_);  // thread-safe: one byte on the terminal's self-pipe
+        }
         lock.lock();
       }
     }
   }
 
   const bool threaded_;
+  std::mutex term_mu_;  // guards `term_` against `retarget`
   RolltuiTerminal* term_ = nullptr;
   std::thread worker_;
   std::mutex mu_;
@@ -373,6 +383,11 @@ struct App {
   const RolltuiLayout* shown = nullptr; // what is on screen: `layout`, or the shipped narrow fallback
   unsigned long long theme_seen = 0, layout_seen = 0, keys_seen = 0;
   RolltuiDocument doc;
+  // What an inline screen committed to the terminal's history, in order: a whole-screen layout chosen later shows it again.
+  RolltuiDocument history;
+  // How many entries at the front of `doc` the terminal's history already holds, while a whole screen shows them again: an inline
+  // layout chosen after it takes them back without writing them twice.
+  std::size_t written_before = 0;
   unsigned long long next_id = 0;
 
   // The terminal, and the double buffer, only in the interactive loop.
@@ -380,6 +395,10 @@ struct App {
   RolltuiSwap* swap = nullptr;
   Responder responder;
   int w = 100, h = 30;
+  // INLINE: a layout that says `"inline": true` (the shipped `inline`) is drawn below the prompt in the normal screen, a finished
+  // message left in the terminal's own history. The region is `fh` rows: the live entries and the prompt, taller while a popup is open.
+  bool inline_mode = false;
+  int fh = 0;
   unsigned char ambiguous = 0;
   unsigned long long now = 0;  // the clock this frame is drawn at
   bool quit = false;
@@ -430,7 +449,7 @@ struct App {
     rolltui_context_free(ctx);  // LAST
   }
 
-  RolltuiRect area() const { return {0, 0, w, h}; }
+  RolltuiRect area() const { return {0, 0, w, fh > 0 ? fh : h}; }
   const RolltuiStyle& style(unsigned char role) const { return *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, role); }
   RolltuiInput* prompt() { return rolltui_windows_input(windows, "prompt", 6); }
   RolltuiMenu* menu() { return rolltui_windows_menu(windows, "main", 4); }
@@ -558,7 +577,7 @@ struct App {
     int mw = 0, mh = 0;
     rolltui_layout_min_size(layout, &mw, &mh);
     const RolltuiLayout* want = layout;
-    if (w < mw || h < mh)
+    if (!rolltui_layout_inline(layout) && (w < mw || h < mh))
       if (const RolltuiLayout* narrow = rolltui_layout_shipped(ctx, "stacked", 7)) want = narrow;
     if (want == shown) return;
     shown = want;
@@ -689,6 +708,21 @@ struct App {
 
   // ---- the slash commands --------------------------------------------------------------------
 
+  // THE CONVERSATION FORGOTTEN, a reply still arriving included: it is stopped first, since it arrives into an entry that is about
+  // to go, and the messages queued behind it go with it. What an inline screen already left in the terminal's history stays there.
+  void cmd_clear() {
+    if (replying) {
+      responder.cancel();
+      replying = false;
+      open_raw.clear();
+    }
+    queued.clear();
+    doc.clear();
+    history.clear();
+    written_before = 0;
+    you_said = assistant_said = words_in = words_out = 0;
+  }
+
   void command(StrView line) {
     // "/name rest…"
     std::size_t sp = line.find(' ');
@@ -702,7 +736,7 @@ struct App {
     else if (name == "layouts") cmd_layouts(rest);
     else if (name == "keys") cmd_keys(rest);
     else if (name == "terminal") cmd_terminal();
-    else if (name == "clear") { doc.clear(); you_said = assistant_said = words_in = words_out = 0; }
+    else if (name == "clear") cmd_clear();
     else if (name == "quit") quit = true;
     else say_note(rolltui::format("unknown command '/%.*s' (/help lists them)", static_cast<int>(name.size()), name.data()));
   }
@@ -1438,6 +1472,75 @@ struct App {
     std::remove(path.c_str());
   }
 
+  // ---- inline: the region, and what leaves it -------------------------------------------------
+
+  // THE TERMINAL MADE TO THE LAYOUT: inline below the prompt, or the whole screen.
+  void open_terminal() {
+    RolltuiTerminalOptions opts{};
+    opts.facts_events = 1;
+    if (inline_mode) opts.inline_rows = 3;  // the height is the frame's: `frame_rows`
+    term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
+    read_facts();
+    w = rolltui_terminal_width(term);
+    h = rolltui_terminal_height(term);
+    fh = 0;
+  }
+  // A LAYOUT THAT CHANGES WHERE THE SCREEN IS DRAWN changes it at once: the terminal is left (the alternate screen, or the region)
+  // and made again for the other. What was said so far is committed into the terminal's history by the next frame when the screen
+  // becomes inline; the whole screen shows what has not been.
+  void switch_screen() {
+    responder.retarget(nullptr);
+    rolltui_terminal_free(term);
+    if (inline_mode && history.size() > 0) {  // the whole screen shows the conversation from its start
+      RolltuiDocument all;
+      for (const RolltuiDocEntry& e : history) rolltui_doc_entry_copy(rolltui_document_add(&all), &e);
+      for (const RolltuiDocEntry& e : doc) rolltui_doc_entry_copy(rolltui_document_add(&all), &e);
+      if (replying) open_entry += history.size();
+      written_before = history.size();
+      doc = std::move(all);
+      history.clear();
+    } else if (!inline_mode) {  // what the terminal's history already holds goes back to `history` unwritten
+      for (; written_before > 0 && doc.size() > 0; --written_before) {
+        rolltui_doc_entry_copy(rolltui_document_add(&history), &doc[0]);
+        rolltui_document_remove(&doc, 0);
+        if (replying && open_entry > 0) --open_entry;
+      }
+      written_before = 0;
+    }
+    inline_mode = !inline_mode;
+    open_terminal();
+    responder.retarget(term);
+    theme_seen = 0;
+    if (swap) rolltui_swap_invalidate(swap);
+  }
+
+  // A FINISHED ENTRY LEAVES THE REGION for the terminal's own history, drawn as the transcript draws it, where it stays as ordinary
+  // output the person scrolls and selects with the terminal's own means. Entries go in order, so one still streaming holds back
+  // those after it; `all` commits that one too (leaving: the conversation stays on the screen).
+  void commit_finished(bool all) {
+    if (!inline_mode || !term) return;
+    prepare();  // drawn as the layout on screen now draws it, not the one before a switch
+    RolltuiTranscript* tr = transcript();
+    if (!tr) return;
+    while (doc.size() > 0 && (all || !(replying && open_entry == 0))) {
+      RolltuiFrame* lines = rolltui_transcript_entry_frame(tr, &doc[0], w, styles, style(ROLLTUI_ROLE_BACKGROUND));
+      rolltui_terminal_commit(term, lines);
+      rolltui_frame_free(lines);
+      rolltui_doc_entry_copy(rolltui_document_add(&history), &doc[0]);
+      rolltui_document_remove(&doc, 0);
+      if (replying && open_entry > 0) --open_entry;
+    }
+  }
+  // The region's height: what is still live in the transcript, and the prompt's three rows under it. A popup gets room to open.
+  int frame_rows() {
+    if (!inline_mode) return h;
+    prepare();  // the transcript laid out at this width, which is all its height depends on
+    const RolltuiTranscript* tr = transcript();
+    int rows = 3 + (tr ? static_cast<int>(rolltui_transcript_total_lines(tr)) : 0);
+    if (rolltui_window_stack_depth(stack) > 1) rows = std::max(rows, std::min(h, 18));
+    return std::clamp(rows, 3, std::max(h, 3));
+  }
+
   // ---- the loop ------------------------------------------------------------------------------
 
   // THE LOOP `rolltui_run` WOULD WRITE, written here because this app is the one that shows its
@@ -1445,12 +1548,8 @@ struct App {
   // happened, act on it. The other thread's pieces are taken at the top of each turn.
   // `main` has already asked that both descriptors are terminals.
   int run() {
-    RolltuiTerminalOptions opts{};
-    opts.facts_events = 1;
-    term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
-    read_facts();
-    w = rolltui_terminal_width(term);
-    h = rolltui_terminal_height(term);
+    inline_mode = rolltui_layout_inline(layout) != 0;
+    open_terminal();
     theme_seen = 0;  // the depth is the terminal's to be told, now that there is one
     sync_stores();
     swap = rolltui_swap_new(w, h, style(ROLLTUI_ROLE_BACKGROUND));
@@ -1460,8 +1559,12 @@ struct App {
     Pending pending;
     while (!quit) {
       now = steady_ms();
+      sync_stores();  // a layout chosen since the last frame decides where this one is drawn
+      if ((rolltui_layout_inline(layout) != 0) != inline_mode) switch_screen();
       take_reply();
-      RolltuiFrame* f = rolltui_swap_begin(swap, w, h, style(ROLLTUI_ROLE_BACKGROUND));
+      commit_finished(false);
+      fh = frame_rows();
+      RolltuiFrame* f = rolltui_swap_begin(swap, w, fh, style(ROLLTUI_ROLE_BACKGROUND));
       render_into(f);
       const int timeout = poll_timeout_ms(f);
       rolltui_terminal_present(term, swap, &out);
@@ -1500,6 +1603,7 @@ struct App {
       if (rolltui_transcript_wants_tick(transcript())) rolltui_transcript_tick(transcript());
     }
     responder.stop();  // joined BEFORE the terminal it wakes is freed
+    commit_finished(true);  // inline: the conversation, a reply cut short included, stays on the screen
     rolltui_terminal_write(term, "\x1b[23;0t", 7);
     rolltui_str_free(&out);
     rolltui_swap_free(swap);

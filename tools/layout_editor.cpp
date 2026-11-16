@@ -420,6 +420,7 @@ void LayoutEditor::rebuild_menu() {
   std::vector<MenuItem> screen;
   screen.push_back(MenuItem::input("min_width", "Minimum width", threshold.clone()));
   screen.push_back(MenuItem::input("min_height", "Minimum height", threshold.clone()));
+  screen.push_back(MenuItem::toggle("inline", "Drawn inline, below the prompt", false));
   screen.push_back(MenuItem::choice("focus", "Focused window", ""));
   screen.push_back(submenu_of("popups", "Popups", std::move(popups)));
   screen.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
@@ -577,6 +578,7 @@ void LayoutEditor::sync_values() {
   // sitting in the list after the window is gone.
   set_value(menu_, "min_width", rolltui::to_str(current_.min_width));
   set_value(menu_, "min_height", rolltui::to_str(current_.min_height));
+  set_checked(menu_, "inline", current_.inline_mode != 0);
   {
     std::vector<MenuItem> focusable;
     focusable.push_back(MenuItem::action("", "(none \xE2\x80\x94 the first focusable window in tree order)"));
@@ -923,6 +925,11 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     return {O::None, {}};
   }
   if (kind == ROLLTUI_MENU_EVENT_TOGGLE) {
+    if (id == "inline") {  // the screen's own, true whatever is selected
+      begin_preview();
+      current_.inline_mode = current_.inline_mode ? 0 : 1;
+      return commit_current();
+    }
     if (id == "visible" || id == "focusable") {
       begin_preview();
       apply_op(id == "visible" ? Op::ToggleVisible : Op::ToggleFocusable);

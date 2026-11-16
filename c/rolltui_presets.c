@@ -1974,7 +1974,7 @@ static void layout_domain_to_json(const RolltuiPresetDomain* d, const void* v, c
    * rule — a save that silently renamed what was saved would break `modified()`). */
   (void)name;
   (void)len;
-  rolltui_layout_to_json_text(l->name.p, l->name.n, l->min_width, l->min_height, l->actions.v, l->actions.n, &l->base,
+  rolltui_layout_to_json_text(l->name.p, l->name.n, l->min_width, l->min_height, l->inline_mode, l->actions.v, l->actions.n, &l->base,
                               l->popups.v, l->popups.n, d->layout_hooks, &out);
   put(ctx, out.p, out.n);
   rolltui_str_free(&out);
@@ -1983,7 +1983,7 @@ static void layout_domain_to_json_with_origin(const RolltuiPresetDomain* d, cons
                                               size_t len, RolltuiPutFn put,
                                               void* ctx) {
   const RolltuiLayout* l = (const RolltuiLayout*)v;
-  RolltuiJsonValue* tree = rolltui_layout_to_json_value(l->name.p, l->name.n, l->min_width, l->min_height,
+  RolltuiJsonValue* tree = rolltui_layout_to_json_value(l->name.p, l->name.n, l->min_width, l->min_height, l->inline_mode,
                                                         l->actions.v, l->actions.n, &l->base, l->popups.v,
                                                         l->popups.n, d->layout_hooks);
   RolltuiStr out = {0};

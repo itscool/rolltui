@@ -109,6 +109,7 @@ const Covered kLayout[] = {
     {"focusable", "focusable", ""},
     {"h", "popup.find.h", "per popup"},
     {"id", "id", "renaming carries the selection and `focus` with it"},
+    {"inline", "inline", "the screen's own: drawn below the prompt in the normal screen"},
     {"margin", "popup.find.margin", "per popup; columns kept clear of the screen's left and right edges"},
     {"max_h", "popup.find.max_h", "per popup; empty means unbounded"},
     {"max_w", "popup.find.max_w", "per popup; empty means unbounded"},

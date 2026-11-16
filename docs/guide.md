@@ -82,6 +82,39 @@ An app with threads of its own builds its loop from `rolltui_terminal_new`,
 `rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and
 `rolltui_terminal_suspend` / `_resume`. `examples/chat.cpp` does this.
 
+## Inline mode
+
+An inline program is drawn in the normal screen, below the shell prompt, instead of on the
+alternate screen. Set `RolltuiTerminalOptions.inline_rows` to run inline. `rolltui_run` draws
+frames of that many rows, at most the terminal's height. A host with its own loop draws each
+frame at the height it wants, and the region follows it.
+
+- The region starts on the cursor's row, or on the next row when the cursor is past column 1.
+  A terminal that does not report the cursor gets the region at the bottom of the screen.
+- A region taller than the space below the cursor scrolls the screen up to make room.
+- `rolltui_terminal_commit(t, lines)` writes a frame's rows above the region as ordinary lines,
+  each trimmed after its last cell. They stay in the terminal's history, where the person
+  scrolls, selects and copies them with the terminal's own means. The region is drawn again
+  below them.
+- Cells in the frame's ground colour are drawn on the terminal's own background. Panels and
+  other cells keep their colours.
+- Mouse rows are counted from the region's top. A press above the region is dropped.
+- After a resize the region is found again. On a terminal that rewraps lines when it narrows
+  (every common one except xterm, st and the Linux console), the rows the rewrap added are
+  counted.
+- Leaving erases the region and leaves the cursor where the region began.
+
+A layout with `"inline": true` is drawn inline, and `rolltui_layout_inline` reports it. In the
+studio's layout editor it is the "Drawn inline" toggle under This screen. The shipped `inline`
+layout is the conversation and the prompt.
+
+`rolltui-chat` runs inline when its layout is `inline`: chosen in the menu, with
+`/set layout inline`, or for one run with `CHAT_LAYOUT=inline`. A finished message is drawn
+with `rolltui_transcript_entry_frame`, committed, and removed from the document with
+`rolltui_document_remove`. Choosing a whole-screen layout shows the conversation from its start
+on the alternate screen. Choosing `inline` again writes only what the terminal does not already
+hold. Leaving commits a reply still arriving, as far as it got.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.

@@ -24,6 +24,7 @@ struct RolltuiRun {
   RolltuiSwap* swap;
   int stop;
   int w, h;
+  int rows;          /* inline: the region's height asked for, held to the terminal's; 0 on the alternate screen */
   int facts;         /* a FACTS event arrived in this wake */
   /* HELD FOR THE WHOLE RUN AND REFILLED, never rebuilt per frame: the terminal's events are BORROWED for the length
    * of its emit call, and handling one can resize the app or stop the loop, so the bytes are copied here first and
@@ -81,6 +82,8 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
   r.term = rolltui_terminal_new(in_fd, out_fd, opts);
   r.w = rolltui_terminal_width(r.term);
   r.h = rolltui_terminal_height(r.term);
+  r.rows = opts.inline_rows;
+  if (r.rows > 0 && r.rows < r.h) r.h = r.rows; /* an inline region is the frame's height */
   if (app->start) app->start(app->ctx, &r);
   if (!r.stop) {
     ground_of(&r, &fill);
@@ -105,7 +108,7 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
     for (i = 0; i < r.ev_n && !r.stop; ++i) {
       if (r.ev[i].is_resize) {
         r.w = r.ev[i].w;
-        r.h = r.ev[i].h;
+        r.h = r.rows > 0 && r.rows < r.ev[i].h ? r.rows : r.ev[i].h;
         rolltui_swap_invalidate(r.swap);
         if (app->resized) app->resized(app->ctx, &r, r.w, r.h);
       } else {
