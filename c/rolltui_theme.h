@@ -119,6 +119,9 @@ RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const Roll
 /* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
  * needs them. ---- */
 size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, size_t cap);
+/* THE SGR FROM `from` TO `to`: what changed alone (an attribute turned off by its own reset, a colour by its own code), or the whole of
+ * `to` from a reset where that is shorter. 0 bytes when the two draw the same at `depth`. `cap` >= ROLLTUI_SGR_MAX. */
+size_t rolltui_sgr_delta(const RolltuiStyle* from, const RolltuiStyle* to, unsigned char depth, char* out, size_t cap);
 
 #ifdef __cplusplus
 } /* extern "C" */

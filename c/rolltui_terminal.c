@@ -301,6 +301,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
     rolltui_termfacts_set_active(-1, 0);
     rolltui_termfacts_set_active_wide(-1);
     rolltui_termfacts_set_active_split(-1);
+    rolltui_termfacts_set_active_erase(-1);
     rolltui_termfacts_set_active_mode(-1);
     rolltui_termfacts_set_active_images(0, 0, 0);
   }
@@ -438,6 +439,8 @@ static void publish_depth(RolltuiTerminal* t) {
   rolltui_termfacts_set_active(t->depth_override >= 0 ? t->depth_override : t->facts.depth, forced);
   rolltui_termfacts_set_active_wide(t->facts.ambiguous_wide);
   rolltui_termfacts_set_active_split(t->facts.split_clusters);
+  /* GNU screen, unless a tmux inside it is what this program talks to, fills an erase with the default background */
+  rolltui_termfacts_set_active_erase(!(t->env.sty && *t->env.sty && !(t->env.tmux && *t->env.tmux)));
   rolltui_termfacts_set_active_mode(t->facts.mode);
   rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
   t->publishing = 1;

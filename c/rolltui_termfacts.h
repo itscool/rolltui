@@ -122,6 +122,11 @@ int rolltui_termfacts_active_wide(void); /* 1 only when a terminal measured (or 
  * chain counts the same cells. -1 withdraws it. */
 void rolltui_termfacts_set_active_split(int split);
 int rolltui_termfacts_active_split(void); /* 1 only when a terminal measured it */
+/* WHETHER AN ERASE IS IN THE BACKGROUND COLOUR (background colour erase), which the renderer's short forms stand on: an erase of a
+ * run of blanks or of a row's rest, and a scrolled region. Every terminal in use does it, and a tmux; GNU screen run directly does not.
+ * 1 unless a terminal entered says otherwise; -1 forgets. */
+void rolltui_termfacts_set_active_erase(int erase);
+int rolltui_termfacts_active_erase(void);
 void rolltui_termfacts_set_active_mode(int mode);
 int rolltui_termfacts_active_mode(void); /* ROLLTUI_MODE_*, or -1 when no terminal is entered */
 /* How the entered terminal draws a picture (ROLLTUI_IMAGES_*), and its cell's size in pixels (0 when not known). 0 and 0 while no

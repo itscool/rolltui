@@ -115,6 +115,24 @@ int rolltui_frame_height(const RolltuiFrame* f);
 /* The style the frame was filled with: its ground. An inline region draws it as the terminal's own background. */
 void rolltui_frame_ground(const RolltuiFrame* f, RolltuiStyle* out);
 
+/* 1 when cell (x, ay) of `a` and cell (x, by) of `b` would look the same on screen: one memcmp for a cell with no link and its glyph
+ * inline, which is nearly every cell; the glyph and the link compared by value otherwise (an index means nothing outside the frame that
+ * made it). Both frames are the same width and the cells are inside them. */
+int rolltui_frame_same_cell(const RolltuiFrame* a, const RolltuiFrame* b, int x, int ay, int by);
+/* 1 when row `ay` of `a` and row `by` of `b` look the same: one memcmp of the row, then by value only where a cell's glyph is spilled
+ * or it links. 0 says only that the cells must be compared one by one. */
+int rolltui_frame_rows_same(const RolltuiFrame* a, int ay, const RolltuiFrame* b, int by);
+/* `n` single-byte glyphs from (x, y) along the row, one cell each, in `st`: an ASCII run written whole. A wide glyph cut at either end
+ * goes whole, as `rolltui_frame_put` does. Clipped at the right edge; returns the cells written. */
+int rolltui_frame_put_ascii(RolltuiFrame* f, int x, int y, const char* s, int n, RolltuiStyle st, unsigned int link);
+/* Cells [x0, x1) of rows [y0, y1), clipped, set to the one-cell glyph `g` (inline length) in `st`. A wide glyph cut at an edge goes
+ * whole. */
+void rolltui_frame_fill_narrow(RolltuiFrame* f, int x0, int y0, int x1, int y1, const char* g, size_t len, RolltuiStyle st);
+/* A hash of row `y` that two rows which look the same share, whichever frame they are in: a row that moved is found by it. */
+unsigned long long rolltui_frame_row_hash(const RolltuiFrame* f, int y);
+/* 1 when cell (x, y) of `f` is a space in `style` with no link: a row a scrolled region brought in, compared without being built. */
+int rolltui_frame_cell_is_blank(const RolltuiFrame* f, int x, int y, RolltuiStyle style);
+
 int rolltui_frame_width(const RolltuiFrame* f);
 
 #ifdef __cplusplus

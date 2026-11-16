@@ -56,6 +56,23 @@ A terminal UI library in C, with a C++ API on top.
 | ![dirktui previewing a Python file](docs/images/code.png) | ![rolltui-chat: the command palette filtering for "theme"](docs/images/palette.png) |
 | dirktui code preview · harbour, light | rolltui-chat command palette · mono |
 
+## Speed
+
+The same screens drawn by rolltui and by ratatui 0.29. A frame is the whole of what a program does for one: drawn, compared with the last
+frame, and encoded as the bytes a terminal is sent, and for the tables the key handled and the screen laid out first. 200×50 cells,
+truecolor, on an Apple M5 Max:
+
+| Screen | rolltui | ratatui |
+|---|---|---|
+| A 10,000-row table, the cursor moving down a row | 0.11 ms, 163 bytes | 0.64 ms, 505 bytes |
+| The same table scrolling a row | 0.16 ms, 164 bytes | 0.39 ms, 2,010 bytes |
+| A page of text with a counter ticking in its corner | 0.04 ms, 56 bytes | 0.42 ms, 70 bytes |
+
+ratatui's table is given only the rows on screen, its fastest use; given all 10,000 rows, as its `Table` is usually fed, a frame
+takes about 3 ms. Rows that moved are scrolled on the terminal rather than written again, the cursor takes the shortest move, a
+colour change names only what changed, and a run of blanks is an erase. The test suite replays the bytes into a model of a terminal
+and compares the screen with the frame, cell by cell. `tools/bench/run.sh` builds both and prints the table at 200×50 and 80×24.
+
 ## What's in the repository
 
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under

@@ -63,6 +63,29 @@ cache; a terminal that does not answer costs 80 ms, once.
 Every theme has a light and a dark side. Mode (auto, dark or light) and colour depth are the
 person's settings, stored beside the chosen theme and kept when the theme changes.
 
+## What a frame sends
+
+`rolltui_swap_present` sends the terminal what changed since the last frame, in the fewest bytes it
+knows:
+
+- Unchanged cells are not sent. A gap of up to three unchanged cells between two changes is
+  written again; a longer gap is stepped over with a cursor move.
+- The cursor takes the shortest move from where the last write left it: a CR and line feeds to the
+  start of a row below, a cursor-forward along a row, an absolute move otherwise.
+- A style change names only what changed (a colour, an attribute turned on or off), or resets
+  and names the whole style where that is shorter.
+- A run of 12 or more blank cells is erased (ECH) and stepped over; a row's blank rest of 4 or
+  more cells is erased to the end of the line (EL). A blank is a space with no link, underline or
+  reverse.
+- When a block of three or more rows moved up or down, the terminal scrolls that region (DECSTBM
+  with SU or SD) and only the rows the scroll brought in are written.
+
+The erases and the scrolled region stand on the terminal filling an erase with the current
+background colour, which every terminal in use does, and tmux too. Directly under GNU screen
+(`STY` set, no `TMUX`) they are not used. `tests/render_replay_test.cpp` replays the bytes of
+thousands of random frames into a model of a terminal (`tests/vt_model.hpp`) and checks the
+screen against each frame, cell by cell.
+
 ## The run loop
 
 `rolltui_run(in_fd, out_fd, options, app)`:

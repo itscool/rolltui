@@ -506,8 +506,10 @@ int main() {
     // published way of drawing them). Then work off the UI thread: PUBLIC 496 (the task pool and its jobs, the run's timers,
     // debounce and tasks, the window table's workers and an input's changes) and INTERNAL 839 (threads and conditions, and the
     // preview and picker reading on a worker). Then lists: PUBLIC 510 (natural order, the fuzzy match, a list window bound, shaped,
-    // asked and driven) and INTERNAL 861 (the widget itself and the table's lists by name).
-    check(totals["PUBLIC"] == 510 && totals["INTERNAL"] == 861 && totals.size() == 2,
+    // asked and driven) and INTERNAL 861 (the widget itself and the table's lists by name). Then speed: INTERNAL 867 (the diff's cell
+    // compare, row hash and scrolled-row blank, the SGR delta, and whether the terminal erases in the background colour) and 870 (a
+    // row compared whole, an ASCII run and a ground written whole).
+    check(totals["PUBLIC"] == 510 && totals["INTERNAL"] == 870 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

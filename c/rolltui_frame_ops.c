@@ -33,12 +33,43 @@ void rolltui_draw_scratch_free(RolltuiDrawScratch* s) {
   rolltui_mem_free(s);
 }
 
+/* How many leading bytes of `s` are each a whole cluster one cell wide: a printable ASCII byte followed by another ASCII byte (or the
+ * end). A byte followed by a non-ASCII one may lead a cluster (`e` and a combining acute, a keycap), so the run stops before it; no two
+ * ASCII bytes join except CR LF, and neither is printable. */
+static size_t ascii_run(const char* s, size_t n) {
+  size_t i = 0;
+  while (i < n) {
+    const unsigned char c = (unsigned char)s[i];
+    if (c < 0x20 || c > 0x7E) break;
+    if (i + 1 < n && (unsigned char)s[i + 1] >= 0x80) break;
+    ++i;
+  }
+  return i;
+}
+
 int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
                            RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link) {
   const int w = rolltui_frame_width(f);
   size_t count, i;
   int used = 0;
+  size_t ascii;
   if (y < 0 || y >= rolltui_frame_height(f) || len == 0) return 0;
+  /* THE ASCII RUN FIRST, a byte a cell, with no cluster walk: most text drawn is ASCII, and the walk is what a cell cost. */
+  ascii = ascii_run(utf8, len);
+  if (ascii && x >= 0) {
+    size_t take = ascii;
+    if ((size_t)max_cells < take) take = max_cells > 0 ? (size_t)max_cells : 0;
+    used = rolltui_frame_put_ascii(f, x, y, utf8, (int)take, style, link);
+    if (used < (int)ascii) return used; /* stopped by `max_cells` or the edge */
+  } else {
+    for (i = 0; i < ascii; ++i) {
+      if (used >= max_cells || x + used >= w) return used;
+      used += rolltui_frame_put(f, x + used, y, utf8 + i, 1, 1, style, link);
+    }
+  }
+  if (ascii == len) return used;
+  utf8 += ascii;
+  len -= ascii;
   /* GROWING, AMORTISED: there can be no more clusters than bytes, and this is the hottest
    * caller of the cluster walk in the library — every string any widget draws. */
   s->gs = (RolltuiUnicodeGrapheme*)rolltui_grow(s->gs, &s->gs_cap, len, sizeof *s->gs);
@@ -56,7 +87,13 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
 int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide) {
   size_t count, i;
   int w = 0;
+  size_t ascii;
   if (!s || len == 0) return 0;
+  ascii = ascii_run(utf8, len);
+  if (ascii == len) return (int)len;
+  w = (int)ascii;
+  utf8 += ascii;
+  len -= ascii;
   s->gs = (RolltuiUnicodeGrapheme*)rolltui_grow(s->gs, &s->gs_cap, len, sizeof *s->gs);
   count = rolltui_u_graphemes(s->u, utf8, len, ambiguous_wide, s->gs);
   for (i = 0; i < count; ++i)
@@ -144,6 +181,12 @@ void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, R
     glyph = " ";
     glyph_len = 1;
     gw = 1;
+  }
+  /* ONE CELL WIDE AND INLINE, the cells are written whole, a row at a time: a window's ground is most of every frame. A cluster a
+   * terminal splits (`rolltui_termfacts_active_split`) goes the long way, which sends it its lead. */
+  if (gw == 1 && glyph_len <= ROLLTUI_CELL_INLINE_GLYPH && (glyph_len == 1 || !rolltui_termfacts_active_split())) {
+    rolltui_frame_fill_narrow(f, c.x, c.y, c.x + c.w, c.y + c.h, glyph, glyph_len, style);
+    return;
   }
   for (yy = c.y; yy < c.y + c.h; ++yy)
     for (xx = c.x; xx < c.x + c.w; xx += gw) rolltui_frame_put(f, xx, yy, glyph, glyph_len, gw, style, 0);

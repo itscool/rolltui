@@ -259,6 +259,9 @@ void rolltui_termfacts_active_cell_pixels(int* cell_w, int* cell_h) {
 static _Atomic int g_active_split = -1;
 void rolltui_termfacts_set_active_split(int split) { g_active_split = split < 0 ? -1 : (split ? 1 : 0); }
 int rolltui_termfacts_active_split(void) { return g_active_split == 1; }
+static _Atomic int g_active_erase = -1;
+void rolltui_termfacts_set_active_erase(int erase) { g_active_erase = erase < 0 ? -1 : (erase ? 1 : 0); }
+int rolltui_termfacts_active_erase(void) { return g_active_erase != 0; }
 void rolltui_termfacts_set_active_mode(int mode) { g_active_mode = (mode >= 0 && mode < ROLLTUI_MODE_COUNT) ? mode : -1; }
 int rolltui_termfacts_active_mode(void) { return g_active_mode; }
 

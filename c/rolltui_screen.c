@@ -139,7 +139,14 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   f->cells = rolltui_fit(f->cells, &f->cell_cap, n, sizeof *f->cells);
   f->fill = fill;
   cell_init(&proto, fill);
-  for (i = 0; i < n; ++i) f->cells[i] = proto;
+  if (n) { /* the first cell, then copies of what is filled, doubling */
+    f->cells[0] = proto;
+    for (i = 1; i < n;) {
+      const size_t k = i < n - i ? i : n - i;
+      memcpy(f->cells + i, f->cells, k * sizeof *f->cells);
+      i += k;
+    }
+  }
   /* The tables keep their bytes; only the COUNT is reset. */
   f->link_count = 0;
   f->glyph_count = 0;
@@ -232,6 +239,130 @@ void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCellRaw* out
 void rolltui_frame_set_style(RolltuiFrame* f, int x, int y, RolltuiStyle s) {
   if (!in_bounds(f, x, y)) return;
   at_mut(f, x, y)->style = s;
+}
+
+int rolltui_frame_same_cell(const RolltuiFrame* a, const RolltuiFrame* b, int x, int ay, int by) {
+  const RolltuiCellRaw* p = at_const(a, x, ay);
+  const RolltuiCellRaw* q = at_const(b, x, by);
+  size_t alen, blen;
+  const char *ag, *bg;
+  if (p->link == 0 && q->link == 0 && p->len != ROLLTUI_CELL_SPILLED && q->len != ROLLTUI_CELL_SPILLED)
+    return memcmp(p, q, sizeof *p) == 0; /* no padding, and a glyph's spare bytes are zeroed (`set_glyph`) */
+  if (p->width != q->width || p->continuation != q->continuation || memcmp(&p->style, &q->style, sizeof p->style) != 0) return 0;
+  ag = rolltui_frame_glyph(a, x, ay, &alen);
+  bg = rolltui_frame_glyph(b, x, by, &blen);
+  if (alen != blen || (alen && memcmp(ag, bg, alen) != 0)) return 0;
+  ag = rolltui_frame_link(a, p->link, &alen);
+  bg = rolltui_frame_link(b, q->link, &blen);
+  return alen == blen && (alen == 0 || memcmp(ag, bg, alen) == 0);
+}
+
+static unsigned long long fnv(unsigned long long h, const void* p, size_t n) {
+  const unsigned char* b = (const unsigned char*)p;
+  size_t i;
+  for (i = 0; i < n; ++i) h = (h ^ b[i]) * 1099511628211ULL;
+  return h;
+}
+
+int rolltui_frame_rows_same(const RolltuiFrame* a, int ay, const RolltuiFrame* b, int by) {
+  const RolltuiCellRaw* p = at_const(a, 0, ay);
+  const RolltuiCellRaw* q = at_const(b, 0, by);
+  int x;
+  if (a->w != b->w || memcmp(p, q, (size_t)a->w * sizeof *p) != 0) return 0;
+  for (x = 0; x < a->w; ++x) /* identical bytes: a spilled glyph's or a link's index must also name the same thing */
+    if ((p[x].len == ROLLTUI_CELL_SPILLED || p[x].link != 0) && !rolltui_frame_same_cell(a, b, x, ay, by)) return 0;
+  return 1;
+}
+
+/* Clears what a write over cells [x0, x1) of row y cuts: a wide glyph whose right half is x0, or whose left half is x1 - 1. */
+static void cut_edges(RolltuiFrame* f, int x0, int x1, int y) {
+  if (x0 > 0 && at_const(f, x0, y)->continuation) {
+    RolltuiCellRaw* b = at_mut(f, x0 - 1, y);
+    set_glyph(f, b, " ", 1);
+    b->width = 1, b->continuation = 0, b->link = 0;
+  }
+  if (x1 < f->w && at_const(f, x1, y)->continuation) {
+    RolltuiCellRaw* b = at_mut(f, x1, y);
+    set_glyph(f, b, " ", 1);
+    b->width = 1, b->continuation = 0, b->link = 0;
+  }
+}
+
+int rolltui_frame_put_ascii(RolltuiFrame* f, int x, int y, const char* s, int n, RolltuiStyle st, unsigned int link) {
+  RolltuiCellRaw proto;
+  int i;
+  if (y < 0 || y >= f->h || x < 0 || x >= f->w || n <= 0) return 0;
+  if (n > f->w - x) n = f->w - x;
+  cut_edges(f, x, x + n, y);
+  memset(&proto, 0, sizeof proto);
+  proto.style = st;
+  proto.link = link;
+  proto.len = 1;
+  proto.width = 1;
+  for (i = 0; i < n; ++i) {
+    RolltuiCellRaw* c = at_mut(f, x + i, y);
+    *c = proto;
+    c->bytes[0] = s[i];
+  }
+  return n;
+}
+
+void rolltui_frame_fill_narrow(RolltuiFrame* f, int x0, int y0, int x1, int y1, const char* g, size_t len, RolltuiStyle st) {
+  RolltuiCellRaw proto;
+  int x, y;
+  if (x0 < 0) x0 = 0;
+  if (y0 < 0) y0 = 0;
+  if (x1 > f->w) x1 = f->w;
+  if (y1 > f->h) y1 = f->h;
+  if (x0 >= x1 || y0 >= y1 || len == 0 || len > ROLLTUI_CELL_INLINE_GLYPH) return;
+  memset(&proto, 0, sizeof proto);
+  memcpy(proto.bytes, g, len);
+  proto.len = (unsigned char)len;
+  proto.width = 1;
+  proto.style = st;
+  for (y = y0; y < y1; ++y) {
+    cut_edges(f, x0, x1, y);
+    for (x = x0; x < x1; ++x) *at_mut(f, x, y) = proto;
+  }
+}
+
+/* FOUR LANES, one per word of a cell, so the multiplies of one cell do not wait on each other: a row is hashed in the time a few
+ * hundred multiplies take side by side, not one after another. */
+unsigned long long rolltui_frame_row_hash(const RolltuiFrame* f, int y) {
+  unsigned long long a = 14695981039346656037ULL, b = 0x9E3779B97F4A7C15ULL, c = 0xBF58476D1CE4E5B9ULL, d = 0x94D049BB133111EBULL;
+  int x;
+  for (x = 0; x < f->w; ++x) {
+    const RolltuiCellRaw* cell = at_const(f, x, y);
+    if (cell->link == 0 && cell->len != ROLLTUI_CELL_SPILLED) { /* the cell's own bytes, a word to each lane */
+      unsigned long long w[4] = {0, 0, 0, 0};
+      memcpy(w, cell, sizeof *cell < sizeof w ? sizeof *cell : sizeof w);
+      a = (a ^ w[0]) * 1099511628211ULL;
+      b = (b ^ w[1]) * 0xFF51AFD7ED558CCDULL;
+      c = (c ^ w[2]) * 0xC4CEB9FE1A85EC53ULL;
+      d = (d ^ w[3]) * 0x9E3779B97F4A7C15ULL;
+    } else { /* by value: the glyph's and the link's bytes, never their per-frame index */
+      size_t n = 0;
+      const char* s = rolltui_frame_glyph(f, x, y, &n);
+      unsigned long long h = 14695981039346656037ULL;
+      h = fnv(h, &cell->style, sizeof cell->style);
+      h = fnv(h, &cell->width, 1);
+      h = fnv(h, &cell->continuation, 1);
+      h = fnv(h, s, n);
+      s = rolltui_frame_link(f, cell->link, &n);
+      h = fnv(h, s, n);
+      a = (a ^ h) * 1099511628211ULL;
+    }
+  }
+  a ^= b * 0x9E3779B97F4A7C15ULL;
+  a ^= c * 0xBF58476D1CE4E5B9ULL;
+  a ^= d * 0x94D049BB133111EBULL;
+  return a ^ (a >> 31);
+}
+
+int rolltui_frame_cell_is_blank(const RolltuiFrame* f, int x, int y, RolltuiStyle style) {
+  const RolltuiCellRaw* c = at_const(f, x, y);
+  return c->link == 0 && !c->continuation && c->width == 1 && c->len == 1 && c->bytes[0] == ' ' &&
+         memcmp(&c->style, &style, sizeof style) == 0;
 }
 
 const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len) {

@@ -60,6 +60,7 @@
 // already use.
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
+#include "vt_model.hpp" /* INTERNAL through the model: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 using namespace rolltui_test;
 using namespace testkit;
@@ -980,29 +981,26 @@ int main(int argc, char** argv) {
                   "/session/long_diff.md' --frame-sgr 120x40 --theme default-dark --code-fold 6,10 --presets '" +
                   scratch + "/p8' 2>/dev/null",
               rc);
-      // default-dark's diff_added is #adeeae and diff_removed is #c06a64, and the code ground
-      // is #32363c — all three from presets/themes/default.json, where the design lives.
-      const std::string added = "\x1b[0;38;2;173;238;174";
-      const std::string removed = "\x1b[0;38;2;192;106;100";
-      const std::string plain_code = "\x1b[0;38;2;216;220;226";  // md_code_block
-      const std::size_t coloured = sgr.find(removed + ";48;2;20;22;26m-const int cap = ");
-      check(rc == 0 && coloured != std::string::npos, "a ```diff fence colours its '-' line through diff_removed");
-      check(sgr.find(added + ";48;2;20;22;26m+const int cap = ") != std::string::npos,
-            "…and its '+' line through diff_added");
+      // default-dark's diff_added is #adeeae and diff_removed is #c06a64 on the diff's ground #14161a, and plain code is #d8dce2
+      // on the code ground #32363c: from presets/themes/default.json, where the design lives. What the bytes leave on a screen is
+      // what is asserted, replayed through vt_model.hpp.
+      const long added = 0xadeeae, removed = 0xc06a64, plain_code = 0xd8dce2, diff_ground = 0x14161a, code_ground = 0x32363c;
+      vt::Screen screen(120, 40);
+      const bool replayed = screen.apply_dump(sgr);
+      check(rc == 0 && replayed && vt::drawn(screen, "-const int cap = ", {removed, diff_ground, -1}),
+            "a ```diff fence colours its '-' line through diff_removed [" + screen.error() + "]");
+      check(vt::drawn(screen, "+const int cap = ", {added, diff_ground, -1}), "…and its '+' line through diff_added");
       // THE CONTROL. The bare fence's lines are the same shape — "-milk", "+oat milk",
       // "@@ -1,3 +1,3 @@" — and every one of them is md_code_block, like any other code.
       for (const char* line : {"-milk", "+oat milk", " bread", "@@ -1,3 +1,3 @@"}) {
-        const std::string at = plain_code + ";48;2;50;54;60m" + line;
-        check(sgr.find(at) != std::string::npos,
+        check(vt::drawn(screen, line, {plain_code, code_ground, -1}),
               std::string("a bare fence renders \"") + line + "\" as plain code, whatever it looks like");
-        check(sgr.find(added + ";48;2;20;22;26m" + line) == std::string::npos &&
-                  sgr.find(removed + ";48;2;20;22;26m" + line) == std::string::npos,
+        check(!vt::drawn(screen, line, {added, -1, -1}) && !vt::drawn(screen, line, {removed, -1, -1}),
               std::string("…and NOWHERE in the frame does \"") + line + "\" carry a diff role");
       }
       // Word level: the changed run of a 1:1 pair is the SAME colour with bold —
       // an emphasis on its line, which is why it is not a must-differ pair (Style.hpp).
-      check(sgr.find("\x1b[0;1;38;2;192;106;100;48;2;20;22;26m100") != std::string::npos &&
-                sgr.find("\x1b[0;1;38;2;173;238;174;48;2;20;22;26m200") != std::string::npos,
+      check(vt::drawn(screen, "100", {removed, diff_ground, 1}) && vt::drawn(screen, "200", {added, diff_ground, 1}),
             "the changed WORD of a paired line takes the _word role on BOTH sides, bold on the line's own colour");
     }
 

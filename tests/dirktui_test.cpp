@@ -32,6 +32,7 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
+#include "vt_model.hpp" /* INTERNAL through the model: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 using namespace rolltui_test;
 using namespace testkit;
@@ -870,7 +871,7 @@ int main() {
   // head names its language, and the checkbox after "Preview a file" turns it off: the same file is then plain text again.
   {
     const std::string keys = " --keys \"Down Right Down Down Down\"";  // beta/tool.py: alpha, beta, into it, a-quite…, data.bin, page.html, tool.py
-    const std::string blue_print = "\x1b[0;38;2;132;183;249;48;2;20;22;26mprint";  // default-dark's function colour on the window's ground
+    const vt::Look blue_print{0x84b7f9, 0x14161a, -1};  // default-dark's function colour on the window's ground
     int src = 0;
     const fs::path on_cfg = scratch / "syntax-on-cfg", off_cfg = scratch / "syntax-off-cfg", def_cfg = scratch / "syntax-def-cfg";
     write_file(on_cfg / "rolltui" / "dirktui" / "settings.json", "{ \"preview\": \"right\", \"motion\": false }");
@@ -878,8 +879,13 @@ int main() {
     auto with = [&](const fs::path& cfg) { return "ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark"; };
     const std::string on = run(with(on_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", src);
     const std::string off = run(with(off_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", src);
-    check(has(on, blue_print) && !has(on, "print(1)"), "a Python file in the preview is drawn in colour: `print` in the function colour, so the line is not one run of text");
-    check(!has(off, blue_print) && has(off, "print(1)"), "with `\"syntax\": false` in the settings file it is drawn plain: the whole line in the text colour, in one run");
+    vt::Screen on_screen(110, 16), off_screen(110, 16); /* what the bytes leave on a screen (vt_model.hpp) */
+    const bool replayed = on_screen.apply_dump(on) && off_screen.apply_dump(off);
+    check(replayed && vt::drawn(on_screen, "print", blue_print) && !vt::uniform(on_screen, "print(1)"),
+          "a Python file in the preview is drawn in colour: `print` in the function colour, so the line is not one run of text [" +
+              on_screen.error() + off_screen.error() + "]");
+    check(!vt::drawn(off_screen, "print", blue_print) && vt::uniform(off_screen, "print(1)"),
+          "with `\"syntax\": false` in the settings file it is drawn plain: the whole line in the text colour, in one run");
     const std::string on_txt = run(with(on_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     const std::string off_txt = run(with(off_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     check(has(on_txt, "Python \xC2\xB7 1 line") && has(off_txt, "text \xC2\xB7 1 line"), "the head of the preview names the language when it is coloured, and says `text` when it is not");

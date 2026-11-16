@@ -120,6 +120,12 @@ ROLLTUI_API(rolltui_swap_pending, INTERNAL)
 ROLLTUI_API(rolltui_render_row_extent, INTERNAL)  /* an inline region's rows, measured for a resize */
 ROLLTUI_API(rolltui_render_lines, INTERNAL)  /* an inline region's committed rows */
 ROLLTUI_API(rolltui_frame_ground, INTERNAL)  /* the fill an inline region draws as the terminal's own background */
+ROLLTUI_API(rolltui_frame_same_cell, INTERNAL)  /* the diff's compare: one memcmp for nearly every cell */
+ROLLTUI_API(rolltui_frame_row_hash, INTERNAL)  /* the diff finds a block of rows that moved */
+ROLLTUI_API(rolltui_frame_rows_same, INTERNAL)  /* the diff skips a row that did not change, in one compare */
+ROLLTUI_API(rolltui_frame_put_ascii, INTERNAL)  /* put_text writes an ASCII run whole */
+ROLLTUI_API(rolltui_frame_fill_narrow, INTERNAL)  /* fill writes a window's ground whole */
+ROLLTUI_API(rolltui_frame_cell_is_blank, INTERNAL)  /* the diff compares with a row a scrolled region brought in */
 
 /* ---- rolltui_screen.h — the cell grid; default PUBLIC ------------------------------------ */
 ROLLTUI_API(rolltui_frame_cell, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
@@ -307,6 +313,7 @@ ROLLTUI_API(rolltui_color_to_string, PUBLIC) /* KEPT: the other half of that rou
 ROLLTUI_API(rolltui_detect_color_depth, PUBLIC)
 ROLLTUI_API(rolltui_mode_for_background, PUBLIC)
 ROLLTUI_API(rolltui_parse_osc11_reply, INTERNAL)  /* a theme-loading step */
+ROLLTUI_API(rolltui_sgr_delta, INTERNAL)  /* the renderer names only what changed */
 ROLLTUI_API(rolltui_sgr, INTERNAL)  /* Phase 24: no consumer writes an escape sequence; `rolltui_swap_present` produces the bytes. Rule 3(a)'s prose is amended rather than a function kept to illustrate it */
 ROLLTUI_API(rolltui_theme_builtin_count, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_theme_builtin_fill, PUBLIC)
@@ -1654,6 +1661,8 @@ ROLLTUI_API(rolltui_termfacts_set_active, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_mode, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_wide, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_set_active_split, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_set_active_erase, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_active_erase, INTERNAL)  /* the renderer's short forms stand on it */
 ROLLTUI_API(rolltui_termprobe_queries, INTERNAL)
 ROLLTUI_API(rolltui_termreplies_take, INTERNAL)
 /* theme_editor: the theme editor's own controls, reached by the studio and the theme window */

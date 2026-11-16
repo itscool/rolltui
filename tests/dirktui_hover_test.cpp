@@ -2,8 +2,8 @@
 // dirktui_hover_test.cpp — THE SHIPPED dirktui, ON A PTY: THE ENTRY UNDER THE POINTER IS LIT, AND THE CURSOR STAYS PUT.
 //
 // dirktui asks the terminal to report the pointer as it moves (mode 1003). A report of it resting on an entry repaints that row in
-// the theme's `hover` role; a report elsewhere puts the row back. The screen is read through a small model of the terminal: where
-// the cursor is sent, what is printed there, and the background each cell is printed on.
+// the theme's `hover` role; a report elsewhere puts the row back. The screen is read through the terminal model the renderer's own
+// suites replay into (vt_model.hpp): what is printed where, and the background each cell is printed on.
 #include <poll.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "rolltui_test.hpp"
+#include "vt_model.hpp" /* INTERNAL through the model: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 using namespace testkit;
 namespace fs = std::filesystem;
@@ -31,91 +32,23 @@ namespace {
 
 constexpr int kW = 100, kH = 30;
 
-// What the terminal shows: a glyph and the background it was printed on, per cell.
-struct Cell {
-  std::string glyph = " ";
-  std::string bg;  // "r;g;b", empty for the terminal's own
-};
-
+// What the terminal shows, through vt_model.hpp: the shared model, measuring glyphs as the library does, fed as the pty delivers.
 struct Model {
-  std::vector<Cell> cells = std::vector<Cell>(kW * kH);
-  int row = 0, col = 0;
-  std::string bg;
-
-  void sgr(const std::string& params) {
-    std::vector<int> p;
-    std::size_t i = 0;
-    while (i <= params.size()) {
-      const std::size_t j = params.find_first_of(";:", i);
-      const std::string part = params.substr(i, j == std::string::npos ? std::string::npos : j - i);
-      p.push_back(part.empty() ? 0 : std::atoi(part.c_str()));
-      if (j == std::string::npos) break;
-      i = j + 1;
-    }
-    for (std::size_t k = 0; k < p.size(); ++k) {
-      if (p[k] == 0 || p[k] == 49) bg.clear();
-      else if ((p[k] == 38 || p[k] == 48) && k + 1 < p.size() && p[k + 1] == 2 && k + 4 < p.size()) {
-        if (p[k] == 48) bg = std::to_string(p[k + 2]) + ";" + std::to_string(p[k + 3]) + ";" + std::to_string(p[k + 4]);
-        k += 4;
-      } else if ((p[k] == 38 || p[k] == 48) && k + 1 < p.size() && p[k + 1] == 5 && k + 2 < p.size()) {
-        if (p[k] == 48) bg = "i" + std::to_string(p[k + 2]);
-        k += 2;
-      }
-    }
-  }
-  void feed(const std::string& s) {
-    std::size_t i = 0;
-    while (i < s.size()) {
-      const unsigned char c = static_cast<unsigned char>(s[i]);
-      if (c == 0x1b && i + 1 < s.size() && s[i + 1] == '[') {
-        std::size_t j = i + 2;
-        while (j < s.size() && (s[j] < 0x40 || s[j] > 0x7e)) ++j;
-        if (j >= s.size()) return;
-        const std::string params = s.substr(i + 2, j - i - 2);
-        const char fin = s[j];
-        if (fin == 'm' && (params.empty() || params[0] != '>')) sgr(params);
-        else if (fin == 'H' || fin == 'f') {
-          const std::size_t semi = params.find(';');
-          row = (params.empty() ? 1 : std::atoi(params.c_str())) - 1;
-          col = (semi == std::string::npos ? 1 : std::atoi(params.c_str() + semi + 1)) - 1;
-        } else if (fin == 'G') col = (params.empty() ? 1 : std::atoi(params.c_str())) - 1;
-        else if (fin == 'C') col += params.empty() ? 1 : std::atoi(params.c_str());
-        i = j + 1;
-        continue;
-      }
-      if (c == 0x1b && i + 1 < s.size() && (s[i + 1] == ']' || s[i + 1] == 'P' || s[i + 1] == '_')) {  // a string: to BEL or ST
-        std::size_t j = i + 2;
-        while (j < s.size() && s[j] != '\x07' && !(s[j] == 0x1b && j + 1 < s.size() && s[j + 1] == '\\')) ++j;
-        i = j < s.size() && s[j] == '\x07' ? j + 1 : j + 2;
-        continue;
-      }
-      if (c == 0x1b) { i += 2; continue; }
-      if (c == '\r') { col = 0; ++i; continue; }
-      if (c == '\n') { ++row; ++i; continue; }
-      if (c < 0x20) { ++i; continue; }
-      std::size_t n = c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
-      if (row >= 0 && row < kH && col >= 0 && col < kW) cells[row * kW + col] = Cell{s.substr(i, n), bg};
-      ++col;
-      i += n;
-    }
-  }
+  vt::Screen screen{kW, kH};
+  void feed(const std::string& s) { screen.feed(s); }
   // The first cell of `text` on the screen; false when it is not there.
   bool find(const std::string& text, int& x, int& y) const {
-    for (y = 0; y < kH; ++y) {
-      std::string line;
-      std::vector<int> at;
-      for (int c = 0; c < kW; ++c) {
-        at.push_back(static_cast<int>(line.size()));
-        line += cells[y * kW + c].glyph;
-      }
-      const std::size_t k = line.find(text);
-      if (k == std::string::npos) continue;
-      for (x = 0; x < kW; ++x)
-        if (at[x] == static_cast<int>(k)) return true;
-    }
-    return false;
+    const auto at = screen.find(text);
+    if (at.empty()) return false;
+    x = at.front().first, y = at.front().second;
+    return true;
   }
-  const std::string& bg_at(int x, int y) const { return cells[y * kW + x].bg; }
+  // The background a cell is printed on, "r;g;b"; empty for the terminal's own.
+  std::string bg_at(int x, int y) const {
+    const RolltuiStyleColorRaw& c = screen.at(x, y).style.bg;
+    if (c.kind != RolltuiStyleColorRaw::Kind::Rgb) return "";
+    return std::to_string(c.r) + ";" + std::to_string(c.g) + ";" + std::to_string(c.b);
+  }
 };
 
 struct Pty {

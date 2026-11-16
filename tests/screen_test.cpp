@@ -185,11 +185,12 @@ int main() {
   // ---- golden bytes --------------------------------------------------------------
   {
     FramePtr blank = new_frame(4, 2);
-    // Every cell of every row, each in its style, and no clear: a clear is a blank screen a terminal may show first.
+    // Every row in its style, and no clear: a clear is a blank screen a terminal may show first. A row's blank rest is an erase in
+    // its own background (EL), the next row is a CR and a line feed away, and the cursor goes home by a CUP.
     expect_bytes("full repaint of a blank 4x2 frame", render_full(blank.get(), depth),
                  "\x1b[?25l"
-                 "\x1b[1;1H\x1b[0m    "
-                 "\x1b[2;1H    "
+                 "\x1b[1;1H\x1b[0m\x1b[K"
+                 "\r\n\x1b[K"
                  "\x1b[0m\x1b[1;1H");
     expect_bytes("diff with no prev is a full repaint", render_diff(nullptr, blank.get(), depth),
                  render_full(blank.get(), depth));
@@ -198,18 +199,18 @@ int main() {
     FramePtr next = clone_frame(blank.get());
     put(next.get(), 1, 0, "a", 1, bold);
     put(next.get(), 2, 0, "b", 1, bold);
-    expect_bytes("diff addresses the changed run absolutely and emits one SGR",
-                 render_diff(blank.get(), next.get(), depth), "\x1b[?25l\x1b[1;2H\x1b[0;1mab\x1b[0m\x1b[1;1H");
+    expect_bytes("diff addresses the changed run absolutely, emits one SGR, and takes the cursor home along its row by a CR",
+                 render_diff(blank.get(), next.get(), depth), "\x1b[?25l\x1b[1;2H\x1b[0;1mab\x1b[0m\r");
 
     FramePtr wide = clone_frame(blank.get());
     put(wide.get(), 2, 0, "\xE4\xB8\xAD", 2, red);
     expect_bytes("a wide glyph is written once, its continuation cell skipped",
                  render_diff(blank.get(), wide.get(), depth),
-                 "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
+                 "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\r");
     FramePtr wide2 = clone_frame(wide.get());
     put(wide2.get(), 3, 0, "z", 1, red);  // blanks the glyph: cells 2 and 3 both change
     expect_bytes("writing over a wide glyph's continuation blanks the whole glyph",
-                 render_diff(wide.get(), wide2.get(), depth), "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\x1b[1;1H");
+                 render_diff(wide.get(), wide2.get(), depth), "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\r");
 
     // THE BACKUP RULE, and it needs a case the one above does NOT provide — found
     // by a negative control that failed NOTHING when the rule was disabled.
@@ -230,7 +231,7 @@ int main() {
     rolltui_frame_set_style(wide3.get(), 3, 0, RolltuiStyle{.fg = RolltuiStyleColor::indexed(4)});
     expect_bytes("a run that begins on the continuation cell starts one cell earlier",
                  render_diff(wide.get(), wide3.get(), depth),
-                 "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
+                 "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\r");
 
     FramePtr cur = clone_frame(blank.get());
     rolltui_frame_set_cursor(cur.get(), 3, 1, 1);
@@ -251,12 +252,12 @@ int main() {
     put(same_style.get(), 1, 0, "q", 1, bold);
     put(same_style.get(), 2, 0, "r", 1, red);
     expect_bytes("SGR only when the style changes inside a run", render_diff(blank.get(), same_style.get(), depth),
-                 "\x1b[?25l\x1b[1;1H\x1b[0;1mpq\x1b[0;31mr\x1b[0m\x1b[1;1H");
+                 "\x1b[?25l\x1b[1;1H\x1b[0;1mpq\x1b[0;31mr\x1b[0m\r"); /* bold to red: a reset is shorter than 22;31 */
 
     FramePtr mono = clone_frame(blank.get());
     put(mono.get(), 0, 0, "m", 1, red);
     expect_bytes("depth downgrade flows into the emitted SGR", render_diff(blank.get(), mono.get(), ROLLTUI_DEPTH_MONO),
-                 "\x1b[?25l\x1b[1;1H\x1b[0mm\x1b[0m\x1b[1;1H");
+                 "\x1b[?25l\x1b[1;1H\x1b[0mm\x1b[0m\r");
   }
   // ---- a cluster too long to sit in a Cell -------------------------------------------
   // The overflow case is a NAMED test with a REAL cluster, not a hypothetical: a family

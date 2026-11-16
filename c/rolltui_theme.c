@@ -280,6 +280,45 @@ size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, si
   return n;
 }
 
+size_t rolltui_sgr_delta(const RolltuiStyle* from, const RolltuiStyle* to, unsigned char depth, char* out, size_t cap) {
+  char d[2 * ROLLTUI_SGR_MAX], ca[24], cb[24];
+  size_t n = 0, la, lb, full;
+  if (cap < ROLLTUI_SGR_MAX) return 0;
+  /* bold and dim share one reset, 22: a delta that turns one off turns both off and puts back the one `to` keeps */
+  if ((from->bold && !to->bold) || (from->dim && !to->dim)) {
+    memcpy(d + n, ";22", 3), n += 3;
+    if (to->bold) memcpy(d + n, ";1", 2), n += 2;
+    if (to->dim) memcpy(d + n, ";2", 2), n += 2;
+  } else {
+    if (to->bold && !from->bold) memcpy(d + n, ";1", 2), n += 2;
+    if (to->dim && !from->dim) memcpy(d + n, ";2", 2), n += 2;
+  }
+  if (!from->italic != !to->italic) memcpy(d + n, to->italic ? ";3" : ";23", to->italic ? 2 : 3), n += to->italic ? 2 : 3;
+  if (!from->underline != !to->underline) memcpy(d + n, to->underline ? ";4" : ";24", to->underline ? 2 : 3), n += to->underline ? 2 : 3;
+  if (!from->reverse != !to->reverse) memcpy(d + n, to->reverse ? ";7" : ";27", to->reverse ? 2 : 3), n += to->reverse ? 2 : 3;
+  /* a colour by what it is SENT as, so two that the depth draws alike are no change */
+  la = emit_color(ca, from->fg, 0, depth);
+  lb = emit_color(cb, to->fg, 0, depth);
+  if (la != lb || memcmp(ca, cb, la) != 0) {
+    if (lb) memcpy(d + n, cb, lb), n += lb;
+    else memcpy(d + n, ";39", 3), n += 3;
+  }
+  la = emit_color(ca, from->bg, 1, depth);
+  lb = emit_color(cb, to->bg, 1, depth);
+  if (la != lb || memcmp(ca, cb, la) != 0) {
+    if (lb) memcpy(d + n, cb, lb), n += lb;
+    else memcpy(d + n, ";49", 3), n += 3;
+  }
+  if (n == 0) return 0;
+  full = rolltui_sgr(to, depth, out, cap);
+  if (n + 2 >= full) return full; /* "ESC [" + the parts less their first ';' + "m" is n + 2 */
+  out[0] = '\x1b';
+  out[1] = '[';
+  memcpy(out + 2, d + 1, n - 1);
+  out[n + 1] = 'm';
+  return n + 2;
+}
+
 /* ---- the terminal's background ----------------------------------------------------------- */
 
 /* The index of `needle` in `hay`, or -1. Neither is NUL-terminated, so there is no `strstr`
