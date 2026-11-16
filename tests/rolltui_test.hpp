@@ -31,7 +31,49 @@
 #include "rolltui/rolltui_cpp.h"
 #include "testkit/testkit.hpp"
 
+#if !defined(_WIN32)
+#include <cerrno>
+#include <poll.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 namespace rolltui_test {
+
+#if !defined(_WIN32)
+// ENDING A PROGRAM RUN ON A PTY. A process that exits with output still unread on its terminal waits inside its own exit for the
+// output to drain, until the master side reads it or is closed, and no signal ends that wait: the process is already exiting. A
+// suite that waits for the child before closing the master hangs whenever the child drew a frame at the last moment. This reads
+// the master while the child has `grace_ms` to leave by itself (what it writes is appended to `out`, when given), kills it after
+// that, closes the master, and only then waits. Returns true when the child left by itself.
+inline bool end_pty_child(int master, pid_t pid, int grace_ms, int* status_out = nullptr, std::string* out = nullptr) {
+  int status = 0;
+  bool exited = false;
+  const std::uint64_t end = testkit::mono_ms() + static_cast<std::uint64_t>(grace_ms > 0 ? grace_ms : 0);
+  for (;;) {
+    if (::waitpid(pid, &status, WNOHANG) == pid) {
+      exited = true;
+      break;
+    }
+    if (testkit::mono_ms() >= end) break;
+    pollfd p{master, POLLIN, 0};
+    if (::poll(&p, 1, 20) > 0 && (p.revents & (POLLIN | POLLHUP))) {
+      char b[8192];
+      const ssize_t k = ::read(master, b, sizeof b);
+      if (k > 0 && out) out->append(b, static_cast<std::size_t>(k));
+      if (k <= 0) ::usleep(5 * 1000);  // the slave is gone: the child is on its way out
+    }
+  }
+  if (!exited) ::kill(pid, SIGKILL);
+  ::close(master);
+  if (!exited)
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+  if (status_out) *status_out = status;
+  return exited;
+}
+#endif
 
 // A WALL-CLOCK BOUND IS SET FOR THE RELEASE BUILD. Under AddressSanitizer every memory access is checked, and the same run takes
 // seven to twelve times as long, the most when the suite runs in parallel — so a bound set for one build is noise in the other,

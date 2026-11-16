@@ -90,10 +90,7 @@ void run_keys(const fs::path& cfg, const fs::path& tree, const std::vector<std::
     pump(280);
   }
   pump(400);
-  ::kill(pid, SIGKILL);
-  int st = 0;
-  ::waitpid(pid, &st, 0);
-  ::close(master);
+  rolltui_test::end_pty_child(master, pid, 0);
 }
 
 std::vector<std::string> rep(std::vector<std::string> v, const std::string& k, int n) {

@@ -143,16 +143,7 @@ int main() {
 
   // ---- LEAVE ---------------------------------------------------------------------------------------------------------------------------
   (void)!::write(s.master, "\x11", 1);  // Ctrl-Q
-  int status = 0;
-  bool exited = false;
-  for (int i = 0; i < 60 && !exited; ++i) {
-    s.pump(50);
-    exited = ::waitpid(s.pid, &status, WNOHANG) == s.pid;
-  }
-  if (!exited) {
-    ::kill(s.pid, SIGKILL);
-    ::waitpid(s.pid, &status, 0);
-  }
+  const bool exited = rolltui_test::end_pty_child(s.master, s.pid, 3000, nullptr, &s.all);
   check(exited, "Ctrl-Q leaves: a program that watches the disk still quits when asked");
   std::error_code ec;
   fs::remove_all(root, ec);
