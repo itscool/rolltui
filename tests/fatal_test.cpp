@@ -53,6 +53,7 @@ Ended run_child(const char* how) {
     if (std::strcmp(how, "fatal") == 0) rolltui_fatal("stopped on purpose, code %d", 7);
     if (std::strcmp(how, "abort") == 0 || std::strcmp(how, "chained") == 0) std::abort();
     if (std::strcmp(how, "segv") == 0) ::raise(SIGSEGV);
+    if (std::strcmp(how, "exit") == 0) std::exit(3);  // a host's error path, the terminal never freed
     ::_exit(0);
   }
   Ended e;
@@ -97,6 +98,10 @@ int main() {
                                                   : "exit " + std::to_string(WEXITSTATUS(segv.status));
   check(segv.exited && ended && segv.bytes.find(kLeave) != std::string::npos,
         "a crash puts the terminal back, and the process still ends as the crash ends it [" + how + "]");
+
+  const Ended ex = run_child("exit");
+  check(ex.exited && WIFEXITED(ex.status) && WEXITSTATUS(ex.status) == 3 && ex.bytes.find(kLeave) != std::string::npos,
+        "a host that calls exit with its terminal still entered leaves the terminal put back, with its own status");
 
   return report("fatal_test");
 }

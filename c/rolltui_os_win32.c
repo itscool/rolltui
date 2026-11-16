@@ -619,6 +619,7 @@ void rolltui_os_tty_install_handlers(void) {
   g_abort_prev = signal(SIGABRT, on_abort);
   if (g_abort_prev == SIG_ERR) g_abort_prev = NULL;
   g_filter_prev = SetUnhandledExceptionFilter(on_unhandled);
+  atexit(rolltui_os_tty_restore_now); /* a host's `exit` with the console still entered: nothing once it is freed */
 }
 
 /* A size change arrives in the input queue (ENABLE_WINDOW_INPUT), which `wait` already reads. */

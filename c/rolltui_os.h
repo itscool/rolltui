@@ -132,7 +132,7 @@ long rolltui_os_tty_read(RolltuiOsTty* t, char* buf, size_t cap);
 void rolltui_os_tty_wake(RolltuiOsTty* t);
 
 /* THE PROCESS-WIDE RESTORE. `publish` names the terminal and the bytes that leave it, so a fatal
- * signal (Windows: a console close or Ctrl-C) can put the terminal back; `withdraw` clears it.
+ * signal, a crash or an `exit` (Windows: also a console close or Ctrl-C) can put the terminal back; `withdraw` clears it.
  * `restore_now` writes those bytes and restores the mode, and is safe in a signal handler.
  * `install_handlers` installs the fatal handlers once per process; `listen_resize` routes the
  * resize notification (SIGWINCH) to this terminal's wake channel. */

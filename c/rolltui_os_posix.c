@@ -414,6 +414,7 @@ void rolltui_os_tty_install_handlers(void) {
   sa.sa_handler = on_crash_signal;
   sigemptyset(&sa.sa_mask);
   for (i = 0; i < CRASH_SIGNALS; ++i) sigaction(kCrashSignals[i], &sa, &g_crash_prev[i]);
+  atexit(rolltui_os_tty_restore_now); /* a host's `exit` with the terminal still entered: nothing once it is freed */
 }
 
 void rolltui_os_tty_listen_resize(RolltuiOsTty* t) {
