@@ -124,6 +124,9 @@ cmake --build build-windows -j
 [docs/guide.md](docs/guide.md): strings, terminal detection, the run loop, file watching,
 previews, Mermaid diagrams, syntax highlighting and grammar files, ownership, and embedding.
 
+[docs/design.md](docs/design.md): the rules every screen the library ships follows, each with a
+test a screen can be held to.
+
 ## License
 
 MIT. See [LICENSE](LICENSE). Vendored under `third_party/`, each under its own licence: md4c
