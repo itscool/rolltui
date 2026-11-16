@@ -78,6 +78,7 @@ struct RolltuiPicker {
   unsigned long long watch_next_ms, watch_pass;
   /* CALLER-FILLED scratch the draw reuses frame to frame, so a steady frame allocates nothing */
   RolltuiStr s1, s2, s3;
+  RolltuiTasks* tasks; /* BORROWED: what the preview reads on; NULL reads on this thread */
 };
 
 static int preview_shown(const RolltuiPicker* p);
@@ -688,6 +689,8 @@ static void sync_syntax(RolltuiPicker* p) {
 static void sync_preview(RolltuiPicker* p) {
   if (preview_target(p, &p->s3)) {
     if (!p->pv) p->pv = rolltui_preview_new();
+    rolltui_preview_set_tasks(p->pv, p->tasks);
+    rolltui_preview_set_now(p->pv, p->now_ms);
     sync_syntax(p);
     if (!rolltui_str_eq(&p->pv_path, p->s3.p, p->s3.n)) {
       rolltui_str_set(&p->pv_path, p->s3.p, p->s3.n);
@@ -794,7 +797,11 @@ void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o)
   sync_preview(p);
 }
 const RolltuiPickerOptions* rolltui_picker_options(const RolltuiPicker* p) { return &p->opt; }
-void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms) { p->now_ms = now_ms; }
+void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms) {
+  p->now_ms = now_ms;
+  if (p->pv) rolltui_preview_set_now(p->pv, now_ms);
+}
+void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks) { p->tasks = tasks; }
 
 /* GO TO A PATH WITH ITS ANCESTORS SHOWING: from `/` down to `path`, each column with the next
  * component selected. The walk IS a visit — each selection goes into the memory — and a
@@ -1553,6 +1560,10 @@ void rolltui_picker_status(const RolltuiPicker* p, RolltuiPickerStatus* out) {
   out->wake_ms = p->opt.no_watch || p->now_ms == 0 || p->n == 0 ? 0
                  : p->watch_next_ms > p->now_ms ? (int)(p->watch_next_ms - p->now_ms < WATCH_MAX_MS ? p->watch_next_ms - p->now_ms : WATCH_MAX_MS)
                                                 : 1;
+  {
+    const int pv_wake = p->pv ? rolltui_preview_wake_ms(p->pv) : 0;
+    if (pv_wake > 0 && (out->wake_ms == 0 || pv_wake < out->wake_ms)) out->wake_ms = pv_wake;
+  }
   out->preview = (unsigned char)(!preview_shown(p) ? 0 : p->pv_zoom ? 3 : p->pv_focus ? 2 : 1);
   if (p->n && p->cols[0].error.n) rolltui_str_set(&out->error, p->cols[0].error.p, p->cols[0].error.n);
   else rolltui_str_clear(&out->error);

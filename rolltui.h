@@ -816,6 +816,8 @@ typedef struct RolltuiTerminal RolltuiTerminal;
 typedef struct RolltuiSwap RolltuiSwap;
 typedef struct RolltuiAnsiText RolltuiAnsiText;
 typedef struct RolltuiImage RolltuiImage;
+typedef struct RolltuiTasks RolltuiTasks;
+typedef struct RolltuiJob RolltuiJob;
 typedef struct RolltuiBindings RolltuiBindings;
 typedef struct RolltuiLayout RolltuiLayout;
 typedef struct RolltuiLayoutNode RolltuiLayoutNode;
@@ -3290,6 +3292,11 @@ void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len
 void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteFn fn, void* ctx,
                                void (*free_ctx)(void*));
 
+/* changed: `fn` with the text, each time an `input:<name>` window's text changes (a key typed or erased, a paste, an undo), before
+ * anything is drawn: filtering as a person types. Debounce it with `rolltui_run_debounce` to act once a burst of keys is over. */
+void rolltui_windows_bind_changed(RolltuiWindows* w, const char* name, size_t len, RolltuiSubmitFn fn, void* ctx,
+                                  void (*free_ctx)(void*));
+
 void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,
                                 void (*free_ctx)(void*));
 
@@ -3298,6 +3305,11 @@ void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len,
  * while it is bound; binding again replaces it. Lines wrap at the window's edge unless `set_output_wrap` says 0, when the window
  * scrolls sideways (the wheel's left and right). */
 void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text);
+/* THE WORKERS the built-in kinds read files on, BORROWED (the host keeps them for the table's life): the column browser's preview
+ * reads a file and decodes a picture there while the cursor moves on, says "loading…" once a read has taken 100 ms, and drops a
+ * read the cursor left. NULL (the default) reads on the drawing thread, which is what a frame dump does. */
+void rolltui_windows_set_tasks(RolltuiWindows* w, RolltuiTasks* tasks);
+
 /* image: a picture the host made, shown in an `image:<name>` window, centred, instead of the file that name would be read from.
  * `img` is a BORROW the host keeps alive while it is bound; NULL unbinds it. An `image:` window with nothing bound reads the file
  * its source names (relative to the preset directory, as `file:` does) and reads it again when it changes. */
@@ -4254,10 +4266,57 @@ void rolltui_run_stop(RolltuiRun* run);
 RolltuiTerminal* rolltui_run_terminal(RolltuiRun* run);
 /* Repaint the whole screen at the next frame: a keypress that asks for it, a change of palette. */
 void rolltui_run_invalidate(RolltuiRun* run);
+/* THE RUN'S OWN TASKS, made on first use (two workers), woken through the terminal and drained every wake, before `settle`. Freed
+ * when the run ends, every outstanding `done` called first. NULL before the terminal is entered. */
+RolltuiTasks* rolltui_run_tasks(RolltuiRun* run);
+/* TIMERS: `fn` on the run's thread after `ms` (once), or every `ms`, fired after a wake's events and before `settle`. The wait a
+ * render returns is shortened to the next one due. An id, never 0; cancelling an id that fired or never was does nothing. A
+ * periodic timer that falls behind is due a period on from now, never in a burst. */
+typedef void (*RolltuiTimerFn)(void* ctx, RolltuiRun* run);
+unsigned int rolltui_run_after(RolltuiRun* run, int ms, RolltuiTimerFn fn, void* ctx);
+unsigned int rolltui_run_every(RolltuiRun* run, int ms, RolltuiTimerFn fn, void* ctx);
+void rolltui_run_cancel_timer(RolltuiRun* run, unsigned int id);
+/* DEBOUNCED: the timer in `*slot` is cancelled and `fn` set `ms` from now in its place, so a burst of calls fires once, after the
+ * last: filtering as a person types. */
+void rolltui_run_debounce(RolltuiRun* run, unsigned int* slot, int ms, RolltuiTimerFn fn, void* ctx);
+
 /* HAND THE TERMINAL TO A CHILD PROGRAM AND TAKE IT BACK (an editor, a pager): `suspend` leaves the alternate screen and restores the tty's
  * own modes; the child runs on the same descriptors; `resume` enters again AND repaints the whole screen, because what was on it is gone. */
 void rolltui_run_suspend(RolltuiRun* run);
 void rolltui_run_resume(RolltuiRun* run);
+
+/* ========================================================================================
+ * tasks — work off the UI thread, and what comes back to it
+ * ======================================================================================== */
+
+/* A FEW WORKERS, THE JOBS THEY RUN, AND THE QUEUE OF WHAT COMES BACK. A job's `work` runs on a worker; its `done`, and anything
+ * posted, runs on the thread that calls `rolltui_tasks_drain`, in the order it arrived, so a host's state is only ever touched by
+ * that one thread. A finished job and every post call `wake`, so a loop asleep in its input wait drains at once (`rolltui_run`
+ * makes and drains its own: `rolltui_run_tasks`).
+ * A JOB IS NAMED BY ITS ID: cancelling an id that has ended does nothing. A job cancelled before a worker took it never runs; one
+ * cancelled while it runs finds `rolltui_job_cancelled` true, and stops early if it looks. Either way its `done` is told
+ * `cancelled`, and what it made is dropped rather than shown. Every `done` is called exactly once — the place its `ctx` is freed —
+ * including when the tasks are freed with jobs still queued. OWNED: `rolltui_tasks_free` cancels what is queued, waits for what is
+ * running and calls every outstanding `done` before it returns. */
+typedef void (*RolltuiJobWork)(void* ctx, const RolltuiJob* job);
+typedef void (*RolltuiJobDone)(void* ctx, int cancelled);
+typedef void (*RolltuiPostFn)(void* ctx);
+/* `workers` threads (1 to 16). `wake` is called from any thread when there is something to drain; it may be NULL. */
+RolltuiTasks* rolltui_tasks_new(int workers, void (*wake)(void* ctx), void* wake_ctx);
+void rolltui_tasks_free(RolltuiTasks* t); /* a no-op on NULL */
+/* Queues a job; its id, never 0. */
+unsigned int rolltui_tasks_start(RolltuiTasks* t, RolltuiJobWork work, RolltuiJobDone done, void* ctx);
+void rolltui_tasks_cancel(RolltuiTasks* t, unsigned int id);
+/* What a job's `work` asks between steps: 1 once it was cancelled. */
+int rolltui_job_cancelled(const RolltuiJob* job);
+/* `fn(ctx)` on the draining thread, from any thread: a worker of the host's own, a watcher, a callback. */
+void rolltui_tasks_post(RolltuiTasks* t, RolltuiPostFn fn, void* ctx);
+/* Runs what has come back, on this thread; how many callbacks ran. */
+size_t rolltui_tasks_drain(RolltuiTasks* t);
+/* Jobs started whose `done` has not been called yet: busy while it is not 0. */
+size_t rolltui_tasks_busy(RolltuiTasks* t);
+/* Drains until nothing is busy, or `timeout_ms` passes (-1: no limit); 1 when idle. What a test waits on. */
+int rolltui_tasks_wait_idle(RolltuiTasks* t, int timeout_ms);
 
 /* ========================================================================================
  * processes — other programs, run from here, and what they say

@@ -162,6 +162,11 @@ ROLLTUI_API(rolltui_run_invalidate, PUBLIC)  /* a keypress that asks for a repai
 ROLLTUI_API(rolltui_run_suspend, PUBLIC)  /* dirktui hands the terminal to an editor... */
 ROLLTUI_API(rolltui_run_resume, PUBLIC)  /* ...and takes it back, repainted whole: the half an app used to forget */
 ROLLTUI_API(rolltui_run_program, PUBLIC)  /* dirktui hands the terminal to an editor and to brew, and takes it back */
+ROLLTUI_API(rolltui_run_tasks, PUBLIC)  /* dirktui's preview reads files on the run's workers */
+ROLLTUI_API(rolltui_run_after, PUBLIC)  /* KEPT: a host acts once after a while (a note that clears, a retry) */
+ROLLTUI_API(rolltui_run_every, PUBLIC)  /* KEPT: a host's clock, a dashboard's refresh */
+ROLLTUI_API(rolltui_run_cancel_timer, PUBLIC)  /* KEPT: the pair to after and every */
+ROLLTUI_API(rolltui_run_debounce, PUBLIC)  /* KEPT: filtering once a burst of keys is over */
 
 /* ---- rolltui_diff.h — diff highlighting a host draws; default PUBLIC --------------------- */
 ROLLTUI_API(rolltui_diff_default_roles, PUBLIC)
@@ -595,6 +600,7 @@ ROLLTUI_API(rolltui_picker_go_to, INTERNAL)
 ROLLTUI_API(rolltui_picker_focus_column, INTERNAL)
 ROLLTUI_API(rolltui_picker_reload, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
+ROLLTUI_API(rolltui_picker_set_tasks, INTERNAL)  /* the picker kind lends it the table's workers */
 ROLLTUI_API(rolltui_picker_layout, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_hover, INTERNAL)
 ROLLTUI_API(rolltui_picker_draw, INTERNAL)
@@ -695,6 +701,10 @@ ROLLTUI_API(rolltui_windows_set_output_wrap, PUBLIC)  /* KEPT: a log that scroll
 ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is bound */
 ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture it made in an `image:` window */
 ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
+ROLLTUI_API(rolltui_windows_set_tasks, PUBLIC)  /* dirktui lends the run's workers to its preview */
+ROLLTUI_API(rolltui_windows_tasks, INTERNAL)  /* the built-in kinds read files on them */
+ROLLTUI_API(rolltui_windows_bind_changed, PUBLIC)  /* KEPT: a host filters as a person types */
+ROLLTUI_API(rolltui_windows_call_changed, INTERNAL)  /* the input kind calls it when the text changes */
 ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
 ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
 ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
@@ -755,6 +765,17 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+/* ---- rolltui_tasks.c — work off the UI thread --- */
+ROLLTUI_API(rolltui_tasks_new, PUBLIC)  /* KEPT: a host with its own loop runs work off its thread (rolltui_run makes its own) */
+ROLLTUI_API(rolltui_tasks_free, PUBLIC)  /* KEPT: the pair to new */
+ROLLTUI_API(rolltui_tasks_start, PUBLIC)  /* KEPT: a host's own job: a search, a load, a copy */
+ROLLTUI_API(rolltui_tasks_cancel, PUBLIC)  /* KEPT: the selection moved on, Ctrl-C */
+ROLLTUI_API(rolltui_job_cancelled, PUBLIC)  /* KEPT: a job's work asks it between steps */
+ROLLTUI_API(rolltui_tasks_post, PUBLIC)  /* KEPT: a host's own thread hands back a result */
+ROLLTUI_API(rolltui_tasks_drain, PUBLIC)  /* KEPT: a host with its own loop drains each wake */
+ROLLTUI_API(rolltui_tasks_busy, PUBLIC)  /* KEPT: busy while it is not 0 */
+ROLLTUI_API(rolltui_tasks_wait_idle, PUBLIC)  /* KEPT: what a test waits on */
+
 /* ---- rolltui_image.c — pictures, fitted and drawn the terminal's best way --- */
 ROLLTUI_API(rolltui_image_load, PUBLIC)  /* KEPT: a host shows a picture from a path (the `image:` kind reads files itself) */
 ROLLTUI_API(rolltui_image_decode, PUBLIC)  /* paint opens a PNG */
@@ -1356,6 +1377,14 @@ ROLLTUI_API(rolltui_os_release, INTERNAL)
 ROLLTUI_API(rolltui_os_host_name, INTERNAL)
 ROLLTUI_API(rolltui_os_pread, INTERNAL)
 ROLLTUI_API(rolltui_os_monotonic_ms, INTERNAL)
+ROLLTUI_API(rolltui_cond_init, INTERNAL)  /* the task pool's workers wait on one */
+ROLLTUI_API(rolltui_cond_destroy, INTERNAL)
+ROLLTUI_API(rolltui_cond_wait, INTERNAL)
+ROLLTUI_API(rolltui_cond_signal, INTERNAL)
+ROLLTUI_API(rolltui_cond_broadcast, INTERNAL)
+ROLLTUI_API(rolltui_thread_start, INTERNAL)  /* a host starts work through rolltui_tasks_start */
+ROLLTUI_API(rolltui_thread_join, INTERNAL)
+ROLLTUI_API(rolltui_os_sleep_ms, INTERNAL)
 ROLLTUI_API(rolltui_os_child_spawn, INTERNAL)  /* a host starts a program through rolltui_child_spawn */
 ROLLTUI_API(rolltui_os_child_read, INTERNAL)
 ROLLTUI_API(rolltui_os_child_write, INTERNAL)
@@ -1530,6 +1559,9 @@ ROLLTUI_API(rolltui_preview_scroll_to, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_info, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_path, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_syntax, INTERNAL)
+ROLLTUI_API(rolltui_preview_set_tasks, INTERNAL)  /* the picker lends its preview the workers */
+ROLLTUI_API(rolltui_preview_set_now, INTERNAL)
+ROLLTUI_API(rolltui_preview_wake_ms, INTERNAL)  /* the picker wakes for "loading" */
 /* regex: the matcher a language file is written in: the syntax engine's, nobody else's */
 ROLLTUI_API(rolltui_regex_can_be_empty, INTERNAL)
 ROLLTUI_API(rolltui_regex_compile, INTERNAL)

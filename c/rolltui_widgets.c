@@ -270,8 +270,10 @@ struct RolltuiWindows {
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
+  RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
+  RolltuiMap changes;    /* name -> SubmitBinding*, OWNED: what an input's text changing calls */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
 
   /* ---- THE TYPED WIDGETS THIS TABLE OWNS, BY SOURCE -----------------------------------------
@@ -404,6 +406,12 @@ void rolltui_windows_free(RolltuiWindows* w) {
     free_binding_ctx(b->ctx, b->free_ctx);
     rolltui_mem_free(b);
   }
+  for (i = 0; i < rolltui_map_count(&w->changes); ++i) {
+    SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->changes, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->changes);
   rolltui_map_release(&w->submits);
   for (i = 0; i < rolltui_map_count(&w->notes); ++i) {
     NoteBinding* b = (NoteBinding*)rolltui_map_value_at(&w->notes, i);
@@ -772,6 +780,11 @@ void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t
   b->wrap = wrap != 0;
 }
 
+void rolltui_windows_set_tasks(RolltuiWindows* w, RolltuiTasks* tasks) {
+  if (w) w->tasks = tasks;
+}
+RolltuiTasks* rolltui_windows_tasks(const RolltuiWindows* w) { return w ? w->tasks : NULL; }
+
 void rolltui_windows_bind_image(RolltuiWindows* w, const char* name, size_t len, const RolltuiImage* img) {
   if (!w) return;
   if (img) rolltui_map_put(&w->images, name, len, (void*)img);
@@ -831,6 +844,28 @@ void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len
     free_binding_ctx(prev->ctx, prev->free_ctx);
     rolltui_mem_free(prev);
   }
+}
+
+void rolltui_windows_bind_changed(RolltuiWindows* w, const char* name, size_t len, RolltuiSubmitFn fn, void* ctx,
+                                  void (*free_ctx)(void*)) {
+  SubmitBinding* b = (SubmitBinding*)rolltui_mem_alloc(sizeof *b);
+  SubmitBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  b->on_submit = 0;
+  prev = (SubmitBinding*)rolltui_map_put(&w->changes, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_call_changed(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen) {
+  SubmitBinding* b = (SubmitBinding*)rolltui_map_get(&w->changes, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, text, tlen);
+  return 1;
 }
 
 int rolltui_windows_has_submit(const RolltuiWindows* w, const char* name, size_t len) {

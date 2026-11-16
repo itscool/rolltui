@@ -53,6 +53,53 @@ void rolltui_mutex_destroy(RolltuiMutex* m) { pthread_mutex_destroy(&m->lock); }
 void rolltui_mutex_lock(RolltuiMutex* m) { pthread_mutex_lock(&m->lock); }
 void rolltui_mutex_unlock(RolltuiMutex* m) { pthread_mutex_unlock(&m->lock); }
 
+void rolltui_cond_init(RolltuiCond* c) { pthread_cond_init(&c->cv, NULL); }
+void rolltui_cond_destroy(RolltuiCond* c) { pthread_cond_destroy(&c->cv); }
+void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) { pthread_cond_wait(&c->cv, &m->lock); }
+void rolltui_cond_signal(RolltuiCond* c) { pthread_cond_signal(&c->cv); }
+void rolltui_cond_broadcast(RolltuiCond* c) { pthread_cond_broadcast(&c->cv); }
+
+struct RolltuiThread {
+  pthread_t id;
+  void (*fn)(void*);
+  void* arg;
+};
+static void* thread_main(void* p) {
+  RolltuiThread* t = (RolltuiThread*)p;
+  t->fn(t->arg);
+  return NULL;
+}
+RolltuiThread* rolltui_thread_start(void (*fn)(void* arg), void* arg) {
+  RolltuiThread* t = (RolltuiThread*)rolltui_mem_alloc(sizeof *t);
+  sigset_t all, old;
+  int rc;
+  t->fn = fn;
+  t->arg = arg;
+  /* a worker takes no signal: SIGWINCH, SIGINT and the rest are the UI thread's, which is where their handlers expect them */
+  sigfillset(&all);
+  pthread_sigmask(SIG_BLOCK, &all, &old);
+  rc = pthread_create(&t->id, NULL, thread_main, t);
+  pthread_sigmask(SIG_SETMASK, &old, NULL);
+  if (rc != 0) {
+    rolltui_mem_free(t);
+    return NULL;
+  }
+  return t;
+}
+void rolltui_thread_join(RolltuiThread* t) {
+  if (!t) return;
+  pthread_join(t->id, NULL);
+  rolltui_mem_free(t);
+}
+void rolltui_os_sleep_ms(int ms) {
+  struct timespec ts;
+  if (ms <= 0) return;
+  ts.tv_sec = ms / 1000;
+  ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+  while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
+  }
+}
+
 /* ---- files --------------------------------------------------------------------------------- */
 
 #if defined(__APPLE__)

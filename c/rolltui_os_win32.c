@@ -84,6 +84,45 @@ void rolltui_mutex_destroy(RolltuiMutex* m) { (void)m; }
 void rolltui_mutex_lock(RolltuiMutex* m) { AcquireSRWLockExclusive((PSRWLOCK)&m->lock); }
 void rolltui_mutex_unlock(RolltuiMutex* m) { ReleaseSRWLockExclusive((PSRWLOCK)&m->lock); }
 
+void rolltui_cond_init(RolltuiCond* c) { InitializeConditionVariable((PCONDITION_VARIABLE)&c->cv); }
+void rolltui_cond_destroy(RolltuiCond* c) { (void)c; }
+void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) {
+  SleepConditionVariableSRW((PCONDITION_VARIABLE)&c->cv, (PSRWLOCK)&m->lock, INFINITE, 0);
+}
+void rolltui_cond_signal(RolltuiCond* c) { WakeConditionVariable((PCONDITION_VARIABLE)&c->cv); }
+void rolltui_cond_broadcast(RolltuiCond* c) { WakeAllConditionVariable((PCONDITION_VARIABLE)&c->cv); }
+
+struct RolltuiThread {
+  HANDLE h;
+  void (*fn)(void*);
+  void* arg;
+};
+static DWORD WINAPI thread_main(LPVOID p) {
+  RolltuiThread* t = (RolltuiThread*)p;
+  t->fn(t->arg);
+  return 0;
+}
+RolltuiThread* rolltui_thread_start(void (*fn)(void* arg), void* arg) {
+  RolltuiThread* t = (RolltuiThread*)rolltui_mem_alloc(sizeof *t);
+  t->fn = fn;
+  t->arg = arg;
+  t->h = CreateThread(NULL, 0, thread_main, t, 0, NULL);
+  if (!t->h) {
+    rolltui_mem_free(t);
+    return NULL;
+  }
+  return t;
+}
+void rolltui_thread_join(RolltuiThread* t) {
+  if (!t) return;
+  WaitForSingleObject(t->h, INFINITE);
+  CloseHandle(t->h);
+  rolltui_mem_free(t);
+}
+void rolltui_os_sleep_ms(int ms) {
+  if (ms > 0) Sleep((DWORD)ms);
+}
+
 /* ---- files --------------------------------------------------------------------------------- */
 
 /* 100-nanosecond intervals since 1601 to nanoseconds since 1970. */

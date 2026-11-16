@@ -90,7 +90,8 @@ int main() {
   put(tree / "c.txt", "c\n");
   put(tree / "sub" / "inner.txt", "inner\n");
   std::string log;
-  for (int i = 0; i < 5; ++i) log += "log line " + std::to_string(i) + "\n";
+  // NO SPACES IN WHAT IS LOOKED FOR: the diff leaves a blank that was blank unwritten, so words a space apart arrive apart.
+  for (int i = 0; i < 5; ++i) log += "log_line_" + std::to_string(i) + "\n";
   put(tree / "log.txt", log);
   put(cfg / "rolltui" / "dirktui" / "settings.json", "{ \"preview\": \"right\", \"motion\": false }");
 
@@ -113,7 +114,7 @@ int main() {
   if (s.pid <= 0) return report("dirktui_watch_test");
 
   // ---- THE BASELINE: it is showing the file the cursor is on -------------------------------------------------------
-  check(s.wait_for("log line 4", 8000) >= 0, "dirktui shows the file it was pointed at, its text in the preview");
+  check(s.wait_for("log_line_4", 8000) >= 0, "dirktui shows the file it was pointed at, its text in the preview");
 
   // ---- A FILE APPEARS: nothing is pressed ------------------------------------------------------------------------------
   put(tree / "zzz_new.txt", "ZZZ_NEIGHBOUR_CONTENT\n");

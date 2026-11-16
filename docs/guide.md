@@ -261,6 +261,44 @@ sets it from its motion setting.
 dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
 note for what went right.
 
+## Work off the UI thread
+
+A `RolltuiTasks` is a few worker threads, the jobs they run, and the queue of what comes back.
+A job's `work` runs on a worker; its `done`, and anything posted, runs on the thread that calls
+`rolltui_tasks_drain`, in the order it arrived. A host's state is only ever touched by that one
+thread.
+
+- `rolltui_tasks_start(t, work, done, ctx)` queues a job and gives its id. `done(ctx, cancelled)`
+  is called exactly once: the place `ctx` is freed.
+- `rolltui_tasks_cancel(t, id)`: a job still queued never runs; a running one finds
+  `rolltui_job_cancelled(job)` true and stops early if it looks. Either way `done` is told
+  `cancelled`, and what it made is dropped. Cancelling an id that has ended does nothing.
+- `rolltui_tasks_post(t, fn, ctx)`, from any thread: `fn(ctx)` runs at the next drain.
+- A finished job and every post call the `wake` the tasks were made with, so a loop asleep in its
+  input wait drains at once.
+- `rolltui_tasks_busy` counts jobs whose `done` has not run; `rolltui_tasks_wait_idle` drains until
+  it is 0, which is what a test waits on.
+- `rolltui_tasks_free` cancels what is queued, waits for what is running, and calls every
+  outstanding `done` before it returns.
+
+`rolltui_run` makes its own on first use: `rolltui_run_tasks(run)` gives two workers, woken
+through the terminal and drained every wake before `settle`, freed when the run ends.
+
+The run also keeps timers. `rolltui_run_after(run, ms, fn, ctx)` fires once and
+`rolltui_run_every` repeatedly, both on the run's thread after a wake's events; the wait a render
+returns is shortened to the next one due. A periodic timer that falls behind is due a period on
+from now, never in a burst. `rolltui_run_cancel_timer` cancels by id.
+`rolltui_run_debounce(run, &slot, ms, fn, ctx)` cancels the timer in `slot` and sets a new one,
+so a burst of calls fires once, after the last.
+
+`rolltui_windows_bind_changed(windows, name, …)` calls a function with an `input:<name>` window's
+text each time it changes: filtering as a person types, debounced with `rolltui_run_debounce`.
+
+`rolltui_windows_set_tasks(windows, tasks)` lends the built-in kinds the workers. The column
+browser's preview then reads a file and decodes a picture on a worker while the cursor moves on,
+says "loading…" once a read has taken 100 ms, and drops a read the cursor left. Without them it
+reads on the drawing thread, which is what a frame dump does. dirktui lends it the run's.
+
 ## Other programs
 
 `rolltui_child_spawn` starts a program and hands back a handle that is read and written without

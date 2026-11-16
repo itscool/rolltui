@@ -503,8 +503,10 @@ int main() {
     // styled lines, run and read and stopped, the system's opener, the clipboard, the terminal by name and handed to a program, the
     // title and the folder, an output window) and INTERNAL 806 (the platform half of each). Then pictures: PUBLIC 480 (decoded,
     // drawn, sized, bound to a window) and INTERNAL 825 (fitting, scaling, each protocol's bytes, the frame's record of them, the
-    // published way of drawing them).
-    check(totals["PUBLIC"] == 480 && totals["INTERNAL"] == 825 && totals.size() == 2,
+    // published way of drawing them). Then work off the UI thread: PUBLIC 496 (the task pool and its jobs, the run's timers,
+    // debounce and tasks, the window table's workers and an input's changes) and INTERNAL 839 (threads and conditions, and the
+    // preview and picker reading on a worker).
+    check(totals["PUBLIC"] == 496 && totals["INTERNAL"] == 839 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -671,12 +673,13 @@ int main() {
     // 32: the gauge a host binds and releases, the input's caret, history and commands, the messages, and the case, gauge and
     // spinner a widget draws with. Bind 105, run 159, release 14, widget 35: other programs (an output window bound, a program run
     // and released, its output read and drawn). Vocab 42, bind 106, widget 37: a picture (made, read, freed), bound to a window,
-    // drawn and sized.
+    // drawn and sized. Bind 108, run 172, release 15: workers lent to the table and an input's changes bound; tasks, jobs,
+    // timers and debounce; the tasks freed.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 106 && rt["HOST_RUN"] == 159 && rt["HOST_RELEASE"] == 14 &&
+              rt["HOST_BIND"] == 108 && rt["HOST_RUN"] == 172 && rt["HOST_RELEASE"] == 15 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 37,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 106 / run 159 / "
-          "release 14, tool interop 0, widget 37 (got " +
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 108 / run 172 / "
+          "release 15, tool interop 0, widget 37 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

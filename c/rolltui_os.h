@@ -69,6 +69,24 @@ void rolltui_mutex_destroy(RolltuiMutex* m);
 void rolltui_mutex_lock(RolltuiMutex* m);
 void rolltui_mutex_unlock(RolltuiMutex* m);
 
+/* ---- threads, for the task pool (rolltui_tasks.c) -------------------------------------------- */
+#if defined(_WIN32)
+typedef struct RolltuiCond { void* cv; } RolltuiCond; /* a CONDITION_VARIABLE, which is one pointer */
+#else
+typedef struct RolltuiCond { pthread_cond_t cv; } RolltuiCond;
+#endif
+void rolltui_cond_init(RolltuiCond* c);
+void rolltui_cond_destroy(RolltuiCond* c);
+/* Waits for a signal with `m` held, as the platform's condition variable does: `m` is released while waiting. */
+void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m);
+void rolltui_cond_signal(RolltuiCond* c);
+void rolltui_cond_broadcast(RolltuiCond* c);
+typedef struct RolltuiThread RolltuiThread;
+/* A thread running `fn(arg)`; NULL when one cannot be made. `rolltui_thread_join` waits for it and frees the handle. */
+RolltuiThread* rolltui_thread_start(void (*fn)(void* arg), void* arg);
+void rolltui_thread_join(RolltuiThread* t);
+void rolltui_os_sleep_ms(int ms);
+
 /* ---- files --------------------------------------------------------------------------------- */
 
 /* File types and permissions in the POSIX layout on every platform: `RolltuiDirEntry.mode` is

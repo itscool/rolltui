@@ -3500,6 +3500,7 @@ int main(int argc, char** argv) {
     a.term = rolltui_run_terminal(run);
     a.w = rolltui_terminal_width(a.term);
     a.h = rolltui_terminal_height(a.term);
+    rolltui_windows_set_tasks(a.windows, rolltui_run_tasks(run));  // the preview reads a file off the drawing thread
     a.terminal_ready();  // the key protocol is negotiated: judge the chords against it
     a.apply_facts();     // and so is everything else about the terminal: its glyph width, its light or dark
   };

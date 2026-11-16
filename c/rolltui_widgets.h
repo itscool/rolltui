@@ -155,6 +155,8 @@ int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t 
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
 /* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
+/* The workers the built-in kinds read files on (`rolltui_windows_set_tasks`); NULL: this thread. */
+RolltuiTasks* rolltui_windows_tasks(const RolltuiWindows* w);
 /* The picture an `image:<name>` window shows instead of reading the file; NULL when none is bound. */
 const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* name, size_t len);
 /* The table's message log, which its `messages` kind reads. */
@@ -162,6 +164,7 @@ const struct RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w
 
 int rolltui_windows_has_submit(const RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen);
+int rolltui_windows_call_changed(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen);
 /* 0 (SendAndClear) when nothing is bound to `name` — `Windows::on_submit_for`'s own default. */
 int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len);
 

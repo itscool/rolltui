@@ -32,11 +32,92 @@ struct RolltuiRun {
   RunEvent* ev;
   size_t ev_n, ev_cap;
   int in_fd, out_fd; /* the terminal's descriptors, for a program that takes it over */
+  /* TIMERS, by id: due on the steady clock, `every` 0 for once. Fired after a wake's events, before `settle`. */
+  struct RunTimer { unsigned int id; unsigned long long due; int every; RolltuiTimerFn fn; void* ctx; } * timers;
+  size_t timer_n, timer_cap;
+  unsigned int next_timer;
+  RolltuiTasks* tasks; /* made on first use (`rolltui_run_tasks`), drained every wake, freed before the terminal */
   RolltuiStr text;   /* every event's text, back to back */
   RolltuiStr out;    /* the bytes of a present, kept between frames */
 };
 
 static unsigned long long steady_ms(void) { return rolltui_os_monotonic_ms(); }
+
+/* ---- timers ------------------------------------------------------------------------------- */
+
+static int timer_wait(const RolltuiRun* r, int timeout) {
+  size_t i;
+  unsigned long long now, soonest = (unsigned long long)-1;
+  if (r->timer_n == 0) return timeout;
+  now = steady_ms();
+  for (i = 0; i < r->timer_n; ++i)
+    if (r->timers[i].due < soonest) soonest = r->timers[i].due;
+  {
+    const long long left = soonest <= now ? 0 : (long long)(soonest - now);
+    const int t = left > 0x7fffffff ? 0x7fffffff : (int)left;
+    return timeout < 0 || t < timeout ? t : timeout;
+  }
+}
+
+static void fire_timers(RolltuiRun* r) {
+  const unsigned long long now = steady_ms();
+  size_t i = 0;
+  while (i < r->timer_n && !r->stop) {
+    struct RunTimer t = r->timers[i];
+    if (t.due > now) {
+      ++i;
+      continue;
+    }
+    if (t.every > 0) { /* due again a period on, never in the past: a slow frame does not make a burst */
+      r->timers[i].due = t.due + (unsigned long long)t.every > now ? t.due + (unsigned long long)t.every : now + (unsigned long long)t.every;
+      ++i;
+    } else {
+      r->timers[i] = r->timers[--r->timer_n];
+    }
+    t.fn(t.ctx, r); /* it may add or cancel timers; the walk is by index over what is there */
+  }
+}
+
+static unsigned int add_timer(RolltuiRun* r, int ms, int every, RolltuiTimerFn fn, void* ctx) {
+  struct RunTimer* t;
+  if (!r || !fn) return 0;
+  r->timers = (struct RunTimer*)rolltui_grow(r->timers, &r->timer_cap, r->timer_n + 1, sizeof *r->timers);
+  t = &r->timers[r->timer_n++];
+  r->next_timer = r->next_timer == 0xFFFFFFFFu ? 1u : r->next_timer + 1u;
+  t->id = r->next_timer;
+  t->due = steady_ms() + (unsigned long long)(ms > 0 ? ms : 0);
+  t->every = every;
+  t->fn = fn;
+  t->ctx = ctx;
+  return t->id;
+}
+
+unsigned int rolltui_run_after(RolltuiRun* run, int ms, RolltuiTimerFn fn, void* ctx) { return add_timer(run, ms, 0, fn, ctx); }
+unsigned int rolltui_run_every(RolltuiRun* run, int ms, RolltuiTimerFn fn, void* ctx) {
+  return add_timer(run, ms, ms > 0 ? ms : 1, fn, ctx);
+}
+void rolltui_run_cancel_timer(RolltuiRun* run, unsigned int id) {
+  size_t i;
+  if (!run || id == 0) return;
+  for (i = 0; i < run->timer_n; ++i)
+    if (run->timers[i].id == id) {
+      run->timers[i] = run->timers[--run->timer_n];
+      return;
+    }
+}
+void rolltui_run_debounce(RolltuiRun* run, unsigned int* slot, int ms, RolltuiTimerFn fn, void* ctx) {
+  if (!run || !slot) return;
+  rolltui_run_cancel_timer(run, *slot);
+  *slot = rolltui_run_after(run, ms, fn, ctx);
+}
+
+static void wake_terminal(void* term) { rolltui_terminal_wake((RolltuiTerminal*)term); }
+
+RolltuiTasks* rolltui_run_tasks(RolltuiRun* run) {
+  if (!run || !run->term) return NULL;
+  if (!run->tasks) run->tasks = rolltui_tasks_new(2, wake_terminal, run->term);
+  return run->tasks;
+}
 
 static void collect(void* vctx, const RolltuiTermEvent* te) {
   RolltuiRun* r = (RolltuiRun*)vctx;
@@ -98,6 +179,7 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
     ground_of(&r, &fill);
     f = rolltui_swap_begin(r.swap, r.w, r.h, fill);
     timeout = app->render(app->ctx, &r, f, r.w, r.h, steady_ms());
+    timeout = timer_wait(&r, timeout); /* a timer due sooner than the frame asked to wait wakes it */
     /* AT THE DEPTH THE TERMINAL HAS: a terminal sent 24-bit colour it cannot draw reads it as stray attributes. */
     rolltui_terminal_present(r.term, r.swap, &r.out);
 
@@ -122,8 +204,12 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
       if (app->facts_changed) app->facts_changed(app->ctx, &r);
       rolltui_swap_invalidate(r.swap);
     }
+    if (r.tasks && !r.stop) rolltui_tasks_drain(r.tasks); /* what workers finished and threads posted, on this thread */
+    if (!r.stop) fire_timers(&r);
     if (app->settle) app->settle(app->ctx, &r);
   }
+  rolltui_tasks_free(r.tasks); /* the workers stopped and every job's `done` called, before the terminal goes */
+  rolltui_mem_free(r.timers);
   rolltui_mem_free(r.ev);
   rolltui_str_free(&r.text);
   rolltui_str_free(&r.out);

@@ -30,6 +30,21 @@ typedef struct SegList {
   size_t n, cap;
 } SegList;
 
+/* WHAT A FILE HOLDS, read: everything `load` needs that touches the disk, and nothing that touches a preview, so a worker can
+ * do it (rolltui_tasks.c) while the cursor moves on. */
+typedef struct Gathered {
+  RolltuiStr path;
+  int kind;
+  RolltuiStr message, body;
+  long long size;
+  int truncated, fd;
+  RolltuiImage* image;
+  RolltuiFileSig sig;
+  long long sig_read_secs;
+  RolltuiPreview* pv; /* who is waiting for it; NULL once that preview went */
+  unsigned int job;
+} Gathered;
+
 struct RolltuiPreview {
   RolltuiStr path;
   int kind;
@@ -66,7 +81,15 @@ struct RolltuiPreview {
   RolltuiFileSig sig;
   long long sig_read_secs;
   RolltuiImage* image; /* IMAGE: the picture, OWNED */
+  /* OFF THIS THREAD: the workers a read goes to (BORROWED; NULL reads here), the read in flight, and the clock it is judged by */
+  RolltuiTasks* tasks;
+  struct Gathered* pending;
+  unsigned int job;
+  unsigned long long now_ms, loading_since;
 };
+
+/* A read in flight says so once it has taken this long: a quick read shows its file without a flash of words first. */
+#define LOADING_SHOWN_MS 100
 
 RolltuiPreview* rolltui_preview_new(void) {
   RolltuiPreview* pv = (RolltuiPreview*)rolltui_mem_alloc(sizeof *pv);
@@ -100,6 +123,10 @@ static void release_content(RolltuiPreview* pv) {
 
 void rolltui_preview_free(RolltuiPreview* pv) {
   if (!pv) return;
+  if (pv->pending) { /* the read finishes without anyone to show it to */
+    pv->pending->pv = NULL;
+    rolltui_tasks_cancel(pv->tasks, pv->job);
+  }
   release_content(pv);
   rolltui_str_free(&pv->path);
   rolltui_str_free(&pv->message);
@@ -366,10 +393,6 @@ static void highlight_text(RolltuiPreview* pv) {
   pv->hl_ok = 1;
 }
 
-static void fail(RolltuiPreview* pv, const char* why) {
-  pv->kind = ROLLTUI_PREVIEW_UNREADABLE;
-  rolltui_str_set(&pv->message, why, strlen(why));
-}
 
 /* ---- a file as it was ------------------------------------------------------------------------ */
 
@@ -402,42 +425,59 @@ int rolltui_filesig_racy(const RolltuiFileSig* sig, long long read_at_secs) {
   return sig->ok && age >= -1 && age < 2;
 }
 
-static void load(RolltuiPreview* pv) {
+
+static void gathered_free(Gathered* g) {
+  if (!g) return;
+  if (g->fd >= 0) rolltui_os_close(g->fd);
+  rolltui_image_free(g->image);
+  rolltui_str_free(&g->path);
+  rolltui_str_free(&g->message);
+  rolltui_str_free(&g->body);
+  rolltui_mem_free(g);
+}
+
+static void gather_fail(Gathered* g, const char* why) {
+  g->kind = ROLLTUI_PREVIEW_UNREADABLE;
+  rolltui_str_set(&g->message, why, strlen(why));
+}
+
+static void gather(Gathered* g) {
   RolltuiOsStat st;
   unsigned char sniff[SNIFF_BYTES];
   size_t got;
   int fd;
+  g->fd = -1;
   /* DESCRIBED BEFORE IT IS READ: a write in between leaves the description older than what was read, and the next look
    * reads again, where the other order would trust content it never read. */
-  pv->sig_read_secs = (long long)time(NULL);
-  rolltui_filesig_read(pv->path.p, &pv->sig);
-  fd = rolltui_os_open_read(pv->path.p);
+  g->sig_read_secs = (long long)time(NULL);
+  rolltui_filesig_read(g->path.p, &g->sig);
+  fd = rolltui_os_open_read(g->path.p);
   if (fd < 0) {
-    fail(pv, strerror(errno));
+    gather_fail(g, strerror(errno));
     return;
   }
   if (rolltui_os_fstat(fd, &st) != 0) {
-    fail(pv, strerror(errno));
+    gather_fail(g, strerror(errno));
     rolltui_os_close(fd);
     return;
   }
   /* A pipe, a socket, a device: opening was already a risk (NONBLOCK spares a FIFO), reading is not one to take. */
   if (!ROLLTUI_OS_IS_FILE(st.mode)) {
-    fail(pv, ROLLTUI_OS_IS_DIR(st.mode) ? "a folder" : "not a regular file");
+    gather_fail(g, ROLLTUI_OS_IS_DIR(st.mode) ? "a folder" : "not a regular file");
     rolltui_os_close(fd);
     return;
   }
-  pv->size = st.size;
+  g->size = st.size;
   got = read_upto(fd, sniff, SNIFF_BYTES);
   if (got == 0) {
-    pv->kind = ROLLTUI_PREVIEW_EMPTY;
+    g->kind = ROLLTUI_PREVIEW_EMPTY;
     rolltui_os_close(fd);
     return;
   }
-  if (is_picture(&pv->path, sniff, got)) {
+  if (is_picture(&g->path, sniff, got)) {
     if (st.size > ROLLTUI_PREVIEW_IMAGE_LIMIT) {
       rolltui_os_close(fd);
-      fail(pv, "a picture too large to preview");
+      gather_fail(g, "a picture too large to preview");
       return;
     }
     {
@@ -448,22 +488,18 @@ static void load(RolltuiPreview* pv) {
       memcpy(buf, sniff, got);
       have += read_upto(fd, buf + have, (size_t)st.size - have);
       rolltui_os_close(fd);
-      pv->image = rolltui_image_decode(buf, have, &why);
+      g->image = rolltui_image_decode(buf, have, &why);
       rolltui_mem_free(buf);
-      if (!pv->image) {
-        fail(pv, why.p ? why.p : "not a picture");
-        rolltui_str_free(&why);
-        return;
-      }
+      if (!g->image) gather_fail(g, why.p ? why.p : "not a picture");
+      else g->kind = ROLLTUI_PREVIEW_IMAGE;
       rolltui_str_free(&why);
-      pv->kind = ROLLTUI_PREVIEW_IMAGE;
       return;
     }
   }
   if (looks_binary(sniff, got)) {
-    pv->kind = ROLLTUI_PREVIEW_HEX;
-    pv->fd = fd; /* kept: the rows on screen are read from it */
-    if (pv->size < (long long)got) pv->size = (long long)got;
+    g->kind = ROLLTUI_PREVIEW_HEX;
+    g->fd = fd; /* kept: the rows on screen are read from it */
+    if (g->size < (long long)got) g->size = (long long)got;
     return;
   }
   {
@@ -475,10 +511,10 @@ static void load(RolltuiPreview* pv) {
     have += more;
     if (have == (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT) {
       unsigned char probe;
-      if (read_upto(fd, &probe, 1) == 1) pv->truncated = 1;
+      if (read_upto(fd, &probe, 1) == 1) g->truncated = 1;
     }
     rolltui_os_close(fd);
-    if (pv->truncated) {
+    if (g->truncated) {
       /* Cut where a line ends, or failing that where a character does: never through the middle of one. */
       size_t cut = have;
       while (cut > 0 && cut + 4096 > have && buf[cut - 1] != '\n') --cut;
@@ -489,15 +525,72 @@ static void load(RolltuiPreview* pv) {
       }
       have = cut;
     }
-    rolltui_str_set(&pv->body, (const char*)buf, have);
+    rolltui_str_set(&g->body, (const char*)buf, have);
     rolltui_mem_free(buf);
   }
-  pv->kind = has_markdown_extension(&pv->path) || has_diagram_extension(&pv->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
+  g->kind = has_markdown_extension(&g->path) || has_diagram_extension(&g->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
+}
+
+/* What was read becomes what the preview shows: the lines indexed and coloured, the Markdown parsed. On the preview's thread. */
+static void adopt(RolltuiPreview* pv, Gathered* g) {
+  pv->kind = g->kind;
+  pv->size = g->size;
+  pv->truncated = g->truncated;
+  pv->fd = g->fd;
+  g->fd = -1;
+  pv->image = g->image;
+  g->image = NULL;
+  pv->sig = g->sig;
+  pv->sig_read_secs = g->sig_read_secs;
+  rolltui_str_move(&pv->message, &g->message);
+  rolltui_str_move(&pv->body, &g->body);
   if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) parse_markdown(pv);
-  else {
+  else if (pv->kind == ROLLTUI_PREVIEW_TEXT) {
     index_lines(pv);
     highlight_text(pv);
   }
+}
+
+static void load(RolltuiPreview* pv) {
+  Gathered* g = (Gathered*)rolltui_mem_alloc(sizeof *g);
+  memset(g, 0, sizeof *g);
+  rolltui_str_set(&g->path, pv->path.p, pv->path.n);
+  gather(g);
+  adopt(pv, g);
+  gathered_free(g);
+}
+
+/* ---- reading off the preview's thread ----------------------------------------------------- */
+
+static void gather_work(void* ctx, const RolltuiJob* job) {
+  if (!rolltui_job_cancelled(job)) gather((Gathered*)ctx);
+}
+
+static void gather_done(void* ctx, int cancelled) {
+  Gathered* g = (Gathered*)ctx;
+  RolltuiPreview* pv = g->pv;
+  if (!cancelled && pv && pv->pending == g) { /* the file still wanted: shown now */
+    pv->pending = NULL;
+    pv->job = 0;
+    adopt(pv, g);
+  } else if (pv && pv->pending == g) {
+    pv->pending = NULL;
+    pv->job = 0;
+  }
+  gathered_free(g);
+}
+
+void rolltui_preview_set_tasks(RolltuiPreview* pv, RolltuiTasks* tasks) {
+  if (pv) pv->tasks = tasks;
+}
+void rolltui_preview_set_now(RolltuiPreview* pv, unsigned long long now_ms) {
+  if (pv) pv->now_ms = now_ms;
+}
+int rolltui_preview_wake_ms(const RolltuiPreview* pv) {
+  /* a read in flight says "loading" once it has taken LOADING_SHOWN_MS: the frame that should say it is woken for */
+  if (!pv || pv->kind != ROLLTUI_PREVIEW_LOADING || pv->now_ms == 0) return 0;
+  if (pv->now_ms >= pv->loading_since + LOADING_SHOWN_MS) return 0;
+  return (int)(pv->loading_since + LOADING_SHOWN_MS - pv->now_ms);
 }
 
 void rolltui_preview_set_syntax(RolltuiPreview* pv, RolltuiSyntax* syn) {
@@ -518,9 +611,29 @@ void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) 
     return;
   }
   if (pv->kind != ROLLTUI_PREVIEW_NONE && rolltui_str_eq(&pv->path, path, len)) return;
+  if (pv->pending) { /* the cursor moved on: what was being read is dropped */
+    pv->pending->pv = NULL;
+    rolltui_tasks_cancel(pv->tasks, pv->job);
+    pv->pending = NULL;
+    pv->job = 0;
+  }
   release_content(pv);
   rolltui_str_set(&pv->path, path, len);
-  load(pv);
+  if (!pv->tasks) {
+    load(pv);
+    return;
+  }
+  {
+    struct Gathered* g = (struct Gathered*)rolltui_mem_alloc(sizeof *g);
+    memset(g, 0, sizeof *g);
+    g->fd = -1;
+    rolltui_str_set(&g->path, path, len);
+    g->pv = pv;
+    pv->pending = g;
+    pv->kind = ROLLTUI_PREVIEW_LOADING;
+    pv->loading_since = pv->now_ms;
+    pv->job = g->job = rolltui_tasks_start(pv->tasks, gather_work, gather_done, g);
+  }
 }
 
 /* ---- what a row is made of ------------------------------------------------------------------ */
@@ -907,6 +1020,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       break;
     }
     case ROLLTUI_PREVIEW_EMPTY: snprintf(info, sizeof info, "empty"); break;
+    case ROLLTUI_PREVIEW_LOADING: info[0] = '\0'; break;
     case ROLLTUI_PREVIEW_IMAGE: {
       char sz[24];
       int iw = 0, ih = 0;
@@ -949,6 +1063,10 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
   switch (pv->kind) {
     case ROLLTUI_PREVIEW_EMPTY:
       put_row(pv, f, body.x, body.y, "(empty file)", 12, dim, dim, body.w, ambiguous_wide);
+      break;
+    case ROLLTUI_PREVIEW_LOADING:
+      if (pv->now_ms >= pv->loading_since + LOADING_SHOWN_MS)
+        put_row(pv, f, body.x, body.y, "loading" ELLIPSIS, sizeof "loading" ELLIPSIS - 1, dim, dim, body.w, ambiguous_wide);
       break;
     case ROLLTUI_PREVIEW_UNREADABLE:
       put_row(pv, f, body.x, body.y, pv->message.p ? pv->message.p : "", pv->message.n, err, err, body.w, ambiguous_wide);
@@ -1151,7 +1269,7 @@ int rolltui_preview_refresh(RolltuiPreview* pv) {
   int kind0, end0, laid_out, aw0, anchored = 0, exact = 1;
   size_t top0, rows0, anchor0 = ROLLTUI_MD_NO_SOURCE, delta = 0;
   int width0;
-  if (!pv || pv->path.n == 0 || pv->kind == ROLLTUI_PREVIEW_NONE) return 0;
+  if (!pv || pv->path.n == 0 || pv->kind == ROLLTUI_PREVIEW_NONE || pv->kind == ROLLTUI_PREVIEW_LOADING) return 0;
   rolltui_filesig_read(pv->path.p, &now);
   if (rolltui_filesig_same(&pv->sig, &now) && !rolltui_filesig_racy(&pv->sig, pv->sig_read_secs)) return 0;
   /* WHERE THE READER WAS, taken before the old text goes: what was at the top (the line, or the words), and whether the

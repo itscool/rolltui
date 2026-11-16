@@ -1531,6 +1531,7 @@ static void picker_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiPickerCtx* c = (RolltuiPickerCtx*)ctx;
   RolltuiRect inner;
   rolltui_content_rect(rn, &inner);
+  rolltui_picker_set_tasks(c->p, rolltui_windows_tasks(c->w));
   rolltui_picker_set_now(c->p, rolltui_windows_env(c->w)->now_ms);
   rolltui_picker_layout(c->p, inner);
 }
@@ -1553,6 +1554,7 @@ static int picker_ctx_note_at(void* ctx, size_t i, RolltuiStr* out) {
 }
 static int picker_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiPickerCtx* c = (RolltuiPickerCtx*)ctx;
+  rolltui_picker_set_tasks(c->p, rolltui_windows_tasks(c->w));
   rolltui_picker_set_now(c->p, rolltui_windows_env(c->w)->now_ms);
   return rolltui_picker_handle(c->p, e, rolltui_windows_bindings(c->w), rolltui_picker_default_actions());
 }
@@ -1884,7 +1886,21 @@ int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const 
   /* The action names are `w`'s rather than a parameter: with the `input`
    * FACTORY on this side there is no caller in the middle holding them, and one source beats
    * two ways to say the same thing. */
-  int action = (int)rolltui_input_handle(ed, e, b, rolltui_windows_input_actions(w), env->now_ms);
+  RolltuiStr before;
+  int action;
+  memset(&before, 0, sizeof before);
+  {
+    size_t blen = 0;
+    const char* bt = rolltui_input_text(ed, &blen);
+    rolltui_str_set(&before, bt, blen);
+  }
+  action = (int)rolltui_input_handle(ed, e, b, rolltui_windows_input_actions(w), env->now_ms);
+  {
+    size_t alen = 0;
+    const char* at = rolltui_input_text(ed, &alen);
+    if (!rolltui_str_eq(&before, at, alen)) rolltui_windows_call_changed(w, source, source_len, at, alen);
+  }
+  rolltui_str_free(&before);
   if (action != ROLLTUI_INPUT_SUBMIT) return action;
   {
     size_t tlen = 0;

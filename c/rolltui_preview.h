@@ -48,6 +48,7 @@ typedef struct RolltuiPreview RolltuiPreview;
 #define ROLLTUI_PREVIEW_UNREADABLE 5
 #define ROLLTUI_PREVIEW_IMAGE 6 /* a picture (PNG, JPEG, GIF, BMP, TGA, PNM) up to ROLLTUI_PREVIEW_IMAGE_LIMIT, drawn as one */
 #define ROLLTUI_PREVIEW_IMAGE_LIMIT (64 * 1024 * 1024)
+#define ROLLTUI_PREVIEW_LOADING 7 /* the file is being read on a worker; "loading…" once that has taken 100 ms */
 
 RolltuiPreview* rolltui_preview_new(void);
 void rolltui_preview_free(RolltuiPreview* pv); /* a no-op on NULL */
@@ -61,6 +62,12 @@ int rolltui_preview_kind(const RolltuiPreview* pv);
  * strings, comments and so on in the theme's colours, and the head says which language; a Markdown document's fenced code
  * is coloured the same way. NULL (the state of a new preview) draws everything plain. A file already shown is drawn again. */
 void rolltui_preview_set_syntax(RolltuiPreview* pv, RolltuiSyntax* syn);
+/* OFF THIS THREAD: with tasks lent (BORROWED, kept by the caller), a file is read and a picture decoded on a worker while the
+ * cursor moves on; a file left before its read finished is dropped. NULL (a new preview's state) reads on this thread. */
+void rolltui_preview_set_tasks(RolltuiPreview* pv, RolltuiTasks* tasks);
+/* The clock "loading" is judged by, and how long until the frame that should say it (0: none is owed). */
+void rolltui_preview_set_now(RolltuiPreview* pv, unsigned long long now_ms);
+int rolltui_preview_wake_ms(const RolltuiPreview* pv);
 /* The reason an UNREADABLE file could not be shown; empty otherwise. A BORROW. */
 const char* rolltui_preview_message(const RolltuiPreview* pv, size_t* len);
 

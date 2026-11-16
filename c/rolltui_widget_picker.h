@@ -56,6 +56,8 @@ int rolltui_picker_refresh(RolltuiPicker* p);
 
 /* The frame clock, set before layout and before an event: 0 means headless, nothing moves. */
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms);
+/* The workers the preview reads a file on (BORROWED); NULL reads on this thread. */
+void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks);
 void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner);
 /* THE POINTER, for the next draw (`RolltuiResolvedNode::hover`): the entry a click there would select is drawn in the `hover` role,
  * unless it is the cursor's own. Nothing moves. */
