@@ -20,6 +20,37 @@
 extern "C" {
 #endif
 
+/* ---- processes (rolltui_process_posix.c, rolltui_process_win32.c) --------------------------
+ * A program another of this one's parts started: its output read without waiting, its input written, its end asked about without
+ * waiting. PIPES: stdin a pipe, stdout and stderr one pipe. PTY: a pseudo-terminal `cols` x `rows` (on Windows, pipes with COLUMNS and
+ * LINES). TERMINAL: the three streams are the terminal `tty_in` / `tty_out` (an editor). QUIET: the null device, its own session or
+ * process group, let go when freed. */
+typedef struct RolltuiOsChild RolltuiOsChild;
+#define ROLLTUI_OS_CHILD_PIPES 0
+#define ROLLTUI_OS_CHILD_PTY 1
+#define ROLLTUI_OS_CHILD_QUIET 2
+#define ROLLTUI_OS_CHILD_TERMINAL 3
+RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd, const char* const* env, int mode, int cols,
+                                       int rows, int tty_in, int tty_out, RolltuiStr* err);
+/* Bytes now (> 0), nothing yet (0), or the end (-1). */
+long rolltui_os_child_read(RolltuiOsChild* c, char* buf, size_t cap);
+int rolltui_os_child_write(RolltuiOsChild* c, const char* bytes, size_t len);
+void rolltui_os_child_close_input(RolltuiOsChild* c);
+void rolltui_os_child_resize(RolltuiOsChild* c, int cols, int rows);
+int rolltui_os_child_done(RolltuiOsChild* c, int wait, int* status);
+void rolltui_os_child_stop(RolltuiOsChild* c);
+void rolltui_os_child_free(RolltuiOsChild* c);
+/* Runs `argv` on the terminal and waits; 1 when it started. This process ignores the terminal's Ctrl-C while it waits. */
+int rolltui_os_child_wait_terminal(const char* const* argv, const char* cwd, int tty_in, int tty_out, int* status,
+                                   RolltuiStr* err);
+int rolltui_os_open_with_system(const char* target, RolltuiStr* err);
+/* The first native clipboard tool that takes `text` (or `$ROLLTUI_CLIPBOARD`, a command fed it on stdin). */
+int rolltui_os_clipboard_native(const char* text, size_t len);
+int rolltui_os_open_terminal(int* in_fd, int* out_fd);
+void rolltui_os_close_terminal(int in_fd, int out_fd);
+/* This machine's name, for a file:// URL; 0 when it has none to give. */
+int rolltui_os_hostname(char* buf, size_t cap);
+
 /* ---- time ---------------------------------------------------------------------------------- */
 
 /* Milliseconds on a steady clock: never steps back, unrelated to the wall clock. */

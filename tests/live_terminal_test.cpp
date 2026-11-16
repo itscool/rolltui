@@ -315,8 +315,8 @@ int main() {
     env.push_back({"EDITOR", editor});
     env.push_back({"VISUAL", ""});
     const std::vector<Step> steps = {
-        {"hello\r", "\x1b]0;rolltui-chat \xC2\xB7 2 messages"},
-        {"colour\r", "\x1b]0;rolltui-chat \xC2\xB7 4 messages"},
+        {"hello\r", "\x1b]2;rolltui-chat \xC2\xB7 2 messages"},
+        {"colour\r", "\x1b]2;rolltui-chat \xC2\xB7 4 messages"},
         {"\x18", "edited-by-editor"},                 // Ctrl-X: $EDITOR, and the whole screen redrawn after
         {"\x15/terminal\r", "ambiguous glyphs 1 cell"},  // Ctrl-U clears what the editor left; the question redraws whole
     };
@@ -328,7 +328,7 @@ int main() {
     check(on_still, "[rolltui-chat] the run is on `still`: the app said the environment chose it");
     check(on_still && c.answered >= 1,
           "[rolltui-chat] a reply made on another thread reached a loop asleep with no timeout: the worker WOKE it");
-    check(has(c.bytes, "\x1b]0;rolltui-chat \xC2\xB7 replying"), "[rolltui-chat] the window's title follows the conversation (OSC 0)");
+    check(has(c.bytes, "\x1b]2;rolltui-chat \xC2\xB7 replying"), "[rolltui-chat] the window's title follows the conversation (OSC 2)");
     check(c.answered >= 2 && !has(c.bytes.substr(c.sent_at[1]), "pwned"),
           "[rolltui-chat] a reply carrying a title-setting sequence set nothing and drew none of it: 'pwned' never reached the terminal");
     if (c.answered >= 3) {

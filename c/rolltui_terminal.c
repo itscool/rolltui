@@ -90,6 +90,9 @@ struct RolltuiTerminal {
   int sync_open;     /* a commit opened a synchronized frame the next present closes */
   int* extent;       /* each row's drawn width: its last cell that is not a default blank, plus one */
   size_t extent_cap;
+  /* ---- the window's title (rolltui_terminal_set_title) ---- */
+  RolltuiStr title;            /* what the app set; empty: the terminal's own */
+  unsigned char title_pushed;  /* the terminal's own title is on its stack, to be put back on leaving */
 };
 
 enum { PLAN_KEYBOARD = 0, PLAN_FULL = 1, PLAN_CACHED = 2 };
@@ -199,6 +202,12 @@ static void term_enter(RolltuiTerminal* t, int handle_signals) {
   rolltui_terminal_write(t, t->enter_seq, t->enter_len);
   run_negotiation(t); /* ask the terminal what it can deliver and what it is, before anything is typed */
   if (handle_signals) rolltui_os_tty_install_handlers();
+  if (t->title.n) { /* back from a program that had the terminal: the title it set goes, this app's comes back */
+    RolltuiStr again = t->title;
+    memset(&t->title, 0, sizeof t->title);
+    rolltui_terminal_set_title(t, again.p, again.n);
+    rolltui_str_free(&again);
+  }
 }
 
 /* SYNCHRONIZED OUTPUT: a terminal that has mode 2026 is sent each frame between its begin and end,
@@ -217,6 +226,10 @@ static void term_leave(RolltuiTerminal* t) {
     t->dirty = 1;
   }
   rolltui_terminal_write(t, t->leave_seq, t->leave_len);
+  if (t->title_pushed) { /* an empty title, then the terminal's own popped back: where popping is not known, it is at least cleared */
+    rolltui_terminal_write(t, "\x1b]2;\x1b\\\x1b[23;0t", sizeof "\x1b]2;\x1b\\\x1b[23;0t" - 1);
+    t->title_pushed = 0;
+  }
   if (t->sync_open) { /* a commit's frame, with no present after it: the leaving is its end */
     rolltui_terminal_write(t, SYNC_END, sizeof SYNC_END - 1);
     t->sync_open = 0;
@@ -275,6 +288,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
   rolltui_key_decoder_free(t->decoder);
   rolltui_str_free(&t->cache_path);
+  rolltui_str_free(&t->title);
   rolltui_mem_free(t->queued);
   rolltui_mem_free(t->queued_text);
   rolltui_mem_free(t->extent);
@@ -298,6 +312,59 @@ void rolltui_terminal_refresh_size(RolltuiTerminal* t) {
 void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { rolltui_os_tty_write(t->os, bytes, len); }
 
 void rolltui_terminal_wake(RolltuiTerminal* t) { rolltui_os_tty_wake(t->os); }
+
+/* ---- the title and the working directory ---------------------------------------------------- */
+
+void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len) {
+  RolltuiStr seq;
+  size_t i;
+  if (!t) return;
+  if (!text) len = 0;
+  if (rolltui_str_eq(&t->title, text, len) && (t->title_pushed || len == 0)) return; /* only what changed is written */
+  rolltui_str_set(&t->title, text, len);
+  if (!t->tty || !t->entered) return; /* written when the terminal is entered */
+  memset(&seq, 0, sizeof seq);
+  if (!t->title_pushed) { /* the terminal's own title, kept on its stack until this app leaves */
+    rolltui_str_append(&seq, "\x1b[22;0t", sizeof "\x1b[22;0t" - 1);
+    t->title_pushed = 1;
+  }
+  rolltui_str_append(&seq, "\x1b]2;", sizeof "\x1b]2;" - 1);
+  for (i = 0; i < len; ++i) { /* a control character in a title would end the sequence early: it goes */
+    const unsigned char c = (unsigned char)text[i];
+    if (c >= 0x20 && c != 0x7F) rolltui_str_append(&seq, &text[i], 1);
+  }
+  rolltui_str_append(&seq, "\x1b\\", sizeof "\x1b\\" - 1);
+  rolltui_terminal_write(t, seq.p, seq.n);
+  rolltui_str_free(&seq);
+}
+
+void rolltui_terminal_report_cwd(RolltuiTerminal* t, const char* path, size_t len) {
+  static const char hex[] = "0123456789ABCDEF";
+  RolltuiStr seq;
+  char host[256];
+  size_t i;
+  if (!t || !t->tty || !path || len == 0) return;
+  memset(&seq, 0, sizeof seq);
+  if (!rolltui_os_hostname(host, sizeof host)) host[0] = 0;
+  rolltui_str_append(&seq, "\x1b]7;file://", sizeof "\x1b]7;file://" - 1);
+  rolltui_str_append(&seq, host, strlen(host));
+  if (path[0] != '/') rolltui_str_append(&seq, "/", 1); /* C:/Users/... is /C:/Users/... in a URL */
+  for (i = 0; i < len; ++i) {
+    const unsigned char c = (unsigned char)path[i];
+    if (c == '\\') {
+      rolltui_str_append(&seq, "/", 1);
+    } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '/' || c == '-' || c == '_' ||
+               c == '.' || c == '~' || c == ':') {
+      rolltui_str_append(&seq, (const char*)&path[i], 1);
+    } else {
+      char pct[3] = {'%', hex[c >> 4], hex[c & 15]};
+      rolltui_str_append(&seq, pct, 3);
+    }
+  }
+  rolltui_str_append(&seq, "\x1b\\", sizeof "\x1b\\" - 1);
+  rolltui_terminal_write(t, seq.p, seq.n);
+  rolltui_str_free(&seq);
+}
 
 void rolltui_terminal_suspend(RolltuiTerminal* t) { term_leave(t); }
 void rolltui_terminal_resume(RolltuiTerminal* t) { term_enter(t, 0); /* the handlers, if asked for, are installed */ }

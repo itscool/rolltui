@@ -261,6 +261,86 @@ sets it from its motion setting.
 dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
 note for what went right.
 
+## Other programs
+
+`rolltui_child_spawn` starts a program and hands back a handle that is read and written without
+waiting. `argv[0]` is found on PATH (on Windows with PATHEXT's extensions; a script runs through
+cmd.exe, which refuses an argument holding `%` or `"`). `RolltuiChildOptions.mode` says how its
+streams are wired:
+
+- `ROLLTUI_CHILD_PIPES`: stdin a pipe the host writes, stdout and stderr one stream the host
+  reads. The program has its own process group.
+- `ROLLTUI_CHILD_PTY`: a pseudo-terminal `cols` x `rows`, so the program writes colour and
+  progress as it would to a terminal. `rolltui_child_resize` follows the window it is shown in.
+  On Windows it is pipes with `COLUMNS` and `LINES` set, because ConPTY reorders what a program
+  wrote.
+- `ROLLTUI_CHILD_QUIET`: the null device for all three streams and its own session. Ctrl-C in the
+  app never reaches it, and freeing the handle lets it go instead of stopping it.
+
+`cwd` and `env` (`"NAME=value"` entries over the app's environment) are optional. A program that
+cannot start gives NULL and the reason ("not found: bat").
+
+- `rolltui_child_pump(c, text, max_lines)` reads what has arrived into a `RolltuiAnsiText` and
+  stops once it holds `max_lines`: a view reads what it shows, the program waits on its full
+  pipe, and the rest is read when more lines are wanted.
+- `rolltui_child_read` gives the bytes as they came. `rolltui_child_write` and
+  `rolltui_child_close_input` feed its input.
+- `rolltui_child_done` asks whether it has ended without waiting; `rolltui_child_wait` waits.
+  The status is its exit code, or 128 plus the signal that ended it.
+- `rolltui_child_stop` sends SIGTERM to its group and SIGKILL 200 ms later if it is still there
+  (TerminateProcess on Windows). `rolltui_child_free` stops a PIPES or PTY program still running.
+- While a program runs, a render waits at most `rolltui_child_wait_ms(c)`, so what it writes is
+  drawn as it arrives.
+
+`rolltui_run_program(run, argv, cwd, &status, &err)` hands the terminal to a program that takes
+it over (an editor, a pager): the app waits, ignoring the Ctrl-C the program receives, and takes
+the terminal back with the screen repainted whole. `rolltui_open_with_system` opens a file or a
+URL with what the system opens it with (`open`, `xdg-open`, ShellExecuteW).
+
+### Coloured output
+
+A `RolltuiAnsiText` reads what a program wrote to a terminal as lines to draw: `bat`, `delta`,
+`ls --color`, a log, a man page.
+
+- Text, newlines, tabs (stops every 8 columns) and SGR are read: 16, 256 and 24-bit colour, bold,
+  dim, italic, underline and reverse. A sequence or a character split across two feeds is joined.
+- A carriage return not followed by a newline writes the line again, so a progress counter shows
+  its last state. Erase-in-line clears the line being written.
+- Backspace overstrike is read as a man page writes it: `X\bX` bold, `_\bX` underlined.
+- Cursor moves, erase-in-display, OSC, DCS, APC and charset designations are swallowed. The output
+  reads as what it says and never commands the app's screen.
+- The lines are a ring of `ROLLTUI_ANSI_DEFAULT_LIMIT` (100,000), or what
+  `rolltui_ansi_set_limit` says, so a log keeps its newest.
+
+An `output:<source>` window shows one. The host binds it with `rolltui_windows_bind_output`.
+The window follows the end as the text grows; scrolled back, it holds still until it is scrolled
+to the end again. Lines wrap at its edge; `rolltui_windows_set_output_wrap(w, name, len, 0)`
+clips them instead, and the wheel's left and right scroll sideways. A cell with no colour of its
+own takes the window's text colour and ground, so the program's defaults are the theme's.
+`rolltui_ansi_draw` draws the same text inside a host's own widget.
+
+`rolltui-chat` runs a `!command` once it is approved: the output streams into the conversation
+as a code block and the exit status follows; Esc stops it. A frame dump runs nothing.
+
+## The clipboard, the title and the terminal
+
+`rolltui_clipboard_copy(terminal, text, len)` sets the clipboard two ways at once. OSC 52 goes to
+the terminal, the one way that reaches the person's own machine over ssh; inside tmux it is
+passed through, and above 74,994 encoded bytes it is not sent. The first native tool that works
+gets the text too: pbcopy; wl-copy, xclip or xsel; the Windows clipboard. `$ROLLTUI_CLIPBOARD`
+names a command to feed the text to instead of the native tools.
+
+`rolltui_terminal_set_title` sets the window's title (OSC 2). The terminal's own title is pushed
+first and put back when the app leaves or hands the terminal to a program, and the app's is set
+again when it takes the terminal back. Only a change is written. `rolltui_terminal_report_cwd`
+reports a folder with OSC 7, so a new tab or split opens there; dirktui reports the folder it is
+browsing.
+
+`rolltui_open_terminal(&in, &out)` opens the controlling terminal by name (`/dev/tty`; the
+console's CONIN$ and CONOUT$), whatever stdin and stdout are. A program whose stdout is its answer
+to a shell (a file chooser, cd-on-exit) draws there and prints its answer to stdout. dirktui runs
+this way.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.

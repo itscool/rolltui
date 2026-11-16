@@ -31,6 +31,7 @@ struct RolltuiRun {
    * acted on after. */
   RunEvent* ev;
   size_t ev_n, ev_cap;
+  int in_fd, out_fd; /* the terminal's descriptors, for a program that takes it over */
   RolltuiStr text;   /* every event's text, back to back */
   RolltuiStr out;    /* the bytes of a present, kept between frames */
 };
@@ -78,6 +79,8 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
   if (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd)) return ROLLTUI_RUN_NOT_A_TERMINAL;
   memset(&r, 0, sizeof r);
   r.app = app;
+  r.in_fd = in_fd;
+  r.out_fd = out_fd;
   opts.facts_events = 1; /* the loop is what listens for them */
   r.term = rolltui_terminal_new(in_fd, out_fd, opts);
   r.w = rolltui_terminal_width(r.term);
@@ -147,4 +150,17 @@ void rolltui_run_resume(RolltuiRun* run) {
   if (!run || !run->term) return;
   rolltui_terminal_resume(run->term);
   rolltui_run_invalidate(run);
+}
+
+int rolltui_run_program(RolltuiRun* run, const char* const* argv, const char* cwd, int* status, RolltuiStr* err) {
+  int ok;
+  if (err) rolltui_str_clear(err);
+  if (!run || !run->term) {
+    if (err) rolltui_str_set(err, "no terminal to hand over", sizeof "no terminal to hand over" - 1);
+    return 0;
+  }
+  rolltui_run_suspend(run);
+  ok = rolltui_os_child_wait_terminal(argv, cwd, run->in_fd, run->out_fd, status, err);
+  rolltui_run_resume(run); /* what was on the screen is gone: drawn whole */
+  return ok;
 }

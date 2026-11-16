@@ -158,7 +158,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_widget_input.c c/rolltui_widget_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_widget_transcript.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_widget_transcript.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -185,10 +185,13 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   an environment and a buffer, plus the file that
                                          #   remembers the answers. No tty in it: that is below.
                   c/rolltui_terminal.c   # the terminal protocol: entering, negotiating, decoding.
-                  c/rolltui_os_posix.c c/rolltui_os_win32.c)
+                  c/rolltui_os_posix.c c/rolltui_os_win32.c
                                          # THE OPERATING SYSTEM (rolltui_os.h): files, time, locks
                                          #   and the terminal device. Each file compiles to nothing
                                          #   on the other platform.
+                  c/rolltui_process.c c/rolltui_process_posix.c c/rolltui_process_win32.c)
+                                         # OTHER PROGRAMS: run, read, written and stopped; the
+                                         #   system's opener, the clipboard, the terminal by name.
 
 # THE SHIPPED LANGUAGES (presets/syntax/*.json), embedded like the presets: a language is a file a person can read, copy and
 # change, and the same table is what the highlighter loads.
@@ -331,6 +334,10 @@ foreach(lib rolltui rolltui_ctl)
   if(UNIX AND NOT APPLE)
     target_link_libraries(${lib} PUBLIC m)  # floor, fmod: libc on macOS and Windows, libm elsewhere
   endif()
+  if(WIN32)
+    # other programs: the shell's opener (ShellExecuteW, with COM set up for it) and the clipboard's window
+    target_link_libraries(${lib} PUBLIC shell32 ole32 user32)
+  endif()
   target_include_directories(${lib} PUBLIC ${ROLLTUI_INCLUDE_ROOT})
   target_compile_features(${lib} PUBLIC cxx_std_23)
   target_compile_options(${lib} PRIVATE ${ROLLTUI_WARNINGS})
@@ -468,7 +475,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
   layout_editor.cpp layout_editor.hpp menu_editor.cpp menu_editor.hpp tool_actions.hpp undo_stack.hpp
   # suites that test an implementation
-  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp
+  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp process_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp fatal_test.cpp
@@ -517,6 +524,7 @@ add_rolltui_test(rolltui-menu-levels-test tests/menu_levels_test.cpp)
 add_rolltui_test(rolltui-preview-syntax-test tests/preview_syntax_test.cpp)
 add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
 add_rolltui_test(rolltui-feedback-test tests/feedback_test.cpp)
+add_rolltui_test(rolltui-process-test tests/process_test.cpp)
 add_rolltui_test(rolltui-str-hpp-test tests/str_hpp_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder

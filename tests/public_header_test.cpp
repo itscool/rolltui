@@ -499,8 +499,10 @@ int main() {
     // windows lit under the pointer) and INTERNAL 768 (the menu's and the picker's `_set_hover`, fed from the resolved node).
     // 2026-11-16, the editor and feedback: PUBLIC 441 (word case, the caret, the wrapped text, commands by name, the history and its
     // file; the gauge, the spinner, posting and reading messages, drawing and pressing toasts) and INTERNAL 791 (the editor's own
-    // edits, a code point's case, the message log the window table owns).
-    check(totals["PUBLIC"] == 441 && totals["INTERNAL"] == 791 && totals.size() == 2,
+    // edits, a code point's case, the message log the window table owns). Then other programs: PUBLIC 472 (their output read as
+    // styled lines, run and read and stopped, the system's opener, the clipboard, the terminal by name and handed to a program, the
+    // title and the folder, an output window) and INTERNAL 806 (the platform half of each).
+    check(totals["PUBLIC"] == 472 && totals["INTERNAL"] == 806 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -665,12 +667,13 @@ int main() {
     // present), widget +1 (`rolltui_frame_put_swatch`). Then settings 94 -> 91: the three studio-tier functions nothing called.
     // Run 118 -> 120: the pointer for a host's own drawing, and the hint bar lit under it. Bind 103, run 136, release 11, widget
     // 32: the gauge a host binds and releases, the input's caret, history and commands, the messages, and the case, gauge and
-    // spinner a widget draws with.
+    // spinner a widget draws with. Bind 105, run 159, release 14, widget 35: other programs (an output window bound, a program run
+    // and released, its output read and drawn).
     check(rt["VOCAB"] == 37 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 103 && rt["HOST_RUN"] == 136 && rt["HOST_RELEASE"] == 11 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 32,
-          "the roles are the recorded shape — vocab 37, host load 31 / settings 91 / bind 103 / run 136 / "
-          "release 11, tool interop 0, widget 32 (got " +
+              rt["HOST_BIND"] == 105 && rt["HOST_RUN"] == 159 && rt["HOST_RELEASE"] == 14 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 35,
+          "the roles are the recorded shape — vocab 37, host load 31 / settings 91 / bind 105 / run 159 / "
+          "release 14, tool interop 0, widget 35 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

@@ -153,6 +153,8 @@ int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t l
 int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRows* out);
 int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
+/* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
+const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
 /* The table's message log, which its `messages` kind reads. */
 const struct RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w);
 

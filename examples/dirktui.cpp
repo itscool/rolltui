@@ -142,11 +142,6 @@ static RolltuiStr lower(StrView s) {
   for (std::size_t i = 0; i < out.n; ++i) out.p[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out.p[i])));
   return out;
 }
-// Backslashes as separators, for the system calls that want them (the shell's opener, cmd.exe).
-static void native_slashes(RolltuiStr& p) {
-  for (std::size_t i = 0; i < p.n; ++i)
-    if (p.p[i] == '/') p.p[i] = '\\';
-}
 #endif
 
 // An environment variable as UTF-8; empty when it is unset.
@@ -453,275 +448,21 @@ static bool may_run(const RolltuiStr& file) {
 #endif
 }
 
-#if defined(_WIN32)
-// The file Windows runs for `name`: itself when it is a path, else the first folder on PATH that
-// has it, with PATHEXT's extensions tried. Empty when there is none.
-static RolltuiStr find_program(StrView name) {
-  if (root_len(name) != 0 || name.contains('/') || name.contains('\\')) {
-    RolltuiStr p = rolltui::own(name);
-    forward_slashes(p);
-    return program_file(p);
-  }
-  StrVec dirs;
-  split_list(env_var("PATH"), ';', dirs);
-  for (const RolltuiStr& d : dirs) {
-    RolltuiStr found = program_file(d + "/" + name);
-    if (!found.empty()) return found;
-  }
-  return RolltuiStr();
-}
-// `arg` appended to a command line the way the C runtime's parser reads it back: quoted when it
-// is empty or has a space, a tab or a quote (always, with `always`), each quote escaped, and the
-// backslashes before a quote or the closing quote doubled.
-static void append_quoted(RolltuiStr& line, StrView arg, bool always) {
-  if (!line.empty()) line += ' ';
-  bool plain = !always && !arg.empty();
-  for (char c : arg)
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '"') plain = false;
-  if (plain) {
-    line += arg;
-    return;
-  }
-  line += '"';
-  std::size_t slashes = 0;
-  for (char c : arg) {
-    if (c == '\\') {
-      ++slashes;
-      continue;
-    }
-    const std::size_t times = c == '"' ? slashes * 2 + 1 : slashes;
-    for (std::size_t i = 0; i < times; ++i) line += '\\';
-    slashes = 0;
-    line += c;
-  }
-  for (std::size_t i = 0; i < slashes * 2; ++i) line += '\\';
-  line += '"';
-}
-static RolltuiStr system_folder() {
-  wchar_t w[MAX_PATH + 1];
-  const UINT n = GetSystemDirectoryW(w, MAX_PATH + 1);
-  return n > 0 && n <= MAX_PATH ? narrow(w) : RolltuiStr("C:\\Windows\\System32");
-}
-#endif
-
-// Runs `argv` (its first word found on PATH) and waits for it to exit. With `tty` a terminal
-// descriptor, the program's three streams are that terminal; with -1 they are the null device.
-// Whether it started; `status`, when given, gets its exit status (-1 when it did not exit normally).
-// On Windows an .exe or a .com runs itself and anything else (a batch file, a script with an
-// association) runs through cmd.exe. The program inherits the three handles it is given and no
-// others: never the pipe a shell reads this program's answer from.
-static bool run_and_wait(const char* const* argv, int tty, int* status) {
-#if defined(_WIN32)
-  RolltuiStr program = find_program(argv[0]);
-  if (program.empty()) return false;
-  native_slashes(program);
-  const RolltuiStr low = lower(program);
-  const bool direct = StrView(low).ends_with(".exe") || StrView(low).ends_with(".com");
-  RolltuiStr app, line;
-  if (direct) {
-    app.assign(program);
-    append_quoted(line, program, false);
-    for (std::size_t i = 1; argv[i]; ++i) append_quoted(line, argv[i], false);
-  } else {
-    // cmd.exe reads `%` and `"` even inside quotes: an argument with either is refused.
-    RolltuiStr inner;
-    append_quoted(inner, program, true);
-    for (std::size_t i = 1; argv[i]; ++i) {
-      if (StrView(argv[i]).contains('%') || StrView(argv[i]).contains('"')) return false;
-      append_quoted(inner, argv[i], true);
-    }
-    app = system_folder() + "\\cmd.exe";
-    line = rolltui::format("\"%s\" /d /v:off /s /c \"%s\"", app.c_str(), inner.c_str());
-  }
-  SECURITY_ATTRIBUTES sa{};
-  sa.nLength = static_cast<DWORD>(sizeof sa);
-  sa.bInheritHandle = TRUE;
-  const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
-  HANDLE in = INVALID_HANDLE_VALUE, out = INVALID_HANDLE_VALUE;
-  if (tty >= 0) {
-    in = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
-    out = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
-  } else {
-    in = out = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, share, &sa, OPEN_EXISTING, 0, nullptr);
-  }
-  bool started = false;
-  PROCESS_INFORMATION pi{};
-  if (in != INVALID_HANDLE_VALUE && out != INVALID_HANDLE_VALUE) {
-    HANDLE inherit[2] = {in, out};
-    const DWORD inherit_n = in == out ? 1 : 2;
-    SIZE_T size = 0;
-    InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
-    std::vector<unsigned char> attrs(size);
-    const LPPROC_THREAD_ATTRIBUTE_LIST list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrs.data());
-    if (size && InitializeProcThreadAttributeList(list, 1, 0, &size)) {
-      if (UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, inherit_n * sizeof(HANDLE), nullptr, nullptr)) {
-        STARTUPINFOEXW si{};
-        si.StartupInfo.cb = static_cast<DWORD>(sizeof si);
-        si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-        si.StartupInfo.hStdInput = in;
-        si.StartupInfo.hStdOutput = out;
-        si.StartupInfo.hStdError = out;
-        si.lpAttributeList = list;
-        std::vector<wchar_t> wapp = wide(app), wline = wide(line);
-        // A program that does not take the terminal gets no console window of its own either.
-        const DWORD flags = EXTENDED_STARTUPINFO_PRESENT | (tty >= 0 ? 0 : static_cast<DWORD>(CREATE_NO_WINDOW));
-        started = CreateProcessW(wapp.data(), wline.data(), nullptr, nullptr, TRUE, flags, nullptr, nullptr, &si.StartupInfo, &pi) != 0;
-      }
-      DeleteProcThreadAttributeList(list);
-    }
-  }
-  if (in != INVALID_HANDLE_VALUE) CloseHandle(in);
-  if (out != INVALID_HANDLE_VALUE && out != in) CloseHandle(out);
-  if (!started) return false;
-  WaitForSingleObject(pi.hProcess, INFINITE);
-  DWORD code = 0;
-  const bool exited = GetExitCodeProcess(pi.hProcess, &code) != 0;
-  if (status) *status = exited ? static_cast<int>(code) : -1;
-  CloseHandle(pi.hThread);
-  CloseHandle(pi.hProcess);
-  return true;
-#else
-  posix_spawn_file_actions_t fa;
-  posix_spawn_file_actions_init(&fa);
-  if (tty >= 0) {
-    posix_spawn_file_actions_adddup2(&fa, tty, 0);
-    posix_spawn_file_actions_adddup2(&fa, tty, 1);
-    posix_spawn_file_actions_adddup2(&fa, tty, 2);
-  } else {
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-  }
-  // A PROGRAM ON THE TERMINAL HAS ITS CTRL-C TO ITSELF, as `system` gives it: the terminal is back in its ordinary mode, so the key
-  // signals the whole foreground group, this process included. dirktui ignores SIGINT and SIGQUIT while it waits, and the
-  // program starts with both at their defaults.
-  struct sigaction ignore {}, old_int {}, old_quit {};
-  posix_spawnattr_t attr;
-  posix_spawnattr_init(&attr);
-  if (tty >= 0) {
-    ignore.sa_handler = SIG_IGN;
-    sigemptyset(&ignore.sa_mask);
-    sigaction(SIGINT, &ignore, &old_int);
-    sigaction(SIGQUIT, &ignore, &old_quit);
-    sigset_t defaults;
-    sigemptyset(&defaults);
-    sigaddset(&defaults, SIGINT);
-    sigaddset(&defaults, SIGQUIT);
-    posix_spawnattr_setsigdefault(&attr, &defaults);
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGDEF);
-  }
-  pid_t pid = 0;
-  const int rc = posix_spawnp(&pid, argv[0], &fa, &attr, const_cast<char* const*>(argv), environ);
-  posix_spawn_file_actions_destroy(&fa);
-  posix_spawnattr_destroy(&attr);
-  int st = 0;
-  if (rc == 0)
-    while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {
-    }
-  if (tty >= 0) {
-    sigaction(SIGINT, &old_int, nullptr);
-    sigaction(SIGQUIT, &old_quit, nullptr);
-  }
-  if (status) *status = rc == 0 && WIFEXITED(st) ? WEXITSTATUS(st) : -1;
-  return rc == 0;
-#endif
-}
-
 // UPDATES. On macOS and Linux dirktui asks its Homebrew tap for a newer version and updates
 // through brew. On Windows it does neither: its updates come from the package manager that
 // installed it, and the three functions below start nothing there.
 #if defined(_WIN32)
 constexpr bool kSelfUpdates = false;
-using ChildId = unsigned long;
 #else
 constexpr bool kSelfUpdates = true;
-using ChildId = pid_t;
 #endif
 constexpr const char* kUpdatesElsewhere = "Updates come from the package manager that installed dirktui";
-// Starts `argv` with its three streams on the null device and does not wait; 0 when it did not start.
-static ChildId start_quiet(const char* const* argv) {
-#if defined(_WIN32)
-  (void)argv;
-  return 0;
-#else
-  posix_spawn_file_actions_t fa;
-  posix_spawn_file_actions_init(&fa);
-  posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-  posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-  pid_t pid = 0;
-  const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
-  posix_spawn_file_actions_destroy(&fa);
-  return rc == 0 ? pid : 0;
-#endif
-}
-// Whether a program `start_quiet` started has exited, asked without waiting.
-static bool child_exited(ChildId child) {
-#if defined(_WIN32)
-  (void)child;
-  return true;
-#else
-  int status = 0;
-  return waitpid(child, &status, WNOHANG) == child;
-#endif
-}
 // This program run again in its own place, as `argv` says; returns only when that fails.
 static void restart_self(char** argv) {
 #if defined(_WIN32)
   (void)argv;
 #else
   execvp(argv[0], argv);
-#endif
-}
-
-// `text` on the standard input of the shell command `cmd`; whether it ran and exited 0.
-static bool pipe_to(const char* cmd, StrView text) {
-#if defined(_WIN32)
-  FILE* p = _popen(cmd, "wb");
-  if (!p) return false;
-  std::fwrite(text.data(), 1, text.size(), p);
-  return _pclose(p) == 0;
-#else
-  FILE* p = popen(cmd, "w");
-  if (!p) return false;
-  std::fwrite(text.data(), 1, text.size(), p);
-  return pclose(p) == 0;
-#endif
-}
-// THE PLATFORM'S CLIPBOARD set to `text`: pbcopy on macOS, wl-copy or xclip on Linux, and on
-// Windows the clipboard itself as UTF-16 text (CF_UNICODETEXT), owned by a message-only window
-// made for the copy.
-static bool system_clipboard(StrView text) {
-#if defined(_WIN32)
-  const std::vector<wchar_t> w = wide(text);
-  const HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, w.size() * sizeof(wchar_t));
-  if (!mem) return false;
-  void* dst = GlobalLock(mem);
-  if (!dst) {
-    GlobalFree(mem);
-    return false;
-  }
-  std::memcpy(dst, w.data(), w.size() * sizeof(wchar_t));
-  GlobalUnlock(mem);
-  const HWND owner = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr);
-  bool open = OpenClipboard(owner) != 0;
-  for (int tries = 0; !open && tries < 10; ++tries) {  // another program may hold it for a moment
-    Sleep(10);
-    open = OpenClipboard(owner) != 0;
-  }
-  bool ok = false;
-  if (open) {
-    EmptyClipboard();
-    ok = SetClipboardData(CF_UNICODETEXT, mem) != nullptr;
-    CloseClipboard();
-  }
-  if (!ok) GlobalFree(mem);  // once set, the clipboard owns it
-  if (owner) DestroyWindow(owner);
-  return ok;
-#elif defined(__APPLE__)
-  return pipe_to("pbcopy", text);
-#else
-  return pipe_to("wl-copy 2>/dev/null || xclip -selection clipboard", text);
 #endif
 }
 
@@ -739,32 +480,14 @@ constexpr const char* kTerminalName = "/dev/tty";
 #endif
 // False, with `errno` set, when there is no terminal.
 static bool open_tty(Tty& t) {
-#if defined(_WIN32)
-  const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE;
-  const HANDLE in = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, share, nullptr, OPEN_EXISTING, 0, nullptr);
-  const HANDLE out = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, share, nullptr, OPEN_EXISTING, 0, nullptr);
-  t.in = in == INVALID_HANDLE_VALUE ? -1 : _open_osfhandle(reinterpret_cast<std::intptr_t>(in), _O_RDONLY);
-  t.out = out == INVALID_HANDLE_VALUE ? -1 : _open_osfhandle(reinterpret_cast<std::intptr_t>(out), 0);
-  if (t.in >= 0 && t.out >= 0) return true;
-  if (t.in >= 0) _close(t.in);
-  else if (in != INVALID_HANDLE_VALUE) CloseHandle(in);
-  if (t.out >= 0) _close(t.out);
-  else if (out != INVALID_HANDLE_VALUE) CloseHandle(out);
+  errno = 0;
+  if (rolltui_open_terminal(&t.in, &t.out)) return true;
+  if (errno == 0) errno = ENXIO;
   t = Tty{};
-  errno = ENXIO;
   return false;
-#else
-  t.in = t.out = open("/dev/tty", O_RDWR | O_CLOEXEC);
-  return t.in >= 0;
-#endif
 }
 static void close_tty(Tty& t) {
-#if defined(_WIN32)
-  if (t.in >= 0) _close(t.in);
-  if (t.out >= 0) _close(t.out);
-#else
-  if (t.in >= 0) close(t.in);
-#endif
+  rolltui_close_terminal(t.in, t.out);
   t = Tty{};
 }
 // Whether stdin is a terminal a person types at. On Windows: a console, which a pipe and the NUL
@@ -1188,7 +911,7 @@ struct App {
   unsigned long long update_since_ms = 0;   // when an update FIRST became known, so re-detecting it on a later
                                              // launch does not restart the corner's animation from zero
   bool update_state_loaded = false;         // the cache file is read lazily, once, on the first tick
-  ChildId update_check_pid = 0;             // the in-flight `curl`, or 0 when none is running
+  RolltuiChild* update_check = nullptr;     // the in-flight `curl`, or null when none is running
   RolltuiStr update_check_out;              // where its stdout was redirected: read and removed once it exits
   static constexpr unsigned long long kUpdateCheckIntervalMs = 24ULL * 60 * 60 * 1000;  // don't ask more than once a day
   char** restart_argv = nullptr;            // BORROWED, main()'s own argv: how `do_update` re-execs after brew
@@ -1344,6 +1067,7 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_child_free(update_check);  // a quiet check is let go, not stopped
     rolltui_hint_bar_free(hints);
     rolltui_hint_bar_free(crumbs);
     rolltui_bindings_store_free(keys_store);
@@ -1611,15 +1335,18 @@ struct App {
   // polls it every frame instead, so a slow or hung network never costs the render loop a single
   // frame. Nothing is started where dirktui does not update itself (`kSelfUpdates`).
   void spawn_update_check() {
-    if (!kSelfUpdates || headless || update_check_pid) return;  // one at a time, and never a real network reach in a test/frame run
+    if (!kSelfUpdates || headless || update_check) return;  // one at a time, and never a real network reach in a test/frame run
     mkdirs(settings_dir());
     const RolltuiStr out_path = update_check_tmp_file();
     const char* url = std::getenv("DIRKTUI_UPDATE_URL");
     if (!url || !*url) url = "https://raw.githubusercontent.com/itscool/homebrew-tap/main/Formula/dirktui.rb";
     const char* argv[] = {"curl", "-fsSL", "--max-time", "5", url, "-o", out_path.c_str(), nullptr};
-    update_check_pid = start_quiet(argv);
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    o.mode = ROLLTUI_CHILD_QUIET;
+    update_check = rolltui_child_spawn(&o, nullptr);
   }
-  // Runs `brew update && brew upgrade dirktui` with the real terminal — `run_and_wait` on the tty,
+  // Runs `brew update && brew upgrade dirktui` with the real terminal — `rolltui_run_program`,
   // as `open_with` runs an editor, so the person watches brew's own real output rather than a
   // black box — then re-execs this program exactly as it was invoked. PATH resolution runs FRESH
   // at that point, so it is whatever `brew upgrade` just put at the symlink, never a path resolved
@@ -1627,13 +1354,15 @@ struct App {
   // it never is where dirktui does not update itself.
   void do_update_and_restart() {
     if (!kSelfUpdates) { hint = kUpdatesElsewhere; return; }
-    if (!run || tty_fd < 0 || !restart_argv) return;
-    rolltui_run_suspend(run);
+    if (!run || !restart_argv) return;
     const char* argv[] = {"/bin/sh", "-c", "brew update && brew upgrade dirktui", nullptr};
     int status = -1;
-    const bool upgraded = run_and_wait(argv, tty_fd, &status) && status == 0;
-    if (upgraded) restart_self(restart_argv);  // returns only on failure to launch
-    rolltui_run_resume(run);
+    const bool upgraded = rolltui_run_program(run, argv, nullptr, &status, nullptr) && status == 0;
+    if (upgraded) {  // the terminal is handed back as it was found before this program becomes the new one
+      rolltui_run_suspend(run);
+      restart_self(restart_argv);  // returns only on failure to launch
+      rolltui_run_resume(run);
+    }
     hint = upgraded ? "updated, but could not restart automatically \xE2\x80\x94 quit and run dirktui again"
                     : "brew upgrade dirktui failed; see your terminal history";
   }
@@ -1642,9 +1371,10 @@ struct App {
   // never on the render path itself, and never more than one in flight.
   void update_check_tick() {
     if (!update_state_loaded) { load_update_state(); update_state_loaded = true; }
-    if (update_check_pid) {
-      if (child_exited(update_check_pid)) {
-        update_check_pid = 0;
+    if (update_check) {
+      if (rolltui_child_done(update_check, nullptr)) {
+        rolltui_child_free(update_check);
+        update_check = nullptr;
         RolltuiStr text{};
         FILE* f = open_file(update_check_tmp_file().c_str(), "rb");
         if (f) {
@@ -1670,7 +1400,7 @@ struct App {
         }
       }
     }
-    if (!update_check_pid && (checked_ms == 0 || now_ms > checked_ms + kUpdateCheckIntervalMs)) spawn_update_check();
+    if (!update_check && (checked_ms == 0 || now_ms > checked_ms + kUpdateCheckIntervalMs)) spawn_update_check();
   }
 
   // The settings popup's boxes, set from the live values the moment the popup exists — which is
@@ -1890,7 +1620,7 @@ struct App {
     rolltui_hint_bar_set_keep_tail(crumbs, 1);
     // COPY IN THE PATH LINE goes where the picker's copy goes: the clipboard.
     if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4))
-      rolltui_input_set_copy(in, [](void* ctx, const char* t, std::size_t n) { App& a = *static_cast<App*>(ctx); a.hint = copy_to_clipboard(StrView(t, n)) ? "copied" : "could not copy: no clipboard command"; }, this);
+      rolltui_input_set_copy(in, [](void* ctx, const char* t, std::size_t n) { App& a = *static_cast<App*>(ctx); a.hint = a.copy_to_clipboard(StrView(t, n)) ? "copied" : "could not copy: no clipboard command"; }, this);
     // THE PATH LINE IS A PATH, NOT A PROMPT: nothing before it. THE FIND LINE says what it is,
     // and what to type, as a placeholder — one row, clipped, never a note that takes a second.
     set_prompt("path", 4, "", 0, "", 0);
@@ -2151,6 +1881,7 @@ struct App {
       if (cur != path_shown) {
         path_shown.assign(cur.data(), cur.size());
         if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4)) rolltui_input_set_text(in, cur.data(), cur.size());
+        if (term) rolltui_terminal_report_cwd(term, cur.data(), cur.size());  // a new tab or split opens where the person is
       }
       if (cur != crumbs_for) build_crumbs(cur);
     }
@@ -2291,22 +2022,8 @@ struct App {
     return "xdg-open";
 #endif
   }
-  // `path` opened by the system opener, which returns at once; whether it started.
-  static bool system_open(StrView path) {
-#if defined(_WIN32)
-    RolltuiStr native = rolltui::own(path);
-    native_slashes(native);
-    // The shell may hand the file to a COM extension, so COM is set up for the call.
-    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    const HINSTANCE r = ShellExecuteW(nullptr, L"open", wide(native).data(), nullptr, nullptr, SW_SHOWNORMAL);
-    if (SUCCEEDED(com)) CoUninitialize();
-    return reinterpret_cast<INT_PTR>(r) > 32;
-#else
-    const RolltuiStr p = rolltui::own(path);
-    const char* argv[] = {opener(), p.c_str(), nullptr};
-    return run_and_wait(argv, -1, nullptr);
-#endif
-  }
+  // `path` opened by the system's opener, which returns at once; whether it was handed over.
+  static bool system_open(StrView path) { return rolltui_open_with_system(path.data(), path.size(), nullptr) != 0; }
   // A HEADLESS RUN REACHES NO REAL OPENER AND NO REAL CLIPBOARD. A `--frame` run is a test, and
   // a test that presses Enter on a file must not put a window on someone's screen or a path on
   // their clipboard: without a stand-in named in the environment, both are refused and said.
@@ -2344,18 +2061,22 @@ struct App {
     for (const RolltuiStr& a : cmd) argv.push_back(a.c_str());
     argv.push_back(nullptr);
     // The editor gets the terminal itself, not the pipe `$(dirk)` is reading this process's
-    // stdout through: all three streams on the tty. Any other program gets the null device.
-    if (takes_terminal) rolltui_run_suspend(run);
-    const bool ran = run_and_wait(argv.data(), takes_terminal ? tty_fd : -1, nullptr);
-    if (takes_terminal) rolltui_run_resume(run);  // the editor's screen is gone: ours is drawn whole
-    return ran;
+    // stdout through: all three streams on the tty, and ours drawn whole when it returns. Any
+    // other program gets the null device, and is waited for (it hands the file over and returns).
+    if (takes_terminal) return rolltui_run_program(run, argv.data(), nullptr, nullptr, nullptr) != 0;
+    RolltuiChildOptions o{};
+    o.argv = argv.data();
+    o.mode = ROLLTUI_CHILD_QUIET;
+    RolltuiChild* c = rolltui_child_spawn(&o, nullptr);
+    if (!c) return false;
+    rolltui_child_wait(c, nullptr);
+    rolltui_child_free(c);
+    return true;
   }
-  // THE CLIPBOARD: `$DIRK_CLIPBOARD` fed the text on stdin, else the platform's (`system_clipboard`).
-  static bool copy_to_clipboard(StrView text) {
-    const char* cmd = std::getenv("DIRK_CLIPBOARD");
-    if (headless && !cmd) return false;
-    if (cmd && *cmd) return pipe_to(cmd, text);
-    return system_clipboard(text);
+  // THE CLIPBOARD: the library's (OSC 52 and the platform's tool), or `$ROLLTUI_CLIPBOARD` fed the text.
+  bool copy_to_clipboard(StrView text) const {
+    if (headless && !std::getenv("ROLLTUI_CLIPBOARD")) return false;
+    return rolltui_clipboard_copy(term, text.data(), text.size()) != 0;
   }
 
   void toggle_popup(const char* id) {

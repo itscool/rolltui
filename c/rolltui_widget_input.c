@@ -1630,7 +1630,7 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
   const int has_sel = in->sel.active && sb != se;
   /* A mask glyph is East Asian Ambiguous: where the terminal draws those two cells wide, an asterisk keeps the mask one cell. */
   const char* mask = aw ? "*" : "\xe2\x80\xa2";
-  const size_t mask_len = aw ? 1 : 3;
+  const size_t mask_len = strlen(mask);
   const RolltuiHighlight* hl;
   const RolltuiSyntaxRun* runs = NULL;
   size_t run_n = 0, run_at = 0, line = 0, line_begin = 0;

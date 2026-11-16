@@ -121,6 +121,11 @@ typedef struct GaugeBinding {
   void (*free_ctx)(void*);
 } GaugeBinding;
 
+typedef struct OutputBinding {
+  const RolltuiAnsiText* text; /* BORROWED: the host keeps it alive while it is bound */
+  unsigned char wrap;
+} OutputBinding;
+
 typedef struct SubmitBinding {
   RolltuiSubmitFn fn;
   void* ctx;
@@ -263,6 +268,7 @@ struct RolltuiWindows {
   RolltuiMap owned_documents;
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
+  RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
@@ -388,6 +394,8 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->gauges);
+  for (i = 0; i < rolltui_map_count(&w->outputs); ++i) rolltui_mem_free(rolltui_map_value_at(&w->outputs, i));
+  rolltui_map_release(&w->outputs);
   rolltui_message_log_release(&w->messages);
   for (i = 0; i < rolltui_map_count(&w->submits); ++i) {
     SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->submits, i);
@@ -740,6 +748,32 @@ int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, 
   if (!b || !b->fn) return 0;
   b->fn(b->ctx, out);
   return 1;
+}
+
+void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text) {
+  OutputBinding* b = (OutputBinding*)rolltui_map_get(&w->outputs, name, len);
+  if (!b) {
+    b = (OutputBinding*)rolltui_mem_alloc(sizeof *b);
+    b->wrap = 1;
+    rolltui_map_put(&w->outputs, name, len, b);
+  }
+  b->text = text;
+}
+
+void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t len, int wrap) {
+  OutputBinding* b = (OutputBinding*)rolltui_map_get(&w->outputs, name, len);
+  if (!b) {
+    b = (OutputBinding*)rolltui_mem_alloc(sizeof *b);
+    b->text = NULL;
+    rolltui_map_put(&w->outputs, name, len, b);
+  }
+  b->wrap = wrap != 0;
+}
+
+const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap) {
+  const OutputBinding* b = (const OutputBinding*)rolltui_map_get(&w->outputs, name, len);
+  if (wrap) *wrap = b ? b->wrap : 1;
+  return b ? b->text : NULL;
 }
 
 /* ---- messages ------------------------------------------------------------------------------ */

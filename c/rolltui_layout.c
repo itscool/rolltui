@@ -592,6 +592,7 @@ static const KindRow kKinds[] = {
     {"gauge", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a gauge the host binds"},
     /* FORBIDDEN: the history is the window table's own, which every `messages` window on the screen shows alike. */
     {"messages", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
+    {"output", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "another program's output the host binds"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 

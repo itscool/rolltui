@@ -247,7 +247,7 @@ int main() {
     write_file(stub / "clip", "#!/bin/sh\n{ printf 'clip '; cat; printf '\\n'; } >> '" + stublog.string() + "'\n");
     chmod((stub / "opener").c_str(), 0755);
     chmod((stub / "clip").c_str(), 0755);
-    const std::string stubs = "DIRK_OPEN='" + (stub / "opener").string() + "' DIRK_CLIPBOARD='" + (stub / "clip").string() + "' ";
+    const std::string stubs = "DIRK_OPEN='" + (stub / "opener").string() + "' ROLLTUI_CLIPBOARD='" + (stub / "clip").string() + "' ";
     auto stublines = [&]() { bool ok = false; const std::string t = read_file(stublog.string(), ok); fs::remove(stublog); return ok ? t : std::string(); };
     auto with_setting = [&](const std::string& json) {
       const fs::path cfg = scratch / "file-enter-cfg";

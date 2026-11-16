@@ -161,6 +161,7 @@ ROLLTUI_API(rolltui_run_terminal, PUBLIC)  /* dirktui reads the terminal's facts
 ROLLTUI_API(rolltui_run_invalidate, PUBLIC)  /* a keypress that asks for a repaint */
 ROLLTUI_API(rolltui_run_suspend, PUBLIC)  /* dirktui hands the terminal to an editor... */
 ROLLTUI_API(rolltui_run_resume, PUBLIC)  /* ...and takes it back, repainted whole: the half an app used to forget */
+ROLLTUI_API(rolltui_run_program, PUBLIC)  /* dirktui hands the terminal to an editor and to brew, and takes it back */
 
 /* ---- rolltui_diff.h — diff highlighting a host draws; default PUBLIC --------------------- */
 ROLLTUI_API(rolltui_diff_default_roles, PUBLIC)
@@ -689,6 +690,9 @@ ROLLTUI_API(rolltui_windows_bind_document, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_note, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_rows, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_gauge, PUBLIC)  /* KEPT: a host with work that takes a while shows how far it has got in a `gauge:` window */
+ROLLTUI_API(rolltui_windows_bind_output, PUBLIC)  /* KEPT: a host shows a program's output in an `output:` window (a build log, a previewer's pane) */
+ROLLTUI_API(rolltui_windows_set_output_wrap, PUBLIC)  /* KEPT: a log that scrolls sideways rather than wrapping */
+ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is bound */
 ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
 ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
 ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
@@ -749,6 +753,18 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+/* ---- rolltui_ansi.c — another program's coloured output, read as styled lines --- */
+ROLLTUI_API(rolltui_ansi_new, PUBLIC)  /* chat reads an approved command's output */
+ROLLTUI_API(rolltui_ansi_free, PUBLIC)
+ROLLTUI_API(rolltui_ansi_feed, PUBLIC)  /* KEPT: a host feeds output it read itself (a socket, a file being written) */
+ROLLTUI_API(rolltui_ansi_clear, PUBLIC)  /* KEPT: a host runs the command again into the same pane */
+ROLLTUI_API(rolltui_ansi_set_limit, PUBLIC)  /* chat keeps a command's newest 2000 lines */
+ROLLTUI_API(rolltui_ansi_line_count, PUBLIC)
+ROLLTUI_API(rolltui_ansi_line, PUBLIC)
+ROLLTUI_API(rolltui_ansi_rows, PUBLIC)  /* KEPT: a host's own widget scrolling over output */
+ROLLTUI_API(rolltui_ansi_width, PUBLIC)  /* KEPT: a host's own widget scrolling sideways */
+ROLLTUI_API(rolltui_ansi_draw, PUBLIC)  /* KEPT: a host's own widget drawing output (the output kind draws it for a window) */
+
 /* ---- rolltui_feedback.h — a gauge, a spinner, the message log and its toasts --- */
 ROLLTUI_API(rolltui_gauge_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiGauge it owns and C has no destructor */
 ROLLTUI_API(rolltui_gauge_draw, PUBLIC)  /* KEPT: a host draws a gauge inside its own widget: a status line, a row of a list */
@@ -1310,6 +1326,20 @@ ROLLTUI_API(rolltui_os_release, INTERNAL)
 ROLLTUI_API(rolltui_os_host_name, INTERNAL)
 ROLLTUI_API(rolltui_os_pread, INTERNAL)
 ROLLTUI_API(rolltui_os_monotonic_ms, INTERNAL)
+ROLLTUI_API(rolltui_os_child_spawn, INTERNAL)  /* a host starts a program through rolltui_child_spawn */
+ROLLTUI_API(rolltui_os_child_read, INTERNAL)
+ROLLTUI_API(rolltui_os_child_write, INTERNAL)
+ROLLTUI_API(rolltui_os_child_close_input, INTERNAL)
+ROLLTUI_API(rolltui_os_child_resize, INTERNAL)
+ROLLTUI_API(rolltui_os_child_done, INTERNAL)
+ROLLTUI_API(rolltui_os_child_stop, INTERNAL)
+ROLLTUI_API(rolltui_os_child_free, INTERNAL)
+ROLLTUI_API(rolltui_os_child_wait_terminal, INTERNAL)  /* a host runs one through rolltui_run_program */
+ROLLTUI_API(rolltui_os_open_with_system, INTERNAL)
+ROLLTUI_API(rolltui_os_clipboard_native, INTERNAL)  /* a host copies through rolltui_clipboard_copy */
+ROLLTUI_API(rolltui_os_open_terminal, INTERNAL)
+ROLLTUI_API(rolltui_os_close_terminal, INTERNAL)
+ROLLTUI_API(rolltui_os_hostname, INTERNAL)  /* OSC 7's host */
 ROLLTUI_API(rolltui_os_localtime, INTERNAL)
 ROLLTUI_API(rolltui_mutex_init, INTERNAL)
 ROLLTUI_API(rolltui_mutex_destroy, INTERNAL)
@@ -1351,6 +1381,24 @@ ROLLTUI_API(rolltui_fatal, INTERNAL)  /* every stop in the library: the terminal
 ROLLTUI_API(rolltui_terminal_wake, PUBLIC)
 ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)
+ROLLTUI_API(rolltui_terminal_set_title, PUBLIC)  /* chat names what the conversation is doing */
+ROLLTUI_API(rolltui_terminal_report_cwd, PUBLIC)  /* dirktui reports the folder it is in */
+ROLLTUI_API(rolltui_child_spawn, PUBLIC)  /* chat runs an approved command; dirktui checks for an update, hands a file to an app */
+ROLLTUI_API(rolltui_child_free, PUBLIC)
+ROLLTUI_API(rolltui_child_read, PUBLIC)  /* KEPT: a host reading a program's bytes as bytes (a binary, a protocol) rather than as lines */
+ROLLTUI_API(rolltui_child_pump, PUBLIC)  /* chat streams a command's output */
+ROLLTUI_API(rolltui_child_drained, PUBLIC)
+ROLLTUI_API(rolltui_child_write, PUBLIC)  /* KEPT: a host feeding a program's input (a line editor bound to it) */
+ROLLTUI_API(rolltui_child_close_input, PUBLIC)  /* KEPT: the end of what a host fed a program */
+ROLLTUI_API(rolltui_child_resize, PUBLIC)  /* KEPT: a PTY program follows the window it is shown in */
+ROLLTUI_API(rolltui_child_done, PUBLIC)
+ROLLTUI_API(rolltui_child_wait, PUBLIC)  /* dirktui waits for a program it hands a file to */
+ROLLTUI_API(rolltui_child_stop, PUBLIC)  /* chat stops a command on Escape */
+ROLLTUI_API(rolltui_child_wait_ms, PUBLIC)
+ROLLTUI_API(rolltui_open_with_system, PUBLIC)  /* dirktui's "open with the system" */
+ROLLTUI_API(rolltui_clipboard_copy, PUBLIC)  /* dirktui and the studio copy */
+ROLLTUI_API(rolltui_open_terminal, PUBLIC)  /* dirktui draws on the terminal while its stdout is the answer */
+ROLLTUI_API(rolltui_close_terminal, PUBLIC)
 
 /* rolltui_alloc.h + rolltui_map.h — two headers that were internal before the census covered
    every header under c/, and so were outside it. The census now takes in every

@@ -154,8 +154,8 @@
 // and the wheel always scroll the transcript; Home/End scroll it only while the input
 // is empty (otherwise they move the caret); Up/Down scroll only while the transcript
 // has focus. Mouse: click and drag select (auto-scrolling past an edge), double-click
-// a word, triple-click a line, release copies (the studio shows the byte count —
-// it has no clipboard of its own), Alt-C copies again, a click on a folded block's
+// a word, triple-click a line, release copies to the clipboard (OSC 52 and the
+// system's own; the status line shows the byte count), Alt-C copies again, a click on a folded block's
 // summary line unfolds it, Ctrl-O toggles the first fold in view; the same selection
 // gestures work inside the input. Every event goes through the window stack's
 // routing, so what the studio does is what a host would do. The status line shows
@@ -526,7 +526,7 @@ struct App {
     rolltui_menu_set_value(menu(), id.data(), id.size(), v.data(), v.size());
   }
   int submitted = 0;        // entries the input added to the document
-  RolltuiStr copied;        // the last copy (the studio has no clipboard)
+  RolltuiStr copied;        // the last copy, also on the clipboard while a terminal is there
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   // The clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
@@ -549,12 +549,15 @@ struct App {
   RolltuiDiffScratch* diff_scratch = rolltui_diff_scratch_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
 
-  // The studio has no clipboard: a copy is remembered so a test can assert it. One trampoline
-  // for both widgets, since both take the same {fn, ctx} pair.
+  // A copy goes to the clipboard while there is a terminal (a frame dump has none), and is
+  // remembered so a test can assert it. One trampoline for both widgets, since both take the same
+  // {fn, ctx} pair.
+  RolltuiTerminal* clip_term = nullptr;
   static void remember_copy(void* ctx, const char* text, std::size_t len) {
     App& self = *static_cast<App*>(ctx);
     self.copied.assign(text, len);
     self.copied_any = true;
+    if (self.clip_term) rolltui_clipboard_copy(self.clip_term, text, len);
   }
 
   App() {
@@ -2867,6 +2870,7 @@ int main(int argc, char** argv) {
     App& a = *x.app;
     apply_terminal_facts(a, run);
     RolltuiTerminal* term = rolltui_run_terminal(run);
+    a.clip_term = term;
     a.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
     a.load_layout_arg();
     a.sync_look();

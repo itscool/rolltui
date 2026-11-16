@@ -814,6 +814,7 @@ typedef struct RolltuiWindows RolltuiWindows;
 typedef struct RolltuiWindowStack RolltuiWindowStack;
 typedef struct RolltuiTerminal RolltuiTerminal;
 typedef struct RolltuiSwap RolltuiSwap;
+typedef struct RolltuiAnsiText RolltuiAnsiText;
 typedef struct RolltuiBindings RolltuiBindings;
 typedef struct RolltuiLayout RolltuiLayout;
 typedef struct RolltuiLayoutNode RolltuiLayoutNode;
@@ -3291,6 +3292,13 @@ void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, 
 void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,
                                 void (*free_ctx)(void*));
 
+/* output: another program's output (`RolltuiAnsiText`, filled by `rolltui_child_pump` or `rolltui_ansi_feed`) shown in an
+ * `output:<name>` window, which follows the end as it grows unless it was scrolled back. `text` is a BORROW the host keeps alive
+ * while it is bound; binding again replaces it. Lines wrap at the window's edge unless `set_output_wrap` says 0, when the window
+ * scrolls sideways (the wheel's left and right). */
+void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text);
+void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t len, int wrap);
+
 /* ---- progress a host draws itself ---------------------------------------------------------- */
 /* A GAUGE ON ONE ROW, as a `gauge:` window draws it, for a host's own widget (a status line, a row of a list): the label, a bar of
  * eighth blocks and the percent, the label dropped first when the row is narrow; a spinner and the label while the fraction is below
@@ -3440,6 +3448,36 @@ void rolltui_diff_scratch_free(RolltuiDiffScratch* s);
 size_t rolltui_diff_spans(RolltuiDiffScratch* s, const char* lang, size_t lang_len, const void* block,
                           size_t line_count, RolltuiDiffLineFn line_at, size_t index,
                           const RolltuiDiffRoles* roles, RolltuiDiffSpan* out, size_t out_cap);
+/* ========================================================================================
+ * ansi — another program's coloured output, read as styled lines
+ * ======================================================================================== */
+
+/* WHAT A PROGRAM WROTE TO A TERMINAL, as lines to draw: `bat`, `delta`, `ls --color`, a log, a man page. Text, newlines, tabs (to
+ * stops every 8 columns), SGR (16, 256 and 24-bit colour, bold, dim, italic, underline, reverse) and backspace overstrike (`X\bX`
+ * bold, `_\bX` underlined) are read; a carriage return not followed by a newline writes the line again, so a progress counter shows
+ * its last state. Everything else a terminal would act on (cursor moves, erase-in-display, OSC, DCS, APC) is swallowed: the output
+ * reads as what it says and never commands this screen. A sequence or a character split across two feeds is joined. OWNED; the
+ * lines are a ring capped at `rolltui_ansi_set_limit` (ROLLTUI_ANSI_DEFAULT_LIMIT), so a log keeps its newest. */
+#define ROLLTUI_ANSI_DEFAULT_LIMIT 100000
+RolltuiAnsiText* rolltui_ansi_new(void);
+void rolltui_ansi_free(RolltuiAnsiText* t); /* a no-op on NULL */
+void rolltui_ansi_feed(RolltuiAnsiText* t, const char* bytes, size_t len);
+void rolltui_ansi_clear(RolltuiAnsiText* t);
+/* 0: no cap. Lowering it drops the oldest lines at once. */
+void rolltui_ansi_set_limit(RolltuiAnsiText* t, size_t max_lines);
+/* The lines so far; the one being written counts once it has text. */
+size_t rolltui_ansi_line_count(const RolltuiAnsiText* t);
+/* Line `i`'s text without its styles: a BORROW valid until the next feed. "" past the end. */
+const char* rolltui_ansi_line(const RolltuiAnsiText* t, size_t i, size_t* len);
+/* How many rows the text takes wrapped at `width`, and the widest line's columns: what a view scrolls over. */
+size_t rolltui_ansi_rows(const RolltuiAnsiText* t, int width, int ambiguous_wide);
+int rolltui_ansi_width(const RolltuiAnsiText* t);
+/* DRAWS THE TEXT into `area`. `wrap` 1: lines wrap at the area's edge and `first` counts rows; 0: each line is one row, `first`
+ * counts lines and `left` columns are scrolled off the left. A cell with no colour of its own takes `base`'s, so the program's
+ * default colours are the theme's; the frame's depth maps the rest down at present. Returns the rows drawn. */
+int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect area, size_t first, int left, int wrap,
+                      RolltuiStyle base, int ambiguous_wide);
+
 /* ========================================================================================
  * marker — the "N more" rule
  * ======================================================================================== */
@@ -4022,6 +4060,13 @@ void rolltui_terminal_wake(RolltuiTerminal* t);
 /* Writes every byte (loops on partial writes and EINTR). */
 void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
 
+/* THE WINDOW'S TITLE (OSC 2), the terminal's own pushed first (XTWINOPS 22) and put back when the terminal is left or handed to a
+ * program, and set again when it is taken back. Control characters are dropped; only a change is written. Inside tmux it names the
+ * pane. */
+void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len);
+/* THE WORKING DIRECTORY reported (OSC 7, file://host/path, percent-encoded), so a new tab or split opens there. */
+void rolltui_terminal_report_cwd(RolltuiTerminal* t, const char* path, size_t len);
+
 /* ---- background colour (light/dark auto-detect) --------------------------------------------- */
 /* Asks the terminal for its background colour (OSC 11) and waits up to timeout_ms, writing it to `*out`. Returns 0 on a pipe, on no
  * answer in time, or on an unparseable answer; the caller treats every 0 as "dark". Bytes that arrive and are not the reply (a user
@@ -4166,6 +4211,77 @@ void rolltui_run_invalidate(RolltuiRun* run);
  * own modes; the child runs on the same descriptors; `resume` enters again AND repaints the whole screen, because what was on it is gone. */
 void rolltui_run_suspend(RolltuiRun* run);
 void rolltui_run_resume(RolltuiRun* run);
+
+/* ========================================================================================
+ * processes — other programs, run from here, and what they say
+ * ======================================================================================== */
+
+/* A PROGRAM THIS ONE STARTED, read and written without waiting: a previewer, `git`, a build, a shell command. `argv[0]` is found on
+ * PATH (and, on Windows, with PATHEXT's extensions; a script runs through cmd.exe, which refuses an argument holding `%` or `"`).
+ *   PIPES  stdin a pipe the host writes; stdout and stderr one stream the host reads. The program has its own process group, so
+ *          stopping it stops what it started.
+ *   PTY    a pseudo-terminal `cols` x `rows`, so the program writes colour and progress as it would to a terminal; resized with
+ *          `rolltui_child_resize`. On Windows it is pipes with COLUMNS and LINES set, because ConPTY reorders what a program wrote.
+ *   QUIET  the null device for all three streams, and its own session: Ctrl-C here never reaches it, and freeing the handle lets it
+ *          go rather than stopping it (a background check, a viewer launched for a file).
+ * OWNED: `rolltui_child_free` stops a PIPES or PTY program still running. */
+typedef struct RolltuiChild RolltuiChild;
+#define ROLLTUI_CHILD_PIPES 0
+#define ROLLTUI_CHILD_PTY 1
+#define ROLLTUI_CHILD_QUIET 2
+typedef struct RolltuiChildOptions {
+  const char* const* argv ROLLTUI_DEFAULT(ROLLTUI_NULL); /* NULL-terminated; BORROWED for the call */
+  const char* cwd ROLLTUI_DEFAULT(ROLLTUI_NULL);         /* NULL: this program's */
+  const char* const* env ROLLTUI_DEFAULT(ROLLTUI_NULL);  /* "NAME=value" entries over this program's environment, NULL-terminated */
+  unsigned char mode ROLLTUI_DEFAULT(ROLLTUI_CHILD_PIPES);
+  int cols ROLLTUI_DEFAULT(80), rows ROLLTUI_DEFAULT(24); /* PTY */
+} RolltuiChildOptions;
+/* NULL when it could not start, with the reason in `*err` (may be NULL): "not found: bat", "git: Permission denied". */
+RolltuiChild* rolltui_child_spawn(const RolltuiChildOptions* o, RolltuiStr* err);
+void rolltui_child_free(RolltuiChild* c); /* a no-op on NULL */
+/* What the program wrote since the last read, without waiting: up to `cap` bytes, 0 when nothing has arrived. */
+size_t rolltui_child_read(RolltuiChild* c, char* buf, size_t cap);
+/* READS ONLY WHAT A VIEW SHOWS: everything that has arrived, fed to `t`, stopping once `t` holds `max_lines` lines (0: no stop). A
+ * program writing more waits on its full pipe, and the rest is read when the view asks for more lines. Returns the bytes read. */
+size_t rolltui_child_pump(RolltuiChild* c, RolltuiAnsiText* t, size_t max_lines);
+/* 1 once the program has closed its output and everything it wrote has been read. */
+int rolltui_child_drained(const RolltuiChild* c);
+/* Writes all of `bytes` to the program's input (it waits while the pipe is full); 0 when the program is gone. */
+int rolltui_child_write(RolltuiChild* c, const char* bytes, size_t len);
+/* The end of the program's input: a pipe closed, a pty's ^D. */
+void rolltui_child_close_input(RolltuiChild* c);
+void rolltui_child_resize(RolltuiChild* c, int cols, int rows);
+/* 1 once the program has ended, asked without waiting; `*status` (may be NULL) its exit status, 128 + the signal that ended it. */
+int rolltui_child_done(RolltuiChild* c, int* status);
+/* Waits until the program has ended (its output is not read meanwhile: a PIPES or PTY program that fills its pipe waits too, so read
+ * what it writes first). 1 when it ended, `*status` as `rolltui_child_done` gives it. */
+int rolltui_child_wait(RolltuiChild* c, int* status);
+/* Ends it: SIGTERM to its group, and SIGKILL 200 ms later if it is still there (TerminateProcess on Windows). */
+void rolltui_child_stop(RolltuiChild* c);
+/* How long a render should wait while a program is running and its output is wanted: a short interval, so what it writes is drawn
+ * as it arrives. -1 once it is done and drained. */
+int rolltui_child_wait_ms(const RolltuiChild* c);
+
+/* A FILE OR A URL opened with what the system opens it with (`open`, `xdg-open`, the shell's ShellExecuteW), which returns at once.
+ * 1 when it was handed over; 0 with the reason in `*err` (may be NULL). */
+int rolltui_open_with_system(const char* target, size_t len, RolltuiStr* err);
+
+/* THE CLIPBOARD set to `text`, two ways at once: OSC 52 through `t` (the terminal sets it, the one way that reaches the person's own
+ * machine over ssh; inside tmux it is passed through; not sent above 74994 encoded bytes, the most terminals take), and the first
+ * native tool that works (pbcopy; wl-copy, xclip or xsel; the Windows clipboard), or the command `$ROLLTUI_CLIPBOARD` names, which is
+ * fed the text. 1 when either took it. `t` may be NULL: the native tool alone. */
+int rolltui_clipboard_copy(RolltuiTerminal* t, const char* text, size_t len);
+
+/* THE CONTROLLING TERMINAL by name (/dev/tty; the console's CONIN$ and CONOUT$), whatever stdin and stdout are: for a program whose
+ * stdout is its answer to a shell (a file chooser, cd-on-exit), which draws here and prints its answer there. 1 with the descriptors
+ * to hand `rolltui_run`; `rolltui_close_terminal` closes them. */
+int rolltui_open_terminal(int* in_fd, int* out_fd);
+void rolltui_close_terminal(int in_fd, int out_fd);
+
+/* A PROGRAM THAT TAKES THE TERMINAL (an editor, a pager), run from inside `rolltui_run`: the terminal is handed to it, this process
+ * waits while it runs (ignoring the Ctrl-C it delivers to the program), and the terminal is taken back and the screen repainted.
+ * 1 when it started; `*status` (may be NULL) its exit status; 0 with the reason in `*err` (may be NULL). */
+int rolltui_run_program(RolltuiRun* run, const char* const* argv, const char* cwd, int* status, RolltuiStr* err);
 
 /* ========================================================================================
  * RELEASE — and the number that proves you did

@@ -965,6 +965,123 @@ static const RolltuiWidgetPlugin kMessagesPlugin = {
     messages_ctx_scroll_extent, messages_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */
 };
 
+
+/* ============================================================================================
+ * output:<source> — another program's output, following its end.
+ * ============================================================================================ */
+
+typedef struct RolltuiOutputCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  RolltuiRect area;
+  size_t top;   /* the first row (wrapped) or line (not) in view */
+  size_t total; /* rows or lines there are */
+  int left;     /* columns scrolled off the left, not wrapped */
+  int width;    /* the widest line, not wrapped */
+  int follow;   /* the view is at the end, and stays there as the text grows */
+  int wrap;
+  RolltuiScrollTextActions actions;
+} RolltuiOutputCtx;
+
+static const RolltuiAnsiText* output_text(RolltuiOutputCtx* o) {
+  return rolltui_windows_output(o->w, o->source.p ? o->source.p : "", o->source.n, &o->wrap);
+}
+
+static int output_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  if (output_text(o)) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &o->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+
+static size_t output_max_top(const RolltuiOutputCtx* o) {
+  const size_t h = (size_t)(o->area.h > 0 ? o->area.h : 1);
+  return o->total > h ? o->total - h : 0;
+}
+
+static void output_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  const RolltuiAnsiText* t = output_text(o);
+  const RolltuiWidgetEnv* env = rolltui_windows_env(o->w);
+  const int was_end = o->follow || o->top >= output_max_top(o);
+  rolltui_content_rect(rn, &o->area);
+  if (!t) {
+    o->total = 0;
+    return;
+  }
+  o->total = o->wrap ? rolltui_ansi_rows(t, o->area.w, env->ambiguous_wide) : rolltui_ansi_line_count(t);
+  o->width = o->wrap ? 0 : rolltui_ansi_width(t);
+  if (was_end) o->top = output_max_top(o); /* at the end, it stays there as the program writes more */
+  if (o->top > output_max_top(o)) o->top = output_max_top(o);
+  o->follow = o->top >= output_max_top(o);
+  if (o->wrap) o->left = 0;
+}
+
+static void output_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  const RolltuiAnsiText* t;
+  const RolltuiWidgetEnv* env = rolltui_windows_env(o->w);
+  const RolltuiStyle* styles = rolltui_windows_styles(o->w);
+  RolltuiStyle base;
+  output_ctx_layout(ctx, rn);
+  t = output_text(o);
+  if (!t || o->area.w <= 0 || o->area.h <= 0) return;
+  base = styles[rolltui_windows_builtin_roles(o->w)->text];
+  base.bg = scroll_text_ground(f, o->area.x, o->area.y); /* the program's default colours are the window's own */
+  rolltui_ansi_draw(t, f, o->area, o->top, o->left, o->wrap, base, env->ambiguous_wide);
+}
+
+static int output_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  if (e->kind == ROLLTUI_EVENT_MOUSE && !o->wrap && (e->mouse.kind == 6 || e->mouse.kind == 7)) { /* wheel left and right */
+    const int max_left = o->width > o->area.w ? o->width - o->area.w : 0;
+    o->left += e->mouse.kind == 6 ? -4 : 4;
+    if (o->left < 0) o->left = 0;
+    if (o->left > max_left) o->left = max_left;
+    return 1;
+  }
+  if (e->kind == ROLLTUI_EVENT_KEY) {
+    int top = (int)o->top;
+    if (rolltui_scroll_by_action(&o->actions, rolltui_windows_bindings(o->w), &e->key, o->area.h, (int)o->total, &top)) {
+      o->top = (size_t)top;
+      o->follow = o->top >= output_max_top(o);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int output_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  out->first = o->top;
+  out->visible = (size_t)(o->area.h > 0 ? o->area.h : 0);
+  out->total = o->total;
+  return 1;
+}
+
+static int output_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  o->top = first > output_max_top(o) ? output_max_top(o) : first;
+  o->follow = o->top >= output_max_top(o);
+  return 1;
+}
+
+static void output_ctx_destroy(void* ctx) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  rolltui_str_free(&o->source);
+  rolltui_mem_free(o);
+}
+
+static const RolltuiWidgetPlugin kOutputPlugin = {
+    output_ctx_destroy, output_ctx_layout, output_ctx_draw, output_ctx_problem, NULL, NULL, output_ctx_handle,
+    output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */
+};
+
 /* ============================================================================================
  * the error panel — the window that could not be understood, never blank (Layout.hpp).
  * ============================================================================================ */
@@ -1104,6 +1221,36 @@ static RolltuiWidget gauge_widget_factory(void* c, RolltuiWindows* w, const char
   gc->draw = rolltui_draw_scratch_new();
   out.vt = &kGaugePlugin;
   out.ctx = gc;
+  return out;
+}
+
+static RolltuiWidget output_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiOutputCtx* o;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  o = (RolltuiOutputCtx*)rolltui_mem_alloc(sizeof *o);
+  memset(o, 0, sizeof *o);
+  o->w = w;
+  o->wrap = 1;
+  o->follow = 1;
+  rolltui_str_set(&o->source, source, source_len);
+  o->actions = *rolltui_windows_scroll_text_actions(w);
+  out.vt = &kOutputPlugin;
+  out.ctx = o;
   return out;
 }
 
@@ -1402,6 +1549,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "filepicker", 10, picker_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "gauge", 5, gauge_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "messages", 8, messages_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "output", 6, output_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }

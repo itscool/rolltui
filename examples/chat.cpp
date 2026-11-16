@@ -415,7 +415,6 @@ struct App {
   RolltuiStr approval_cmd;     // non-empty while the assistant waits for a yes or a no
   RolltuiStr hint;             // one line the app has to say, under the prompt
   bool editor_wanted = false;
-  RolltuiStr title_written;
   int details_top = 0;
 
   bool headless = false;  // a --frame dump: one moment, drawn still
@@ -433,6 +432,8 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_child_free(running);  // a command still running is stopped
+    rolltui_ansi_free(running_out);
     responder.stop();
     rolltui_settings_free(settings);
     rolltui_bindings_store_free(keys_store);
@@ -714,13 +715,69 @@ struct App {
     if (approval_cmd.empty()) return;
     const RolltuiStr cmd = std::move(approval_cmd);
     approval_cmd.clear();
-    if (yes) start_reply(rolltui::format("Ran `%s` (pretend: nothing ran). It exited 0.", cmd.c_str()));
+    if (yes && headless) start_reply(rolltui::format("Ran `%s` (pretend: a frame dump runs nothing). It exited 0.", cmd.c_str()));
+    else if (yes) run_approved(cmd);
     else say_note(rolltui::format("declined: %s", cmd.c_str()));
     if (!replying && !queued.empty()) {
       RolltuiStr next = std::move(queued.front());
       queued.erase(queued.begin());
       send(next);
     }
+  }
+
+  // ---- a command the person approved -----------------------------------------------------------
+
+  // IT RUNS FOR REAL, its output streaming into the conversation as a code block as it arrives, the exit status said at the end.
+  // Esc stops it. The output is read as a terminal would show it (colour and cursor moves dropped, a progress line's last state),
+  // and the newest 2000 lines are kept.
+  RolltuiChild* running = nullptr;
+  RolltuiAnsiText* running_out = nullptr;
+  RolltuiStr running_id, running_cmd;
+  void run_approved(const RolltuiStr& cmd) {
+#if defined(_WIN32)
+    const char* argv[] = {"cmd", "/d", "/s", "/c", cmd.c_str(), nullptr};
+#else
+    const char* argv[] = {"/bin/sh", "-c", cmd.c_str(), nullptr};
+#endif
+    if (running) return;
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    RolltuiStr err;
+    running = rolltui_child_spawn(&o, &err);
+    if (!running) {
+      rolltui_windows_post(windows, ROLLTUI_MESSAGE_ERROR, err.data(), err.size(), now);
+      return;
+    }
+    running_out = rolltui_ansi_new();
+    rolltui_ansi_set_limit(running_out, 2000);
+    running_cmd = rolltui::own(cmd);
+    running_id = rolltui::own(add_entry(rolltui::format("`$ %s`", cmd.c_str()), true, ROLLTUI_ROLE_TEXT).id);
+  }
+  void pump_running() {
+    if (!running) return;
+    rolltui_child_pump(running, running_out, 0);
+    int status = -1;
+    const bool done = rolltui_child_drained(running) && rolltui_child_done(running, &status);
+    RolltuiStr text = rolltui::format("`$ %s`\n\n````text\n", running_cmd.c_str());
+    for (std::size_t i = 0, n = rolltui_ansi_line_count(running_out); i < n; ++i) {
+      std::size_t len = 0;
+      const char* p = rolltui_ansi_line(running_out, i, &len);
+      text += StrView(p, len);
+      text += "\n";
+    }
+    text += "````";
+    if (done) {
+      text += status >= 128 ? rolltui::format("\n\nstopped (signal %d)", status - 128) : rolltui::format("\n\nexit %d", status);
+      rolltui_child_free(running);
+      running = nullptr;
+      rolltui_ansi_free(running_out);
+      running_out = nullptr;
+    }
+    for (std::size_t i = doc.size(); i-- > 0;)
+      if (doc[i].id == running_id) {
+        if (doc[i].text != text) doc[i].text = std::move(text);
+        break;
+      }
   }
 
   // ---- the slash commands --------------------------------------------------------------------
@@ -1142,6 +1199,7 @@ struct App {
 
   RolltuiStr window_note;
   void prepare() {
+    pump_running();
     sync_stores();
     choose_shown();
     take_picked_file();
@@ -1179,6 +1237,7 @@ struct App {
   int poll_timeout_ms(const RolltuiFrame* f) {
     int t = rolltui_transcript_wants_tick(transcript()) ? 50 : -1;
     if (toast_wait >= 0) t = t < 0 ? toast_wait : std::min(t, toast_wait);
+    if (const int r = rolltui_child_wait_ms(running); running && r >= 0) t = t < 0 ? r : std::min(t, r);
     if (f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       const int tick = rolltui_effects_tick_ms(ctx, f, effects);
       if (tick > 0) t = t < 0 ? tick : std::min(t, tick);
@@ -1195,11 +1254,9 @@ struct App {
   }
   void write_title() {
     const RolltuiStr t = title();
-    if (t == title_written) return;
-    const RolltuiStr bytes = RolltuiStr("\x1b]0;") + t + "\x07";
-    rolltui_terminal_write(term, bytes.data(), bytes.size());
-    title_written = rolltui::own(t);
+    rolltui_terminal_set_title(term, t.data(), t.size());  // only a change is written; the terminal's own title comes back on leaving
   }
+
 
   // ---- the sources this app binds ------------------------------------------------------------
 
@@ -1399,6 +1456,7 @@ struct App {
       const bool printable = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt;
       const bool typing = printable && (!draft().empty() || popup);
       if (act == "app.repaint") { if (swap) rolltui_swap_invalidate(swap); return; }
+      if (act == "app.stop" && running && !popup) { rolltui_child_stop(running); return; }
       if (act == "app.stop" && replying && !popup) { finish_reply(true); return; }
       if (!typing) {
         if (act == "app.editor" && !popup) { editor_wanted = true; return; }
@@ -1538,14 +1596,14 @@ struct App {
   }
 
   // A FINISHED ENTRY LEAVES THE REGION for the terminal's own history, drawn as the transcript draws it, where it stays as ordinary
-  // output the person scrolls and selects with the terminal's own means. Entries go in order, so one still streaming holds back
-  // those after it; `all` commits that one too (leaving: the conversation stays on the screen).
+  // output the person scrolls and selects with the terminal's own means. Entries go in order, so one still streaming (a reply, or a
+  // command still writing) holds back those after it; `all` commits that one too (leaving: the conversation stays on the screen).
   void commit_finished(bool all) {
     if (!inline_mode || !term) return;
     prepare();  // drawn as the layout on screen now draws it, not the one before a switch
     RolltuiTranscript* tr = transcript();
     if (!tr) return;
-    while (doc.size() > 0 && (all || !(replying && open_entry == 0))) {
+    while (doc.size() > 0 && (all || !(replying && open_entry == 0)) && (all || !(running && doc[0].id == running_id))) {
       RolltuiFrame* lines = rolltui_transcript_entry_frame(tr, &doc[0], w, styles, style(ROLLTUI_ROLE_BACKGROUND));
       rolltui_terminal_commit(term, lines);
       rolltui_frame_free(lines);
