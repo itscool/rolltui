@@ -978,6 +978,10 @@ int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t le
 
 /* A SEQUENCE in a bindings file is up to this many chords, apart by spaces: `"g g"`, `"ctrl+x ctrl+s"`. */
 #define ROLLTUI_SEQUENCE_MAX 4
+/* Where a key leaves a sequence: no part of one, on the way to one, or the end of one (`rolltui_windows_app_key`). */
+#define ROLLTUI_SEQUENCE_NONE 0
+#define ROLLTUI_SEQUENCE_PREFIX 1
+#define ROLLTUI_SEQUENCE_DONE 2
 
 /* The action of `scope` this chord serves, or NULL: a row nothing declares never answers, nor does a chord the ACTIVE protocol cannot
  * deliver (both are kept in the table and written back, so neither may claim a key). A BORROW, as above. */
@@ -3509,7 +3513,7 @@ size_t rolltui_diff_spans(RolltuiDiffScratch* s, const char* lang, size_t lang_l
  * ======================================================================================== */
 
 /* WHAT A PROGRAM WROTE TO A TERMINAL, as lines to draw: `bat`, `delta`, `ls --color`, a log, a man page. Text, newlines, tabs (to
- * stops every 8 columns), SGR (16, 256 and 24-bit colour, bold, dim, italic, underline, reverse) and backspace overstrike (`X\bX`
+ * stops every 8 columns), SGR (16, 256 and 24-bit colour, bold, dim, italic, underline, reverse, strikethrough) and backspace overstrike (`X\bX`
  * bold, `_\bX` underlined) are read; a carriage return not followed by a newline writes the line again, so a progress counter shows
  * its last state. Everything else a terminal would act on (cursor moves, erase-in-display, OSC, DCS, APC) is swallowed: the output
  * reads as what it says and never commands this screen. A sequence or a character split across two feeds is joined. OWNED; the
@@ -3941,6 +3945,12 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
  * many there are, 0 when nothing is on the way. A status line shows it as vim does. `rolltui_windows_draw_toasts` draws, after a
  * moment, a panel of what can follow. */
 size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text);
+/* A HOST'S OWN SCOPE (`app`) with the sequences a window's has: call it for each key before routing the key to a window. DONE: the key
+ * finished a chord or a sequence bound in `scope`, and `*action` (may be NULL) names it for the host to do. PREFIX: the key is on the
+ * way to one (or Escape let go of one), and nothing else takes it. NONE: `scope` takes no part in it; route it on. A sequence already
+ * on the way in a window's scope is left to that window. */
+int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t scope_len, const char** action,
+                            size_t* action_len);
 
 /* ========================================================================================
  * filepicker — the column browser, and directory reading a host can use on its own

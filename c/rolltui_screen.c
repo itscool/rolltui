@@ -581,3 +581,4 @@ int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b) {
 }
 
 void rolltui_frame_ground(const RolltuiFrame* f, RolltuiStyle* out) { *out = f->fill; }
+void rolltui_frame_set_ground(RolltuiFrame* f, RolltuiStyle ground) { f->fill = ground; }

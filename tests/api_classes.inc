@@ -106,6 +106,7 @@ ROLLTUI_API(rolltui_frame_text_width, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_fields, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_text, PUBLIC)
 ROLLTUI_API(rolltui_frame_tint, INTERNAL)
+ROLLTUI_API(rolltui_style_on_window, INTERNAL)  /* plain text in a panel sits on the panel: the list, the menu, the scrollbar */
 ROLLTUI_API(rolltui_frame_shade, INTERNAL)
 ROLLTUI_API(rolltui_frame_unmark_rect, INTERNAL)
 
@@ -120,6 +121,7 @@ ROLLTUI_API(rolltui_swap_pending, INTERNAL)
 ROLLTUI_API(rolltui_render_row_extent, INTERNAL)  /* an inline region's rows, measured for a resize */
 ROLLTUI_API(rolltui_render_lines, INTERNAL)  /* an inline region's committed rows */
 ROLLTUI_API(rolltui_frame_ground, INTERNAL)  /* the fill an inline region draws as the terminal's own background */
+ROLLTUI_API(rolltui_frame_set_ground, INTERNAL)  /* the compose gives each window its own ground while it draws */
 ROLLTUI_API(rolltui_frame_same_cell, INTERNAL)  /* the diff's compare: one memcmp for nearly every cell */
 ROLLTUI_API(rolltui_frame_row_hash, INTERNAL)  /* the diff finds a block of rows that moved */
 ROLLTUI_API(rolltui_frame_rows_same, INTERNAL)  /* the diff skips a row that did not change, in one compare */
@@ -763,6 +765,7 @@ ROLLTUI_API(rolltui_windows_env, INTERNAL)  /* only the library's own .c reaches
 ROLLTUI_API(rolltui_windows_free, PUBLIC)
 ROLLTUI_API(rolltui_windows_handle, PUBLIC)
 ROLLTUI_API(rolltui_windows_pending_keys, PUBLIC)  /* a status line shows the keys on the way, as vim does */
+ROLLTUI_API(rolltui_windows_app_key, PUBLIC)  /* a host's own scope gets chords and sequences: `ctrl+x ctrl+s` in dirktui, paint, chat, the tour */
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */

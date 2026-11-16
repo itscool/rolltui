@@ -46,7 +46,7 @@ void test_decoder() {
 // ---- the child: a run whose screen says what it was told ----------------------------------------------------------------------
 
 struct Child {
-  int frames = 0, focused = -1;
+  int frames = 0, focused = -1, focus_calls = 0;
   std::string facts = "none";
   RolltuiDrawScratch* ds = nullptr;
 };
@@ -59,7 +59,8 @@ int child_main() {
   app.render = [](void* ctx, RolltuiRun*, RolltuiFrame* f, int w, int, unsigned long long) {
     Child& ch = *static_cast<Child*>(ctx);
     char line[128];
-    const int n = std::snprintf(line, sizeof line, "frame %d focus %d facts %s", ++ch.frames, ch.focused, ch.facts.c_str());
+    const int n = std::snprintf(line, sizeof line, "frame %d focus %d calls %d facts %s", ++ch.frames, ch.focused, ch.focus_calls,
+                                ch.facts.c_str());
     rolltui_frame_put_text(f, ch.ds, 0, 0, line, static_cast<std::size_t>(n), RolltuiStyle{}, w, 0, 0);
     return -1;
   };
@@ -72,7 +73,10 @@ int child_main() {
       if (stopped) (void)!::write(2, m, sizeof m - 1);
     }
   };
-  app.focus = [](void* ctx, RolltuiRun*, int focused) { static_cast<Child*>(ctx)->focused = focused; };
+  app.focus = [](void* ctx, RolltuiRun*, int focused) {
+    static_cast<Child*>(ctx)->focused = focused;
+    ++static_cast<Child*>(ctx)->focus_calls;
+  };
   app.facts_changed = [](void* ctx, RolltuiRun* run) {
     RolltuiTermFacts f{};
     rolltui_terminal_facts(rolltui_run_terminal(run), &f);
@@ -140,8 +144,11 @@ void test_live() {
   check(t.all.find("\x1b[?1004h") != std::string::npos && t.all.find("\x1b[?2031h") != std::string::npos,
         "entering asks the terminal to report focus and light-or-dark as they change");
   std::size_t at = t.all.size();
+  t.send("\x1b[I"); /* what a terminal answers mode 1004 with: the focus it already has */
+  t.pump(200);
   t.send("\x1b[O");
-  check(t.wait_shown("focus 0", 3000), "the window losing focus reaches the app's focus hook");
+  check(t.wait_shown("focus 0 calls 1", 3000),
+        "the window losing focus reaches the app's focus hook, and the report of the focus it already had did not");
   at = t.all.size();
   t.send("\x1b[I");
   check(t.wait_shown("focus 1", 3000), "…and gaining it again");
@@ -157,6 +164,18 @@ void test_live() {
   if (::waitpid(t.pid, &st, WUNTRACED | WNOHANG) == t.pid && WIFSTOPPED(st)) ::kill(t.pid, SIGCONT);
   const bool back = t.wait_for("\x1b[?1049h", at, 3000) && t.wait_for("frame", t.all.find("\x1b[?1049h", at), 3000);
   check(left && back, "a stop sent from outside leaves the terminal as it was found, and the continued program enters it again and draws");
+  {
+    // NOTHING IS DRAWN ON THE SHELL'S SCREEN: between leaving and entering again, no cell of a frame (no cursor move to a cell).
+    const std::size_t l = t.all.find("\x1b[?1049l", at), e = t.all.find("\x1b[?1049h", at);
+    const std::string between = l != std::string::npos && e != std::string::npos && e > l ? t.all.substr(l, e - l) : std::string("?");
+    bool cup = false;
+    for (std::size_t p = between.find("\x1b["); p != std::string::npos; p = between.find("\x1b[", p + 1)) {
+      std::size_t q = p + 2;
+      while (q < between.size() && ((between[q] >= '0' && between[q] <= '9') || between[q] == ';')) ++q;
+      cup = cup || (q < between.size() && between[q] == 'H' && q > p + 2);
+    }
+    check(between != "?" && !cup, "…and no frame reaches the screen the shell has back before it is entered again");
+  }
   at = t.all.size();
   t.send("z");
   const bool job = t.wait_for("\x1b[?1049l", at, 3000);

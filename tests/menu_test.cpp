@@ -402,6 +402,15 @@ int call_validator(void* ctx, const char* name, std::size_t nlen, const char* te
   return 0;
 }
 
+// A DISABLED ROW: the muted role's ink on the menu's own ground, so it sits on a panel the menu is drawn in.
+template <class T>
+RolltuiStyle disabled_row(const T& theme) {
+  RolltuiStyle st = theme.style(Role::text_muted);
+  const RolltuiStyleColorRaw screen = theme.style(Role::background).bg;
+  if (st.bg.kind == RolltuiStyleColorRaw::Kind::None || st.bg == screen) st.bg = theme.style(Role::menu_item).bg;
+  return st;
+}
+
 RolltuiDrawScratch* draw_scratch() {
   static std::unique_ptr<RolltuiDrawScratch, void (*)(RolltuiDrawScratch*)> s(rolltui_draw_scratch_new(),
                                                                               rolltui_draw_scratch_free);
@@ -888,7 +897,7 @@ int main() {
     Frame d(30, 8);
     rolltui_menu_set_hover(m.raw(), 1, 5, 5);
     m.draw(d, theme, true);
-    check(d.at(0, 5).style == theme.style(Role::text_muted), "a disabled row is not lit: a click there does nothing");
+    check(d.at(0, 5).style == disabled_row(theme), "a disabled row is not lit: a click there does nothing");
     Frame o(30, 8);
     rolltui_menu_set_hover(m.raw(), 0, 5, 2);
     m.draw(o, theme, true);
@@ -1001,8 +1010,8 @@ int main() {
     check(row(f, 3) == "Save as:", "an input shows label: value [" + row(f, 3) + "]");
     check(row(f, 4) == "Quit                    Ctrl-Q", "a shortcut is right-aligned [" + row(f, 4) + "]");
     check(f.at(0, 0).style == theme.style(Role::menu_selected) && f.at(0, 1).style == theme.style(Role::menu_item) &&
-              f.at(0, 5).style == theme.style(Role::text_muted),
-          "the selected row is menu_selected, others menu_item, a disabled one text_muted");
+              f.at(0, 5).style == disabled_row(theme),
+          "the selected row is menu_selected, others menu_item, a disabled one text_muted on the menu's ground");
 
     // A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. `Theme  default ▸`: the name is drawn
     // as every other row's name is — a muted name beside a bright toggle reads as a DISABLED row —

@@ -2379,6 +2379,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     if (!it) break;
     is_sel = i == m->sel;
     base = styles[is_sel ? sel_role : i == hov ? roles->hover : (usable(it) ? roles->item : roles->text_muted)];
+    if (!is_sel && i != hov) rolltui_style_on_window(&base, styles, ground); /* a disabled row sits on the menu's own ground */
     row_rect.x = x0;
     row_rect.y = y + r;
     row_rect.w = w;

@@ -412,13 +412,13 @@ int main(int argc, char** argv) {
       // input obeying it, and the keys editor
       {"keys.120x40.help-default", "--frame 120x40 --theme default-dark --keys \"F1 PageDown\""},
       {"keys.120x40.help-vim", "--frame 120x40 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"F1 PageDown\""},
-      {"keys.80x24.input-default", "--frame 80x24 --theme default-dark --keys \"Type:hello_world AltB Type:X\""},
-      {"keys.80x24.input-vim", "--frame 80x24 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"Type:hello_world AltB Type:X\""},
+      {"keys.80x24.input-default", "--frame 80x24 --theme default-dark --keys \"Type:hello_world AltH Type:X\""},
+      {"keys.80x24.input-vim", "--frame 80x24 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"Type:hello_world AltH Type:X\""},
       {"keys-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F7\""},
       {"keys-editor.120x40.capture", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter\""},
-      {"keys-editor.120x40.bound", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltB\""},
+      {"keys-editor.120x40.bound", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltJ\""},
       {"keys-editor.120x40.moved", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltD\""},
-      {"tiny.7x3.keys-editor", "--frame 7x3 --theme default-dark --keys \"F7 Enter Enter Enter Enter AltB Type:x\""},
+      {"tiny.7x3.keys-editor", "--frame 7x3 --theme default-dark --keys \"F7 Enter Enter Enter Enter AltJ Type:x\""},
       // Effects on a fourth fixture, whose entries carry STATES and nothing
       // else — no glyph, no colour, no period anywhere in effects.md. Three ticks of one
       // screen, and `--dump-tick` recording what each frame ASKS FOR, in the golden bytes.
@@ -847,9 +847,9 @@ int main(int argc, char** argv) {
 
     check(kh_default.find("Ctrl-Left, Alt-Left") != std::string::npos && kh_default.find("move one word left") != std::string::npos,
           "the default help popup (scrolled a page) is rendered from the table: word motions on Ctrl/Alt-arrows");
-    check(kh_vim.find("Alt-B") != std::string::npos && kh_vim.find("Alt-F") != std::string::npos, "with vim-ish.json the help popup shows Alt-B / Alt-F: it is rendered from the LIVE table");
-    check(row(ki_vim, 21).rfind("\xE2\x94\x82 > hello Xworld", 0) == 0, "with vim-ish.json Alt-B moves a word back, so the X lands before 'world' [" + row(ki_vim, 21) + "]");
-    check(row(ki_default, 21).rfind("\xE2\x94\x82 > hello worldX", 0) == 0, "with the default table Alt-B is unbound and the X lands at the end [" + row(ki_default, 21) + "]");
+    check(kh_vim.find("Alt-H") != std::string::npos && kh_vim.find("Alt-J") != std::string::npos, "with vim-ish.json the help popup shows Alt-H / Alt-J: it is rendered from the LIVE table");
+    check(row(ki_vim, 21).rfind("\xE2\x94\x82 > hello Xworld", 0) == 0, "with vim-ish.json Alt-H moves a word back, so the X lands before 'world' [" + row(ki_vim, 21) + "]");
+    check(row(ki_default, 21).rfind("\xE2\x94\x82 > hello worldX", 0) == 0, "with the default table Alt-H is unbound and the X lands at the end [" + row(ki_default, 21) + "]");
     {
       std::istringstream a(ki_default), b(ki_vim);
       std::string ra, rb;
@@ -863,8 +863,8 @@ int main(int argc, char** argv) {
     check(ke_open.find("\xE2\x94\x8C keys editor ") != std::string::npos && ke_open.find("Actions by scope") != std::string::npos && ke_open.find("preset: default") != std::string::npos,
           "F7 opens the keys editor on the shipped default");
     check(ke_capture.find("press the chord for input.word_left") != std::string::npos, "'add a chord' on word_left captures: the status asks for the chord");
-    check(ke_bound.find("bound Alt-B \xE2\x86\x92 word_left") != std::string::npos && ke_bound.find("remove Alt-B") != std::string::npos && ke_bound.find("preset: default (modified)") != std::string::npos,
-          "Alt-B becomes the chord: the status, a 'remove Alt-B' item and the preset label ('default (modified)') all say so");
+    check(ke_bound.find("bound Alt-J \xE2\x86\x92 word_left") != std::string::npos && ke_bound.find("remove Alt-J") != std::string::npos && ke_bound.find("preset: default (modified)") != std::string::npos,
+          "Alt-J becomes the chord: the status, a 'remove Alt-J' item and the preset label ('default (modified)') all say so");
     check(ke_moved.find("(was kill_word_forward") != std::string::npos, "Alt-D, bound to kill_word_forward, moves and the status names the loser");
     // ---- milestone 16: the layout editor, asserted beyond the bytes ----
     check(le_open.find("\xE2\x94\x8C layout editor ") != std::string::npos && le_open.find("layout editor \xE2\x80\xA2 transcript") != std::string::npos && le_open.find("focus:editor") != std::string::npos,

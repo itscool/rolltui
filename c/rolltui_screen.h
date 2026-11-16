@@ -114,6 +114,9 @@ int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
 int rolltui_frame_height(const RolltuiFrame* f);
 /* The style the frame was filled with: its ground. An inline region draws it as the terminal's own background. */
 void rolltui_frame_ground(const RolltuiFrame* f, RolltuiStyle* out);
+/* The ground `rolltui_frame_ground` answers from now on, the cells untouched: the compose sets each window's own background while that
+ * window draws, so what a widget draws on its ground lands on the window's and not the screen's. */
+void rolltui_frame_set_ground(RolltuiFrame* f, RolltuiStyle ground);
 
 /* 1 when cell (x, ay) of `a` and cell (x, by) of `b` would look the same on screen: one memcmp for a cell with no link and its glyph
  * inline, which is nearly every cell; the glyph and the link compared by value otherwise (an index means nothing outside the frame that

@@ -118,9 +118,6 @@ size_t rolltui_bindings_sequence_at(const RolltuiBindings* b, const char* action
                                     size_t cap);
 /* The keys pressed so far, `keys[0..n)`, in `scope`: a sequence of a declared action they are (DONE, its name in `*action`), one they
  * begin (PREFIX), or neither (NONE). A sequence with a chord the terminal cannot deliver is never matched. */
-#define ROLLTUI_SEQUENCE_NONE 0
-#define ROLLTUI_SEQUENCE_PREFIX 1
-#define ROLLTUI_SEQUENCE_DONE 2
 int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
                                   const char** action, size_t* alen);
 /* WHAT CAN FOLLOW `keys[0..n)` in `scope`, one row per next chord, up to `cap`: the chord, the action it completes (NULL when it only

@@ -485,7 +485,8 @@ static void on_event(void* ctx, RolltuiRun* run, const RolltuiEvent* e) {
    * the chords that cannot be typing (F1, Ctrl-Q). */
   if (e->kind == ROLLTUI_EVENT_KEY && !(e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt)) {
     size_t alen = 0;
-    const char* a = rolltui_bindings_action_for(t->bindings, &e->key, "app", 3, &alen);
+    const char* a = NULL;
+    if (rolltui_windows_app_key(t->windows, e, "app", 3, &a, &alen) == ROLLTUI_SEQUENCE_PREFIX) return; /* on the way to one */
     if (a && alen == 8 && memcmp(a, "app.quit", 8) == 0) {
       rolltui_run_stop(run);
       return;

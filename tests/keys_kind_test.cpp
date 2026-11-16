@@ -105,12 +105,12 @@ const char* kInProcessLayout = R"({
   "root": { "id": "anvil_edit", "content": "keys", "focusable": true }
 })";
 
-// The one string an assertion can compare: which action, if any, holds Alt-B in the `app` scope
+// The one string an assertion can compare: which action, if any, holds Alt-J in the `app` scope
 // of a table.
-std::string alt_b_holder(const RolltuiBindings* b) {
+std::string alt_j_holder(const RolltuiBindings* b) {
   RolltuiChord k{};
   k.key = ROLLTUI_KEY_CHAR;
-  k.ch = 'b';
+  k.ch = 'j';
   k.alt = 1;
   std::size_t len = 0;
   const char* p = rolltui_bindings_action_for(b, &k, "app", 3, &len);
@@ -186,7 +186,7 @@ struct Session {
   std::string holder_before, holder_after;
 };
 
-// One editing session over a screen that names `keys`: Alt-B onto `app.quench`, through the
+// One editing session over a screen that names `keys`: Alt-J onto `app.quench`, through the
 // menu's own filter so the walk does not depend on where a row happens to sit. The action is
 // the APP's declaration and nothing else's, so a session that can reach it is one editing the
 // table the app is running on.
@@ -197,7 +197,7 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
 
   auto snapshot = [&](std::string& holder) {
     const RolltuiBindings* v = rolltui_bindings_store_working(s.store);
-    if (v) holder = alt_b_holder(v);
+    if (v) holder = alt_j_holder(v);
   };
   out.version_before = rolltui_bindings_store_version(s.store);
   snapshot(out.holder_before);
@@ -209,7 +209,7 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   s.type("quench");
   s.send(enter);        // the action's level
   s.send(enter);        // add a chord (press it)…
-  s.send(key_event(ROLLTUI_KEY_CHAR, 'b', /*alt=*/true));
+  s.send(key_event(ROLLTUI_KEY_CHAR, 'j', /*alt=*/true));
 
   out.version_after = rolltui_bindings_store_version(s.store);
   snapshot(out.holder_after);
@@ -240,10 +240,10 @@ int main() {
         "…with the status line and the store line the kind draws, not the host");
 
   // ---- 2. IT IS DRIVABLE, with no host code between the keys and the model -------------------
-  const std::string edited = run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltB\" 2>&1", rc);
-  check(has(edited, "remove Ctrl-Left") && has(edited, "remove Alt-B"),
+  const std::string edited = run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltJ\" 2>&1", rc);
+  check(has(edited, "remove Ctrl-Left") && has(edited, "remove Alt-J"),
         "keystrokes reach the editor: three levels down, the action's own chords are the items");
-  check(has(edited, "bound Alt-B \xE2\x86\x92 word_left") && has(edited, "undo 1"),
+  check(has(edited, "bound Alt-J \xE2\x86\x92 word_left") && has(edited, "undo 1"),
         "…and the next key pressed IS the chord, committed, so there is something to undo");
 
   // ---- 3. THE LIVE-TABLE CONTROL ------------------------------------------------------------
@@ -265,9 +265,9 @@ int main() {
 
   // ---- 5. THE BINDINGS CONTROL --------------------------------------------------------------
   const std::string undone =
-      run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltB CtrlO\" 2>&1", rc);
+      run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
   check(has(undone, "undone \xC2\xB7 undo 0"), "Ctrl-O undoes, because anvil's bindings file says editor.undo is Ctrl-O");
-  const std::string shipped = run(base + " --layout anvil --keys \"" + to_word_left + " AltB CtrlO\" 2>&1", rc);
+  const std::string shipped = run(base + " --layout anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
   check(!has(shipped, "undone") && has(shipped, "undo 1"),
         "…and with the shipped bindings the same key does nothing: the FILE supplied the chord");
 
@@ -296,9 +296,9 @@ int main() {
     const Session given = drive(a.string(), true);
     const Session withheld = drive(b.string(), false);
     check(given.holder_before.empty() && withheld.holder_before.empty(),
-          "both runs start from a table where Alt-B is free, so what lands is the edit");
+          "both runs start from a table where Alt-J is free, so what lands is the edit");
     check(given.version_after != given.version_before && given.holder_after == "app.quench",
-          "handed the app's bindings store, the commit is IN it: the version moved and Alt-B is quench's [" +
+          "handed the app's bindings store, the commit is IN it: the version moved and Alt-J is quench's [" +
               given.holder_after + "]");
     check(withheld.version_after == withheld.version_before && withheld.holder_after.empty(),
           "…and withheld, the same keystrokes leave it untouched: where a rebinding lands is the APP's");
@@ -339,7 +339,7 @@ int main() {
       RolltuiBindings* v = rolltui_bindings_store_get(s.store, name, std::strlen(name), &rep);
       std::string holder = "(no preset)";
       if (v) {
-        holder = alt_b_holder(v);
+        holder = alt_j_holder(v);
         rolltui_bindings_free(v);
       }
       rolltui_bindings_preset_report_release(&rep);
@@ -358,8 +358,8 @@ int main() {
     s.type("quench");
     s.send(enter);
     s.send(enter);
-    s.send(key_event(ROLLTUI_KEY_CHAR, 'b', /*alt=*/true));
-    check(alt_b_holder(s.bindings) != "app.quench",
+    s.send(key_event(ROLLTUI_KEY_CHAR, 'j', /*alt=*/true));
+    check(alt_j_holder(s.bindings) != "app.quench",
           "the app's own table is untouched by the edit — a commit reaches it through the store, not behind it");
     save_as("mine");
     check(preset_holder("mine").empty(),
@@ -369,7 +369,7 @@ int main() {
     // ---- 9. RESET GOES BACK TO THE PRESET, not to the edit it is meant to throw away --------
     auto working_holder = [&]() {
       const RolltuiBindings* v = rolltui_bindings_store_working(s.store);
-      return v ? alt_b_holder(v) : std::string();
+      return v ? alt_j_holder(v) : std::string();
     };
     check(working_holder() == "app.quench", "the working copy is the edited table, so a reset has something to undo");
     to_root();

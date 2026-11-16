@@ -297,6 +297,10 @@ apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x 
 - The window table holds the keys on the way for the focused window. A key that begins a
   sequence of its scope waits for the next; a key no sequence goes on with ends it and is what it
   would have been alone. Escape lets go of what was on the way.
+- A host's own scope (`app`) gets the same through `rolltui_windows_app_key(windows, event,
+  "app", 3, &action, &len)`, called for each key before the key is routed to a window: DONE
+  names the action a chord or sequence finished, PREFIX says the key is on the way to one, and
+  NONE hands the key on. A sequence on the way in a window is left to that window.
 - A sequence's first chord cannot also be bound alone in the same scope, and two actions cannot
   share a sequence: the loader reports the conflict and keeps what came first.
 - A COUNT is digits typed before an action: `5` then Down moves five. Digits are a count only in a

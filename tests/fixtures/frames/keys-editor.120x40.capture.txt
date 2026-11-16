@@ -10,15 +10,15 @@
 │ │ paste, mouse mode)              │             │                   │ kill_to_line_end  Ctrl-K                     ▸ │
 │ │ Key + mouse decoding            │ build       │ single header, pur│ left  Left                                   ▸ │
 │ │                                 │             │ Event, table-teste│ right  Right                                 ▸ │
-│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ word_left  Ctrl-Left, Alt-Left               ▸ │
-│ │ colour downgrade                │             │ tested            │ word_right  Ctrl-Right, Alt-Right            ▸ │
-│ │ Wrap engine                     │ build       │ single header over│ line_start  Home, Ctrl-A                     ▸ │
-│ │                                 │             │ header            │ line_e╭────────────────────────────────╮     ▸ │
-│ │ Windows, layers, placement (Dim │ build       │ single header;    │ up  Up│◂ Back                          │     ▸ │
-│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ down  │add a chord (press it)…         │     ▸ │
-│ │                                 │             │ Rect is a pure fun│ select│remove Ctrl-Left                │     ▸ │
-│ │ Menu widget (hierarchical,      │ build       │ single header each│ select│remove Alt-Left                ▼│     ▸ │
-│ │ filterable) + list/text widgets │             │ set is deliberatel│ select╰────────────────────────────────╯hif… ▸ │
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ word_left  Ctrl-Left, Alt-Left, Alt-B        ▸ │
+│ │ colour downgrade                │             │ tested            │ word_right  Ctrl-Right, Alt-Right, Alt-F     ▸ │
+│ │ Wrap engine                     │ build       │ single header over│ li╭───────────────────────────────────────╮  ▸ │
+│ │                                 │             │ header            │ li│◂ Back                                 │  ▸ │
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │ up│add a chord (press it)…                │  ▸ │
+│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ do│remove Ctrl-Left                       │  ▸ │
+│ │                                 │             │ Rect is a pure fun│ se│remove Alt-Left                        │  ▸ │
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ se│remove Alt-B                          ▼│  ▸ │
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ se╰───────────────────────────────────────╯… ▸ │
 │ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ select_word_right  Ctrl-Shift-Right, Alt-Sh… ▸ │
 │ │ placements + content slots)     │             │ parser; hot-reload│ select_line_start  Shift-Home                ▸ │
 │ │ Markdown block renderer (blocks │ build       │ single header over│ select_line_end  Shift-End                   ▸ │

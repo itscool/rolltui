@@ -306,6 +306,11 @@ void rolltui_frame_shade(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, dou
     }
 }
 
+void rolltui_style_on_window(RolltuiStyle* st, const RolltuiStyle* styles, RolltuiStyleColorRaw ground) {
+  const RolltuiStyleColorRaw screen = styles[ROLLTUI_ROLE_BACKGROUND].bg;
+  if (st->bg.kind == 0 || memcmp(&st->bg, &screen, sizeof screen) == 0) st->bg = ground;
+}
+
 void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style) {
   RolltuiRect c;
   int xx, yy;

@@ -1288,11 +1288,11 @@ int main() {
     // `working()` is a BORROW now: clone it, mutate the clone, then hand ownership of the
     // clone to `set_working` — the live working value is never mutated in place here.
     RolltuiBindings* vim = rolltui_bindings_clone(bs.working());
-    const RolltuiChord alt_b = *parse_chord_c("alt+b"), alt_f = *parse_chord_c("alt+f");
-    rolltui_bindings_bind(vim, "input.word_left", 15, &alt_b, nullptr, nullptr);
-    rolltui_bindings_bind(vim, "input.word_right", 16, &alt_f, nullptr, nullptr);
+    const RolltuiChord alt_j = *parse_chord_c("alt+j"), alt_h = *parse_chord_c("alt+h");
+    rolltui_bindings_bind(vim, "input.word_left", 15, &alt_j, nullptr, nullptr);
+    rolltui_bindings_bind(vim, "input.word_right", 16, &alt_h, nullptr, nullptr);
     bs.set_working(vim);
-    check(bs.label() == "default (modified)" && fs::exists(bs.working_path()) && action_for_c(bs.working(), *parse_chord_c("alt+b"), "input") == "input.word_left",
+    check(bs.label() == "default (modified)" && fs::exists(bs.working_path()) && action_for_c(bs.working(), *parse_chord_c("alt+j"), "input") == "input.word_left",
           "an edit autosaves bindings.working.json and the label reads 'default (modified)' (rules 2, 4)");
     BindingsStore again(bdir, false, "");
     BindingsPresetReport rep2;
@@ -1302,7 +1302,7 @@ int main() {
     check(bs.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over the shipped name is refused (rule 5)");
     check(bs.save_as("vim-ish", false, err) == ROLLTUI_SAVE_SAVED && bs.label() == "vim-ish" && fs::exists(bs.preset_path("vim-ish")), "save-as 'vim-ish' saves (rule 3) and becomes the origin");
     check(bs.load("default", rep) && bindings_eq(bs.working(), rolltui_bindings_default(rolltui_test::test_context())) && bs.label() == "default", "load copies the shipped default back (rule 1: the whole domain)");
-    check(bs.load("vim-ish", rep) && action_for_c(bs.working(), *parse_chord_c("alt+f"), "input") == "input.word_right", "…and the user preset back");
+    check(bs.load("vim-ish", rep) && action_for_c(bs.working(), *parse_chord_c("alt+h"), "input") == "input.word_right", "…and the user preset back");
     // A file that moves Enter is refused by name in the load report; the rest loads.
     write_file(fs::path(bdir) / "bindings" / "bad.json", R"({"name":"bad","bindings":{"input.submit":["ctrl+j"],"input.newline":["enter"],"input.left":["hyper+x"]}})");
     check(bs.load("bad", rep) && !rep.clean() && rep.bindings.bad_values_n == 2 && str_of(rep.bindings.bad_values[0]).find("input.newline: 'enter' is always input.submit") == 0 &&

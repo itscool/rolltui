@@ -515,8 +515,8 @@ int main() {
     // follow, a pressed key's bound form, and the list saying a digit is its filter's). Then charts: PUBLIC 526 (a chart made,
     // filled, drawn and bound to a window) and INTERNAL 884 (its draw in roles, and the table's charts by name). Then text cut to
     // fit: PUBLIC 528 (drawn, and as text) and INTERNAL 887 (a list's footer, and the terminal's focus set and read). Then the loop a
-    // step at a time: PUBLIC 531.
-    check(totals["PUBLIC"] == 531 && totals["INTERNAL"] == 887 && totals.size() == 2,
+    // step at a time: PUBLIC 531. Then a host's own key sequences (PUBLIC 532), and a window's own ground while it draws (INTERNAL 889).
+    check(totals["PUBLIC"] == 532 && totals["INTERNAL"] == 889 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -688,11 +688,11 @@ int main() {
     // row filled; its filter, cursor, marks and events, and its actions by name; its event released; natural order and the fuzzy match.
     // Run 184: the layout at run time (shown, sized, maximised, a tab shown and read). 185: the job stopped. 186: the keys on the way.
     // Bind 114, widget 46: a chart bound to a window, and a chart made, filled and drawn. Widget 48: text cut, drawn and as text.
-    // Run 189: the loop begun, stepped and finished.
+    // Run 189: the loop begun, stepped and finished. Run 190: a host's own key sequences.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 114 && rt["HOST_RUN"] == 189 && rt["HOST_RELEASE"] == 16 &&
+              rt["HOST_BIND"] == 114 && rt["HOST_RUN"] == 190 && rt["HOST_RELEASE"] == 16 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 48,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 114 / run 189 / "
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 114 / run 190 / "
           "release 16, tool interop 0, widget 48 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

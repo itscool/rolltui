@@ -93,7 +93,34 @@ int rolltui_chart_set_series(RolltuiChart* c, size_t i, const char* label, size_
 
 /* ---- drawing ------------------------------------------------------------------------------ */
 
-static void range_of(const RolltuiChart* c, double* lo, double* hi) {
+static int series_count(const RolltuiChart* c);
+
+/* The first value of series `i` a plot `w` cells wide shows: more values than fit show the newest, so the range is theirs alone and a
+ * spike that has scrolled off no longer flattens the rest. */
+static size_t first_shown(const RolltuiChart* c, int i, int w) {
+  const size_t n = c->s[i].n;
+  size_t fit;
+  if (w <= 0) return n;
+  if (c->kind == ROLLTUI_CHART_LINE) fit = (size_t)w * 2;
+  else if (c->kind == ROLLTUI_CHART_SPARK) fit = (size_t)w;
+  else { /* bars: the groups that fit, as draw_bars lays them out */
+    size_t most = 0;
+    int j, slot, gap, bar_w;
+    const int ns = series_count(c);
+    for (j = 0; j < ROLLTUI_CHART_SERIES_MAX; ++j)
+      if (c->s[j].used && c->s[j].n > most) most = c->s[j].n;
+    if (most == 0 || ns == 0) return n;
+    slot = w / (int)most;
+    gap = slot > ns ? 1 : 0;
+    bar_w = slot > 0 ? (slot - gap) / ns : 0;
+    if (bar_w < 1) slot = ns;
+    fit = (size_t)(w / (slot > 0 ? slot : 1));
+    return most > fit ? most - fit : 0;
+  }
+  return n > fit ? n - fit : 0;
+}
+
+static void range_of(const RolltuiChart* c, int w, double* lo, double* hi) {
   size_t i, k;
   int any = 0;
   if (c->fixed) {
@@ -102,7 +129,7 @@ static void range_of(const RolltuiChart* c, double* lo, double* hi) {
   }
   *lo = 0, *hi = 1;
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i)
-    for (k = 0; k < c->s[i].n; ++k) {
+    for (k = first_shown(c, (int)i, w); k < c->s[i].n; ++k) {
       const double v = c->s[i].v[k];
       if (v != v) continue; /* NaN: a gap */
       if (!any || v < *lo) *lo = v;
@@ -288,7 +315,7 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
   rolltui_frame_ground(f, &ground);
   muted = styles[roles->axis];
   muted.bg = ground.bg;
-  range_of(c, &lo, &hi);
+  range_of(c, area.w, &lo, &hi); /* a first guess, for the labels' width */
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) legend |= c->s[i].used && c->s[i].label.n;
   /* THE LEGEND, on the top row: each series' name in its own colour, bold, so it reads in every theme */
   if (legend && c->kind != ROLLTUI_CHART_SPARK && area.h >= 3) {
@@ -312,6 +339,14 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
     if (lo_n < 0) lo_n = 0;
     label_w = (hi_n > lo_n ? hi_n : lo_n) + 1;
     if (label_w > area.w / 3) label_w = 0;
+    if (label_w) { /* the range of what the narrower plot shows, and its labels */
+      range_of(c, area.w - label_w, &lo, &hi);
+      hi_n = axis_label(hi, hi_s, sizeof hi_s);
+      lo_n = axis_label(lo, lo_s, sizeof lo_s);
+      if (hi_n < 0) hi_n = 0;
+      if (lo_n < 0) lo_n = 0;
+      if ((hi_n > lo_n ? hi_n : lo_n) + 1 > label_w && (hi_n > lo_n ? hi_n : lo_n) + 1 <= area.w / 3) label_w = (hi_n > lo_n ? hi_n : lo_n) + 1;
+    }
   }
   if (label_w) {
     rolltui_frame_put_text(f, draw, plot.x + label_w - 1 - hi_n, plot.y, hi_s, (size_t)hi_n, muted, hi_n, aw, 0);

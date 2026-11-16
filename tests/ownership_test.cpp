@@ -387,7 +387,7 @@ int main() {
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_os.h", 2},  /* `RolltuiMutex.lock` and `RolltuiCond.cv` on Windows: an SRWLOCK and a CONDITION_VARIABLE, each one pointer-sized value the system owns and nothing here follows */
-        {"c/rolltui_termfacts.h", 17},  /* +4: KITTY_WINDOW_ID, KONSOLE_VERSION, WT_SESSION and ROLLTUI_IMAGES, the same BORROWS. `RolltuiTermEnv`: twelve `const char*` that BORROW from `getenv` (NULL when unset) and the thirteenth, the ssh string, the same — read once into a struct so a test can BE the environment; nothing here owns or outlives the call */
+        {"c/rolltui_termfacts.h", 19},  /* +2: ZELLIJ and NVIM, which choose blocks inside them. +4: KITTY_WINDOW_ID, KONSOLE_VERSION, WT_SESSION and ROLLTUI_IMAGES, the same BORROWS. `RolltuiTermEnv`: twelve `const char*` that BORROW from `getenv` (NULL when unset) and the thirteenth, the ssh string, the same — read once into a struct so a test can BE the environment; nothing here owns or outlives the call */
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_widget_menu_tree.h", 0},
         {"c/rolltui_lifetime.h", 0},
@@ -456,8 +456,8 @@ int main() {
     // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
     // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options. 210 -> 215:
     // the four environment strings pictures are chosen by, and a frame's picture. 216: a condition variable. 219: the stack's three
-    // new action names.
-    check(total == 219, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // new action names. 221: ZELLIJ and NVIM, two more environment strings pictures are chosen by.
+    check(total == 221, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

@@ -81,6 +81,8 @@ struct RolltuiTerminal {
   unsigned char reported_mode; /* the mode it read */
   unsigned char facts_dirty;   /* the mode changed after it read: a FACTS event is owed */
   unsigned char publishing;    /* this terminal's facts are the process-wide ones (publish_depth) */
+  unsigned char away;          /* the window lost the person's focus, by the last focus report: 1 away, 0 focused */
+  unsigned char resize_owed;   /* entered again after a stop: the next poll reports the size, as after a resize */
   unsigned char facts_events;  /* the host asked to be told of a change (RolltuiTerminalOptions::facts_events) */
   /* ---- an INLINE region (RolltuiTerminalOptions::inline_rows): drawn below the prompt, in the
    * normal screen, its rows found from where the cursor was ---- */
@@ -93,8 +95,11 @@ struct RolltuiTerminal {
   int* extent;       /* each row's drawn width: its last cell that is not a default blank, plus one */
   size_t extent_cap;
   /* ---- pictures (rolltui_frame_image) ---- */
-  struct KittyImage { unsigned int id; int cols, rows; } * kitty; /* sent to the terminal, and the placement it last had */
+  /* Sent to the terminal, the placement it last had, and the present that last drew it. At most KITTY_KEEP are kept: the oldest is
+   * deleted from the terminal, so its store stays small and it never evicts a picture this list still counts as sent. */
+  struct KittyImage { unsigned int id; int cols, rows; unsigned long long drawn; } * kitty;
   size_t kitty_n, kitty_cap;
+  unsigned long long presents;
   struct ShownImage { unsigned int id; RolltuiRect r; } * pics;   /* drawn outside the grid, and still there */
   size_t pics_n, pics_cap;
   /* ---- the window's title (rolltui_terminal_set_title) ---- */
@@ -175,7 +180,12 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ev.text_len = e->text_len;
   ev.focused = e->focused;
   if (ec->t && !inline_mouse(ec->t, &ev)) return; /* outside an inline region: not this program's */
-  if (ec->t && ec->t->publishing && e->kind == ROLLTUI_EVENT_FOCUS) rolltui_termfacts_set_active_focused(e->focused);
+  if (ec->t && e->kind == ROLLTUI_EVENT_FOCUS) {
+    /* A REPORT OF WHAT IS ALREADY SO IS NOT AN EVENT: a terminal answers mode 1004 with the focus it has, and repeats it. */
+    if ((e->focused == 0) == (ec->t->away != 0)) return;
+    ec->t->away = e->focused ? 0 : 1;
+    if (ec->t->publishing) rolltui_termfacts_set_active_focused(e->focused);
+  }
   ec->fn(ec->ctx, &ev);
   if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
     RolltuiTerminal* t = ec->t;
@@ -875,9 +885,12 @@ static int rect_same(RolltuiRect a, RolltuiRect b) { return a.x == b.x && a.y ==
 /* BEFORE THE DIFF: a kitty picture's pixels the first time it is drawn and its placement whenever its cells change size, so the
  * placeholder cells the diff writes find it; and an outside-the-grid picture no longer there, or no longer whole, has its cells
  * forgotten, so the diff writes what they hold now over it. */
+#define KITTY_KEEP 8
+
 static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame* next, RolltuiStr* out) {
   const size_t n = rolltui_frame_image_count(next);
   size_t i, k;
+  ++t->presents;
   for (i = 0; i < n; ++i) {
     const RolltuiFrameImage* p = rolltui_frame_image_at(next, i);
     const unsigned int id = rolltui_image_id(p->img);
@@ -891,11 +904,20 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
       ++t->kitty_n;
       rolltui_image_kitty_upload(p->img, t->multiplexed, out);
     }
+    t->kitty[k].drawn = t->presents;
     if (t->kitty[k].cols != p->cells.w || t->kitty[k].rows != p->cells.h) {
       rolltui_image_kitty_place(id, p->cells.w, p->cells.h, t->multiplexed, out);
       t->kitty[k].cols = p->cells.w;
       t->kitty[k].rows = p->cells.h;
     }
+  }
+  while (t->kitty_n > KITTY_KEEP) { /* the least recently drawn of those not drawn now goes from the terminal */
+    size_t old = t->kitty_n;
+    for (k = 0; k < t->kitty_n; ++k)
+      if (t->kitty[k].drawn != t->presents && (old == t->kitty_n || t->kitty[k].drawn < t->kitty[old].drawn)) old = k;
+    if (old == t->kitty_n) break; /* every one is on screen */
+    rolltui_image_kitty_delete(t->kitty[old].id, t->multiplexed, out);
+    t->kitty[old] = t->kitty[--t->kitty_n];
   }
   if (!rolltui_swap_front(s)) { /* drawn whole: nothing drawn outside the grid survives it */
     t->pics_n = 0;
@@ -943,13 +965,17 @@ static void images_after(RolltuiTerminal* t, const RolltuiFrame* drawn, int orig
   }
 }
 
+static int resume_if_stopped(RolltuiTerminal* t);
+
 void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch) {
+  const int resumed = resume_if_stopped(t); /* continued since the last poll: entered again first, and drawn whole */
   const unsigned char depth = present_depth(t);
   const int sync = t->tty && t->facts.sync_output;
   const int inl = t->inl && t->tty;
   const int opened = t->sync_open;
   const RolltuiFrame* next = rolltui_swap_pending(s);
   size_t lead;
+  if (resumed) rolltui_swap_invalidate(s);
   rolltui_str_clear(scratch);
   if (sync && !opened) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
   if (t->tty) images_before(t, s, next, scratch);
@@ -1123,15 +1149,24 @@ int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, Rolltu
 
 /* ---- poll -------------------------------------------------------------------------------- */
 
+/* BACK FROM A STOP SENT FROM OUTSIDE: the handler left the terminal as it was found; it is entered again whole, and the screen
+ * repainted as after a resize. Asked by the poll and by the present, whichever comes first after the continue, so no frame is ever
+ * written to the screen the shell has back. 1 when it entered again. */
+static int resume_if_stopped(RolltuiTerminal* t) {
+  if (!rolltui_os_tty_take_resumed() || !t->entered) return 0;
+  t->entered = 0;
+  t->protocol_on = 0; /* the handler's leaving popped the keyboard flags */
+  term_enter(t, 0);
+  rolltui_terminal_refresh_size(t);
+  t->resize_owed = 1;
+  return 1;
+}
+
 static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn emit, void* ctx) {
-  /* BACK FROM A STOP SENT FROM OUTSIDE: the handler left the terminal as it was found; it is entered again whole, and the screen
-   * repainted as after a resize. */
-  if (rolltui_os_tty_take_resumed() && t->entered) {
+  resume_if_stopped(t);
+  if (t->resize_owed) {
     RolltuiTermEvent ev;
-    t->entered = 0;
-    t->protocol_on = 0; /* the handler's leaving popped the keyboard flags */
-    term_enter(t, 0);
-    rolltui_terminal_refresh_size(t);
+    t->resize_owed = 0;
     memset(&ev, 0, sizeof ev);
     ev.kind = ROLLTUI_TERM_EVENT_RESIZE;
     ev.w = t->w;

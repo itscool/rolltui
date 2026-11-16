@@ -84,9 +84,9 @@ int main() {
   check(find(ed.menu(), "scope.input") && find(ed.menu(), "action.input.word_left") && find(ed.menu(), "bind.input.word_left") &&
             find(ed.menu(), "unbind.input.word_left.ctrl+left"),
         "the tree is scope › action › {add, remove <chord>, clear}");
-  check(find(ed.menu(), "action.input.word_left")->label == "word_left  Ctrl-Left, Alt-Left",
+  check(find(ed.menu(), "action.input.word_left")->label == "word_left  Ctrl-Left, Alt-Left, Alt-B",
         "an action's label shows its chords [" + str_of(find(ed.menu(), "action.input.word_left")->label) + "]");
-  // ---- capture: Alt-B onto word_left ----
+  // ---- capture: Alt-J onto word_left ----
   go(ed, key(ROLLTUI_KEY_ENTER));          // scopes
   go(ed, key(ROLLTUI_KEY_ENTER));          // input
   type(ed, "word_left");
@@ -101,12 +101,12 @@ int main() {
   o = go(ed, key(ROLLTUI_KEY_ESCAPE));
   check(!ed.capturing() && o.kind == O::Changed && status(ed).find("cancelled") != std::string::npos, "Escape cancels the capture");
   go(ed, key(ROLLTUI_KEY_ENTER));
-  o = go(ed, ch('b', false, true));  // Alt-B
-  check(o.kind == O::Committed && !ed.capturing() && action_for(ed.current(), ch('b', false, true), "input") == "input.word_left" && ed.undo_depth() == 1,
-        "the next key becomes the chord: Alt-B → word_left, one commit");
-  check(status(ed).find("bound Alt-B \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-B") != std::string::npos,
+  o = go(ed, ch('j', false, true));  // Alt-J
+  check(o.kind == O::Committed && !ed.capturing() && action_for(ed.current(), ch('j', false, true), "input") == "input.word_left" && ed.undo_depth() == 1,
+        "the next key becomes the chord: Alt-J → word_left, one commit");
+  check(status(ed).find("bound Alt-J \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-J") != std::string::npos,
         "the status and the action's label show the new chord [" + status(ed) + "]");
-  check(find(ed.menu(), "unbind.input.word_left.alt+b") != nullptr, "…and a remove item for it appears");
+  check(find(ed.menu(), "unbind.input.word_left.alt+j") != nullptr, "…and a remove item for it appears");
   // ---- a conflict moves ----
   go(ed, key(ROLLTUI_KEY_HOME));
   o = go(ed, key(ROLLTUI_KEY_ENTER));      // add another chord

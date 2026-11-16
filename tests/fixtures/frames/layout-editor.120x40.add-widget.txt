@@ -20,10 +20,10 @@
 │ │ wrapped    │            │            │ ││ grapheme left           │ Widget kind: help                              │
 │ │ lines)     │            │            │ ││   Right                 │ Source:                                        │
 │ │ Theme      │ build      │ single     │ ││ grapheme right          │ Menu file:                                     │
-│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ Tabs (Title = content | …):                    │
-│ │ styles,    │            │            │ ││ left                    │ Shown tab                                    ▸ │
-│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ Shown from (width x height):                   │
-│ │ loader,    │            │            │ ││ right                   │ Size (Alt+arrows nudge): fill                  │
+│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left, A│ Tabs (Title = content | …):                    │
+│ │ styles,    │            │            │ ││ word left               │ Shown tab                                    ▸ │
+│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right,│ Shown from (width x height):                   │
+│ │ loader,    │            │            │ ││ word right              │ Size (Alt+arrows nudge): fill                  │
 │ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ [✓] Focusable                                  │
 │ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ Tree — split, swap, delete                   ▸ │
 │                                          ││   End, Ctrl-E           │ This screen — sizes, focus, popups, actions  ▸ │

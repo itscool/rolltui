@@ -264,6 +264,7 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
   out_styles[R_md_table_header] = mkstyle(fg, bg, 1, 0, 0, 0, 0);
   out_styles[R_md_rule] = mkstyle(border, bg, 0, 0, 0, 0, 0);
   out_styles[R_md_strikethrough] = mkstyle(muted, bg, 0, 0, 0, 1, 0);
+  out_styles[R_md_strikethrough].strike = 1; /* struck through, as every shipped theme draws ~~x~~ */
   out_styles[R_diff_added] = mkstyle(green, bg, 0, 0, 0, 0, 0);
   out_styles[R_diff_removed] = mkstyle(error_c, bg, 0, 0, 0, 0, 0);
   out_styles[R_diff_context] = mkstyle(muted, bg, 0, 0, 0, 0, 0);

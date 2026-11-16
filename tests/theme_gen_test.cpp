@@ -379,6 +379,8 @@ int main() {
   // ---- the file round trip keeps meta ----
   {
     const Generated g = generate(9, Ruleset::Pastel, 0.25);
+    check(g.theme.styles[static_cast<std::size_t>(Role::md_strikethrough)].strike != 0,
+          "a generated theme strikes Markdown's ~~struck~~ text, as every shipped one does");
     const std::string text = theme_to_json(g.theme);
     ThemeLoadReport rep;
     std::optional<Theme> back = load_theme(text, ThemeMode::Dark, rep);

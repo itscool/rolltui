@@ -42,6 +42,8 @@ void rolltui_termenv_read(RolltuiTermEnv* e) {
   e->konsole_version = nz(getenv("KONSOLE_VERSION"));
   e->wt_session = nz(getenv("WT_SESSION"));
   e->force_images = nz(getenv("ROLLTUI_IMAGES"));
+  e->zellij = nz(getenv("ZELLIJ"));
+  e->nvim = nz(getenv("NVIM"));
   if (rolltui_os_release(e->os_release, sizeof e->os_release) != 0) e->os_release[0] = '\0';
   if (rolltui_os_host_name(e->host, sizeof e->host) != 0) e->host[0] = '\0';
 }
@@ -136,15 +138,18 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
   }
 
   /* PICTURES: by what the terminal is called, then (rolltui_termfacts_apply_replies) by whether its Primary DA names sixel.
-   * Behind a multiplexer only kitty's placeholders get through (passed through, and they are cells), and only when the window it
-   * runs in is kitty's. */
+   * Behind tmux only kitty's placeholders get through (passed through in tmux's wrapper, and they are cells), and only when the window
+   * it runs in is kitty's. GNU screen passes no such wrapper, and Zellij and Neovim's terminal draw none of the outer terminal's
+   * pictures, so all three get blocks whatever names they inherited. */
   {
     const char* fi = e->force_images;
     const char* t = e->term ? e->term : "";
     const char* prog = e->term_program ? e->term_program : "";
     f->images = ROLLTUI_IMAGES_BLOCKS;
     f->images_source = ROLLTUI_FACT_DEFAULT;
-    if (rolltui_termenv_multiplexed(e)) {
+    if (e->nvim || e->zellij || (e->sty && !e->tmux)) {
+      f->images_source = ROLLTUI_FACT_ENV; /* blocks: see above */
+    } else if (rolltui_termenv_multiplexed(e)) {
       if (e->kitty_window_id) f->images = ROLLTUI_IMAGES_KITTY, f->images_source = ROLLTUI_FACT_ENV;
     } else if (strstr(t, "kitty") || e->kitty_window_id || eq(prog, "ghostty") || strstr(t, "ghostty")) {
       f->images = ROLLTUI_IMAGES_KITTY;

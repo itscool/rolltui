@@ -10,16 +10,16 @@
 │ │ paste, mouse mode)              │             │                   │ kill_to_line_end  Ctrl-K                     ▸ │
 │ │ Key + mouse decoding            │ build       │ single header, pur│ left  Left                                   ▸ │
 │ │                                 │             │ Event, table-teste│ right  Right                                 ▸ │
-│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ word_left  Ctrl-Left, Alt-Left, Alt-B        ▸ │
-│ │ colour downgrade                │             │ tested            │ word_right  Ctrl-Right, Alt-Right            ▸ │
-│ │ Wrap engine                     │ build       │ single header over│ li╭───────────────────────────────────────╮  ▸ │
-│ │                                 │             │ header            │ li│◂ Back                                 │  ▸ │
-│ │ Windows, layers, placement (Dim │ build       │ single header;    │ up│add a chord (press it)…                │  ▸ │
-│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ do│remove Ctrl-Left                       │  ▸ │
-│ │                                 │             │ Rect is a pure fun│ se│remove Alt-Left                        │  ▸ │
-│ │ Menu widget (hierarchical,      │ build       │ single header each│ se│remove Alt-B                          ▼│  ▸ │
-│ │ filterable) + list/text widgets │             │ set is deliberatel│ se╰───────────────────────────────────────╯… ▸ │
-│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ select_word_right  Ctrl-Shift-Right, Alt-Sh… ▸ │
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ word_left  Ctrl-Left, Alt-Left, Alt-B, Alt-J ▸ │
+│ │ colour downgrade                │             │ tested            │ word_right  Ctrl-Right, Alt-Right, Alt-F     ▸ │
+│ │ Wrap engine                     │ build       │ single header over│ ╭────────────────────────────────────────────╮ │
+│ │                                 │             │ header            │ │◂ Back                                      │ │
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │ │add a chord (press it)…                     │ │
+│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ │remove Ctrl-Left                            │ │
+│ │                                 │             │ Rect is a pure fun│ │remove Alt-Left                             │ │
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ │remove Alt-B                                │ │
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ │remove Alt-J                               ▼│ │
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ ╰────────────────────────────────────────────╯ │
 │ │ placements + content slots)     │             │ parser; hot-reload│ select_line_start  Shift-Home                ▸ │
 │ │ Markdown block renderer (blocks │ build       │ single header over│ select_line_end  Shift-End                   ▸ │
 │ │ → styled wrapped lines)         │             │                   │ select_up  Shift-Up                          ▸ │
@@ -34,7 +34,7 @@
 │ │   return a + b;                                                   │ transpose_chars  Ctrl-T                      ▸ │
 │ └───────────────────────────────────────────────────────────────────│ transpose_words  Alt-T                       ▼ │
 └─────────────────────────────────────────────────────────────────────│ preset: default (modified) · Enter on an actio │
-┌─────────────────────────────────────────────────────────────────────│ bound Alt-B → word_left · undo 1 · redo 0      │
+┌─────────────────────────────────────────────────────────────────────│ bound Alt-J → word_left · undo 1 · redo 0      │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
  default [keys editor]  default  120x40  line 77/110  follow  truecolor  focus:editor

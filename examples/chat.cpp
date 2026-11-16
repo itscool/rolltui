@@ -1450,7 +1450,8 @@ struct App {
     }
     if (e.kind == ROLLTUI_EVENT_KEY && approval_cmd.empty()) {
       std::size_t alen = 0;
-      const char* ap = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen);
+      const char* ap = nullptr;
+      if (rolltui_windows_app_key(windows, &e, "app", 3, &ap, &alen) == ROLLTUI_SEQUENCE_PREFIX) return;  // a sequence on the way
       const StrView act(ap ? ap : "", alen);
       const bool popup = rolltui_window_stack_depth(stack) > 1;
       // A PRINTABLE CHORD IS TYPING while there is a draft or anything open: "?" opens help only on

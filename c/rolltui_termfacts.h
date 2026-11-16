@@ -56,6 +56,8 @@ typedef struct RolltuiTermEnv {
   const char* konsole_version;
   const char* wt_session;          /* Windows Terminal */
   const char* force_images;        /* ROLLTUI_IMAGES: blocks, kitty, iterm2 or sixel */
+  const char* zellij;              /* ZELLIJ: inside Zellij, which passes no picture protocol through as the outer terminal's */
+  const char* nvim;                /* NVIM: inside Neovim's :terminal, which draws no pictures whatever it inherited */
   char os_release[64];             /* uname(2) release: "25.6.0" on macOS 26 */
   char host[64];
 } RolltuiTermEnv;

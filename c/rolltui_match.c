@@ -20,6 +20,11 @@ static int is_digit(unsigned char c) { return c >= '0' && c <= '9'; }
 static RolltuiCodepoint next_folded(const char* s, size_t n, size_t* i) {
   while (*i < n) {
     RolltuiDecodedChar d;
+    const unsigned char c = (unsigned char)s[*i];
+    if (c < 0x80) { /* ASCII folds to its lowercase and has no marks: no decode, no decomposition (a sort's names are mostly this) */
+      ++*i;
+      return c >= 'A' && c <= 'Z' ? (RolltuiCodepoint)(c + ('a' - 'A')) : (RolltuiCodepoint)c;
+    }
     rolltui_u_decode_one(s, n, *i, &d);
     *i += d.length;
     {
@@ -56,6 +61,15 @@ int rolltui_natural_compare(const char* a, size_t an, const char* b, size_t bn) 
       i = ea;
       j = eb;
       continue;
+    }
+    {
+      const unsigned char x = (unsigned char)a[i], y = (unsigned char)b[j];
+      if (x < 0x80 && y < 0x80 && (x == y || ((x | 0x20) == (y | 0x20) && ((x | 0x20) - 'a') < 26u))) { /* the same ASCII letter */
+        if (!tie && x != y) tie = x < y ? -1 : 1;
+        ++i;
+        ++j;
+        continue;
+      }
     }
     {
       size_t ni = i, nj = j;

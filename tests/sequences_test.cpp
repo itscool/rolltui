@@ -226,10 +226,44 @@ void test_table() {
   check(s.pending().empty(), "a digit typed into the list's filter is the filter's, never a count");
 }
 
+// A HOST'S OWN SCOPE: `app.save` on `ctrl+x ctrl+s`, as the guide spells it, through `rolltui_windows_app_key`.
+void test_app_scope() {
+  std::string problems;
+  Screen s(load(R"({ "name": "t", "bindings": { "app.save": ["ctrl+x ctrl+s"], "app.quit": ["ctrl+q"], "list.first": ["g g"] } })",
+                &problems));
+  RolltuiToolAction declared[2] = {{"app.save", "Save", nullptr}, {"app.quit", "Quit", nullptr}};
+  rolltui_bindings_declare(s.b, nullptr, 0, declared, 2); /* a host's actions are the ones its screen declares */
+  s.paint();
+  auto app = [&](char32_t ch, bool ctrl, std::string* action) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_KEY;
+    e.key.key = ROLLTUI_KEY_CHAR;
+    e.key.ch = ch;
+    e.key.ctrl = ctrl ? 1 : 0;
+    const char* a = nullptr;
+    std::size_t n = 0;
+    const int r = rolltui_windows_app_key(s.w, &e, "app", 3, &a, &n);
+    if (action) *action = a ? std::string(a, n) : std::string();
+    return r;
+  };
+  std::string a;
+  check(app('x', true, &a) == ROLLTUI_SEQUENCE_PREFIX && s.pending() == "Ctrl-X", "Ctrl-X begins the host's sequence, and is shown on the way");
+  check(app('s', true, &a) == ROLLTUI_SEQUENCE_DONE && a == "app.save" && s.pending().empty(), "…Ctrl-S finishes it: app.save");
+  check(app('q', true, &a) == ROLLTUI_SEQUENCE_DONE && a == "app.quit", "a chord of the scope alone is done at once");
+  check(app('a', false, &a) == ROLLTUI_SEQUENCE_NONE, "a key the scope takes no part in is the windows'");
+  app('x', true, nullptr);
+  check(app('z', false, &a) == ROLLTUI_SEQUENCE_NONE && s.pending().empty(), "a key no sequence goes on with ends it, and is what it is alone");
+  s.key('g');
+  check(app('g', false, &a) == ROLLTUI_SEQUENCE_NONE && s.pending() == "g", "a sequence on the way in a window is left to the window");
+  s.key('g');
+  check(s.cursor() == "#0", "…which finishes it");
+}
+
 }  // namespace
 
 int main() {
   test_bindings();
   test_table();
+  test_app_scope();
   return testkit::report("sequences_test");
 }

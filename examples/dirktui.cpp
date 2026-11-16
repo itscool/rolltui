@@ -2170,7 +2170,11 @@ struct App {
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t len = 0;
       const bool typing = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt && focused_content().starts_with("input:");
-      if (const char* a = typing ? nullptr : rolltui_bindings_action_for(bindings, &e.key, "app", 3, &len)) {
+      const char* a = nullptr;
+      // The app's chords and SEQUENCES (`ctrl+x ctrl+s`): a key on the way to one is taken here.
+      const int got = typing ? ROLLTUI_SEQUENCE_NONE : rolltui_windows_app_key(windows, &e, "app", 3, &a, &len);
+      if (got == ROLLTUI_SEQUENCE_PREFIX) return;
+      if (got == ROLLTUI_SEQUENCE_DONE && a) {
         /* STOPPING THE JOB is the shell's only where nothing is being typed: in a line, the same chord is that line's own (Ctrl-Z
          * its undo), and the key goes on to it */
         const bool in_line = StrView(a, len) == "app.suspend" && focused_content().starts_with("input:");

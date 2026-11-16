@@ -353,6 +353,12 @@ void test_marks() {
   s.click(6, 4, 2);  // dragged down to the fifth
   s.click(6, 4, 1);
   check(rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 4 && s.cursor() == "m4", "a drag marks the rows it passes over");
+  // A ROW THAT LEFT THE DATA IS NOT MARKED: the host drops two of the marked rows and refreshes.
+  d.keys.erase(d.keys.begin() + 2, d.keys.begin() + 4);
+  d.a.erase(d.a.begin() + 2, d.a.begin() + 4);
+  rolltui_windows_list_refresh(s.w, "things", 6);
+  s.paint();
+  check(rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 2, "rows the host no longer has are no longer marked, nor counted");
   s.events(0);
   s.click(6, 6, 0);
   s.click(6, 6, 8);

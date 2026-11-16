@@ -389,8 +389,11 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     const RolltuiMenuItem* it = item_at(m, i);
     if (!it) break;
     const bool is_sel = i == m->sel;
-    const RolltuiStyle base =
-        style(is_sel ? m->roles.selected : (it->enabled ? m->roles.item : m->roles.text_muted));
+    RolltuiStyle base = style(is_sel ? m->roles.selected : (it->enabled ? m->roles.item : m->roles.text_muted));
+    if (!is_sel) {  // a disabled row sits on the menu's own ground, as the library's does
+      const RolltuiStyleColorRaw screen = style(ROLLTUI_ROLE_BACKGROUND).bg;
+      if (base.bg.kind == RolltuiStyleColorRaw::Kind::None || base.bg == screen) base.bg = style(m->roles.item).bg;
+    }
     rolltui_frame_fill(f, m->draw, row_rect, base, nullptr, 0);
 
     // A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. Only the foreground comes from the

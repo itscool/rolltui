@@ -13,8 +13,8 @@
 │ │ Cell grid + frame diff + SGR/   │ build       │ single header, pure, golden-     │ ││                              │
 │ │ colour downgrade    ╭ help ────────────────────────────────────────────────────────────────╮                       │
 │ │ Wrap engine         │   Right         move one grapheme right                              │                       │
-│ │                     │   Alt-B         move one word left                                   •                       │
-│ │ Windows, layers, pla│   Alt-F         move one word right                                  │                       │
+│ │                     │   Alt-H         move one word left                                   •                       │
+│ │ Windows, layers, pla│   Alt-J         move one word right                                  │                       │
 │ │ abs/rel per axis), f│   Home, Ctrl-A  start of the line (scrolls when empty)               │                       │
 │ │                     │   End, Ctrl-E   end of the line (scrolls when empty)                 │                       │
 │ │ Menu widget (hierarc│   Up            up a row, or the previous history entry              │                       │

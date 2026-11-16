@@ -127,7 +127,12 @@
       queueMicrotask(step);
     };
 
-    ex.rolltui_web_resize(term.cols, term.rows, 0, 0);
+    // The terminal's size in pixels too, as TIOCGWINSZ gives it: a picture is fitted to the cells' real size.
+    const pixels = () => {
+      const screen = term.element && term.element.querySelector(".xterm-screen");
+      return screen ? [Math.round(screen.clientWidth), Math.round(screen.clientHeight)] : [0, 0];
+    };
+    ex.rolltui_web_resize(term.cols, term.rows, ...pixels());
     // WHAT XTERM.JS WOULD ANSWER, said before it is asked: a page cannot wait while the program enters, so the reply to the one
     // question entering asks (DA1) is already there.
     input("\x1b[?1;2c");
@@ -137,7 +142,7 @@
     kick();
     return {
       resize(cols, rows) {
-        ex.rolltui_web_resize(cols, rows, 0, 0);
+        ex.rolltui_web_resize(cols, rows, ...pixels());
         kick();
       },
       get stopped() { return stopped; },

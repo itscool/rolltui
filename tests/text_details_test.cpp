@@ -276,6 +276,19 @@ void test_away() {
     rolltui_frame_free(mf);
   }
   rolltui_windows_free(w2);
+  // A WINDOW'S OWN BACKGROUND IS ITS GROUND: a list in a panel draws its rows on the panel, not on the screen behind it.
+  RolltuiLayout* panel = load(R"({ "name": "p", "root": { "id": "rows", "content": "list:things", "focusable": true,
+      "background": "panel_background" } })");
+  RolltuiWindows* w3 = rolltui_windows_new(ctx());
+  rolltui_windows_bind_list(w3, "things", 6, count_fn, row_fn, nullptr, nullptr);
+  RolltuiFrame* pf = nullptr;
+  rows = paint(w3, panel, 30, 6, &pf, "rows");
+  check(style_at(pf, 4, 3).bg == styles[ROLLTUI_ROLE_PANEL_BACKGROUND].bg &&
+            !(styles[ROLLTUI_ROLE_PANEL_BACKGROUND].bg == styles[ROLLTUI_ROLE_BACKGROUND].bg),
+        "a list in a window with a panel background draws its rows on the panel [" + rows[3] + "]");
+  rolltui_frame_free(pf);
+  rolltui_windows_free(w3);
+  rolltui_layout_free(panel);
   rolltui_draw_scratch_free(ds);
   rolltui_menu_free(m);
   rolltui_menu_item_release(&root);

@@ -10,6 +10,7 @@
  * A TREE is rows in tree order, each with its depth: a parent before its children. A node opens and closes; a filter keeps the
  * parents of what it matches, and opens them. Guide lines draw the shape: a row's ancestor that has a later sibling draws a bar.
  */
+#include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_widget_list.h"
 
 #include <stdio.h>
@@ -465,10 +466,28 @@ static void sort_order(RolltuiList* l) {
   rolltui_mem_free(tmp);
 }
 
+/* A ROW THAT LEFT THE DATA IS NOT MARKED: what the marks say, and the footer counts, is what the host still has. Read only while
+ * something is marked, and only until every mark is found. */
+static int is_marked(const RolltuiList* l, const RolltuiStr* key);
+static void prune_marks(RolltuiList* l) {
+  RolltuiMap keep;
+  size_t i;
+  const size_t want = rolltui_map_count(&l->marks);
+  if (want == 0) return;
+  memset(&keep, 0, sizeof keep);
+  for (i = 0; i < l->src_n && rolltui_map_count(&keep) < want; ++i) {
+    fetch(l, i);
+    if (is_marked(l, &l->tmp.key)) rolltui_map_put(&keep, sp(&l->tmp.key), l->tmp.key.n, (void*)1);
+  }
+  rolltui_map_release(&l->marks);
+  l->marks = keep;
+}
+
 static void rebuild(RolltuiList* l) {
   const size_t old_cursor = l->cursor, old_top = l->top;
   size_t i;
   l->src_n = l->count_fn ? l->count_fn(l->ctx) : 0;
+  prune_marks(l);
   l->order_n = 0;
   l->ordered = l->opt.tree || l->sort_col >= 0 || l->filter.n > 0;
   l->stale = 0;
@@ -912,8 +931,10 @@ static int draw_guides(RolltuiList* l, RolltuiFrame* f, int x, int y, int max, s
 }
 
 static void draw_header(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int aw) {
-  RolltuiStyle hs = styles[roles->header];
+  RolltuiStyle hs = styles[roles->header], ground;
   int k;
+  rolltui_frame_ground(f, &ground);
+  rolltui_style_on_window(&hs, styles, ground.bg);
   hs.bold = 1; /* a header reads as one in every theme, mono included */
   for (k = 0; k < (int)l->col_n; ++k) {
     const RolltuiStr* t = &l->cols[k].title;
@@ -952,7 +973,7 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
   int r, k;
   if (a.w <= 0 || a.h <= 0) return;
   rolltui_frame_ground(f, &ground);
-  rolltui_style_on(&muted, ground.bg);
+  rolltui_style_on_window(&muted, styles, ground.bg);
   if (l->header_y >= 0) draw_header(l, f, styles, roles, aw);
   if (n == 0) draw_empty(l, f, muted, aw); /* nothing to show says so, rather than a blank that reads as broken */
   for (r = 0; r < l->body_h && l->top + (size_t)r < n; ++r) {
@@ -969,7 +990,7 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
     st = styles[l->tmp.role ? l->tmp.role : roles->text];
     if (is_cursor) st = styles[focused ? roles->cursor : roles->cursor_away];
     else if (y == hover_y) st = styles[roles->hover];
-    if (!lit) rolltui_style_on(&st, ground.bg);
+    if (!lit) rolltui_style_on_window(&st, styles, ground.bg);
     if (marked) { /* a marked row: bold in the mark's colour, and the mark column says so without colour */
       st.bold = 1;
       if (!is_cursor && styles[roles->mark].fg.kind) st.fg = styles[roles->mark].fg;

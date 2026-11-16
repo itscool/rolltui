@@ -831,7 +831,9 @@ struct App {
     // this file gains nothing per panel.
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t alen = 0;
-      const char* a = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen);
+      const char* a = nullptr;
+      const int got = rolltui_windows_app_key(windows, &e, "app", 3, &a, &alen);  // chords and sequences of the app's own
+      if (got == ROLLTUI_SEQUENCE_PREFIX) return;
       if (a && rolltui_window_stack_action_popup(stack, layout, a, alen)) {
         rolltui_windows_sync(windows, stack);  // its widget now: the keys after it in this batch reach it
         return;

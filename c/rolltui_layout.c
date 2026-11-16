@@ -629,7 +629,14 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
   }
   if (!render) return;
   for (i = 0; i < count; ++i)
-    if (nodes[i].node->kind == ROLLTUI_NODE_WINDOW && !rect_empty(nodes[i].inner)) render(ctx, &nodes[i], f);
+    if (nodes[i].node->kind == ROLLTUI_NODE_WINDOW && !rect_empty(nodes[i].inner)) {
+      /* WHILE A WINDOW DRAWS, ITS GROUND IS ITS OWN: a list's rows or a chart's dots on a panel background stay on it. */
+      RolltuiStyle screen;
+      rolltui_frame_ground(f, &screen);
+      rolltui_frame_set_ground(f, styles[nodes[i].node->background]);
+      render(ctx, &nodes[i], f);
+      rolltui_frame_set_ground(f, screen);
+    }
 }
 
 /* ---- the widget-kind registry ------------------------------------------------------------ */

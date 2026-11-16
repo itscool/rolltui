@@ -22,6 +22,9 @@ extern "C" {
 /* Amends every cell's style in `r` (clipped): a set colour replaces, an attribute bit is
  * OR'd in. Needs no scratch — it reads and writes styles and never looks at text. */
 void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
+/* A style ON A WINDOW'S GROUND: no background, or the screen's own (`styles[ROLLTUI_ROLE_BACKGROUND]`), takes `ground`, the window's; a
+ * background of the role's own (a selection, a swatch) is kept. What a widget draws as plain text in a panel sits on the panel. */
+void rolltui_style_on_window(RolltuiStyle* st, const RolltuiStyle* styles, RolltuiStyleColorRaw ground);
 /* The same amendment at a STRENGTH, 0..1. Where both the cell's colour and the style's are RGB
  * the cell's is moved that fraction of the way toward the style's, so what the cells said
  * about each other — a gradient, a fade, a highlight — is still said, more quietly. Where one

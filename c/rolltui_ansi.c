@@ -28,6 +28,12 @@ typedef struct AnsiLine {
   AnsiRun* runs;
   size_t run_n, run_cap;
   int cols; /* the columns written so far, for tab stops */
+  /* THE ROWS IT WRAPS TO, at `rows_w` cells and `rows_aw`, kept until its text changes: a wrapped view of a long log counts each line
+   * once, not every line on every frame. `rows_w` 0: not counted. */
+  int rows_w;
+  unsigned char rows_aw;
+  unsigned char non_ascii; /* a byte at or above 0x80 was written: its rows need the grapheme walk */
+  size_t rows;
 } AnsiLine;
 
 enum { ST_GROUND = 0, ST_ESC, ST_ESC_SKIP, ST_CSI, ST_STRING, ST_STRING_ESC };
@@ -65,6 +71,8 @@ static void line_reset(AnsiLine* l) {
   rolltui_str_clear(&l->text);
   l->run_n = 0;
   l->cols = 0;
+  l->rows_w = 0;
+  l->non_ascii = 0;
 }
 
 /* The slots the ring may have: `limit` finished lines and the one being written. 0: no cap. */
@@ -174,6 +182,8 @@ static void append(RolltuiAnsiText* t, const char* bytes, size_t n, const Rolltu
   }
   rolltui_str_append(&l->text, bytes, n);
   l->cols += cols;
+  l->rows_w = 0;
+  if (n && (unsigned char)bytes[0] >= 0x80) l->non_ascii = 1; /* a character is appended whole: its first byte says */
 }
 
 static int cp_cols(const char* bytes, size_t n) {
@@ -216,6 +226,7 @@ static void backspace(RolltuiAnsiText* t) {
   l->cols -= cp_cols(l->text.p + b, l->text.n - b);
   if (l->cols < 0) l->cols = 0;
   l->text.n = b;
+  l->rows_w = 0;
   while (l->run_n && l->runs[l->run_n - 1].begin >= l->text.n && l->run_n > 1) --l->run_n;
   if (l->text.n == 0) l->run_n = 0;
 }
@@ -465,10 +476,18 @@ static size_t graphemes(RolltuiAnsiText* t, const AnsiLine* l, int aw) {
 }
 
 /* How many rows one line takes at `width`, wrapped at the edge. */
-static size_t line_rows(RolltuiAnsiText* t, const AnsiLine* l, int width, int aw) {
-  const size_t gn = graphemes(t, l, aw);
-  size_t i, rows = 1;
+static size_t line_rows(RolltuiAnsiText* t, AnsiLine* l, int width, int aw) {
+  size_t gn, i, rows = 1;
   int col = 0;
+  if (l->rows_w == width && l->rows_aw == (unsigned char)(aw != 0)) return l->rows;
+  if (!l->non_ascii) { /* every character one cell: the rows follow from the width written */
+    rows = l->cols > width ? (size_t)((l->cols + width - 1) / width) : 1;
+    l->rows_w = width;
+    l->rows_aw = (unsigned char)(aw != 0);
+    l->rows = rows;
+    return rows;
+  }
+  gn = graphemes(t, l, aw);
   for (i = 0; i < gn; ++i) {
     const int w = t->g[i].width;
     if (w <= 0) continue;
@@ -478,6 +497,9 @@ static size_t line_rows(RolltuiAnsiText* t, const AnsiLine* l, int width, int aw
     }
     col += w;
   }
+  l->rows_w = width;
+  l->rows_aw = (unsigned char)(aw != 0);
+  l->rows = rows;
   return rows;
 }
 

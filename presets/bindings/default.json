@@ -35,11 +35,13 @@
     ],
     "input.word_left": [
       "ctrl+left",
-      "alt+left"
+      "alt+left",
+      "alt+b"
     ],
     "input.word_right": [
       "ctrl+right",
-      "alt+right"
+      "alt+right",
+      "alt+f"
     ],
     "input.line_start": [
       "home",

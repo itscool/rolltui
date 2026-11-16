@@ -176,6 +176,20 @@ void test_detection() {
   check(pick("tmux-256color", "tmux", "/tmp/tmux,1,0", nullptr, nullptr) == ROLLTUI_IMAGES_BLOCKS, "inside tmux, blocks");
   check(pick("tmux-256color", "tmux", "/tmp/tmux,1,0", "3", nullptr) == ROLLTUI_IMAGES_KITTY, "…unless the window is kitty's");
   check(pick("xterm-kitty", nullptr, nullptr, nullptr, "sixel") == ROLLTUI_IMAGES_SIXEL, "ROLLTUI_IMAGES chooses outright");
+  auto pick_in = [](const char* sty, const char* zellij, const char* nvim) {
+    RolltuiTermEnv e{};
+    e.term = "xterm-kitty";
+    e.kitty_window_id = "3";
+    e.sty = sty;
+    e.zellij = zellij;
+    e.nvim = nvim;
+    RolltuiTermFacts f{};
+    rolltui_termfacts_from_env(&e, &f);
+    return static_cast<int>(f.images);
+  };
+  check(pick_in("1234.pts-0.host", nullptr, nullptr) == ROLLTUI_IMAGES_BLOCKS, "inside GNU screen in a kitty window, blocks: screen passes no tmux wrapper");
+  check(pick_in(nullptr, "0", nullptr) == ROLLTUI_IMAGES_BLOCKS, "…inside Zellij, blocks");
+  check(pick_in(nullptr, nullptr, "/tmp/nvim.sock") == ROLLTUI_IMAGES_BLOCKS, "…and inside Neovim's terminal, blocks, whatever it inherited");
   RolltuiTermReplies r{};
   char da[] = "\x1b[?62;4;22c";
   rolltui_termreplies_take(da, std::strlen(da), 0, &r);
@@ -274,9 +288,22 @@ void test_present() {
     check(first.find("\x1b_Ga=t") < first.find("\xF4\x8E\xBB\xAE"), "…before the placeholder cells");
     const std::string again = k.present(img, 1, 1);
     check(!has(again, "\x1b_G"), "the same picture again sends nothing more");
+    // THE TERMINAL KEEPS ONLY THE LAST FEW: eight more pictures, each drawn once, and the first is deleted from it.
+    std::vector<RolltuiImage*> more;
+    std::string sent;
+    for (int n = 0; n < 8; ++n) {
+      more.push_back(decode(ppm(20, 20, std::vector<unsigned char>(20 * 20 * 3, static_cast<unsigned char>(10 + n)))));
+      sent += k.present(more.back(), 1, 1);
+    }
+    check(has(sent, "\x1b_Ga=d,d=I,i=" + id + ",q=2\x1b\\") &&
+              !has(sent, "\x1b_Ga=d,d=I,i=" + std::to_string(rolltui_image_id(more.back())) + ","),
+          "past eight pictures sent, the least recently drawn is deleted from the terminal, and the one on screen is not");
+    const std::string back = k.present(img, 1, 1);
+    check(has(back, "\x1b_Ga=t,f=32,s=20,v=20,i=" + id + ","), "…and drawn again it is sent again");
     rolltui_terminal_free(k.t);
     k.t = nullptr;
     check(has(k.read(), "\x1b_Ga=d,d=I,i=" + id + ",q=2\x1b\\"), "leaving deletes what was sent");
+    for (RolltuiImage* m : more) rolltui_image_free(m);
   }
   {
     Pty k("kitty", /*tmux=*/true);

@@ -111,6 +111,16 @@ void test_line() {
   Drawn m(30, 6);
   rolltui_chart_draw(c, m.f, ds, RolltuiRect{0, 0, 30, 6}, m.styles, 0);
   check(m.braille_at(29, 0), "more values than fit shows the newest: the last fifty, high, reach the top right");
+  // THE RANGE IS WHAT IS SHOWN: a spike long scrolled off no longer sets the scale for the values on screen.
+  std::vector<double> spiked(400, 20.0);
+  spiked[0] = 5000;
+  for (std::size_t i = 300; i < spiked.size(); ++i) spiked[i] = 20 + static_cast<double>(i % 10);
+  rolltui_chart_clear(c);
+  rolltui_chart_set_series(c, 0, "", 0, 0, spiked.data(), spiked.size());
+  Drawn sp(30, 6);
+  rolltui_chart_draw(c, sp.f, ds, RolltuiRect{0, 0, 30, 6}, sp.styles, 0);
+  sp.read();
+  check(sp.rows[0].find("29") == 0 && !has(sp.rows, "5k"), "a spike scrolled off no longer sets the scale: the top is the shown most [" + sp.rows[0] + "]");
   rolltui_draw_scratch_free(ds);
   rolltui_chart_free(c);
 }

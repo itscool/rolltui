@@ -1,5 +1,6 @@
 /* rolltui/c/rolltui_widgets.c — the C side of the widget vtable's host. See
  * rolltui_widgets.h; the rules are rolltui/Widgets.hpp's. */
+#include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_widgets.h"
 
 #include <stdio.h>
@@ -1380,7 +1381,7 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   }
   style = styles[roles->scrollbar];
   ground = styles[rn->node->background];
-  if (style.bg.kind == 0 /* Color::Kind::None */) style.bg = ground.bg;
+  rolltui_style_on_window(&style, styles, ground.bg); /* in the border, on the window's ground */
   /* A CAPSULE, not a run of one glyph: the ends are half-height so a bar of any length reads as
    * a shape rather than a gap punched in the border. Every glyph worth using is East Asian
    * AMBIGUOUS, exactly like the box-drawing set the border is made of, so it takes the border's
@@ -1622,6 +1623,56 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
     }
   }
   return deliver(w, window, len, wd, e);
+}
+
+int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t slen, const char** action,
+                            size_t* alen) {
+  const RolltuiBindings* b;
+  const RolltuiChord* k;
+  const char* got = NULL;
+  size_t got_n = 0;
+  int r;
+  if (action) *action = NULL;
+  if (alen) *alen = 0;
+  if (!w || !e || e->kind != ROLLTUI_EVENT_KEY || !scope) return ROLLTUI_SEQUENCE_NONE;
+  b = rolltui_windows_bindings(w);
+  k = &e->key;
+  if (w->seq_n > 0 || w->seq_count > 0) {
+    /* SOMETHING IS ON THE WAY. A window's is the window's; the host's own goes on here. */
+    if (w->seq_window.n != 0 || w->seq_scope_n != slen || memcmp(w->seq_scope, scope, slen) != 0 || w->seq_n == 0)
+      return ROLLTUI_SEQUENCE_NONE;
+    if (k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift) {
+      seq_reset(w);
+      return ROLLTUI_SEQUENCE_PREFIX;
+    }
+    w->seq_keys[w->seq_n] = *k;
+    r = rolltui_bindings_sequence_for(b, w->seq_keys, w->seq_n + 1, scope, slen, &got, &got_n);
+    if (r == ROLLTUI_SEQUENCE_PREFIX && w->seq_n + 1 < ROLLTUI_SEQUENCE_MAX) {
+      ++w->seq_n;
+      return ROLLTUI_SEQUENCE_PREFIX;
+    }
+    seq_reset(w);
+    if (r != ROLLTUI_SEQUENCE_DONE) return ROLLTUI_SEQUENCE_NONE; /* not a sequence after all: the key is what it is alone */
+    if (action) *action = got;
+    if (alen) *alen = got_n;
+    return ROLLTUI_SEQUENCE_DONE;
+  }
+  got = rolltui_bindings_action_for(b, k, scope, slen, &got_n);
+  if (got) {
+    if (action) *action = got;
+    if (alen) *alen = got_n;
+    return ROLLTUI_SEQUENCE_DONE;
+  }
+  if (slen < sizeof w->seq_scope && rolltui_bindings_sequence_for(b, k, 1, scope, slen, NULL, NULL) == ROLLTUI_SEQUENCE_PREFIX) {
+    rolltui_str_clear(&w->seq_window); /* the host's own: no window holds it */
+    memcpy(w->seq_scope, scope, slen);
+    w->seq_scope_n = slen;
+    w->seq_keys[0] = *k;
+    w->seq_n = 1;
+    w->seq_since = rolltui_windows_env(w)->now_ms;
+    return ROLLTUI_SEQUENCE_PREFIX;
+  }
+  return ROLLTUI_SEQUENCE_NONE;
 }
 
 /* ---- what can follow: the keys on the way, and the panel that lists what to press next ---------------------------------------- */
