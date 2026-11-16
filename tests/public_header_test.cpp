@@ -137,7 +137,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 45; /* +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 46; /* +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -505,8 +505,9 @@ int main() {
     // drawn, sized, bound to a window) and INTERNAL 825 (fitting, scaling, each protocol's bytes, the frame's record of them, the
     // published way of drawing them). Then work off the UI thread: PUBLIC 496 (the task pool and its jobs, the run's timers,
     // debounce and tasks, the window table's workers and an input's changes) and INTERNAL 839 (threads and conditions, and the
-    // preview and picker reading on a worker).
-    check(totals["PUBLIC"] == 496 && totals["INTERNAL"] == 839 && totals.size() == 2,
+    // preview and picker reading on a worker). Then lists: PUBLIC 510 (natural order, the fuzzy match, a list window bound, shaped,
+    // asked and driven) and INTERNAL 861 (the widget itself and the table's lists by name).
+    check(totals["PUBLIC"] == 510 && totals["INTERNAL"] == 861 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -674,12 +675,13 @@ int main() {
     // spinner a widget draws with. Bind 105, run 159, release 14, widget 35: other programs (an output window bound, a program run
     // and released, its output read and drawn). Vocab 42, bind 106, widget 37: a picture (made, read, freed), bound to a window,
     // drawn and sized. Bind 108, run 172, release 15: workers lent to the table and an input's changes bound; tasks, jobs,
-    // timers and debounce; the tasks freed.
+    // timers and debounce; the tasks freed. Bind 113, run 178, release 16, widget 39: a list bound, shaped and refreshed, its
+    // row filled; its filter, cursor, marks and events, and its actions by name; its event released; natural order and the fuzzy match.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 108 && rt["HOST_RUN"] == 172 && rt["HOST_RELEASE"] == 15 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 37,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 108 / run 172 / "
-          "release 15, tool interop 0, widget 37 (got " +
+              rt["HOST_BIND"] == 113 && rt["HOST_RUN"] == 178 && rt["HOST_RELEASE"] == 16 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 39,
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 113 / run 178 / "
+          "release 16, tool interop 0, widget 39 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

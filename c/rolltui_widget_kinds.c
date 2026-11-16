@@ -6,6 +6,7 @@
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_feedback.h"
+#include "rolltui/c/rolltui_widget_list.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_widget_picker.h"
 
@@ -1169,6 +1170,86 @@ static const RolltuiWidgetPlugin kImagePlugin = {
     image_ctx_destroy, image_ctx_layout, image_ctx_draw, image_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */
 };
 
+
+/* ============================================================================================
+ * list:<source> — a list, a table or a tree the host feeds by index.
+ * ============================================================================================ */
+
+typedef struct RolltuiListCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+} RolltuiListCtx;
+
+/* The table's list of that name: made by the first bind or option, and kept until the table is freed. NULL until then. */
+static RolltuiList* list_of(RolltuiListCtx* lc) {
+  return rolltui_windows_has_list(lc->w, lc->source.p ? lc->source.p : "", lc->source.n)
+             ? rolltui_windows_list(lc->w, lc->source.p ? lc->source.p : "", lc->source.n)
+             : NULL;
+}
+
+static int list_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  if (rolltui_list_has_source(list_of(lc))) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &lc->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+static void list_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  RolltuiList* l = list_of(lc);
+  RolltuiRect r;
+  if (!l) return;
+  rolltui_content_rect(rn, &r);
+  rolltui_list_layout(l, r, rolltui_windows_env(lc->w)->ambiguous_wide);
+}
+static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  RolltuiList* l = list_of(lc);
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(lc->w);
+  RolltuiListRoles roles;
+  if (!l) return;
+  roles.text = br->text;
+  roles.text_muted = br->text_muted;
+  roles.header = br->label;
+  roles.cursor = br->cursor;
+  roles.cursor_away = br->cursor_away;
+  roles.mark = br->mark;
+  roles.hover = br->hover;
+  roles.prompt = br->prompt;
+  list_ctx_layout(ctx, rn);
+  rolltui_list_draw(l, f, rolltui_windows_styles(lc->w), &roles, rn->focused, rn->hover ? rn->hover_y : -1,
+                    rolltui_windows_env(lc->w)->ambiguous_wide);
+}
+static int list_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  RolltuiList* l = list_of(lc);
+  return l ? rolltui_list_handle(l, e, rolltui_windows_bindings(lc->w), rolltui_list_default_actions()) : 0;
+}
+static int list_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiList* l = list_of((RolltuiListCtx*)ctx);
+  return l && axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_extent(l, out);
+}
+static int list_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  RolltuiList* l = list_of((RolltuiListCtx*)ctx);
+  return l && axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_to(l, first);
+}
+static int list_ctx_back(void* ctx) {
+  RolltuiList* l = list_of((RolltuiListCtx*)ctx);
+  return l ? rolltui_list_back(l) : 0;
+}
+static void list_ctx_destroy(void* ctx) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  rolltui_str_free(&lc->source);
+  rolltui_mem_free(lc);
+}
+
+static const RolltuiWidgetPlugin kListPlugin = {
+    list_ctx_destroy, list_ctx_layout, list_ctx_draw, list_ctx_problem, NULL, NULL, list_ctx_handle,
+    list_ctx_scroll_extent, list_ctx_scroll_to, NULL /* title: the layout's */, list_ctx_back /* the filter, then the marks */
+};
+
 /* ============================================================================================
  * the error panel — the window that could not be understood, never blank (Layout.hpp).
  * ============================================================================================ */
@@ -1366,6 +1447,33 @@ static RolltuiWidget image_widget_factory(void* c, RolltuiWindows* w, const char
   ic->draw = rolltui_draw_scratch_new();
   out.vt = &kImagePlugin;
   out.ctx = ic;
+  return out;
+}
+
+static RolltuiWidget list_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiListCtx* lc;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  lc = (RolltuiListCtx*)rolltui_mem_alloc(sizeof *lc);
+  memset(lc, 0, sizeof *lc);
+  lc->w = w;
+  rolltui_str_set(&lc->source, source, source_len);
+  out.vt = &kListPlugin;
+  out.ctx = lc;
   return out;
 }
 
@@ -1668,6 +1776,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "messages", 8, messages_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "output", 6, output_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "image", 5, image_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "list", 4, list_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
@@ -1700,6 +1809,10 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*info=*/ROLLTUI_ROLE_ACCENT_1,
       /*ok=*/ROLLTUI_ROLE_ACCENT_2,
       /*warning=*/ROLLTUI_ROLE_WARNING,
+      /*cursor=*/ROLLTUI_ROLE_MENU_SELECTED,
+      /*cursor_away=*/ROLLTUI_ROLE_SELECTION,
+      /*mark=*/ROLLTUI_ROLE_ACCENT_1,
+      /*prompt=*/ROLLTUI_ROLE_PROMPT,
   };
   static const RolltuiMenuRoles kMenuRoles = {
       /*item=*/ROLLTUI_ROLE_MENU_ITEM,

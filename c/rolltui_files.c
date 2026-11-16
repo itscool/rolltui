@@ -17,12 +17,13 @@ void rolltui_dir_list_release(RolltuiDirList* l) {
 }
 
 /* Directories first at every sort. A person walking a tree is looking for the next directory far
- * more often than for the largest file, so mixing them by size or date buries the way onward. */
+ * more often than for the largest file, so mixing them by size or date buries the way onward. Names
+ * are in natural order, as a person reads them: `file2` before `file10`, case and accents aside. */
 static int cmp_name(const void* a, const void* b) {
   const RolltuiDirEntry* x = (const RolltuiDirEntry*)a;
   const RolltuiDirEntry* y = (const RolltuiDirEntry*)b;
   if (x->is_dir != y->is_dir) return y->is_dir - x->is_dir;
-  return strcmp(x->name.p ? x->name.p : "", y->name.p ? y->name.p : "");
+  return rolltui_natural_compare(x->name.p ? x->name.p : "", x->name.n, y->name.p ? y->name.p : "", y->name.n);
 }
 
 static int cmp_size(const void* a, const void* b) {

@@ -1279,7 +1279,7 @@ int main(int argc, char** argv) {
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
       check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
             "the keys editor lists the app, editor and studio scopes");
-      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Down Enter\"", rc);
+      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Down Down Enter\"", rc);
       check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
             "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
       // A USER'S OWN bindings file — every one of the eleven rows in it — loads clean and

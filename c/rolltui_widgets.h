@@ -155,6 +155,9 @@ int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t 
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
 /* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
+/* The list a `list:<name>` window shows, made on first use and kept until `w` is freed. */
+struct RolltuiList* rolltui_windows_list(RolltuiWindows* w, const char* name, size_t len);
+int rolltui_windows_has_list(const RolltuiWindows* w, const char* name, size_t len);
 /* The workers the built-in kinds read files on (`rolltui_windows_set_tasks`); NULL: this thread. */
 RolltuiTasks* rolltui_windows_tasks(const RolltuiWindows* w);
 /* The picture an `image:<name>` window shows instead of reading the file; NULL when none is bound. */

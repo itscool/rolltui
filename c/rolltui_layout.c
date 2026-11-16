@@ -594,6 +594,7 @@ static const KindRow kKinds[] = {
     {"messages", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
     {"output", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "another program's output the host binds"},
     {"image", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_TEXT, "a picture's path, or a picture the host binds"},
+    {"list", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a list the host binds"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 

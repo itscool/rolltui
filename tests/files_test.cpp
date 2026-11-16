@@ -82,6 +82,16 @@ int main() {
   check(by_size_rev == "zeta alpha a-tiny.txt z-huge.txt",
         "REVERSED turns each block around — folders still first, smallest file first [" + by_size_rev + "]");
 
+  // ---- 3b. names as a person reads them ------------------------------------------------------
+  {
+    const fs::path nat = root / "natural";
+    fs::create_directories(nat);
+    for (const char* n : {"file10.txt", "file2.txt", "File1.txt", "notes.txt"}) write_file(nat / n, "x");
+    rolltui_dir_read(nat.c_str(), std::strlen(nat.c_str()), ROLLTUI_SORT_NAME, 0, &l, &err);
+    check(names_of(l) == "File1.txt file2.txt file10.txt notes.txt",
+          "by NAME the order is natural: file2 before file10, and case aside [" + names_of(l) + "]");
+  }
+
   // ---- 4. THE DISTINCTION THAT MATTERS MOST -------------------------------------------------
   // An unreadable directory and an empty one both yield no entries. A caller that cannot tell
   // them apart draws "(empty)" over a permission error, which is a wrong answer wearing a success.

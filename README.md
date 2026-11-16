@@ -29,8 +29,8 @@ A terminal UI library in C, with a C++ API on top.
 | File browser with live preview | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Images (kitty, iTerm2, sixel, blocks) | ✓ | ✗ | ratatui-image | ✗ | ✓ | ✗ |
 | **Widgets** | | | | | | |
-| Data table | partial | ✓ | ✓ | ✓ | ✗ | partial |
-| Tree | ✗ | ✓ | ✗ | ✓ | ✓ | partial |
+| Data table | ✓ | ✓ | ✓ | ✓ | ✗ | partial |
+| Tree | ✓ | ✓ | ✗ | ✓ | ✓ | partial |
 | Tabs | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Charts | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Multi-line text editor | ✓ | ✓ | ratatui-textarea | ✓ | ✓ | partial |

@@ -3496,6 +3496,110 @@ int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect are
                       RolltuiStyle base, int ambiguous_wide);
 
 /* ========================================================================================
+ * list — a list, a table or a tree the host feeds by index
+ * ======================================================================================== */
+
+/* A `list:<name>` WINDOW over data the host holds. The list asks how many rows there are and, for row `i`, what it says; a plain
+ * list asks only for the rows it draws, so a hundred thousand rows cost a screenful. Sorting, a filter or a tree need every row
+ * once, when the data or the question changes (`rolltui_windows_list_refresh`, or the count moving), never per frame.
+ *
+ * A ROW IS ITS KEY: the cursor, the marks and which nodes are open follow a row through a refresh, a sort or a filter, and the
+ * cursor keeps its place on screen when its row moved. A row with no key is keyed by its index. */
+typedef struct RolltuiListRow {
+  RolltuiStr key;
+  RolltuiStrListRaw cells;                /* one per column; the first is the row's own text (`rolltui_list_row_cell` adds one) */
+  unsigned char role ROLLTUI_DEFAULT(0);  /* a role for the whole row (an added file, an error); 0: text */
+  unsigned char depth ROLLTUI_DEFAULT(0); /* a tree's: 0 at the top; rows come in tree order, a parent before its children */
+  unsigned char busy ROLLTUI_DEFAULT(0);  /* what it is doing is running: a spinner at the row's end, from `busy_since_ms` */
+  unsigned long long busy_since_ms ROLLTUI_DEFAULT(0);
+} RolltuiListRow;
+/* Appends one cell to `r`, copied. */
+void rolltui_list_row_cell(RolltuiListRow* r, const char* text, size_t len);
+typedef size_t (*RolltuiListCountFn)(void* ctx);
+/* Fills `out` (cleared) with row `i` of the host's data, in the host's own order. */
+typedef void (*RolltuiListRowFn)(void* ctx, size_t i, RolltuiListRow* out);
+
+#define ROLLTUI_LIST_SORT_TEXT 0   /* natural order (`rolltui_natural_compare`): file2 before file10, case and accents aside */
+#define ROLLTUI_LIST_SORT_NUMBER 1 /* by the number a cell starts with, a size's K, M, G, T and an age's m, h, d read; text after */
+#define ROLLTUI_LIST_ALIGN_LEFT 0
+#define ROLLTUI_LIST_ALIGN_RIGHT 1
+/* A TABLE'S COLUMN. The first takes the width the others leave; the rest are `width` cells, or as wide as the widest cell they
+ * have shown (a measured column only grows, so it does not jitter as the list scrolls). `min_screen`: shown only while the list
+ * is at least this wide, so a narrow screen drops the column. */
+typedef struct RolltuiListColumn {
+  RolltuiStr title;
+  int width ROLLTUI_DEFAULT(0);
+  unsigned char align ROLLTUI_DEFAULT(ROLLTUI_LIST_ALIGN_LEFT);
+  int min_screen ROLLTUI_DEFAULT(0);
+  unsigned char sort ROLLTUI_DEFAULT(ROLLTUI_LIST_SORT_TEXT);
+} RolltuiListColumn;
+
+typedef struct RolltuiListOptions {
+  /* A TREE: rows nest by `depth`, guide lines draw the shape, a node opens and closes, and a filter keeps (and opens) the parents of
+   * what it matches. Nodes shallower than `open_depth` start open, the rest closed (0: every node). Enter opens or closes a node
+   * unless `activate_nodes`. */
+  unsigned char tree ROLLTUI_DEFAULT(0);
+  unsigned char open_depth ROLLTUI_DEFAULT(0);
+  unsigned char activate_nodes ROLLTUI_DEFAULT(0);
+  /* MARKS: several rows chosen at once, by key: a mark column, Space, a range with Shift and the arrows or a drag, all, none and
+   * the inverse. Back clears them. */
+  unsigned char marks ROLLTUI_DEFAULT(0);
+  unsigned char line_numbers ROLLTUI_DEFAULT(0); /* 1: each row's number; 2: relative to the cursor's */
+  int scrolloff ROLLTUI_DEFAULT(0);              /* rows kept between the cursor and the edge; past half the view, centred */
+  unsigned char wrap ROLLTUI_DEFAULT(0);         /* the cursor goes from the last row to the first, and back */
+  unsigned char hide_header ROLLTUI_DEFAULT(0);  /* no row of the columns' titles (the sorted one marked ▲ or ▼) */
+} RolltuiListOptions;
+
+/* WHAT HAPPENED, popped one at a time: the cursor moved to `key`, `key` was activated (Enter, a double click), the marks changed,
+ * the sort changed, `key` opened or closed, the filter is now `key`. */
+#define ROLLTUI_LIST_EVENT_MOVED 1
+#define ROLLTUI_LIST_EVENT_ACTIVATE 2
+#define ROLLTUI_LIST_EVENT_MARKED 3
+#define ROLLTUI_LIST_EVENT_SORTED 4
+#define ROLLTUI_LIST_EVENT_OPENED 5
+#define ROLLTUI_LIST_EVENT_CLOSED 6
+#define ROLLTUI_LIST_EVENT_FILTERED 7
+typedef struct RolltuiListEvent {
+  unsigned char kind;
+  RolltuiStr key;
+} RolltuiListEvent;
+void rolltui_list_event_release(RolltuiListEvent* e);
+
+/* The data a `list:<name>` window shows: `count(ctx)` rows, row `i` filled by `row(ctx, i, out)`. Binding again replaces the source;
+ * `free_ctx` (may be NULL) is called on `ctx` when it is replaced and when `w` is freed. */
+void rolltui_windows_bind_list(RolltuiWindows* w, const char* name, size_t len, RolltuiListCountFn count, RolltuiListRowFn row,
+                               void* ctx, void (*free_ctx)(void*));
+void rolltui_windows_set_list_options(RolltuiWindows* w, const char* name, size_t len, const RolltuiListOptions* o);
+/* The columns, copied; none: each row is its first cell across the whole width. */
+void rolltui_windows_set_list_columns(RolltuiWindows* w, const char* name, size_t len, const RolltuiListColumn* cols, size_t n);
+/* The data changed: the rows are asked for again before the next draw. */
+void rolltui_windows_list_refresh(RolltuiWindows* w, const char* name, size_t len);
+void rolltui_windows_list_set_filter(RolltuiWindows* w, const char* name, size_t len, const char* query, size_t qlen);
+void rolltui_windows_list_set_cursor(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen);
+/* 1 with the cursor's row's key in `*key` (may be NULL); 0 when the list shows nothing. */
+int rolltui_windows_list_cursor(RolltuiWindows* w, const char* name, size_t len, RolltuiStr* key);
+/* How many rows are marked; their keys REPLACE `*keys` (may be NULL). */
+size_t rolltui_windows_list_marked(RolltuiWindows* w, const char* name, size_t len, RolltuiStrListRaw* keys);
+/* 1 with the next event in `*out` (its key replaced); 0 when there is none. */
+int rolltui_windows_list_event(RolltuiWindows* w, const char* name, size_t len, RolltuiListEvent* out);
+/* Does what a key bound to `action` (a `list.*` name, as a bindings file spells it) does: a host's own menu entry or command for
+ * "mark all". `filter` starts typing in the list's last row: each space-separated term must match within one cell, fuzzily
+ * (`rolltui_fuzzy_match`), `'term` as written, `!term` not at all; Enter keeps it. `back` clears the filter, then the marks. 1 when it
+ * did something. */
+int rolltui_windows_list_perform(RolltuiWindows* w, const char* name, size_t len, const char* action, size_t alen);
+
+/* ---- ordering and finding text ---------------------------------------------------------------- */
+/* NATURAL ORDER: a run of digits against a run of digits by value (`file2` before `file10`, `07` beside `7`), the rest by its
+ * case-folded, accent-stripped code points, the bytes as written breaking a tie. <0, 0, >0. */
+int rolltui_natural_compare(const char* a, size_t alen, const char* b, size_t blen);
+/* FUZZY: whether `pattern`'s letters appear in `text` in order, case and accents aside unless the pattern has an uppercase letter
+ * (smart case). `*score` (may be NULL) is higher for a better match: a run of letters, a match at a word's start (after a space,
+ * a separator or a lower-to-upper change), early in the text. `positions` (may be NULL) gets each matched letter's byte offset in
+ * `text`, up to `cap`. An empty pattern matches everything. */
+int rolltui_fuzzy_match(const char* pattern, size_t pattern_len, const char* text, size_t text_len, int* score, size_t* positions,
+                        size_t cap);
+
+/* ========================================================================================
  * images — pictures, fitted to a window and drawn the best way the terminal has
  * ======================================================================================== */
 
@@ -3554,6 +3658,8 @@ typedef struct RolltuiBuiltinRoles {
   unsigned char hover; /* what a click at the pointer would act on (`RolltuiResolvedNode::hover`) */
   /* a gauge's bar, a toast's ground and border, and the three message levels that are not `error` */
   unsigned char gauge, panel, border, info, ok, warning;
+  /* a list's cursor, focused and not, the mark on a marked row, and the filter's prompt */
+  unsigned char cursor, cursor_away, mark, prompt;
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use: this file knows the rule and none of the words (the same trade
@@ -3743,7 +3849,7 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
  * filepicker — the column browser, and directory reading a host can use on its own
  * ======================================================================================== */
 
-#define ROLLTUI_SORT_NAME 0
+#define ROLLTUI_SORT_NAME 0 /* natural order (`rolltui_natural_compare`): file2 before file10, case and accents aside */
 #define ROLLTUI_SORT_SIZE 1
 #define ROLLTUI_SORT_MODIFIED 2
 

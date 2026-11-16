@@ -208,6 +208,71 @@
     "edit.step_down": [
       "down"
     ],
+    "list.up": [
+      "up",
+      "ctrl+p"
+    ],
+    "list.down": [
+      "down",
+      "ctrl+n"
+    ],
+    "list.page_up": [
+      "pageup"
+    ],
+    "list.page_down": [
+      "pagedown"
+    ],
+    "list.first": [
+      "home"
+    ],
+    "list.last": [
+      "end"
+    ],
+    "list.activate": [
+      "enter"
+    ],
+    "list.back": [
+      "escape"
+    ],
+    "list.mark": [
+      "space"
+    ],
+    "list.mark_up": [
+      "shift+up"
+    ],
+    "list.mark_down": [
+      "shift+down"
+    ],
+    "list.mark_all": [
+      "alt+a"
+    ],
+    "list.unmark_all": [
+      "alt+u"
+    ],
+    "list.invert_marks": [
+      "alt+i"
+    ],
+    "list.open": [
+      "right"
+    ],
+    "list.close": [
+      "left"
+    ],
+    "list.open_all": [
+      "alt+right"
+    ],
+    "list.close_all": [
+      "alt+left"
+    ],
+    "list.sort": [
+      "alt+s"
+    ],
+    "list.reverse": [
+      "alt+r"
+    ],
+    "list.filter": [
+      "/"
+    ],
     "stack.close_popup": [
       "escape"
     ],

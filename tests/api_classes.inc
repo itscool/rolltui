@@ -816,6 +816,44 @@ ROLLTUI_API(rolltui_ansi_rows, PUBLIC)  /* KEPT: a host's own widget scrolling o
 ROLLTUI_API(rolltui_ansi_width, PUBLIC)  /* KEPT: a host's own widget scrolling sideways */
 ROLLTUI_API(rolltui_ansi_draw, PUBLIC)  /* KEPT: a host's own widget drawing output (the output kind draws it for a window) */
 
+/* ---- the list, the table and the tree; ordering and finding text --- */
+ROLLTUI_API(rolltui_natural_compare, PUBLIC)  /* a host orders its own names as a person reads them: file2 before file10 */
+ROLLTUI_API(rolltui_fuzzy_match, PUBLIC)  /* a host ranks its own candidates and lights what matched: a command palette, a completion */
+ROLLTUI_API(rolltui_list_row_cell, PUBLIC)  /* a host's row function fills a row's cells */
+ROLLTUI_API(rolltui_list_event_release, PUBLIC)  /* KEPT: the release half of the event a host holds */
+ROLLTUI_API(rolltui_windows_bind_list, PUBLIC)  /* a host's data in a `list:` window */
+ROLLTUI_API(rolltui_windows_set_list_options, PUBLIC)  /* a table, a tree, marks: the host's to choose */
+ROLLTUI_API(rolltui_windows_set_list_columns, PUBLIC)
+ROLLTUI_API(rolltui_windows_list_refresh, PUBLIC)  /* the host's data changed */
+ROLLTUI_API(rolltui_windows_list_set_filter, PUBLIC)  /* a filter the host sets: a search box of its own, a saved view */
+ROLLTUI_API(rolltui_windows_list_set_cursor, PUBLIC)  /* the host puts the cursor on a row: a selection restored, a search result */
+ROLLTUI_API(rolltui_windows_list_cursor, PUBLIC)  /* what the host acts on */
+ROLLTUI_API(rolltui_windows_list_marked, PUBLIC)  /* what the host acts on, several at once */
+ROLLTUI_API(rolltui_windows_list_event, PUBLIC)  /* what the person did */
+ROLLTUI_API(rolltui_windows_list_perform, PUBLIC)  /* a host's own menu entry or command does what a key would */
+ROLLTUI_API(rolltui_windows_list, INTERNAL)  /* the kind reaches the table's list by name */
+ROLLTUI_API(rolltui_windows_has_list, INTERNAL)
+ROLLTUI_API(rolltui_list_default_actions, INTERNAL)  /* the list scope's names; the kind drives the widget */
+ROLLTUI_API(rolltui_list_new, INTERNAL)
+ROLLTUI_API(rolltui_list_free, INTERNAL)
+ROLLTUI_API(rolltui_list_set_source, INTERNAL)
+ROLLTUI_API(rolltui_list_has_source, INTERNAL)
+ROLLTUI_API(rolltui_list_set_options, INTERNAL)
+ROLLTUI_API(rolltui_list_set_columns, INTERNAL)
+ROLLTUI_API(rolltui_list_refresh, INTERNAL)
+ROLLTUI_API(rolltui_list_set_filter, INTERNAL)
+ROLLTUI_API(rolltui_list_set_cursor, INTERNAL)
+ROLLTUI_API(rolltui_list_cursor, INTERNAL)
+ROLLTUI_API(rolltui_list_marked, INTERNAL)
+ROLLTUI_API(rolltui_list_event, INTERNAL)
+ROLLTUI_API(rolltui_list_perform, INTERNAL)
+ROLLTUI_API(rolltui_list_back, INTERNAL)
+ROLLTUI_API(rolltui_list_layout, INTERNAL)
+ROLLTUI_API(rolltui_list_draw, INTERNAL)
+ROLLTUI_API(rolltui_list_handle, INTERNAL)
+ROLLTUI_API(rolltui_list_scroll_extent, INTERNAL)
+ROLLTUI_API(rolltui_list_scroll_to, INTERNAL)
+
 /* ---- rolltui_feedback.h — a gauge, a spinner, the message log and its toasts --- */
 ROLLTUI_API(rolltui_gauge_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiGauge it owns and C has no destructor */
 ROLLTUI_API(rolltui_gauge_draw, PUBLIC)  /* KEPT: a host draws a gauge inside its own widget: a status line, a row of a list */

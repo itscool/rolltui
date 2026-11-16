@@ -25,6 +25,7 @@
 #include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
+#include "rolltui/c/rolltui_widget_list.h"
 
 typedef struct { const char* name; const char* desc; } LibAction;
 
@@ -109,6 +110,27 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(picker,    cancel,            "picker.cancel",               "choose nothing") \
   X(picker,    copy,              "picker.copy",                 "copy the selection's path") \
   X(picker,    copy_inverse,      "picker.copy_inverse",         "copy the path the other way round (absolute / relative)") \
+  X(list,      up,                "list.up",                     "the row above") \
+  X(list,      down,              "list.down",                   "the row below") \
+  X(list,      page_up,           "list.page_up",                "a page up") \
+  X(list,      page_down,         "list.page_down",              "a page down") \
+  X(list,      first,             "list.first",                  "the first row") \
+  X(list,      last,              "list.last",                   "the last row") \
+  X(list,      activate,          "list.activate",               "act on the row (a tree's node opens or closes)") \
+  X(list,      back,              "list.back",                   "clear the filter, then the marks") \
+  X(list,      mark,              "list.mark",                   "mark or unmark the row, and move on") \
+  X(list,      mark_up,           "list.mark_up",                "mark from where the range began up a row") \
+  X(list,      mark_down,         "list.mark_down",              "mark from where the range began down a row") \
+  X(list,      mark_all,          "list.mark_all",               "mark every row shown") \
+  X(list,      unmark_all,        "list.unmark_all",             "unmark every row") \
+  X(list,      invert_marks,      "list.invert_marks",           "mark what is unmarked and the other way round") \
+  X(list,      open,              "list.open",                   "open the node, or into it") \
+  X(list,      close,             "list.close",                  "close the node, or up to its parent") \
+  X(list,      open_all,          "list.open_all",               "open every node") \
+  X(list,      close_all,         "list.close_all",              "close every node") \
+  X(list,      sort,              "list.sort",                   "sort by the next column, then the list's own order") \
+  X(list,      reverse,           "list.reverse",                "the sort the other way") \
+  X(list,      filter,            "list.filter",                 "type to narrow the rows") \
   X(stack,     close_popup,       "stack.close_popup",           "close the topmost popup") \
   X(stack,     focus_next,        "stack.focus_next",            "move focus to the next window") \
   X(stack,     focus_prev,        "stack.focus_prev",            "move focus to the previous window")
@@ -160,6 +182,7 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_edit(field, name)
 #define ROLLTUI_LA_stack(field, name)
 #define ROLLTUI_LA_picker(field, name)
+#define ROLLTUI_LA_list(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input
@@ -222,7 +245,14 @@ static const RolltuiPickerActions kPickerActions = {ROLLTUI_LIBRARY_ACTION_LIST(
 #undef ROLLTUI_LA_picker
 #define ROLLTUI_LA_picker(field, name)
 
+#undef ROLLTUI_LA_list
+#define ROLLTUI_LA_list(field, name) .field = name,
+static const RolltuiListActions kListActions = {ROLLTUI_LIBRARY_ACTION_LIST(ROLLTUI_LA_PICK_)};
+#undef ROLLTUI_LA_list
+#define ROLLTUI_LA_list(field, name)
+
 const RolltuiPickerActions* rolltui_picker_default_actions(void) { return &kPickerActions; }
+const RolltuiListActions* rolltui_list_default_actions(void) { return &kListActions; }
 const RolltuiInputActions* rolltui_input_default_actions(void) { return &kInputActions; }
 const RolltuiMenuActions* rolltui_menu_default_actions(void) { return &kMenuActions; }
 const RolltuiTranscriptActions* rolltui_transcript_default_actions(void) { return &kTranscriptActions; }

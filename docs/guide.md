@@ -214,6 +214,99 @@ this input gained since it last loaded or saved, through a temporary file and a 
 instances saving in turn keep both their entries, and a reader never sees half a file.
 `rolltui-chat` keeps its prompt's history in `<config>/rolltui/chat/history.json`.
 
+## Lists, tables and trees
+
+A `list:<source>` window shows data the host holds. The host binds the source with
+`rolltui_windows_bind_list(windows, name, len, count, row, ctx, free_ctx)`: `count(ctx)` says how
+many rows there are, and `row(ctx, i, out)` fills row `i`: its `key`, its cells
+(`rolltui_list_row_cell`), a `role` for the whole row, a tree's `depth`, and `busy` with
+`busy_since_ms` for a spinner at the row's end.
+
+- A plain list asks only for the rows it draws, so a hundred thousand rows cost a screenful.
+  Sorting, a filter and a tree ask for every row once, when the data or the question changes:
+  `rolltui_windows_list_refresh` says the data changed, and a count that moves says so too.
+- A row is its key. The cursor, the marks and which nodes are open follow it through a refresh,
+  a sort or a filter, and the cursor's row keeps its place on screen when rows arrive above it. A
+  row with no key is keyed by its index.
+- A list with nothing to show says "no rows", or "no rows match “…”" under a filter.
+
+`rolltui_windows_set_list_columns` makes it a table. The first column takes the width the others
+leave. The rest are `width` cells, or as wide as the widest cell they have shown; that width only
+grows, so the columns stay put as the list scrolls. `align` puts a column's text at its right
+edge, and `min_screen` shows a column only while the list is at least that wide. When the first
+column would be narrower than 8 cells, columns go from the right. A cell that does not fit ends in
+an ellipsis. The header row names the columns in bold, the sorted one marked ▲ or ▼.
+
+`rolltui_windows_set_list_options`:
+
+- `tree`: rows nest by `depth`, in tree order, a parent before its children. Guide lines draw the
+  shape, and ▾ and ▸ mark open and closed nodes. Nodes shallower than `open_depth` start open
+  and the rest closed; 0, the default, starts every node closed. Enter opens and closes a node; with `activate_nodes`, Enter on a node is an
+  activation like any other row's.
+- `marks`: several rows chosen at once. A marked row is bold in the `accent_1` colour with ▌ in
+  the mark column, so it reads without colour.
+- `line_numbers`: 1 numbers each row; 2 counts from the cursor's row, which shows its own number.
+- `scrolloff`: rows kept between the cursor and the window's edge. Past half the window, the
+  cursor stays in the middle.
+- `wrap`: the cursor goes from the last row to the first and back.
+- `hide_header`: no header row.
+
+Where the terminal draws ambiguous-width glyphs two cells wide, the guides, the openers, the sort
+arrows and the mark are ASCII.
+
+### Keys and the mouse
+
+| Action | Keys | Does |
+|---|---|---|
+| `list.up`, `list.down` | Up, Down, Ctrl-P, Ctrl-N | the row above, the row below |
+| `list.page_up`, `list.page_down` | PageUp, PageDown | a page up, a page down |
+| `list.first`, `list.last` | Home, End | the first row, the last row |
+| `list.activate` | Enter | acts on the row; a tree's node opens or closes |
+| `list.back` | Escape | clears the filter, then the marks |
+| `list.mark` | Space | marks or unmarks the row, and moves to the next |
+| `list.mark_up`, `list.mark_down` | Shift-Up, Shift-Down | marks from where the range began |
+| `list.mark_all`, `list.unmark_all`, `list.invert_marks` | Alt-A, Alt-U, Alt-I | every row shown, none, the others |
+| `list.open`, `list.close` | Right, Left | opens a node or goes into it; closes a node or goes up to its parent |
+| `list.open_all`, `list.close_all` | Alt-Right, Alt-Left | every node |
+| `list.sort` | Alt-S | sorts by the next column, then by the host's order |
+| `list.reverse` | Alt-R | the sort the other way |
+| `list.filter` | / | types a filter in the list's last row |
+
+A press moves the cursor and a double click activates the row. A press in the mark column marks
+the row, and a drag marks the rows it passes over. A press on ▸ or ▾ opens or closes the node. A
+press on a column's title sorts by it, and a second press sorts the other way. The wheel scrolls.
+
+A filter is space-separated terms, and a row is shown when every term matches within one of its
+cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, and `!term` not at all.
+Case is ignored. Enter keeps the filter and gives the keys back to the list; Escape clears it. In a
+tree, a filter keeps the parents of what it matches, and shows them open.
+
+A `ROLLTUI_LIST_SORT_TEXT` column sorts in natural order. A `ROLLTUI_LIST_SORT_NUMBER` column
+sorts by the number a cell starts with, reading K, M, G and T as powers of 1024 and s, m, h and d
+as an age; a cell with no number goes last in either direction. Equal cells keep the host's
+order. A tree keeps the host's order and does not sort.
+
+`rolltui_windows_list_event` pops what happened, oldest first: `MOVED`, `ACTIVATE`, `MARKED`,
+`SORTED`, `OPENED`, `CLOSED` and `FILTERED`, each with the row's key (the filter's text for
+`FILTERED`). `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` give the keys to act
+on, and `_set_cursor` and `_set_filter` set them. `rolltui_windows_list_perform` runs an action
+by name, for a host's own menu entry. In a popup, Escape clears the filter, then the marks, then
+closes the popup.
+
+### Ordering and finding text
+
+`rolltui_natural_compare(a, alen, b, blen)` orders text as a person reads it. A run of digits
+compares by value, so `file2` comes before `file10` and `7` before `07`. The rest compares
+case-folded with accents removed, and the bytes as written break a tie. The column browser sorts
+names this way.
+
+`rolltui_fuzzy_match(pattern, plen, text, tlen, &score, positions, cap)` answers whether the
+pattern's letters appear in the text in order. Case is ignored unless the pattern has an
+uppercase letter, and accents are always ignored. The score is higher for a run of letters, a
+match at the start of a word, and a match early in the text, so candidates sorted by it put the
+likeliest first. `positions` receives each matched letter's byte offset in the text, for
+lighting what matched.
+
 ## Progress
 
 A `gauge:<source>` window shows how far something has got, on one row: the label, a bar of

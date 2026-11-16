@@ -11,6 +11,7 @@
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_feedback.h"
+#include "rolltui/c/rolltui_widget_list.h"
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widget_input.h"
@@ -270,6 +271,7 @@ struct RolltuiWindows {
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
+  RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
@@ -400,6 +402,8 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < rolltui_map_count(&w->outputs); ++i) rolltui_mem_free(rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
   rolltui_map_release(&w->images);
+  for (i = 0; i < rolltui_map_count(&w->lists); ++i) rolltui_list_free((RolltuiList*)rolltui_map_value_at(&w->lists, i));
+  rolltui_map_release(&w->lists);
   rolltui_message_log_release(&w->messages);
   for (i = 0; i < rolltui_map_count(&w->submits); ++i) {
     SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->submits, i);
@@ -778,6 +782,55 @@ void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t
     rolltui_map_put(&w->outputs, name, len, b);
   }
   b->wrap = wrap != 0;
+}
+
+RolltuiList* rolltui_windows_list(RolltuiWindows* w, const char* name, size_t len) {
+  RolltuiList* l = (RolltuiList*)rolltui_map_get(&w->lists, name, len);
+  if (!l) {
+    l = rolltui_list_new();
+    rolltui_map_put(&w->lists, name, len, l);
+  }
+  return l;
+}
+void rolltui_windows_bind_list(RolltuiWindows* w, const char* name, size_t len, RolltuiListCountFn count, RolltuiListRowFn row,
+                               void* ctx, void (*free_ctx)(void*)) {
+  rolltui_list_set_source(rolltui_windows_list(w, name, len), count, row, ctx, free_ctx);
+}
+int rolltui_windows_has_list(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->lists, name, len) != NULL;
+}
+void rolltui_windows_set_list_options(RolltuiWindows* w, const char* name, size_t len, const RolltuiListOptions* o) {
+  if (o) rolltui_list_set_options(rolltui_windows_list(w, name, len), o);
+}
+void rolltui_windows_set_list_columns(RolltuiWindows* w, const char* name, size_t len, const RolltuiListColumn* cols, size_t n) {
+  rolltui_list_set_columns(rolltui_windows_list(w, name, len), cols, n);
+}
+void rolltui_windows_list_refresh(RolltuiWindows* w, const char* name, size_t len) {
+  rolltui_list_refresh(rolltui_windows_list(w, name, len));
+}
+void rolltui_windows_list_set_filter(RolltuiWindows* w, const char* name, size_t len, const char* query, size_t qlen) {
+  rolltui_list_set_filter(rolltui_windows_list(w, name, len), query, qlen);
+}
+void rolltui_windows_list_set_cursor(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen) {
+  rolltui_list_set_cursor(rolltui_windows_list(w, name, len), key, klen);
+}
+int rolltui_windows_list_cursor(RolltuiWindows* w, const char* name, size_t len, RolltuiStr* key) {
+  return rolltui_list_cursor(rolltui_windows_list(w, name, len), key);
+}
+size_t rolltui_windows_list_marked(RolltuiWindows* w, const char* name, size_t len, RolltuiStrListRaw* keys) {
+  return rolltui_list_marked(rolltui_windows_list(w, name, len), keys);
+}
+int rolltui_windows_list_event(RolltuiWindows* w, const char* name, size_t len, RolltuiListEvent* out) {
+  return rolltui_list_event(rolltui_windows_list(w, name, len), out);
+}
+int rolltui_windows_list_perform(RolltuiWindows* w, const char* name, size_t len, const char* action, size_t alen) {
+  return action ? rolltui_list_perform(rolltui_windows_list(w, name, len), rolltui_list_default_actions(), action, alen) : 0;
+}
+void rolltui_list_event_release(RolltuiListEvent* e) {
+  if (e) rolltui_str_free(&e->key);
+}
+void rolltui_list_row_cell(RolltuiListRow* r, const char* text, size_t len) {
+  if (r) rolltui_str_list_add(&r->cells, text ? text : "", text ? len : 0);
 }
 
 void rolltui_windows_set_tasks(RolltuiWindows* w, RolltuiTasks* tasks) {
