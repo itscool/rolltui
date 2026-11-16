@@ -14,11 +14,11 @@
 │ Nothing in the host binary knows▼ 54 more  ││                                │
 └────────────────────────────────────────────┘└────────────────────────────────┘
 ┌ the live key table ──────────────────────────────────────────────────────────┐
-│   Alt-C            copy the selection again                                  │
-│   Escape           clear the selection                                       │
-│ app:                                                                         │
-│   Ctrl-J      put the kettle on                                              •
-│   Ctrl-T      find in the transcript                                         │
-│ editor:                                                           ▼ 22 more  │
-└──────────────────────────────────────────────────────────────────────────────┘
+│ This program ─────────────────────────────────────────────────────────────── •
+│ put the kettle on                                                     Ctrl-J │
+│ find in the transcript                                                Ctrl-T │
+│ The studio ───────────────────────────────────────────────────────────────── │
+│ app.kettle                                                                   │
+│ Enter add a key  Delete remove  Ctrl-Z undo  Ctrl-O load  Ctrl-S save as  C… │
+└───────────────────────────────────────────────────────────────────── kettle ─┘
  default  kettle  80x24  line 36/42  follow  truecolor  focus:kettle_keys

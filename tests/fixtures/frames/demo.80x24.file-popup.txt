@@ -1,14 +1,14 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme F4   default           ││ │ styled  ┃ input:                           •
-│ keys F7    default           ││ │ wrapped ┃   Enter                   send   ┃
-│ layout F6  wide-left         ││ │ lines)  ┃ the line (always Enter)          ┃
-│ size       80x24             ││ │ Theme   ┃   Alt-Enter               insert ┃
-│ line       181/197           ││ │ (roles →┃ a newline                        ┃
-│ follow     yes               ││ │ styles, ┃   Backspace               erase  ┃
-│ depth      truecolor         ││ │ JSON    ┃ before the caret (or the         ┃
-│ focus      help              ││ │ loader, ┃ selection)                       ┃
-│                              ││ │ built-in┃   Delete             ▼ 157 more  ┃
-│                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+│ theme F4   default           ││ │ styled  ┃ This program ─────────────────── •
+│ keys F7    default           ││ │ wrapped ┃ open help                 F1, ?  ┃
+│ layout F6  wide-left         ││ │ lines)  ┃ open the settings and c…  F2     ┃
+│ size       80x24             ││ │ Theme   ┃ open the session details  F3     ┃
+│ line       181/197           ││ │ (roles →┃ open the command palette  Ctrl-P ┃
+│ follow     yes               ││ │ styles, ┃ repaint the screen        Ctrl-L ┃
+│ depth      truecolor         ││ │ JSON    ┃ find in the transcript    Ctrl-F ┃
+│ focus      help              ││ │ loader, ┃ app.help                         ┃
+│                              ││ │ built-in┃ Enter add a key  Delete remove … ┃
+│                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━ default ━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │
 │                              ││                                              │

@@ -277,7 +277,7 @@ int main() {
     // that file, so the window the designer placed fills with a palette they never saw.
     check(has(frame, "Clear the sheet") && has(frame, "Texture"),
           "…and `menu:tools` resolves to the app's OWN embedded palette, which the studio never had");
-    check(has(frame, "app:") && has(frame, "(unbound)") && has(frame, "clear the easel sheet"),
+    check(has(frame, "This program") && has(frame, "no key") && has(frame, "clear the easel sheet"),
           "…and `help` lists an action this binary has never named, described in the words typed in the studio");
     check(!has(status_line(frame), "[") && has(status_line(frame), " easel "),
           "…with no window reporting a problem [" + status_line(frame) + "]");

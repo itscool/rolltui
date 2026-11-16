@@ -105,6 +105,13 @@ static const char* verb_of(const char* action, size_t len, size_t* out_len) {
   return action;
 }
 
+/* An action as a person reads it: what it does, from its description, else the last part of its name. */
+static const char* said_of(const RolltuiKeysEditor* e, const char* action, size_t len, size_t* out_len) {
+  const char* d = rolltui_bindings_description(e->current, action, len, out_len);
+  if (d && *out_len) return d;
+  return verb_of(action, len, out_len);
+}
+
 static void append_count(RolltuiStr* out, size_t n) {
   char buf[24];
   const int len = snprintf(buf, sizeof buf, "%zu", n);
@@ -478,8 +485,12 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
     rolltui_str_set(&e->status, K("refused: "));
     rolltui_str_append(&e->status, disp, disp_len);
     rolltui_str_append(&e->status, K(" cannot be bound to "));
-    rolltui_str_append_str(&e->status, &action);
-    if (k->key == ROLLTUI_KEY_ENTER) rolltui_str_append(&e->status, K(" (Enter is always input.submit)"));
+    {
+      size_t sl = 0;
+      const char* said = said_of(e, action.p ? action.p : "", action.n, &sl);
+      rolltui_str_append(&e->status, said, sl);
+    }
+    if (k->key == ROLLTUI_KEY_ENTER) rolltui_str_append(&e->status, K(" (Enter always sends the line)"));
     out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
     rolltui_str_free(&action);
     return;
@@ -495,11 +506,11 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
     rolltui_str_set(&e->status, K("bound "));
     rolltui_str_append(&e->status, disp, disp_len);
     rolltui_str_append(&e->status, K(" \xE2\x86\x92 "));
-    v = verb_of(action.p ? action.p : "", action.n, &vlen);
+    v = said_of(e, action.p ? action.p : "", action.n, &vlen);
     rolltui_str_append(&e->status, v, vlen);
     if (moved.n != 0) {
       rolltui_str_append(&e->status, K(" (was "));
-      v = verb_of(moved.p, moved.n, &vlen);
+      v = said_of(e, moved.p, moved.n, &vlen);
       rolltui_str_append(&e->status, v, vlen);
       rolltui_str_append(&e->status, K(")"));
     }
@@ -509,6 +520,49 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
   }
   commit_current(e, out);
   rolltui_str_free(&action);
+}
+
+void rolltui_keys_editor_capture(RolltuiKeysEditor* e, const char* action, size_t len) {
+  if (!e || !action || len == 0) return;
+  rolltui_str_set(&e->capture, action, len);
+  rolltui_str_clear(&e->status);
+  e->capturing = 1;
+}
+
+void rolltui_keys_editor_take_key(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKeysEditorOutcome* out) {
+  rolltui_keys_editor_outcome_release(out);
+  if (!e || !k || !e->capturing) return;
+  take_capture(e, k, out);
+}
+
+void rolltui_keys_editor_unbind(RolltuiKeysEditor* e, const char* action, size_t len, const RolltuiChord* k,
+                                RolltuiKeysEditorOutcome* out) {
+  char disp[ROLLTUI_CHORD_STRING_MAX];
+  size_t disp_len, vlen = 0;
+  const char* v;
+  RolltuiStr name;
+  rolltui_keys_editor_outcome_release(out);
+  if (!e || !action || !k) return;
+  memset(&name, 0, sizeof name);
+  rolltui_str_set(&name, action, len); /* `action` may borrow into the table the unbind changes */
+  disp_len = chord_disp(k, disp, sizeof disp);
+  if (!rolltui_bindings_unbind(e->current, name.p, name.n, k)) {
+    rolltui_str_set(&e->status, K("refused: "));
+    rolltui_str_append(&e->status, disp, disp_len);
+    rolltui_str_append(&e->status, K(" cannot be removed"));
+    if (k->key == ROLLTUI_KEY_ENTER) rolltui_str_append(&e->status, K(" (Enter always sends the line)"));
+    out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
+    rolltui_str_free(&name);
+    return;
+  }
+  rolltui_str_set(&e->status, K("removed "));
+  rolltui_str_append(&e->status, disp, disp_len);
+  rolltui_str_append(&e->status, K(" from "));
+  v = said_of(e, name.p, name.n, &vlen);
+  rolltui_str_append(&e->status, v, vlen);
+  rebuild_action(e, name.p, name.n);
+  commit_current(e, out);
+  rolltui_str_free(&name);
 }
 
 /* "unbind.<action>.<chord>": the action carries exactly one dot, so the chord is what follows

@@ -11,9 +11,9 @@
     "app.palette": "open the command palette",
     "app.repaint": "repaint the screen",
     "app.find": "find in the transcript",
-    "app.theme": "Edit the theme",
-    "app.keys": "Edit the key bindings",
-    "app.filepicker": "Preview a different document"
+    "app.theme": "edit the theme",
+    "app.keys": "edit the key bindings",
+    "app.filepicker": "preview a different document"
   },
   "root": {
     "column": [

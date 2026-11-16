@@ -1717,27 +1717,26 @@ int main() {
       while (!out.empty() && out.back() == ' ') out.pop_back();
       return out;
     };
-    check(row(0).rfind("transcript:", 0) == 0 || row(0).find("transcript:") != std::string::npos,
-          "the first line is the scope's name [" + row(0) + "]");
+    check(row(0).rfind("Reading", 0) == 0, "the first line is the scope's heading, in words [" + row(0) + "]");
     bool all_on_ground = true;
     // (the last row carries "▼ N more", which is drawn in the scroll marker's own style on purpose)
     for (int y = 0; y < 7; ++y)
       for (int x = 0; x < 60; ++x)
-        if (!(f.at(x, y).style.bg == ground)) all_on_ground = false;
+        if (y != 1 && !(f.at(x, y).style.bg == ground)) all_on_ground = false; /* row 1 is the cursor's, lit on purpose */
     check(all_on_ground, "every cell of the help window, its text included, stands on the window's own ground — the text role's background is not painted over it");
 
     const int hx = first_ink(0);
     check(hx >= 0 && f.at(hx, 0).style.bold && f.at(hx, 0).style.fg == t.style(ROLLTUI_ROLE_MENU_BREADCRUMB).fg,
           "a scope's name is a section's: the breadcrumb's colour, bold");
-    const int cx = first_ink(1);
-    check(cx >= 0 && f.at(cx, 1).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg,
-          "a chord is drawn as a hotkey is drawn everywhere: in the shortcut role [" + row(1) + "]");
-    // the description: the last word of the line is text, not shortcut
-    int lx = 59;
-    while (lx > 0 && f.glyph(lx, 1) == " ") --lx;
-    check(f.at(lx, 1).style.fg == t.style(ROLLTUI_ROLE_TEXT).fg && !(f.at(lx, 1).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg),
-          "…and what it does is text");
-    check(f.at(cx, 1).style.fg != f.at(lx, 1).style.fg, "…so the two read apart");
+    // the row under it: what the action does first, as text, and its keys after, as a hotkey is drawn everywhere. Row 1 is the
+    // cursor's (lit), so the plain row 2 is read.
+    const int lx = first_ink(2);
+    int cx = 59;
+    while (cx > 0 && f.glyph(cx, 2) == " ") --cx;
+    check(lx >= 0 && f.at(lx, 2).style.fg == t.style(ROLLTUI_ROLE_TEXT).fg, "what it does is text [" + row(2) + "]");
+    check(f.at(cx, 2).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg,
+          "…and its keys are drawn as a hotkey is drawn everywhere: in the shortcut role [" + row(2) + "]");
+    check(f.at(cx, 2).style.fg != f.at(lx, 2).style.fg, "…so the two read apart");
   }
 
   std::printf("-- widgets: one per content, by kind\n");
@@ -1810,9 +1809,8 @@ int main() {
     }
     check(row(by_id(v, "label")->inner.y) == "a literal", "text: the literal from the layout file [" + row(by_id(v, "label")->inner.y) + "]");
     check(row(by_id(v, "doc")->inner.y) == "from a file", "file: the file's text [" + row(by_id(v, "doc")->inner.y) + "]");
-    check(row(by_id(v, "keys")->inner.y).rfind("transcript:", 0) == 0 &&
-              row(by_id(v, "keys")->inner.y).find("\xE2\x96\xBC") != std::string::npos,
-          "help: the live bindings, scrolling (the scope heading and the marker) [" + row(by_id(v, "keys")->inner.y) + "]");
+    check(row(by_id(v, "keys")->inner.y).find("PgUp") != std::string::npos,
+          "help: the live bindings; a one-row window shows the cursor's row, its keys included [" + row(by_id(v, "keys")->inner.y) + "]");
     check(row(by_id(v, "m")->inner.y).find("an action") != std::string::npos,
           "menu: the menu FILE's items [" + row(by_id(v, "m")->inner.y) + "]");
     check(drew_own == 1 && row(by_id(v, "own")->inner.y) == "mine!", "a REGISTERED kind draws, once (Phase 11 m3)");

@@ -64,7 +64,7 @@ int rolltui_natural_compare(const char* a, size_t an, const char* b, size_t bn) 
     }
     {
       const unsigned char x = (unsigned char)a[i], y = (unsigned char)b[j];
-      if (x < 0x80 && y < 0x80 && (x == y || ((x | 0x20) == (y | 0x20) && ((x | 0x20) - 'a') < 26u))) { /* the same ASCII letter */
+      if (x < 0x80 && y < 0x80 && (x == y || ((x | 0x20) == (y | 0x20) && (unsigned)((x | 0x20) - 'a') < 26u))) { /* the same ASCII letter */
         if (!tie && x != y) tie = x < y ? -1 : 1;
         ++i;
         ++j;

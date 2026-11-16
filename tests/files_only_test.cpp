@@ -178,31 +178,16 @@ int main(int argc, char** argv) {
       {"files-only.120x40", "--frame 120x40 --layout kettle --bindings kettle"},
       // The menu file navigates with no host code at all: Down, then Enter descends.
       {"files-only.80x24.menu", "--frame 80x24 --layout kettle --bindings kettle --keys \"Down Enter\""},
-      // Tab focuses the help window and scrolls it to the app scope — one action, declared
-      // by a layout file, described by it, keyed by a bindings file.
-      //
-      // The scroll amount is ARITHMETIC, not a feel: kettle.json gives this window 8 rows,
-      // so 6 of content, and PageDown moves exactly one viewport. The assertion below needs
-      // the "app:" header, its one action row and the following "editor:" header all in
-      // view at once, so the scroll offset has to land in a FOUR-line window — and a whole
-      // number of pages does not always fall inside it. Six pages (offset 36) plus TWELVE
-      // lines (48) puts "app:" on the fourth visible row. **ANY CHANGE THAT GROWS
-      // `library_actions()` MOVES THE APP SCOPE DOWN THIS TABLE AND THIS NUMBER MUST BE
-      // RECOMPUTED.** The recipe, so the next one is arithmetic and not archaeology: count
-      // the rows your change adds BEFORE the "app:" header and add that many `Down`s. A row
-      // added INSIDE the app scope counts too, for the opposite reason — it pushes the next
-      // header down, so the four-line window has to START one line higher.
-      {"files-only.80x24.app-scope",
-       "--frame 80x24 --layout kettle --bindings kettle --keys \"Tab PageDown PageDown PageDown PageDown PageDown "
-       "PageDown Down Down Down Down Down Down Down Down Down Down Down Down Down\""},
+      // Tab focuses the help window, whose first section is the program's own: its actions, declared by a layout file,
+      // described by it, keyed by a bindings file, under the "This program" heading and above the next one.
+      {"files-only.80x24.app-scope", "--frame 80x24 --layout kettle --bindings kettle --keys \"Tab\""},
       // The SAME screen reached by switching layouts at runtime (F2 › Layout › kettle),
       // which is the only path that can accumulate declarations: the app scope must still
       // be this layout's one action and not also the five the layout we started on
       // declared. Loading a bindings file rebuilds the table, so the launch-time case
       // above cannot tell an authoritative declare() from an additive one — this one can.
       {"files-only.80x24.switched",
-       "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:Appearance Enter Type:lay Enter Type:kettle Enter Escape Escape Escape Tab "
-       "PageDown PageDown PageDown PageDown PageDown PageDown Down Down Down Down Down Down Down Down Down Down Down Down Down\""},
+       "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:Appearance Enter Type:lay Enter Type:kettle Enter Escape Escape Escape Tab\""},
       // The VERIFY rung: a layout declaring nothing. The menu item's action is reported
       // by name in the status line and its shortcut is gone.
       {"files-only.100x14.silent", "--frame 100x14 --layout kettle-silent --bindings kettle"},
@@ -285,7 +270,8 @@ int main(int argc, char** argv) {
     check(has(screen, "A screen that exists only as files."), "the file: window drew docs/kettle.md");
     check(has(screen, "Put the kettle on") && has(screen, "About this screen"),
           "the menu: window drew menus/kettle.json's items");
-    check(has(screen, "send the line (always Enter)"), "the help window drew the live key table, bound to nothing");
+    check(has(screen, "This program \xE2\x94\x80") && has(screen, "find in the transcript"),
+          "the help window drew the live key table, bound to nothing: the program's own keys first");
     check(!has(status_line(screen), "["), "…and no window reported a problem [" + status_line(screen) + "]");
     check(has(status_line(screen), " kettle ") && has(status_line(screen), "focus:kettle_menu"),
           "the layout file named the screen and chose the focused window [" + status_line(screen) + "]");
@@ -295,21 +281,27 @@ int main(int argc, char** argv) {
     // chords rather than from any "shortcut" string in the file.
     check(has(screen, "Put the kettle on       Ctrl-J"),
           "the menu row carries the chord the bindings file gave the action the layout declared");
-    check(has(app_scope, "Ctrl-J      put the kettle on"),
-          "…and help renders the same action with the layout file's own description");
-    // Exactly one app action: the app scope is this screen's, not this screen's plus the
-    // last one's, because declare() is authoritative rather than additive. The help window prints one
-    // "scope:" header per scope with its actions under it, so the distance from the "app:"
-    // header to the next header IS the size of the scope.
+    {
+      std::istringstream in(app_scope);
+      std::string row, kettle;
+      while (std::getline(in, row))
+        if (has(row, "put the kettle on")) kettle = row;
+      check(has(kettle, "Ctrl-J"), "…and help renders the same action with the layout file's own description, and its key [" + kettle + "]");
+    }
+    // The app scope is this screen's, not this screen's plus the last one's, because declare() is authoritative rather than
+    // additive. The sheet draws one heading per scope, a rule after its name, with its actions under it, so the distance from the
+    // "This program" heading to the next heading IS the size of the scope.
     auto app_scope_size = [](const std::string& frame, std::string& action_row) {
+      const std::string rule = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80";  // a heading's rule; a border row starts with a corner
+      auto heading = [&](const std::string& r) { return has(r, rule) && r.rfind("\xE2\x94\x82", 0) == 0; };  // "│ Name ────"
       std::vector<std::string> rows;
       std::istringstream in(frame);
       std::string line;
       while (std::getline(in, line)) rows.push_back(line);
       int at_app = -1;
       for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
-        if (at_app < 0 && has(rows[i], "app:")) { at_app = i; continue; }
-        if (at_app >= 0 && has(rows[i], "editor:")) {
+        if (at_app < 0 && heading(rows[i]) && has(rows[i], "This program")) { at_app = i; continue; }
+        if (at_app >= 0 && heading(rows[i])) {
           if (i > at_app + 1) action_row = rows[at_app + 1];
           return i - at_app - 1;
         }
@@ -318,8 +310,8 @@ int main(int argc, char** argv) {
     };
     std::string action_row;
     // TWO (app.kettle and app.find), and the number is the point: it is exactly
-    // what THIS layout file declares. `app_scope_size` reports the rows between the "app:"
-    // header and the next one, and `action_row` is the first of them.
+    // what THIS layout file declares. `app_scope_size` reports the rows between the "This program"
+    // heading and the next one, and `action_row` is the first of them.
     check(app_scope_size(app_scope, action_row) == 2 && has(action_row, "put the kettle on"),
           "the app scope is two actions long — this layout's, and no other layout's [" + action_row + "]");
     // The discriminating one: reached by SWITCHING layouts at runtime, where an additive

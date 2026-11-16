@@ -4,17 +4,17 @@
 │ │ wrapped     │             │              │ ││ layout F6  default           │
 │ │ lines)      │             │              │ ││ size       80x24             │
 │ │ Theme       ╭ help ────────────────────────────────────────╮/197           │
-│ │ (roles →    │ input:                                       •               │
-│ │ styles,     │   Enter                   send the line      │ecolor         │
-│ │ JSON        │ (always Enter)                               │p              │
-│ │ loader,     │   Alt-Enter               insert a newline   │               │
-│ │ built-ins)  │   Backspace               erase before the   │               │
-│ └─────────────│ caret (or the selection)                     │               │
-│               │   Delete                  erase after the    │               │
-│ Here is the fu│ caret (or the selection)                     │               │
-│               │   Ctrl-W, Alt-Backspace   kill the word      │               │
-│ ┌ cpp ────────│ before the caret                 ▼ 121 more  │               │
-│ │ int add(int ╰──────────────────────────────────────────────╯               │
+│ │ (roles →    │ This program ─────────────────────────────── •               │
+│ │ styles,     │ open help                             F1, ?  │ecolor         │
+│ │ JSON        │ open the settings and commands menu   F2     │p              │
+│ │ loader,     │ open the session details              F3     │               │
+│ │ built-ins)  │ open the command palette              Ctrl-P │               │
+│ └─────────────│ repaint the screen                    Ctrl-L │               │
+│               │ find in the transcript                Ctrl-F │               │
+│ Here is the fu│ edit the theme                        F4     │               │
+│               │ app.help                                     │               │
+│ ┌ cpp ────────│ Enter add a key  Delete remove  Ctrl-Z undo… │               │
+│ │ int add(int ╰──────────────────────────────────── default ─╯               │
 │ │   return a + b;                          │ ╻│                              │
 │ └──────────────────────────────────────────┘ ╹│                              │
 └──────────────────────────────────────────────┘│                              │

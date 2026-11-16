@@ -4,6 +4,7 @@
  * calling only the C engines (`rolltui_widget_input.h`, `rolltui_widget_transcript.h`, `rolltui_widget_menu.h`,
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
+#include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_widget_list.h"
@@ -581,135 +582,6 @@ void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t le
   rolltui_str_append(out, note ? note : "", note ? note_len : 0);
 }
 
-static void help_ctx_build_text(RolltuiHelpCtx* h) {
-  const RolltuiBindings* b = rolltui_windows_bindings(h->base.w);
-  const int all = (h->scope.n == 0);
-  rolltui_str_clear(&h->built);
-  h->meta_n = 0; /* the storage stays; every slot is rewritten as its line is built */
-  if (all) {
-    size_t lead_len = 0;
-    const char* lead = rolltui_windows_help_lead(h->base.w, &lead_len);
-    size_t nscopes = rolltui_windows_help_scope_count(h->base.w);
-    size_t i;
-    rolltui_str_append(&h->built, lead, lead_len);
-    for (i = 0; i < nscopes; ++i) {
-      size_t slen = 0;
-      const char* s = rolltui_windows_help_scope_at(h->base.w, i, &slen);
-      help_meta_set(h, count_lines_of(&h->built), HELP_HEADING, 0, 0);
-      rolltui_str_append(&h->built, s, slen);
-      rolltui_str_append(&h->built, ":\n", 2);
-      help_scope_lines_impl(b, s, slen, NULL, NULL, 0, "  ", 2, &h->built, h);
-    }
-    {
-      size_t note_len = 0;
-      const char* note = rolltui_windows_help_note(h->base.w, &note_len);
-      rolltui_str_append(&h->built, note, note_len);
-    }
-  } else {
-    help_meta_set(h, count_lines_of(&h->built), HELP_HEADING, 0, 0);
-    rolltui_str_append_str(&h->built, &h->scope);
-    rolltui_str_append(&h->built, ":\n", 2);
-    help_scope_lines_impl(b, h->scope.p ? h->scope.p : "", h->scope.n, NULL, NULL, 0, "  ", 2, &h->built, h);
-  }
-}
-
-/* THE KEY LIST IS DRAWN AS WHAT IT IS, in the theme's own words for each part: a scope's name as a menu's sections
- * are named (the breadcrumb's role, bold), a chord as a hotkey is drawn everywhere else (the shortcut role, on
- * whatever ground it stands), `(unbound)` muted, and the description as text. */
-static void help_paint(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* t, size_t n,
-                       int cells, size_t src, int first, RolltuiStyle plain, RolltuiStyleColorRaw ground, int aw) {
-  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
-  const RolltuiStyle* styles = rolltui_windows_styles(h->base.w);
-  const RolltuiMenuRoles* mr = rolltui_windows_menu_roles(h->base.w);
-  const RolltuiHelpLine* ln = src < h->meta_n ? &h->meta[src] : NULL;
-  if (ln && ln->kind == HELP_HEADING) {
-    RolltuiStyle head = styles[mr->breadcrumb];
-    head.bg = ground;
-    head.bold = 1;
-    rolltui_frame_put_text(f, draw, x, y, t, n, head, cells, aw, 0);
-    return;
-  }
-  if (ln && first && (ln->kind == HELP_ENTRY || ln->kind == HELP_UNBOUND)) {
-    RolltuiStyle chord = ln->kind == HELP_ENTRY ? styles[mr->shortcut] : styles[mr->text_muted];
-    size_t from = ln->chord_from, to = ln->chord_to;
-    int used;
-    if (to > n) to = n;
-    if (from > to) from = to;
-    if (ln->kind == HELP_ENTRY) rolltui_style_on(&chord, ground);
-    else chord.bg = ground;
-    used = rolltui_frame_put_text(f, draw, x, y, t, from, plain, cells, aw, 0);
-    used += rolltui_frame_put_text(f, draw, x + used, y, t + from, to - from, chord, cells - used > 0 ? cells - used : 0, aw, 0);
-    rolltui_frame_put_text(f, draw, x + used, y, t + to, n - to, plain, cells - used > 0 ? cells - used : 0, aw, 0);
-    return;
-  }
-  rolltui_frame_put_text(f, draw, x, y, t, n, plain, cells, aw, 0);
-}
-
-static int help_ctx_problem(void* ctx, RolltuiStr* out) {
-  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
-  size_t n, i;
-  int found = 0;
-  RolltuiStr known;
-  if (h->scope.n == 0) return 0;
-  n = rolltui_windows_help_scope_count(h->base.w);
-  for (i = 0; i < n; ++i) {
-    size_t slen = 0;
-    const char* s = rolltui_windows_help_scope_at(h->base.w, i, &slen);
-    if (slen == h->scope.n && memcmp(s, h->scope.p ? h->scope.p : "", slen) == 0) {
-      found = 1;
-      break;
-    }
-  }
-  if (found) return 0;
-  memset(&known, 0, sizeof known);
-  for (i = 0; i < n; ++i) {
-    size_t slen = 0;
-    const char* s = rolltui_windows_help_scope_at(h->base.w, i, &slen);
-    if (known.n > 0) rolltui_str_append(&known, " | ", 3);
-    rolltui_str_append(&known, s, slen);
-  }
-  rolltui_str_clear(out);
-  rolltui_str_append(out, "'", 1);
-  rolltui_str_append_str(out, &h->scope);
-  rolltui_str_append(out, "' is not one of this app's key scopes (", sizeof("' is not one of this app's key scopes (") - 1);
-  rolltui_str_append_str(out, &known);
-  rolltui_str_append(out, ")", 1);
-  rolltui_str_free(&known);
-  return 1;
-}
-static void help_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
-  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
-  help_ctx_build_text(h);
-  scroll_text_base_layout(&h->base, rn, h->built.p ? h->built.p : "", h->built.n);
-}
-static void help_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
-  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
-  help_ctx_layout(ctx, rn);
-  h->base.total = scroll_text_base_draw_with(&h->base, rn, f, h->built.p ? h->built.p : "", h->built.n, help_paint, h);
-}
-static int help_ctx_handle(void* ctx, const RolltuiEvent* e) { return scroll_text_base_handle(&((RolltuiHelpCtx*)ctx)->base, e); }
-static int help_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
-  return scroll_text_base_scroll_extent(&((RolltuiHelpCtx*)ctx)->base, axis, out);
-}
-static int help_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
-  return scroll_text_base_scroll_to(&((RolltuiHelpCtx*)ctx)->base, axis, first);
-}
-static void help_ctx_destroy(void* ctx) {
-  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
-  scroll_text_base_release(&h->base);
-  rolltui_str_free(&h->scope);
-  rolltui_str_free(&h->built);
-  rolltui_mem_free(h->meta);
-  rolltui_mem_free(h);
-}
-
-static const RolltuiWidgetPlugin kHelpPlugin = {
-    help_ctx_destroy, help_ctx_layout, help_ctx_draw, help_ctx_problem, NULL, NULL, help_ctx_handle,
-    help_ctx_scroll_extent, help_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
-    keys_transcript,
-    NULL,
-    NULL
-};
 
 /* ============================================================================================
  * rows:<source> — label/value rows a host supplies.
@@ -1266,6 +1138,7 @@ static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   roles.mark = br->mark;
   roles.hover = br->hover;
   roles.prompt = br->prompt;
+  roles.heading = rolltui_windows_menu_roles(lc->w)->breadcrumb;
   list_ctx_layout(ctx, rn);
   rolltui_list_draw(l, f, rolltui_windows_styles(lc->w), &roles, rn->focused, rn->hover ? rn->hover_y : -1,
                     rolltui_windows_env(lc->w)->ambiguous_wide);
@@ -1694,6 +1567,7 @@ static RolltuiWidget file_widget_factory(void* c, RolltuiWindows* w, const char*
   return out;
 }
 
+static RolltuiWidget keys_sheet_widget(RolltuiWindows* w, const char* scope, size_t scope_len, int is_help);
 static RolltuiWidget help_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
   (void)c;
   size_t row = 0;
@@ -1702,7 +1576,6 @@ static RolltuiWidget help_widget_factory(void* c, RolltuiWindows* w, const char*
   size_t name_len = 0, source_len = 0;
   unsigned char problem = 0;
   RolltuiStr why;
-  RolltuiHelpCtx* hc;
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
@@ -1713,13 +1586,8 @@ static RolltuiWidget help_widget_factory(void* c, RolltuiWindows* w, const char*
     return out;
   }
   rolltui_str_free(&why);
-  hc = (RolltuiHelpCtx*)rolltui_mem_alloc(sizeof *hc);
-  memset(hc, 0, sizeof *hc);
-  scroll_text_base_init(&hc->base, w);
-  rolltui_str_set(&hc->scope, source, source_len);
-  out.vt = &kHelpPlugin;
-  out.ctx = hc;
-  return out;
+  (void)out;
+  return keys_sheet_widget(w, source, source_len, 1); /* F1 is the keys sheet: read, and edited where a store was handed over */
 }
 
 /* THE TWO FALLBACKS. `error` is given a CONTENT nothing could build and works out the reason;
@@ -3250,7 +3118,31 @@ typedef struct RolltuiKeysCtx {
   size_t declared_seen;  /* how many actions the live table declared when it was last taken */
   unsigned char capture_role;
   int persist;
+  /* THE SHEET (docs/design.md): one list, grouped by scope, read and edited in place. */
+  int editable;      /* a store was handed over: edits are kept; without one the sheet is read */
+  int is_help;       /* made as `help`: the program's help scopes, or the one `help:<scope>` names */
+  int show_presets;  /* load and save as are offered */
+  int mode;          /* KEYS_SHEET, KEYS_CHOOSING a preset to load, KEYS_NAMING one to save as */
+  RolltuiList* list;
+  RolltuiList* presets;
+  RolltuiInput* name;
+  RolltuiBindings* sent; /* OWNED: the table last committed to the store, or loaded; a commit sends what changed since */
+  int rows_stale;        /* the table changed since the rows were built: built again before the next key */
+  struct KeysRow* rows;
+  size_t row_n, row_cap, row_init; /* rows filled now, allocated, and ever zeroed (each is zeroed the first time it is used) */
+  RolltuiStrListRaw scopes, preset_names;
+  RolltuiStr scope, scratch;
 } RolltuiKeysCtx;
+
+#define KEYS_SHEET 0
+#define KEYS_CHOOSING 1
+#define KEYS_NAMING 2
+
+/* What the editor holds now is what the store has: the next commit sends what changes after it. */
+static void keys_ctx_mark_sent(RolltuiKeysCtx* kc) {
+  rolltui_bindings_free(kc->sent);
+  kc->sent = rolltui_bindings_clone(rolltui_keys_editor_committed(kc->ed));
+}
 
 /* THE BASELINE IS THE LIVE TABLE, AND IT IS RE-TAKEN WHEN THE SCREEN'S ACTIONS ARRIVE. A host
  * declares what its screen can do AFTER it has built its windows, so a widget built during that
@@ -3258,15 +3150,18 @@ typedef struct RolltuiKeysCtx {
  * count of declared actions is what says a declaration happened; the reload is skipped whenever
  * there is something to lose — a capture in progress or an undoable edit — because taking the
  * table again would throw a person's work away to fix a staleness they cannot see. */
-static void keys_ctx_refresh(RolltuiKeysCtx* kc) {
+static int keys_ctx_refresh(RolltuiKeysCtx* kc) {
   const RolltuiBindings* live = rolltui_windows_bindings(kc->w);
   const size_t n = rolltui_bindings_action_count(live);
-  if (n == kc->declared_seen) return;
+  if (n == kc->declared_seen) return 0;
   if (rolltui_keys_editor_capturing(kc->ed) || rolltui_keys_editor_undo_depth(kc->ed) != 0 ||
       rolltui_keys_editor_redo_depth(kc->ed) != 0)
-    return;
+    return 0;
   kc->declared_seen = n;
   rolltui_keys_editor_load(kc->ed, live);
+  keys_ctx_mark_sent(kc);
+  kc->rows_stale = 1;
+  return 1;
 }
 
 /* THE DECLARATIONS ARE THE SCREEN'S AND THE CHORDS ARE THE FILE'S. A preset file carries rows
@@ -3295,6 +3190,8 @@ static void keys_ctx_load_rows(RolltuiKeysCtx* kc, const RolltuiBindings* rows) 
   }
   rolltui_keys_editor_load(kc->ed, merged);
   rolltui_bindings_free(merged);
+  keys_ctx_mark_sent(kc);
+  kc->rows_stale = 1;
 }
 
 /* The store's preset names into the Load choice. A no-op with no store: the editor still edits
@@ -3313,12 +3210,22 @@ static void keys_ctx_sync_store(RolltuiKeysCtx* kc) {
   rolltui_preset_list_release(&list);
 }
 
-/* The Bindings domain's value IS a `RolltuiBindings*`, so the working copy is REPLACED rather
- * than edited in place: there is no member to reach through. */
+/* THE PERSON'S CHANGES, ONTO THE STORE'S COPY. The editor holds the live table, keys this program suggests for its own actions
+ * included; the store's copy is the person's file. A commit makes there only what changed since the last one, so an undo back to
+ * the start leaves the copy equal to its preset again, and no suggestion is pinned into the file. */
 static void keys_ctx_write_back(RolltuiKeysCtx* kc) {
+  const RolltuiBindings* now = rolltui_keys_editor_committed(kc->ed);
+  RolltuiBindings* into;
   if (!kc->store) return;
-  rolltui_preset_store_set_working(kc->store, rolltui_bindings_clone(rolltui_keys_editor_committed(kc->ed)),
-                                   kc->persist);
+  into = (RolltuiBindings*)rolltui_preset_store_working(kc->store);
+  if (into && kc->sent) {
+    rolltui_bindings_take_changes(into, kc->sent, now);
+  } else {
+    if (into) rolltui_preset_store_value_free(kc->store, into);
+    into = rolltui_bindings_clone(now);
+  }
+  rolltui_preset_store_set_working(kc->store, into, kc->persist);
+  keys_ctx_mark_sent(kc);
 }
 
 static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o) {
@@ -3389,8 +3296,7 @@ static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o
       v = (RolltuiBindings*)rolltui_preset_store_get(kc->store, origin ? origin : "", olen, &rep);
       if (v) {
         keys_ctx_load_rows(kc, v);
-        rolltui_preset_store_value_free(kc->store, v);
-        keys_ctx_write_back(kc);
+        rolltui_preset_store_set_working(kc->store, v, kc->persist); /* the preset itself: the copy is no longer modified */
         rolltui_str_set(&kc->hint, K("reset to the loaded preset"));
       } else {
         rolltui_str_set(&kc->hint, K("the loaded preset is no longer readable"));
@@ -3404,173 +3310,797 @@ static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o
   }
 }
 
-static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
-  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
-  RolltuiKeysEditorOutcome o;
-  keys_ctx_refresh(kc);
-  memset(&o, 0, sizeof o);
-  rolltui_keys_editor_handle(kc->ed, e, rolltui_windows_bindings(kc->w), &o);
-  keys_ctx_apply(kc, &o);
-  {
-    const int consumed = o.kind != ROLLTUI_KEYS_EDIT_NONE;
-    rolltui_keys_editor_outcome_release(&o);
-    return consumed;
+
+/* ---- THE KEYS SHEET: every key, under the thing it works in, read and changed in one place -----------------------------------
+ * docs/design.md: the help a person reads (F1) is the keys editor. One list, grouped under headings by scope, each row what an action
+ * does in words and the keys that do it. Enter on a row takes the next key pressed as another key for it, the row's last key goes
+ * with `keys.remove`, and undo, load, save as and reset are keys named along the bottom line. A key the terminal cannot send, or an
+ * action with none, is marked on its own row. With no bindings store handed over the sheet is read, not edited. */
+
+typedef struct KeysRow {
+  unsigned char heading;
+  unsigned char role;
+  RolltuiStr key;    /* the action; a heading's is "scope:<name>" */
+  RolltuiStr what;   /* what it does, in words */
+  RolltuiStr chords; /* its keys as they are shown */
+  RolltuiStr problem; /* what is wrong with its keys, for the detail line; empty when nothing is */
+} KeysRow;
+
+static const struct { const char* scope; const char* title; } kScopeTitles[] = {
+    {"app", "This program"},     {"input", "Typing"},        {"list", "Lists and tables"}, {"menu", "Menus"},
+    {"picker", "Files"},         {"transcript", "Reading"},  {"stack", "Windows"},         {"edit", "Editing a value"},
+    {"keys", "Changing keys"},   {"editor", "The editor"},   {"studio", "The studio"},
+};
+
+static const char* scope_title(const char* s, size_t n, size_t* len) {
+  size_t i;
+  for (i = 0; i < sizeof kScopeTitles / sizeof kScopeTitles[0]; ++i)
+    if (strlen(kScopeTitles[i].scope) == n && memcmp(kScopeTitles[i].scope, s, n) == 0) {
+      *len = strlen(kScopeTitles[i].title);
+      return kScopeTitles[i].title;
+    }
+  *len = n;
+  return s;
+}
+
+/* The table the sheet shows: the one being edited, or with nothing to edit into, the one the program runs on. */
+static const RolltuiBindings* keys_sheet_table(const RolltuiKeysCtx* kc) {
+  return kc->editable ? rolltui_keys_editor_current(kc->ed) : rolltui_windows_bindings(kc->w);
+}
+
+static KeysRow* keys_sheet_row(RolltuiKeysCtx* kc) {
+  KeysRow* r;
+  kc->rows = (KeysRow*)rolltui_grow(kc->rows, &kc->row_cap, kc->row_n + 1, sizeof *kc->rows);
+  if (kc->row_n == kc->row_init) memset(&kc->rows[kc->row_init++], 0, sizeof *kc->rows);
+  r = &kc->rows[kc->row_n++];
+  r->heading = 0;
+  r->role = 0;
+  rolltui_str_clear(&r->key);
+  rolltui_str_clear(&r->what);
+  rolltui_str_clear(&r->chords);
+  rolltui_str_clear(&r->problem);
+  return r;
+}
+
+/* The scopes shown, in order: the one a `help:<scope>` window names, else the ones the program lists for help, else every scope its
+ * table has, as they first appear. */
+static void keys_sheet_scopes(RolltuiKeysCtx* kc, const RolltuiBindings* b, RolltuiStrListRaw* out) {
+  size_t i, n;
+  rolltui_str_list_clear(out);
+  if (kc->scope.n) {
+    rolltui_str_list_add(out, kc->scope.p, kc->scope.n);
+    return;
+  }
+  n = rolltui_windows_help_scope_count(kc->w);
+  for (i = 0; i < n; ++i) {
+    size_t sl = 0;
+    const char* s = rolltui_windows_help_scope_at(kc->w, i, &sl);
+    rolltui_str_list_add(out, s, sl);
+  }
+  if (out->n) return;
+  n = rolltui_bindings_action_count(b);
+  for (i = 0; i < n; ++i) { /* THE PROGRAM'S OWN KEYS FIRST: they are what a person opened this to find */
+    size_t al = 0;
+    const char* a = rolltui_bindings_action_at(b, i, &al);
+    if (al > 4 && memcmp(a, "app.", 4) == 0) {
+      rolltui_str_list_add(out, K("app"));
+      break;
+    }
+  }
+  for (i = 0; i < n; ++i) {
+    size_t al = 0, d = 0, k;
+    const char* a = rolltui_bindings_action_at(b, i, &al);
+    int seen = 0;
+    while (d < al && a[d] != '.') ++d;
+    if (d == al) continue;
+    for (k = 0; k < out->n && !seen; ++k) seen = out->v[k].n == d && memcmp(out->v[k].p, a, d) == 0;
+    if (!seen) rolltui_str_list_add(out, a, d);
   }
 }
 
-/* A CLOSE KEY GOES BACK ONE LEVEL (a chord being captured is abandoned first), and only from the top of the editor's menu
- * does it close the popup: as the theme editor's, and a `menu` window's. */
-static int keys_ctx_back(void* ctx) {
-  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
-  RolltuiKeysEditorOutcome o;
-  int did;
-  memset(&o, 0, sizeof o);
-  did = rolltui_keys_editor_back(kc->ed, &o);
-  if (did) keys_ctx_apply(kc, &o);
-  rolltui_keys_editor_outcome_release(&o);
-  return did;
+/* A ROW THAT IS AN ACTION: not a heading ("scope:…") and not a line of the help's text ("note:…"). */
+static int keys_row_is_action(const char* key, size_t n) {
+  return n && !(n > 6 && memcmp(key, "scope:", 6) == 0) && !(n > 5 && memcmp(key, "note:", 5) == 0);
 }
 
-/* The bottom three rows are which preset this is, what the editor is doing, and whatever the
- * last outcome had to say — exactly as the menu's own scrolling assumes: the menu is laid out
- * into what is left. */
-#define ROLLTUI_KEYS_BOX_ROWS 3
+/* An action in words: its description, else its name. */
+static const char* keys_words(const RolltuiBindings* b, const char* a, size_t al, size_t* out) {
+  const char* d = rolltui_bindings_description(b, a, al, out);
+  if (d && *out) return d;
+  *out = al;
+  return a;
+}
 
-static void keys_ctx_menu_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
-  int box;
-  rolltui_content_rect(rn, out);
-  box = out->h < ROLLTUI_KEYS_BOX_ROWS ? out->h : ROLLTUI_KEYS_BOX_ROWS;
-  out->h -= box;
+static KeysRow* keys_row_of(RolltuiKeysCtx* kc, const char* a, size_t al) {
+  size_t i;
+  for (i = 0; i < kc->row_n; ++i)
+    if (!kc->rows[i].heading && rolltui_str_eq(&kc->rows[i].key, a, al)) return &kc->rows[i];
+  return NULL;
+}
+
+static int chord_same(const RolltuiChord* x, const RolltuiChord* y) {
+  return x->key == y->key && x->ch == y->ch && x->ctrl == y->ctrl && x->alt == y->alt && x->shift == y->shift;
+}
+
+static void keys_problem_add(KeysRow* r, const char* text, size_t n) {
+  if (!r) return;
+  if (r->problem.n) rolltui_str_append(&r->problem, K("; "));
+  rolltui_str_append(&r->problem, text, n);
+}
+
+/* ONE KEY, TWO ACTIONS. A program's own key works everywhere, unless the window with focus has the same key for something of its
+ * own: there the window's wins. Both rows say so, each naming the other, so the person sees it where they would look. */
+static void keys_sheet_shadows(RolltuiKeysCtx* kc, const RolltuiBindings* b, unsigned char warning) {
+  const size_t n = rolltui_bindings_action_count(b);
+  size_t i, j, ci, cj;
+  RolltuiStr say;
+  memset(&say, 0, sizeof say);
+  for (i = 0; i < n; ++i) {
+    size_t al = 0;
+    const char* a = rolltui_bindings_action_at(b, i, &al);
+    const size_t ac = al > 4 && memcmp(a, "app.", 4) == 0 ? rolltui_bindings_chord_count(b, a, al) : 0;
+    for (ci = 0; ci < ac; ++ci) {
+      RolltuiChord k;
+      memset(&k, 0, sizeof k);
+      if (!rolltui_bindings_chord_at(b, a, al, ci, &k)) continue;
+      for (j = 0; j < n; ++j) {
+        size_t ol = 0, oc, d = 0;
+        const char* o = rolltui_bindings_action_at(b, j, &ol);
+        if (ol > 4 && memcmp(o, "app.", 4) == 0) continue;
+        oc = rolltui_bindings_chord_count(b, o, ol);
+        for (cj = 0; cj < oc; ++cj) {
+          RolltuiChord ok;
+          char disp[ROLLTUI_CHORD_STRING_MAX];
+          size_t wl = 0, tl = 0, dl;
+          const char* w;
+          const char* t;
+          KeysRow* ra;
+          KeysRow* ro;
+          memset(&ok, 0, sizeof ok);
+          if (!rolltui_bindings_chord_at(b, o, ol, cj, &ok) || !chord_same(&k, &ok)) continue;
+          dl = rolltui_chord_display(&k, disp, sizeof disp);
+          while (d < ol && o[d] != '.') ++d;
+          t = scope_title(o, d, &tl);
+          ra = keys_row_of(kc, a, al);
+          ro = keys_row_of(kc, o, ol);
+          /* on the program's row: where it does not reach */
+          w = keys_words(b, o, ol, &wl);
+          rolltui_str_set(&say, disp, dl);
+          rolltui_str_append(&say, K(" in "));
+          rolltui_str_append(&say, t, tl);
+          rolltui_str_append(&say, K(" is "));
+          rolltui_str_append(&say, w, wl);
+          keys_problem_add(ra, say.p, say.n);
+          if (ra) ra->role = warning;
+          /* on the window's row: what it takes the key from */
+          w = keys_words(b, a, al, &wl);
+          rolltui_str_set(&say, disp, dl);
+          rolltui_str_append(&say, K(" here, so not "));
+          rolltui_str_append(&say, w, wl);
+          keys_problem_add(ro, say.p, say.n);
+          if (ro) ro->role = warning;
+        }
+      }
+    }
+  }
+  rolltui_str_free(&say);
+}
+
+/* The help's own words as a section: its heading, then a row a line, none of which takes a key. */
+static void keys_sheet_text(RolltuiKeysCtx* kc, const char* title, size_t tl, char tag, const char* text, size_t n) {
+  size_t at = 0, line = 0;
+  KeysRow* h;
+  if (!n) return;
+  h = keys_sheet_row(kc);
+  h->heading = 1;
+  rolltui_str_set(&h->key, K("scope:"));
+  rolltui_str_append(&h->key, &tag, 1);
+  rolltui_str_set(&h->what, title, tl);
+  while (at < n) {
+    size_t e = at;
+    char buf[32];
+    KeysRow* r;
+    while (e < n && text[e] != '\n') ++e;
+    if (e > at) {
+      r = keys_sheet_row(kc);
+      snprintf(buf, sizeof buf, "note:%c%zu", tag, line++);
+      rolltui_str_set(&r->key, buf, strlen(buf));
+      rolltui_str_set(&r->what, text + at, e - at);
+    }
+    at = e + 1;
+  }
+}
+
+static void keys_sheet_build(RolltuiKeysCtx* kc) {
+  const RolltuiBindings* b = keys_sheet_table(kc);
+  const unsigned char proto = rolltui_key_active_protocol();
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(kc->w);
+  size_t cap_len = 0, i, s;
+  const char* capturing = kc->editable && rolltui_keys_editor_capturing(kc->ed) ? rolltui_keys_editor_capturing_action(kc->ed, &cap_len) : NULL;
+  kc->rows_stale = 0;
+  kc->row_n = 0;
+  if (!kc->scope.n) { /* what the program says before its keys */
+    size_t ln = 0;
+    const char* lead = rolltui_windows_help_lead(kc->w, &ln);
+    keys_sheet_text(kc, K("About"), 'a', lead, lead ? ln : 0);
+  }
+  keys_sheet_scopes(kc, b, &kc->scopes);
+  for (s = 0; s < kc->scopes.n; ++s) {
+    const RolltuiStr* sc = &kc->scopes.v[s];
+    const size_t n = rolltui_bindings_action_count(b);
+    size_t tl = 0;
+    const char* title = scope_title(sc->p ? sc->p : "", sc->n, &tl);
+    KeysRow* h = keys_sheet_row(kc);
+    h->heading = 1;
+    rolltui_str_set(&h->key, K("scope:"));
+    rolltui_str_append(&h->key, sc->p ? sc->p : "", sc->n);
+    rolltui_str_set(&h->what, title, tl);
+    for (i = 0; i < n; ++i) {
+      size_t al = 0, dl = 0, c, chords;
+      const char* a = rolltui_bindings_action_at(b, i, &al);
+      const char* d;
+      KeysRow* r;
+      int stuck = 0;
+      if (al <= sc->n || memcmp(a, sc->p ? sc->p : "", sc->n) != 0 || a[sc->n] != '.') continue;
+      r = keys_sheet_row(kc);
+      rolltui_str_set(&r->key, a, al);
+      d = rolltui_bindings_description(b, a, al, &dl);
+      if (d && dl) rolltui_str_set(&r->what, d, dl);
+      else { /* no description: the action's own word, its underscores spaces */
+        size_t k;
+        rolltui_str_set(&r->what, a + sc->n + 1, al - sc->n - 1);
+        for (k = 0; k < r->what.n; ++k)
+          if (r->what.p[k] == '_') r->what.p[k] = ' ';
+      }
+      if (capturing && cap_len == al && memcmp(capturing, a, al) == 0) {
+        rolltui_str_set(&r->chords, K("press a key \xE2\x80\xA6"));
+        r->role = kc->capture_role;
+        continue;
+      }
+      rolltui_bindings_chords_text(b, a, al, &r->chords);
+      chords = rolltui_bindings_chord_count(b, a, al);
+      for (c = 0; c < chords && !stuck; ++c) {
+        RolltuiChord k;
+        memset(&k, 0, sizeof k);
+        stuck = rolltui_bindings_chord_at(b, a, al, c, &k) && !rolltui_key_deliverable(&k, proto);
+      }
+      if (stuck) r->role = br->warning;
+      else if (r->chords.n == 0) {
+        rolltui_str_set(&r->chords, K("no key"));
+        r->role = br->text_muted;
+      }
+    }
+  }
+  keys_sheet_shadows(kc, b, br->warning);
+  if (!kc->scope.n) { /* and what it says after them */
+    size_t nn = 0;
+    const char* note = rolltui_windows_help_note(kc->w, &nn);
+    keys_sheet_text(kc, K("More"), 'm', note, note ? nn : 0);
+  }
+  rolltui_list_refresh(kc->list);
+}
+
+static size_t keys_sheet_count(void* ctx) { return ((RolltuiKeysCtx*)ctx)->row_n; }
+static void keys_sheet_fill(void* ctx, size_t i, RolltuiListRow* out) {
+  const KeysRow* r = &((RolltuiKeysCtx*)ctx)->rows[i];
+  rolltui_str_set(&out->key, r->key.p ? r->key.p : "", r->key.n);
+  rolltui_list_row_cell(out, r->what.p ? r->what.p : "", r->what.n);
+  if (!r->heading && keys_row_is_action(r->key.p, r->key.n)) rolltui_list_row_cell(out, r->chords.p ? r->chords.p : "", r->chords.n);
+  out->depth = r->heading ? 0 : 1;
+  out->role = r->role;
+}
+
+/* The action under the cursor, into `kc->scratch`; 0 on a heading or with nothing shown. */
+static int keys_sheet_cursor(RolltuiKeysCtx* kc) {
+  if (!rolltui_list_cursor(kc->list, &kc->scratch) || kc->scratch.n == 0) return 0;
+  return keys_row_is_action(kc->scratch.p, kc->scratch.n);
+}
+
+/* "Enter add a key · Del remove · …": each of the sheet's own keys as the table binds it now. */
+static void keys_sheet_hints(RolltuiKeysCtx* kc, RolltuiStr* out) {
+  static const struct { const char* action; const char* say; } kHints[] = {
+      {"list.activate", "add a key"}, {"keys.remove", "remove"}, {"keys.undo", "undo"},
+      {"keys.load", "load"},          {"keys.save", "save as"},  {"keys.reset", "reset"}, {"list.filter", "find"},
+  };
+  const RolltuiBindings* live = rolltui_windows_bindings(kc->w);
+  size_t i;
+  rolltui_str_clear(out);
+  for (i = 0; i < sizeof kHints / sizeof kHints[0]; ++i) {
+    RolltuiChord k;
+    char disp[ROLLTUI_CHORD_STRING_MAX];
+    const size_t al = strlen(kHints[i].action);
+    if (!kc->editable && i < 6) continue;
+    if (!kc->show_presets && (i == 3 || i == 4)) continue;
+    memset(&k, 0, sizeof k);
+    if (!rolltui_bindings_chord_at(live, kHints[i].action, al, 0, &k)) continue;
+    if (out->n) rolltui_str_append(out, K("  "));
+    rolltui_str_append(out, disp, rolltui_chord_display(&k, disp, sizeof disp));
+    rolltui_str_append(out, K(" "));
+    rolltui_str_append(out, kHints[i].say, strlen(kHints[i].say));
+  }
+  if (!kc->editable) rolltui_str_append(out, K("  \xC2\xB7  this program keeps no changes to its keys"));
+}
+
+static void keys_sheet_rects(const RolltuiKeysCtx* kc, const RolltuiResolvedNode* rn, RolltuiRect* list, int* detail_y,
+                             int* hint_y) {
+  RolltuiRect r;
+  int bottom;
+  (void)kc;
+  rolltui_content_rect(rn, &r);
+  /* A SMALL WINDOW GIVES ITS ROWS TO THE KEYS FIRST: the bottom line from four rows, the detail line from six. */
+  bottom = r.h >= 6 ? 2 : r.h >= 4 ? 1 : 0;
+  *list = r;
+  list->h = r.h - bottom;
+  *detail_y = bottom == 2 ? r.y + r.h - 2 : -1;
+  *hint_y = bottom >= 1 ? r.y + r.h - 1 : -1;
 }
 
 static void keys_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
   const RolltuiWidgetEnv* env = rolltui_windows_env(kc->w);
-  RolltuiMenu* m;
-  RolltuiMenuOptions o;
-  RolltuiRect r;
+  RolltuiRect lr;
+  int dy, hy;
   keys_ctx_refresh(kc);
-  m = rolltui_keys_editor_menu(kc->ed);
-  o = *rolltui_menu_options(m);
-  keys_ctx_menu_rect(rn, &r);
-  o.ambiguous_wide = env->ambiguous_wide;
-  o.inset = 0;
-  rolltui_menu_set_options_struct(m, &o);
-  rolltui_menu_layout(m, r);
+  keys_sheet_build(kc);
+  keys_sheet_rects(kc, rn, &lr, &dy, &hy);
+  rolltui_list_layout(kc->mode == KEYS_CHOOSING ? kc->presets : kc->list, lr, env->ambiguous_wide);
+  if (kc->mode == KEYS_NAMING && hy >= 0) {
+    RolltuiRect ir;
+    rolltui_content_rect(rn, &ir);
+    ir.y = hy, ir.h = 1;
+    ir.x += 9, ir.w -= 9; /* after "save as: " */
+    rolltui_input_layout(kc->name, ir);
+  }
 }
 
 static int keys_put(RolltuiKeysCtx* kc, RolltuiFrame* f, int x, int y, const char* text, size_t len, RolltuiStyle st,
                     int max_cells) {
   const RolltuiWidgetEnv* env = rolltui_windows_env(kc->w);
   if (max_cells <= 0) return 0;
-  return rolltui_frame_put_text(f, kc->draw, x, y, text, len, st, max_cells, env->ambiguous_wide, 0);
+  return rolltui_frame_put_text_cut(f, kc->draw, x, y, text, len, st, max_cells, ROLLTUI_CUT_END, env->ambiguous_wide, 0);
 }
 
 static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
   const RolltuiStyle* styles = rolltui_windows_styles(kc->w);
   const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(kc->w);
-  RolltuiMenu* m;
-  RolltuiRect r, mr;
-  RolltuiStyle label, value;
-  int y;
-
+  const RolltuiWidgetEnv* env = rolltui_windows_env(kc->w);
+  RolltuiListRoles roles;
+  RolltuiStyle muted, value, ground;
+  RolltuiRect lr, r;
+  int dy, hy;
   rolltui_content_rect(rn, &r);
   if (r.w <= 0 || r.h <= 0) return;
   keys_ctx_layout(ctx, rn);
-  m = rolltui_keys_editor_menu(kc->ed);
-  keys_ctx_menu_rect(rn, &mr);
-  if (mr.h > 0) {
-    RolltuiInputRoles iroles;
-    iroles.text = br->input_text;
-    iroles.selection = br->input_selection;
-    iroles.placeholder = br->input_placeholder;
-    iroles.line_number = br->text_muted;
-    rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
-    rolltui_menu_draw(m, f, kc->draw, styles, rolltui_windows_menu_roles(kc->w), &iroles, rn->focused);
-  }
-  label = styles[br->label];
+  keys_sheet_rects(kc, rn, &lr, &dy, &hy);
+  roles.text = br->text;
+  roles.text_muted = br->text_muted;
+  roles.header = br->label;
+  roles.cursor = br->cursor;
+  roles.cursor_away = br->cursor_away;
+  roles.mark = br->mark;
+  roles.hover = br->hover;
+  roles.prompt = br->prompt;
+  roles.heading = rolltui_windows_menu_roles(kc->w)->breadcrumb;
+  rolltui_list_draw(kc->mode == KEYS_CHOOSING ? kc->presets : kc->list, f, styles, &roles, rn->focused, rn->hover ? rn->hover_y : -1,
+                    env->ambiguous_wide);
+  rolltui_frame_ground(f, &ground);
+  muted = styles[br->text_muted];
   value = styles[br->value];
-  y = r.y + mr.h;
+  muted.bg = ground.bg;
+  value.bg = ground.bg;
+  if (dy >= 0) { /* THE DETAIL LINE: the row's action as a file names it, and what is wrong with it */
+    rolltui_str_clear(&kc->line);
+    if (kc->mode == KEYS_CHOOSING) {
+      rolltui_str_append(&kc->line, K("load a set of keys: Enter loads, Esc goes back"));
+    } else if (keys_sheet_cursor(kc)) {
+      const RolltuiBindings* b = keys_sheet_table(kc);
+      const size_t n = rolltui_bindings_chord_count(b, kc->scratch.p, kc->scratch.n);
+      size_t c;
+      rolltui_str_append_str(&kc->line, &kc->scratch);
+      for (c = 0; c < kc->row_n; ++c) { /* a row cut short is read here in full, and what is wrong with its keys */
+        const KeysRow* kr = &kc->rows[c];
+        if (kr->heading || !rolltui_str_eq(&kr->key, kc->scratch.p, kc->scratch.n)) continue;
+        if (rolltui_frame_text_width(kc->draw, kr->what.p ? kr->what.p : "", kr->what.n, rolltui_windows_env(kc->w)->ambiguous_wide) >
+            rolltui_list_column_width(kc->list, 0)) {
+          rolltui_str_append(&kc->line, K(": "));
+          rolltui_str_append_str(&kc->line, &kr->what);
+        }
+        if (kr->problem.n) {
+          rolltui_str_append(&kc->line, K("  \xC2\xB7  "));
+          rolltui_str_append_str(&kc->line, &kr->problem);
+        }
+        break;
+      }
+      for (c = 0; c < n; ++c) {
+        RolltuiChord k;
+        char disp[ROLLTUI_CHORD_STRING_MAX];
+        memset(&k, 0, sizeof k);
+        if (!rolltui_bindings_chord_at(b, kc->scratch.p, kc->scratch.n, c, &k) || rolltui_key_deliverable(&k, rolltui_key_active_protocol()))
+          continue;
+        rolltui_str_append(&kc->line, K("  \xC2\xB7  "));
+        rolltui_str_append(&kc->line, disp, rolltui_chord_display(&k, disp, sizeof disp));
+        rolltui_str_append(&kc->line, K(" cannot be sent by this terminal"));
+      }
+    } else if (kc->scratch.n > 5 && memcmp(kc->scratch.p, "note:", 5) == 0) { /* a line of the help's text: in full, if cut */
+      size_t c;
+      for (c = 0; c < kc->row_n; ++c) {
+        const KeysRow* kr = &kc->rows[c];
+        if (!rolltui_str_eq(&kr->key, kc->scratch.p, kc->scratch.n)) continue;
+        if (rolltui_frame_text_width(kc->draw, kr->what.p ? kr->what.p : "", kr->what.n, rolltui_windows_env(kc->w)->ambiguous_wide) >
+            rolltui_list_column_width(kc->list, 0))
+          rolltui_str_append_str(&kc->line, &kr->what);
+        break;
+      }
+    }
+    keys_put(kc, f, r.x, dy, kc->line.p, kc->line.n, muted, r.w);
+  }
+  if (hy >= 0) { /* THE BOTTOM LINE: what just happened, else the sheet's own keys */
+    if (kc->mode == KEYS_NAMING) {
+      RolltuiInputRoles iroles;
+      keys_put(kc, f, r.x, hy, K("save as: "), styles[br->label], 9);
+      iroles.text = br->input_text;
+      iroles.selection = br->input_selection;
+      iroles.placeholder = br->input_placeholder;
+      iroles.line_number = br->text_muted;
+      rolltui_input_draw(kc->name, f, kc->draw, styles, &iroles, rn->focused);
+    } else {
+      rolltui_str_clear(&kc->line);
+      if (kc->editable && rolltui_keys_editor_capturing(kc->ed)) {
+        rolltui_str_append(&kc->line, K("press the key to add; Esc cancels"));
+      } else if (kc->hint.n) {
+        rolltui_str_append_str(&kc->line, &kc->hint);
+      } else {
+        keys_sheet_hints(kc, &kc->line);
+      }
+      keys_put(kc, f, r.x, hy, kc->line.p, kc->line.n,
+               kc->hint_is_problem ? styles[br->error] : (kc->editable && rolltui_keys_editor_capturing(kc->ed)) ? styles[kc->capture_role]
+                                                                                                                 : value,
+               r.w);
+    }
+  }
+}
 
-  if (y < r.y + r.h) {
-    rolltui_str_clear(&kc->line);
-    rolltui_str_append(&kc->line, K("preset: "));
-    if (kc->store) rolltui_preset_store_label(kc->store, &kc->line);
-    else rolltui_str_append(&kc->line, K("(this app keeps no bindings presets)"));
-    keys_put(kc, f, r.x, y++, kc->line.p, kc->line.n, label, r.w);
+/* What the editor says after a change, as the bottom line's hint: a binding moved, a key refused, an undo. */
+static void keys_sheet_said(RolltuiKeysCtx* kc) {
+  RolltuiStr s;
+  memset(&s, 0, sizeof s);
+  rolltui_keys_editor_status_line(kc->ed, &s);
+  {
+    /* the status ends " · undo N · redo M": the hint keeps what happened */
+    const char* cut = s.p ? strstr(s.p, " \xC2\xB7 undo ") : NULL;
+    if (cut) s.n = (size_t)(cut - s.p);
   }
-  if (y < r.y + r.h) {
-    rolltui_str_clear(&kc->line);
-    rolltui_keys_editor_status_line(kc->ed, &kc->line);
-    keys_put(kc, f, r.x, y++, kc->line.p, kc->line.n,
-             rolltui_keys_editor_capturing(kc->ed) ? styles[kc->capture_role] : value, r.w);
+  if (s.n) rolltui_str_set(&kc->hint, s.p, s.n);
+  kc->hint_is_problem = s.n > 8 && memcmp(s.p, "refused:", 8) == 0;
+  rolltui_str_free(&s);
+}
+
+static void keys_sheet_done(RolltuiKeysCtx* kc, RolltuiKeysEditorOutcome* o) {
+  keys_ctx_apply(kc, o); /* writes a commit back to the store; sets a hint of its own for a load, a save or a reset */
+  kc->rows_stale = 1;
+  if (kc->hint.n == 0) keys_sheet_said(kc);
+  rolltui_keys_editor_outcome_release(o);
+}
+
+static void keys_sheet_presets(RolltuiKeysCtx* kc) {
+  RolltuiPresetListRaw list;
+  size_t i;
+  rolltui_str_list_clear(&kc->preset_names);
+  if (!kc->store) return;
+  memset(&list, 0, sizeof list);
+  rolltui_preset_store_list(kc->store, &list);
+  for (i = 0; i < list.n; ++i) rolltui_str_list_add(&kc->preset_names, list.v[i].name.p, list.v[i].name.n);
+  rolltui_preset_list_release(&list);
+  rolltui_list_refresh(kc->presets);
+}
+static size_t keys_presets_count(void* ctx) { return ((RolltuiKeysCtx*)ctx)->preset_names.n; }
+static void keys_presets_fill(void* ctx, size_t i, RolltuiListRow* out) {
+  const RolltuiStr* n = &((RolltuiKeysCtx*)ctx)->preset_names.v[i];
+  rolltui_str_set(&out->key, n->p ? n->p : "", n->n);
+  rolltui_list_row_cell(out, n->p ? n->p : "", n->n);
+}
+
+static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  const RolltuiBindings* nav = rolltui_windows_bindings(kc->w);
+  RolltuiKeysEditorOutcome o;
+  RolltuiListEvent le;
+  int handled;
+  memset(&o, 0, sizeof o);
+  keys_ctx_refresh(kc);
+  if (kc->rows_stale) keys_sheet_build(kc); /* an action declared since the last frame is a row for this key already */
+  if (kc->editable && rolltui_keys_editor_capturing(kc->ed)) { /* EVERY key is the new one while a row waits for it */
+    if (e->kind != ROLLTUI_EVENT_KEY) return 1;
+    rolltui_str_clear(&kc->hint);
+    rolltui_keys_editor_take_key(kc->ed, &e->key, &o);
+    keys_sheet_done(kc, &o);
+    return 1;
   }
-  if (y < r.y + r.h) {
-    if (kc->hint.n != 0)
-      keys_put(kc, f, r.x, y++, kc->hint.p, kc->hint.n, styles[kc->hint_is_problem ? br->error : br->value], r.w);
-    else
-      keys_put(kc, f, r.x, y++, K("Actions by scope \xE2\x80\xBA a scope \xE2\x80\xBA an action \xE2\x80\xBA add a chord"), value, r.w);
+  if (kc->mode == KEYS_NAMING) {
+    const unsigned char r = rolltui_input_handle(kc->name, e, nav, rolltui_input_default_actions(), rolltui_windows_env(kc->w)->now_ms);
+    if (r == ROLLTUI_INPUT_SUBMIT) {
+      size_t n = 0;
+      const char* t = rolltui_input_text(kc->name, &n);
+      kc->mode = KEYS_SHEET;
+      if (n) {
+        o.kind = ROLLTUI_KEYS_EDIT_SAVE_AS;
+        rolltui_str_set(&o.value, t, n);
+        rolltui_str_clear(&kc->hint);
+        keys_sheet_done(kc, &o);
+      }
+    }
+    return 1;
   }
+  if (kc->mode == KEYS_CHOOSING) {
+    handled = rolltui_list_handle(kc->presets, e, nav, rolltui_list_default_actions());
+    memset(&le, 0, sizeof le);
+    while (rolltui_list_event(kc->presets, &le))
+      if (le.kind == ROLLTUI_LIST_EVENT_ACTIVATE && le.key.n) {
+        o.kind = ROLLTUI_KEYS_EDIT_LOAD_PRESET;
+        rolltui_str_set(&o.value, le.key.p, le.key.n);
+        kc->mode = KEYS_SHEET;
+        rolltui_str_clear(&kc->hint);
+        keys_sheet_done(kc, &o);
+      }
+    rolltui_list_event_release(&le);
+    return handled || e->kind == ROLLTUI_EVENT_KEY;
+  }
+  if (e->kind == ROLLTUI_EVENT_KEY && !rolltui_list_typing(kc->list)) {
+    size_t an = 0;
+    const char* a = rolltui_bindings_action_for(nav, &e->key, K("keys"), &an);
+    if (a) {
+      rolltui_str_clear(&kc->hint);
+      kc->hint_is_problem = 0;
+      if (!kc->editable) {
+        rolltui_str_set(&kc->hint, K("this program keeps no changes to its keys"));
+        return 1;
+      }
+      if (an == 11 && memcmp(a, "keys.remove", 11) == 0) {
+        if (keys_sheet_cursor(kc)) {
+          const RolltuiBindings* b = rolltui_keys_editor_current(kc->ed);
+          const size_t n = rolltui_bindings_chord_count(b, kc->scratch.p, kc->scratch.n);
+          RolltuiChord k;
+          memset(&k, 0, sizeof k);
+          if (n && rolltui_bindings_chord_at(b, kc->scratch.p, kc->scratch.n, n - 1, &k)) {
+            rolltui_keys_editor_unbind(kc->ed, kc->scratch.p, kc->scratch.n, &k, &o);
+            keys_sheet_done(kc, &o);
+          } else {
+            rolltui_str_set(&kc->hint, K("it has no key to remove"));
+          }
+        }
+        return 1;
+      }
+      if ((an == 9 && memcmp(a, "keys.undo", 9) == 0) || (an == 9 && memcmp(a, "keys.redo", 9) == 0)) {
+        const int undo = a[5] == 'u';
+        const int did = undo ? rolltui_keys_editor_undo(kc->ed) : rolltui_keys_editor_redo(kc->ed);
+        if (did) {
+          o.kind = ROLLTUI_KEYS_EDIT_COMMITTED;
+          keys_sheet_done(kc, &o);
+        } else {
+          if (undo) rolltui_str_set(&kc->hint, K("nothing to undo"));
+          else rolltui_str_set(&kc->hint, K("nothing to redo"));
+        }
+        return 1;
+      }
+      if (an == 9 && memcmp(a, "keys.load", 9) == 0 && kc->show_presets && kc->store) {
+        keys_sheet_presets(kc);
+        kc->mode = KEYS_CHOOSING;
+        return 1;
+      }
+      if (an == 9 && memcmp(a, "keys.save", 9) == 0 && kc->show_presets && kc->store) {
+        rolltui_input_set_text(kc->name, "", 0);
+        kc->mode = KEYS_NAMING;
+        return 1;
+      }
+      if (an == 10 && memcmp(a, "keys.reset", 10) == 0 && kc->store) {
+        o.kind = ROLLTUI_KEYS_EDIT_RESET_LOADED;
+        keys_sheet_done(kc, &o);
+        return 1;
+      }
+    }
+  }
+  handled = rolltui_list_handle(kc->list, e, nav, rolltui_list_default_actions());
+  memset(&le, 0, sizeof le);
+  while (rolltui_list_event(kc->list, &le))
+    if (le.kind == ROLLTUI_LIST_EVENT_ACTIVATE && keys_row_is_action(le.key.p, le.key.n)) {
+      rolltui_str_clear(&kc->hint);
+      if (kc->editable) rolltui_keys_editor_capture(kc->ed, le.key.p, le.key.n);
+      else rolltui_str_set(&kc->hint, K("this program keeps no changes to its keys"));
+      handled = 1;
+    }
+  rolltui_list_event_release(&le);
+  return handled;
+}
+
+/* ONE LEVEL BACK: a key being taken is abandoned, a load or a save is left, then the list's filter and marks go; only then is the
+ * popup the stack's to close. */
+static int keys_ctx_back(void* ctx) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  if (kc->editable && rolltui_keys_editor_capturing(kc->ed)) {
+    RolltuiChord esc;
+    RolltuiKeysEditorOutcome o;
+    memset(&esc, 0, sizeof esc);
+    memset(&o, 0, sizeof o);
+    esc.key = ROLLTUI_KEY_ESCAPE;
+    rolltui_keys_editor_take_key(kc->ed, &esc, &o);
+    rolltui_keys_editor_outcome_release(&o);
+    rolltui_str_set(&kc->hint, K("no key added"));
+    return 1;
+  }
+  if (kc->mode != KEYS_SHEET) {
+    kc->mode = KEYS_SHEET;
+    return 1;
+  }
+  rolltui_str_clear(&kc->hint);
+  return rolltui_list_back(kc->list);
 }
 
 static int keys_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
   RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
-  RolltuiMenu* m = rolltui_keys_editor_menu(kc->ed);
-  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
-  out->first = (size_t)rolltui_menu_scroll_first(m);
-  out->visible = (size_t)rolltui_menu_scroll_visible(m);
-  out->total = rolltui_menu_visible(m, NULL);
+  return axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_extent(kc->mode == KEYS_CHOOSING ? kc->presets : kc->list, out);
+}
+static int keys_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  return axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_to(kc->mode == KEYS_CHOOSING ? kc->presets : kc->list, first);
+}
+
+/* THE FOOTER: where the cursor is, and which set of keys this is ("default (modified)"). */
+static int keys_ctx_footer(void* ctx, RolltuiStr* out) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  RolltuiStr at;
+  memset(&at, 0, sizeof at);
+  rolltui_str_clear(out);
+  if (rolltui_list_footer(kc->list, &at)) rolltui_str_append_str(out, &at);
+  if (kc->store) {
+    if (out->n) rolltui_str_append(out, K(" \xC2\xB7 "));
+    rolltui_preset_store_label(kc->store, out);
+  }
+  rolltui_str_free(&at);
+  return out->n != 0;
+}
+
+/* `help:<scope>` naming a scope this program does not have is a named problem, as an unbound source is. */
+static int keys_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  const RolltuiBindings* b = keys_sheet_table(kc);
+  size_t i, n;
+  if (!kc->scope.n) return 0;
+  n = rolltui_bindings_action_count(b);
+  for (i = 0; i < n; ++i) {
+    size_t al = 0;
+    const char* a = rolltui_bindings_action_at(b, i, &al);
+    if (al > kc->scope.n && memcmp(a, kc->scope.p, kc->scope.n) == 0 && a[kc->scope.n] == '.') return 0;
+  }
+  rolltui_str_set(out, K("'"));
+  rolltui_str_append_str(out, &kc->scope);
+  rolltui_str_append(out, K("' is not one of this program's key scopes"));
   return 1;
 }
 
+/* THE TITLE: the layout's, else "keys", what the sheet is. */
 static int keys_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
-  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
-  rolltui_menu_title(rolltui_keys_editor_menu(kc->ed), given, given_len, out);
-  return out->n != 0;
+  (void)ctx;
+  if (given_len) return 0;
+  (void)given;
+  rolltui_str_set(out, K("keys"));
+  return 1;
+}
+
+/* The sheet's own scope: no counts, since a digit is a key a row may be waiting for. */
+static int keys_sheet_keys(void* ctx, const char** scope, size_t* len) {
+  (void)ctx;
+  *scope = "keys", *len = 4;
+  return 0;
 }
 
 static void keys_ctx_destroy(void* ctx) {
   RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  size_t i;
   rolltui_keys_editor_free(kc->ed);
+  rolltui_bindings_free(kc->sent);
   rolltui_draw_scratch_free(kc->draw);
+  rolltui_list_free(kc->list);
+  rolltui_list_free(kc->presets);
+  rolltui_input_free(kc->name);
+  for (i = 0; i < kc->row_init; ++i) {
+    rolltui_str_free(&kc->rows[i].key);
+    rolltui_str_free(&kc->rows[i].what);
+    rolltui_str_free(&kc->rows[i].problem);
+    rolltui_str_free(&kc->rows[i].chords);
+  }
+  rolltui_mem_free(kc->rows);
+  rolltui_str_list_release(&kc->scopes);
+  rolltui_str_list_release(&kc->preset_names);
+  rolltui_str_free(&kc->scope);
+  rolltui_str_free(&kc->scratch);
   rolltui_str_free(&kc->line);
   rolltui_str_free(&kc->hint);
   rolltui_mem_free(kc);
 }
 
 static const RolltuiWidgetPlugin kKeysPlugin = {
-    keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, NULL, NULL,
-    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL, keys_ctx_title, keys_ctx_back,
-    keys_menu,
+    keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, keys_ctx_problem, NULL,
+    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, keys_ctx_scroll_to, keys_ctx_title, keys_ctx_back,
+    keys_sheet_keys,
     NULL,
-    NULL
+    keys_ctx_footer
 };
 
-static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
-  RolltuiKeysCtx* kc;
-  RolltuiWidget out;
+/* ONE SHEET FOR BOTH KINDS: `keys` edits, and `help` is the same sheet, editable too when this program handed a store over for its
+ * keys, and limited to one scope when it names one. */
+static RolltuiKeysCtx* keys_sheet_new(RolltuiWindows* w, const char* scope, size_t scope_len, int is_help) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)rolltui_mem_alloc(sizeof *kc);
+  RolltuiListOptions lo;
+  RolltuiListColumn cols[2];
   int warning;
-  (void)c;
-  (void)content;
-  (void)n;
-  memset(&out, 0, sizeof out);
-  kc = (RolltuiKeysCtx*)rolltui_mem_alloc(sizeof *kc);
   memset(kc, 0, sizeof *kc);
   kc->w = w;
+  kc->is_help = is_help;
   /* The LIVE table is the baseline: it is what this app is running on, declarations included. */
   kc->ed = rolltui_keys_editor_new(rolltui_windows_bindings(w));
+  keys_ctx_mark_sent(kc);
+  kc->rows_stale = 1;
   kc->declared_seen = rolltui_bindings_action_count(rolltui_windows_bindings(w));
   kc->draw = rolltui_draw_scratch_new();
-  /* A capture prompt is not an error and not an ordinary value, so it is drawn in the theme's
-   * own `warning`. Resolved by NAME once here rather than being a tenth field on
-   * `RolltuiBuiltinRoles` that only this kind would read. */
   warning = rolltui_role_from_name(K("warning"));
   kc->capture_role = warning >= 0 ? (unsigned char)warning : rolltui_windows_builtin_roles(w)->value;
   kc->persist = 1;
+  kc->show_presets = 1;
+  if (scope_len) rolltui_str_set(&kc->scope, scope, scope_len);
+  kc->list = rolltui_list_new();
+  rolltui_list_set_source(kc->list, keys_sheet_count, keys_sheet_fill, kc, NULL);
+  memset(&lo, 0, sizeof lo);
+  lo.tree = 1;
+  lo.headings = 1;
+  lo.hide_header = 1;
+  lo.scrolloff = 2;
+  rolltui_list_set_options(kc->list, &lo);
+  memset(cols, 0, sizeof cols);
+  rolltui_str_set(&cols[0].title, K("what it does"));
+  rolltui_str_set(&cols[1].title, K("keys"));
+  cols[1].role = rolltui_windows_menu_roles(w)->shortcut; /* keys are drawn as a shortcut is, everywhere */
+  cols[1].max_share = 40; /* what a key does is the row's subject: a long list of keys is cut first */
+  cols[1].keep = 1;       /* …but however narrow the sheet, its keys are shown */
+  rolltui_list_set_columns(kc->list, cols, 2);
+  rolltui_str_free(&cols[0].title);
+  rolltui_str_free(&cols[1].title);
+  kc->presets = rolltui_list_new();
+  rolltui_list_set_source(kc->presets, keys_presets_count, keys_presets_fill, kc, NULL);
+  memset(&lo, 0, sizeof lo);
+  lo.hide_header = 1;
+  rolltui_list_set_options(kc->presets, &lo);
+  kc->name = rolltui_input_new();
+  {
+    RolltuiInputOptionsRaw o;
+    rolltui_input_options_init(&o);
+    o.single_line = 1;
+    rolltui_str_clear(&o.prompt);
+    rolltui_input_set_options(kc->name, &o);
+    rolltui_input_options_release(&o);
+  }
+  {
+    int persist = 1;
+    RolltuiPresetStore* s = rolltui_windows_keys_store(w, &persist); /* a store handed over for any keys sheet of this screen */
+    if (s) kc->store = s, kc->persist = persist;
+  }
+  kc->editable = kc->store != NULL;
+  return kc;
+}
+
+static RolltuiWidget keys_sheet_widget(RolltuiWindows* w, const char* scope, size_t scope_len, int is_help) {
+  RolltuiWidget out;
+  memset(&out, 0, sizeof out);
   out.vt = &kKeysPlugin;
-  out.ctx = kc;
+  out.ctx = keys_sheet_new(w, scope, scope_len, is_help);
   return out;
+}
+
+static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
+  (void)content;
+  (void)n;
+  return keys_sheet_widget(w, NULL, 0, 0);
 }
 
 /* The widget for `content` when it is a `keys` one, else NULL. `rolltui_windows_widget_for`
@@ -3588,9 +4118,11 @@ static RolltuiKeysCtx* keys_ctx_for(RolltuiWindows* w, const char* content, size
 void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len, RolltuiBindingsStore* store,
                                         int persist) {
   RolltuiKeysCtx* kc = keys_ctx_for(w, content, len);
+  rolltui_windows_remember_keys_store(w, (RolltuiPresetStore*)store, persist); /* a `help` sheet made later edits into it too */
   if (!kc) return;
   kc->store = (RolltuiPresetStore*)store;
   kc->persist = persist;
+  kc->editable = store != NULL;
   keys_ctx_refresh(kc);
   keys_ctx_sync_store(kc);
 }
@@ -3599,6 +4131,7 @@ void rolltui_windows_set_keys_editor_show_presets(RolltuiWindows* w, const char*
   RolltuiKeysCtx* kc = keys_ctx_for(w, content, len);
   if (!kc) return;
   rolltui_keys_editor_set_show_presets(kc->ed, show);
+  kc->show_presets = show;
 }
 
 

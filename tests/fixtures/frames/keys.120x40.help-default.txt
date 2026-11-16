@@ -12,17 +12,17 @@
 │ │                                 │             │ Event, table-tested              │ ││                              │
 │ │ Cell grid + frame diff + SGR/   │ build       │ single header, pure, golden-     │ ││                              │
 │ │ colour downgrade    ╭ help ────────────────────────────────────────────────────────────────╮                       │
-│ │ Wrap engine         │   Right                   move one grapheme right                    │                       │
-│ │                     │   Ctrl-Left, Alt-Left, Alt-B  move one word left                     •                       │
-│ │ Windows, layers, pla│   Ctrl-Right, Alt-Right, Alt-F  move one word right                  │                       │
-│ │ abs/rel per axis), f│   Home, Ctrl-A            start of the line (scrolls when empty)     │                       │
-│ │                     │   End, Ctrl-E             end of the line (scrolls when empty)       │                       │
-│ │ Menu widget (hierarc│   Up                      up a row, or the previous history entry    │                       │
-│ │ filterable) + list/t│   Down                    down a row, or the next history entry      │                       │
-│ │ Layout files (JSON: │   Shift-Left              extend the selection one grapheme left     │                       │
-│ │ placements + content│   Shift-Right             extend the selection one grapheme right    │                       │
-│ │ Markdown block rende│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 71 more  │                       │
-│ │ → styled wrapped lin╰──────────────────────────────────────────────────────────────────────╯                       │
+│ │ Wrap engine         │ Typing ───────────────────────────────────────────────────────────── ╻                       │
+│ │                     │ move one word left                       Ctrl-Left, Alt-Left, Alt-B  ┃                       │
+│ │ Windows, layers, pla│ move one word right                      Ctrl-Right, Alt-Right, Alt… ┃                       │
+│ │ abs/rel per axis), f│ extend the selection one word left       Ctrl-Shift-Left, Alt-Shift… ┃                       │
+│ │                     │ extend the selection one word right      Ctrl-Shift-Right, Alt-Shif… ╹                       │
+│ │ Menu widget (hierarc│ swap the word before the caret with th…  Alt-T                       │                       │
+│ │ filterable) + list/t│ uppercase to the end of the word         Alt-U                       │                       │
+│ │ Layout files (JSON: │ /one word                                                            │                       │
+│ │ placements + content│ input.word_left                                                      │                       │
+│ │ Markdown block rende│ Enter add a key  Delete remove  Ctrl-Z undo  Ctrl-O load  Ctrl-S sa… │                       │
+│ │ → styled wrapped lin╰──────────────────────────────────────────────────────────── default ─╯                       │
 │ │ Theme (roles → styles, JSON     │ build       │ single header                    │ ┃│                              │
 │ │ loader, built-ins)              │             │                                  │ ┃│                              │
 │ └─────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃│                              │

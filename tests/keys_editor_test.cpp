@@ -103,22 +103,22 @@ int main() {
   go(ed, key(ROLLTUI_KEY_ENTER));
   o = go(ed, ch('j', false, true));  // Alt-J
   check(o.kind == O::Committed && !ed.capturing() && action_for(ed.current(), ch('j', false, true), "input") == "input.word_left" && ed.undo_depth() == 1,
-        "the next key becomes the chord: Alt-J → word_left, one commit");
-  check(status(ed).find("bound Alt-J \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-J") != std::string::npos,
+        "the next key becomes the chord: Alt-J → move one word left, one commit");
+  check(status(ed).find("bound Alt-J \xE2\x86\x92 move one word left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-J") != std::string::npos,
         "the status and the action's label show the new chord [" + status(ed) + "]");
   check(find(ed.menu(), "unbind.input.word_left.alt+j") != nullptr, "…and a remove item for it appears");
   // ---- a conflict moves ----
   go(ed, key(ROLLTUI_KEY_HOME));
   o = go(ed, key(ROLLTUI_KEY_ENTER));      // add another chord
   o = go(ed, ch('d', false, true)); // Alt-D: currently kill_word_forward's
-  check(o.kind == O::Committed && status(ed).find("(was kill_word_forward)") != std::string::npos &&
+  check(o.kind == O::Committed && status(ed).find("(was kill the word after the caret)") != std::string::npos &&
             action_for(ed.current(), ch('d', false, true), "input") == "input.word_left" && chord_count(ed.current(), "input.kill_word_forward") == 1,
         "a chord bound elsewhere in the scope moves, and the status names the loser [" + status(ed) + "]");
   // ---- the Enter rule ----
   go(ed, key(ROLLTUI_KEY_HOME));
   go(ed, key(ROLLTUI_KEY_ENTER));
   o = go(ed, key(ROLLTUI_KEY_ENTER));      // Enter as the chord
-  check(o.kind == O::Changed && status(ed).find("refused") == 0 && status(ed).find("Enter is always input.submit") != std::string::npos &&
+  check(o.kind == O::Changed && status(ed).find("refused") == 0 && status(ed).find("Enter always sends the line") != std::string::npos &&
             action_for(ed.current(), key(ROLLTUI_KEY_ENTER), "input") == "input.submit",
         "Enter cannot be captured for another input action: refused by name [" + status(ed) + "]");
   // ---- remove, clear ----

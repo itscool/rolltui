@@ -58,6 +58,9 @@ void rolltui_bindings_undeclare_others(RolltuiBindings* b, RolltuiScopeFn is_lib
 int rolltui_bindings_breaks_enter_rule(const RolltuiBindings* b, const char* action, size_t len,
                                        const RolltuiChord* chord);
 
+/* THE ACTIONS A FILE DOES NOT NAME. A saved table names every action it has, an unbound one as [], so a library action missing
+ * from the file `text` is one the file is older than: it takes the shipped default's keys, each one its scope has free. */
+void rolltui_bindings_fill_unnamed(RolltuiBindings* b, const char* text, size_t len);
 void rolltui_bindings_report_set_error(RolltuiBindingsReport* r, const char* s, size_t len);
 void rolltui_bindings_report_add_unknown_action(RolltuiBindingsReport* r, const char* s, size_t len);
 void rolltui_bindings_report_add_bad_chord(RolltuiBindingsReport* r, const char* s, size_t len);
@@ -141,9 +144,14 @@ size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap);
 
 RolltuiBindings* rolltui_bindings_new(void);
 
-/* Equal by the ROWS alone, which is what the C++ `operator==` compared: a declaration is
- * this screen's, a row is the user's file, and only the second is the domain's content. */
+/* Equal when each action holds the same keys, in the same order, in both: a declaration is this screen's and a row is the person's
+ * file, so neither where a row sits nor a row holding no key counts. */
 int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b);
+
+/* WHAT CHANGED, MADE AGAIN ELSEWHERE: each action whose keys differ between `before` and `after` takes `after`'s keys in `into`
+ * (none, if it has none there); every other row of `into` stays its own. A keys sheet edits the live table, which holds keys the
+ * program suggests for its own actions, and commits only the person's changes onto the store's copy. */
+void rolltui_bindings_take_changes(RolltuiBindings* into, const RolltuiBindings* before, const RolltuiBindings* after);
 
 size_t rolltui_bindings_action_count(const RolltuiBindings* b);
 

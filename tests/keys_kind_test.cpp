@@ -88,14 +88,16 @@ std::string read_file(const std::string& path) {
   return ss.str();
 }
 
-RolltuiEvent key_event(unsigned char k, RolltuiCodepoint ch = 0, bool alt = false) {
+RolltuiEvent key_event(unsigned char k, RolltuiCodepoint ch = 0, bool alt = false, bool ctrl = false) {
   RolltuiEvent e{};
   e.kind = ROLLTUI_EVENT_KEY;
   e.key.key = k;
   e.key.ch = ch;
   e.key.alt = alt ? 1 : 0;
+  e.key.ctrl = ctrl ? 1 : 0;
   return e;
 }
+RolltuiEvent ctrl_key(char c) { return key_event(ROLLTUI_KEY_CHAR, static_cast<RolltuiCodepoint>(c), false, true); }
 
 // The one screen the in-process half drives: a `keys` window and nothing else, written here
 // rather than read from a file because what is under test is the KIND, not the loader.
@@ -105,16 +107,16 @@ const char* kInProcessLayout = R"({
   "root": { "id": "anvil_edit", "content": "keys", "focusable": true }
 })";
 
-// The one string an assertion can compare: which action, if any, holds Alt-J in the `app` scope
-// of a table.
+// The one string an assertion can compare: "app.quench" when quench's row holds Alt-J, else empty. A row, not a declared
+// action: the store's copy is the person's file, and the screen's declarations are laid over it when the app takes it.
 std::string alt_j_holder(const RolltuiBindings* b) {
-  RolltuiChord k{};
-  k.key = ROLLTUI_KEY_CHAR;
-  k.ch = 'j';
-  k.alt = 1;
-  std::size_t len = 0;
-  const char* p = rolltui_bindings_action_for(b, &k, "app", 3, &len);
-  return p ? std::string(p, len) : std::string();
+  const std::size_t n = rolltui_bindings_chord_count(b, "app.quench", 10);
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord k{};
+    if (rolltui_bindings_chord_at(b, "app.quench", 10, i, &k) && k.key == ROLLTUI_KEY_CHAR && k.ch == 'j' && k.alt && !k.ctrl)
+      return "app.quench";
+  }
+  return std::string();
 }
 
 // A screen that names `keys`, with the store handed over (or not), held open so a caller can
@@ -187,7 +189,7 @@ struct Session {
 };
 
 // One editing session over a screen that names `keys`: Alt-J onto `app.quench`, through the
-// menu's own filter so the walk does not depend on where a row happens to sit. The action is
+// sheet's own filter so the walk does not depend on where a row happens to sit. The action is
 // the APP's declaration and nothing else's, so a session that can reach it is one editing the
 // table the app is running on.
 Session drive(const std::string& dir, bool hand_over_the_store) {
@@ -203,12 +205,9 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   snapshot(out.holder_before);
 
   const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
-  s.send(enter);        // Actions by scope
-  s.type("app");
-  s.send(enter);        // the app scope
-  s.type("quench");
-  s.send(enter);        // the action's level
-  s.send(enter);        // add a chord (press it)…
+  s.type("/no file carries");  // the filter, to quench's row: its description
+  s.send(enter);                // the filter kept, the cursor on the row
+  s.send(enter);                // the row waits for a key…
   s.send(key_event(ROLLTUI_KEY_CHAR, 'j', /*alt=*/true));
 
   out.version_after = rolltui_bindings_store_version(s.store);
@@ -226,50 +225,49 @@ int main() {
   fs::copy(fs::path(ROLLTUI_FIXTURE_DIR) / "anvil", scratch, fs::copy_options::recursive);
   const std::string presets = " --presets '" + scratch.string() + "'";
   const std::string base = studio + " --frame 100x30" + presets + " --theme default-dark";
-  // `Type:` reads an underscore as a space, so a literal one is escaped.
-  const std::string to_word_left = "Enter Type:input Enter Type:word\\_left Enter Enter";
+  // `Type:` reads an underscore as a space.
+  const std::string to_word_left = "/ Type:move_one_word_left Enter Enter";
 
-  // ---- 1. A LAYOUT ALONE GIVES A WORKING EDITOR ---------------------------------------------
+  // ---- 1. A LAYOUT ALONE GIVES A WORKING SHEET ----------------------------------------------
   int rc = 0;
   const std::string open = run(base + " --layout anvil --bindings anvil 2>&1", rc);
   check(rc == 0 && !open.empty(), "the studio runs a screen it has never heard of (rc " + std::to_string(rc) + ")");
-  check(has(open, "the keys") && has(open, "Actions by scope") && has(open, "Reset to the loaded preset"),
-        "…and the window whose content is `keys` draws the editor's own menu");
-  check(has(open, "Enter on an action: add, remove or clear its chords") &&
-            has(open, "preset: (this app keeps no bindings presets)"),
-        "…with the status line and the store line the kind draws, not the host");
+  check(has(open, "the keys") && has(open, "This program \xE2\x94\x80") && has(open, "cycle the shipped theme presets"),
+        "…and the window whose content is `keys` draws the sheet: every key, in words, under its heading, the program's first");
+  check(has(open, "Enter add a key") && has(open, "Ctrl-O undo") && has(open, " anvil \xE2\x94\x80"),
+        "…with its own keys along the bottom, as this table binds them, and the store's preset in the footer");
 
   // ---- 2. IT IS DRIVABLE, with no host code between the keys and the model -------------------
   const std::string edited = run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltJ\" 2>&1", rc);
-  check(has(edited, "remove Ctrl-Left") && has(edited, "remove Alt-J"),
-        "keystrokes reach the editor: three levels down, the action's own chords are the items");
-  check(has(edited, "bound Alt-J \xE2\x86\x92 word_left") && has(edited, "undo 1"),
-        "…and the next key pressed IS the chord, committed, so there is something to undo");
+  check(has(edited, "bound Alt-J \xE2\x86\x92 move one word left"),
+        "keystrokes reach the sheet: Enter on a row takes the next key pressed as the row's new key");
+  check(has(edited, "anvil (modified)"), "…committed into the studio's store, so the preset is labelled modified");
 
   // ---- 3. THE LIVE-TABLE CONTROL ------------------------------------------------------------
   //
   // What makes an action editable is that something DECLARED it, and the only declaration of
   // `app.quench` in this process is the layout file. Its presence proves the table being edited
   // is the one the screen is running on rather than a preset parsed off disk.
-  const std::string app_scope = run(base + " --layout anvil --bindings anvil --keys \"Enter Type:app Enter\" 2>&1", rc);
-  check(has(app_scope, "quench  (unbound)"),
-        "the tree carries an action declared by the LAYOUT and by no source, so the table is the live one");
+  const std::string app_scope = run(base + " --layout anvil --bindings anvil --keys \"/ Type:no_binary_knows Enter\" 2>&1", rc);
+  check(has(app_scope, "app.quench: an action this screen declares") && has(app_scope, "no key"),
+        "the sheet carries an action declared by the LAYOUT and by no source, so the table is the live one");
   const std::string own_screen = run(base + " --bindings anvil --keys \"F7 Enter Type:app Enter\" 2>&1", rc);
   check(!has(own_screen, "quench"),
         "…and the studio's own screen, which declares no such action, has none: the layout supplied it");
 
   // ---- 4. THE ONE-WINDOW CONTROL ------------------------------------------------------------
   const std::string plain = run(base + " --layout anvil-plain --bindings anvil 2>&1", rc);
-  check(rc == 0 && !plain.empty() && !has(plain, "keys editor") && !has(plain, "Actions by scope"),
-        "the SAME screen with that one content string changed has no editor in it");
+  check(rc == 0 && !plain.empty() && !has(plain, "add a key") && !has(plain, "Typing \xE2\x94\x80"),
+        "the SAME screen with that one content string changed has no sheet in it");
 
   // ---- 5. THE BINDINGS CONTROL --------------------------------------------------------------
   const std::string undone =
       run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
-  check(has(undone, "undone \xC2\xB7 undo 0"), "Ctrl-O undoes, because anvil's bindings file says editor.undo is Ctrl-O");
+  check(has(undone, "undone") && !has(undone, "(modified)"),
+        "Ctrl-O undoes, because anvil's bindings file says keys.undo is Ctrl-O, and the preset is as it was again");
   const std::string shipped = run(base + " --layout anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
-  check(!has(shipped, "undone") && has(shipped, "undo 1"),
-        "…and with the shipped bindings the same key does nothing: the FILE supplied the chord");
+  check(!has(shipped, "undone") && has(shipped, "(modified)"),
+        "…and with the shipped bindings the same key does not undo: the FILE supplied the chord");
 
   // ---- 6. THE SOURCE CONTROL ----------------------------------------------------------------
   {
@@ -316,23 +314,16 @@ int main() {
     Screen s;
     s.open(dir.string(), true);
     const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
-    const RolltuiEvent home = key_event(ROLLTUI_KEY_HOME);
-    const RolltuiEvent left = key_event(ROLLTUI_KEY_LEFT);
+    const RolltuiEvent escape = key_event(ROLLTUI_KEY_ESCAPE);
+    auto back = [&]() { return rolltui_windows_back(s.windows, "anvil_edit", 10); };
 
-    // BACK TO THE TOP LEVEL, and Left rather than Escape: Escape at the root CLOSES the menu,
-    // and either only ascends ONE level — the fields below are three deep. A filter typed at the
-    // wrong level matches nothing and the Enter after it does nothing, which is a save that
-    // silently never happened.
-    auto to_root = [&]() {
-      for (int i = 0; i < 4; ++i) s.send(left);
-      s.send(home);
-    };
+    // Save as is a key on the sheet (Ctrl-S): it asks for a name on the bottom line, and Enter saves.
     auto save_as = [&](const char* name) {
-      to_root();
-      s.type("save");  // the filter reaches "Save keys as"
-      s.send(enter);   // start editing the field
+      while (back() == 1) {
+      }
+      s.send(ctrl_key('s'));
       s.type(name);
-      s.send(enter);   // commit: the SaveAs outcome
+      s.send(enter);
     };
     auto preset_holder = [&](const char* name) {
       RolltuiBindingsPresetReport rep{};
@@ -348,14 +339,12 @@ int main() {
 
     save_as("mine");
     check(preset_holder("mine").empty(),
-          "Save keys as writes one, through the store the app handed over [" + preset_holder("mine") + "]");
+          "Ctrl-S saves the keys as a preset, through the store the app handed over [" + preset_holder("mine") + "]");
 
     // Now rebind something and try the same name again.
-    to_root();
-    s.send(enter);
-    s.type("app");
-    s.send(enter);
-    s.type("quench");
+    while (back() == 1) {
+    }
+    s.type("/no file carries");
     s.send(enter);
     s.send(enter);
     s.send(key_event(ROLLTUI_KEY_CHAR, 'j', /*alt=*/true));
@@ -372,16 +361,19 @@ int main() {
       return v ? alt_j_holder(v) : std::string();
     };
     check(working_holder() == "app.quench", "the working copy is the edited table, so a reset has something to undo");
-    to_root();
-    s.type("loaded");  // "Reset to the loaded preset…"
-    s.send(enter);
+    check(rolltui_bindings_store_modified(s.store) != 0, "…and it is labelled modified");
+    while (back() == 1) {
+    }
+    s.send(ctrl_key('r'));
     check(working_holder().empty(),
-          "Reset to the loaded preset re-reads the PRESET: the working copy is what the file says again");
+          "Ctrl-R resets to the loaded preset: the working copy is what the file says again");
+    check(rolltui_bindings_store_modified(s.store) == 0, "…so it is no longer modified");
+    (void)escape;
   }
 
-  // ---- 10. A CLOSE GOES BACK ONE LEVEL, AS A `menu` WINDOW'S DOES; ONLY FROM THE TOP DOES IT CLOSE THE POPUP --------------
-  // This kind once said it had no levels, so Escape three deep in "Actions by scope › input › submit" closed the whole editor
-  // and the next F5 came back to that level. A chord being captured is abandoned first.
+  // ---- 10. ESCAPE GOES BACK ONE LEVEL; ONLY FROM THE TOP DOES IT CLOSE THE POPUP ------------
+  // A key being waited for goes first, then a load or a save being named, then the filter; at the top `back` says there is
+  // nothing left, and the popup is the stack's to close.
   {
     const fs::path dir = scratch / "back";
     fs::create_directories(dir);
@@ -389,21 +381,20 @@ int main() {
     s.open(dir.string(), true);
     const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
     auto back = [&]() { return rolltui_windows_back(s.windows, "anvil_edit", 10); };
-    check(back() == 0, "at the top of the editor's menu there is no level to go back from: the popup is the stack's to close");
-    for (int depth = 1; depth <= 3; ++depth) {
-      for (int i = 0; i < depth; ++i) s.send(enter);
-      int steps = 0;
-      while (back() == 1 && steps < 10) ++steps;
-      check(steps == depth, "entered " + std::to_string(depth) + " level" + (depth == 1 ? "" : "s") + " deep, back takes exactly " + std::to_string(depth) + " steps [" + std::to_string(steps) + "]");
-    }
-    // into an action's own level, start a capture, and back abandons the capture, THEN leaves the level
-    s.send(enter);  // Actions by scope
-    s.send(enter);  // a scope
-    s.send(enter);  // an action
-    s.send(enter);  // its first row: add a chord (press it)…, a capture begins if that row is the "bind" one
+    check(back() == 0, "at the top of the sheet there is no level to go back from");
+    s.send(enter);  // the first row waits for a key
+    check(back() == 1 && back() == 0, "a key being waited for is one level: back drops it, and the next back is at the top");
+    s.type("/word");
+    s.send(enter);
+    check(back() == 1 && back() == 0, "a filter is one level");
+    s.send(ctrl_key('s'));
+    check(back() == 1 && back() == 0, "a save being named is one level");
+    s.type("/word");
+    s.send(enter);
+    s.send(enter);
     int steps = 0;
     while (back() == 1 && steps < 10) ++steps;
-    check(steps >= 3 && steps <= 4, "with a capture possibly open, back still walks out one step at a time and then stops [" + std::to_string(steps) + "]");
+    check(steps == 2, "a key waited for under a filter: two steps out, then the top [" + std::to_string(steps) + "]");
   }
 
   fs::remove_all(scratch);

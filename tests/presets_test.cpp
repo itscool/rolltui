@@ -1538,5 +1538,31 @@ int main() {
 
   // The sections after the reset above write into the world again, so it is removed here too, last: a run leaves nothing.
   fs::remove_all(world, ec);
+  // ---- A TABLE OLDER THAN A LIBRARY ACTION still has a key for it ----
+  // A saved table names every action it has, an unbound one as []. An action the file does not name is one it predates, and takes
+  // the shipped default's keys, those its scope has free.
+  {
+    const std::string odir = (world / "older").string();
+    write_file(fs::path(odir) / "bindings" / "older.json",
+               R"({"name":"older","bindings":{"input.submit":["enter"],"keys.undo":[],"list.up":["ctrl+n"]}})");
+    BindingsStore bs(odir, false, "");
+    BindingsPresetReport rep;
+    check(bs.load("older", rep, false), "the older table loads [" + rep.summary() + "]");
+    const RolltuiBindings* b = bs.working();
+    auto chords = [&](const char* a) {
+      std::string out;
+      const std::size_t n = rolltui_bindings_chord_count(b, a, std::strlen(a));
+      for (std::size_t i = 0; i < n; ++i) {
+        RolltuiChord k{};
+        char buf[64];
+        if (!rolltui_bindings_chord_at(b, a, std::strlen(a), i, &k)) continue;
+        out += (i ? " " : "") + std::string(buf, rolltui_chord_display(&k, buf, sizeof buf));
+      }
+      return out;
+    };
+    check(chords("keys.remove") == "Delete Backspace", "an action the file does not name takes the default's keys [" + chords("keys.remove") + "]");
+    check(chords("keys.undo").empty(), "…one it names as [] stays without a key: that is the person's choice [" + chords("keys.undo") + "]");
+    check(chords("list.down") == "Down", "…and a default key the file gave to another action in that scope is left to it [" + chords("list.down") + "]");
+  }
   return report("rolltui_presets_test");
 }

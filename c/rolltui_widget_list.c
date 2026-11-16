@@ -67,6 +67,7 @@ struct RolltuiList {
   RolltuiMap state; /* tree: key -> 1 opened, 2 closed, overriding `open_depth` */
   int sort_col, sort_rev;
   RolltuiStr filter;
+  RolltuiStr scored; /* the filter the cursor was last put on the best match for: moving it after that is the person's */
   int filtering; /* typing the filter: printable keys go to it */
 
   ListEvent events[EVENT_CAP];
@@ -112,6 +113,12 @@ static const char* cell(const RolltuiListRow* r, size_t k, size_t* n) {
 static const char* sp(const RolltuiStr* s) { return s->p ? s->p : ""; }
 static size_t shown_n(const RolltuiList* l) { return l->ordered ? l->order_n : l->src_n; }
 static size_t source_of(const RolltuiList* l, size_t i) { return l->ordered ? l->order[i] : i; }
+/* Row `i` of what is shown is a section heading (`headings`): the cursor passes over it. */
+static int heading_at(const RolltuiList* l, size_t i) {
+  if (!(l->opt.tree && l->opt.headings && l->depth)) return 0;
+  if (i >= (l->ordered ? l->order_n : l->src_n)) return 0; /* nothing shown there (yet) */
+  return l->depth[source_of(l, i)] == 0;
+}
 
 static void push_event(RolltuiList* l, unsigned char kind, const RolltuiStr* key) {
   ListEvent* e;
@@ -151,6 +158,7 @@ void rolltui_list_free(RolltuiList* l) {
   rolltui_mem_free(l->bars);
   rolltui_str_free(&l->cursor_key);
   rolltui_str_free(&l->filter);
+  rolltui_str_free(&l->scored);
   rolltui_map_release(&l->marks);
   rolltui_map_release(&l->state);
   rolltui_str_free(&l->tmp.key);
@@ -217,7 +225,9 @@ static void tree_grow(RolltuiList* l, size_t n) {
 
 /* Whether the node at source row `src` (keyed `key`) is open: what the person said, else whether it is shallower than `open_depth`. */
 static int is_open(const RolltuiList* l, size_t src, const RolltuiStr* key) {
-  const void* v = rolltui_map_get(&l->state, sp(key), key->n);
+  const void* v;
+  if (l->opt.headings) return 1; /* a group is always open */
+  v = rolltui_map_get(&l->state, sp(key), key->n);
   if (v) return v == (const void*)1;
   return l->depth[src] < l->opt.open_depth;
 }
@@ -270,6 +280,58 @@ static int row_matches(RolltuiList* l, const RolltuiListRow* r, const RolltuiStr
     i = e;
   }
   return ok;
+}
+
+/* How well a matching row matches: each plain term's best fuzzy score over the row's cells, added up. */
+static int row_score(RolltuiList* l, const RolltuiListRow* r, const RolltuiStr* q) {
+  size_t i, k;
+  int total = 0;
+  (void)l;
+  for (i = 0; i < q->n;) {
+    size_t e;
+    int best = 0;
+    while (i < q->n && q->p[i] == ' ') ++i;
+    if (i >= q->n) break;
+    e = i;
+    while (e < q->n && q->p[e] != ' ') ++e;
+    if (q->p[i] != '!' && q->p[i] != '\'')
+      for (k = 0; k < r->cells.n; ++k) {
+        int sc = 0;
+        if (rolltui_fuzzy_match(q->p + i, e - i, sp(&r->cells.v[k]), r->cells.v[k].n, &sc, NULL, 0) && sc > best) best = sc;
+      }
+    total += best;
+    i = e;
+  }
+  return total;
+}
+
+/* A NEW QUERY PUTS THE CURSOR ON ITS BEST MATCH, the order kept: "word left" lands on "move one word left", not on the first row
+ * whose letters happen to spell it. Only when the query changes, so a cursor moved after typing stays where it was put. */
+static void cursor_to_best(RolltuiList* l) {
+  size_t k, best = l->cursor;
+  int best_s = -1;
+  if (l->filter.n == 0) {
+    rolltui_str_clear(&l->scored);
+    return;
+  }
+  if (rolltui_str_eq(&l->scored, sp(&l->filter), l->filter.n)) return;
+  rolltui_str_set(&l->scored, sp(&l->filter), l->filter.n);
+  for (k = 0; k < l->order_n; ++k) {
+    int s;
+    if (heading_at(l, k)) continue;
+    fetch(l, source_of(l, k));
+    if (!row_matches(l, &l->tmp, &l->filter)) continue; /* a parent kept only to show where a match is */
+    s = row_score(l, &l->tmp, &l->filter);
+    if (s > best_s) best_s = s, best = k;
+  }
+  l->cursor = best;
+  if (best_s >= 0) { /* the row it is on now is the one it follows */
+    fetch(l, source_of(l, best));
+    if (!rolltui_str_eq(&l->cursor_key, sp(&l->tmp.key), l->tmp.key.n)) {
+      rolltui_str_set(&l->cursor_key, sp(&l->tmp.key), l->tmp.key.n);
+      push_event(l, ROLLTUI_LIST_EVENT_MOVED, &l->cursor_key);
+    }
+  }
 }
 
 /* ---- sorting ----------------------------------------------------------------------------------- */
@@ -504,6 +566,16 @@ static void rebuild(RolltuiList* l) {
     if (l->sort_col >= 0 && l->order_n > 1) sort_order(l);
   }
   find_cursor(l, old_cursor, old_top);
+  cursor_to_best(l);
+  if (heading_at(l, l->cursor)) { /* never on a heading: the first row after it, else before */
+    const size_t n = shown_n(l);
+    size_t k = l->cursor;
+    while (k < n && heading_at(l, k)) ++k;
+    if (k == n)
+      for (k = l->cursor; k > 0 && heading_at(l, k); --k) {
+      }
+    if (k < n && !heading_at(l, k)) l->cursor = k;
+  }
 }
 
 static void ensure(RolltuiList* l) {
@@ -545,6 +617,16 @@ static void move_to(RolltuiList* l, long long to) {
   else if (l->opt.wrap && to < 0 && l->cursor == 0) to = n - 1;
   if (to < 0) to = 0;
   if (to >= n) to = n - 1;
+  if (heading_at(l, (size_t)to)) { /* a heading is passed over, the way the move was going; at an end, the other way */
+    const long long dir = to >= (long long)l->cursor ? 1 : -1;
+    long long k = to;
+    while (k >= 0 && k < n && heading_at(l, (size_t)k)) k += dir;
+    if (k < 0 || k >= n)
+      for (k = to; k >= 0 && k < n && heading_at(l, (size_t)k); k -= dir) {
+      }
+    if (k < 0 || k >= n) return; /* nothing but headings */
+    to = k;
+  }
   l->cursor = (size_t)to;
   clamp_view(l);
   note_cursor(l);
@@ -565,6 +647,7 @@ static void mark_range(RolltuiList* l, size_t a, size_t b) {
     b = t;
   }
   for (i = a; i <= b && i < shown_n(l); ++i) {
+    if (heading_at(l, i)) continue; /* a heading is not a row to mark */
     fetch(l, source_of(l, i));
     set_mark(l, &l->tmp.key, 1);
   }
@@ -599,6 +682,10 @@ static void sorted(RolltuiList* l) {
 
 int rolltui_list_typing(const RolltuiList* l) { return l && l->filtering; }
 
+int rolltui_list_column_width(const RolltuiList* l, size_t k) {
+  return k < l->col_n && l->col_on[k] ? l->col_w[k] : 0;
+}
+
 int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
   char buf[96];
   int n = 0;
@@ -607,8 +694,18 @@ int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
   marked = rolltui_map_count(&l->marks);
   shown = shown_n(l);
   rolltui_str_clear(out);
-  if (shown > 0 && (shown > (size_t)(l->body_h > 0 ? l->body_h : 0) || l->filter.n))
-    n = snprintf(buf, sizeof buf, "%zu of %zu", l->cursor + 1, shown);
+  if (shown > 0 && (shown > (size_t)(l->body_h > 0 ? l->body_h : 0) || l->filter.n)) {
+    size_t at = l->cursor + 1, rows = shown, i;
+    if (l->opt.tree && l->opt.headings) { /* the rows, not the headings */
+      rows = 0, at = 0;
+      for (i = 0; i < shown; ++i)
+        if (!heading_at(l, i)) {
+          ++rows;
+          if (i <= l->cursor) at = rows;
+        }
+    }
+    if (rows > 0) n = snprintf(buf, sizeof buf, "%zu of %zu", at, rows);
+  }
   if (marked) n += snprintf(buf + n, sizeof buf - (size_t)n, "%s%zu marked", n ? " \xc2\xb7 " : "", marked);
   if (n <= 0) return 0;
   rolltui_str_set(out, buf, (size_t)n);
@@ -684,6 +781,7 @@ int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char
       const int invert = is(act, n, a->invert_marks);
       size_t i;
       for (i = 0; i < count; ++i) {
+        if (heading_at(l, i)) continue;
         fetch(l, source_of(l, i));
         set_mark(l, &l->tmp.key, invert ? !is_marked(l, &l->tmp.key) : 1);
       }
@@ -875,6 +973,8 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
     l->col_w[k] = 0;
     if (k == 0 || !l->col_on[k]) continue;
     l->col_w[k] = l->cols[k].width > 0 ? l->cols[k].width : l->seen_w[k];
+    if (l->cols[k].width <= 0 && l->cols[k].max_share && l->col_w[k] > area.w * l->cols[k].max_share / 100)
+      l->col_w[k] = area.w * l->cols[k].max_share / 100;
     if (!l->opt.hide_header) {
       const int tw = rolltui_frame_text_width(l->draw, sp(&l->cols[k].title), l->cols[k].title.n, aw) + sort_arrow_w(l, k);
       if (l->col_w[k] < tw) l->col_w[k] = tw;
@@ -883,7 +983,7 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
   }
   l->col_on[0] = 1;
   for (k = (int)l->col_n - 1; k > 0 && area.w - used < FIRST_MIN; --k)
-    if (l->col_on[k]) {
+    if (l->col_on[k] && !l->cols[k].keep) {
       l->col_on[k] = 0;
       used -= l->col_w[k] + COL_GAP;
     }
@@ -909,6 +1009,7 @@ static int put_cut(RolltuiList* l, RolltuiFrame* f, int x, int y, const char* s,
 static int draw_guides(RolltuiList* l, RolltuiFrame* f, int x, int y, int max, size_t src, int open, RolltuiStyle st, int aw) {
   const unsigned d = l->depth[src];
   const int used = 2 * (int)d + 2;
+  if (l->opt.headings) return 0; /* groups under headings: no lines, no openers */
   unsigned k;
   /* where an ambiguous glyph is two cells the line-drawing ones are too: ASCII keeps every row on the same columns */
   const char* bar = aw ? "|" : "\xe2\x94\x82";  /* │ */
@@ -985,12 +1086,25 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
     RolltuiStyle st, guide;
     int marked, x = a.x, open = 0;
     fetch(l, src);
+    if (heading_at(l, i)) { /* A SECTION HEADING: its name, bold, then a rule to the edge, as a menu's section is drawn */
+      RolltuiStyle hs = styles[roles->heading ? roles->heading : roles->header];
+      const char* dash = aw ? "-" : "\xe2\x94\x80"; /* ─ */
+      size_t cn;
+      const char* c = cell(&l->tmp, 0, &cn);
+      int used, rx;
+      hs.bg = ground.bg;
+      hs.bold = 1;
+      used = put_cut(l, f, a.x, y, c, cn, hs, a.w, aw);
+      for (rx = a.x + used + 1; rx < a.x + a.w; ++rx) rolltui_frame_put(f, rx, y, dash, strlen(dash), 1, muted, 0);
+      continue;
+    }
     marked = l->opt.marks && is_marked(l, &l->tmp.key);
     if (l->opt.tree && l->kids[src]) open = l->filter.n > 0 || is_open(l, src, &l->tmp.key);
     st = styles[l->tmp.role ? l->tmp.role : roles->text];
     if (is_cursor) st = styles[focused ? roles->cursor : roles->cursor_away];
     else if (y == hover_y) st = styles[roles->hover];
-    if (!lit) rolltui_style_on_window(&st, styles, ground.bg);
+    if (!lit && !l->tmp.role) st.bg = ground.bg; /* plain text sits on its window, whatever the text role's own ground */
+    else if (!lit) rolltui_style_on_window(&st, styles, ground.bg);
     if (marked) { /* a marked row: bold in the mark's colour, and the mark column says so without colour */
       st.bold = 1;
       if (!is_cursor && styles[roles->mark].fg.kind) st.fg = styles[roles->mark].fg;
@@ -1034,6 +1148,8 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
         const char* c = cell(&l->tmp, (size_t)k, &cn);
         int cx = l->col_x[k], cw = l->col_w[k];
         if (!l->col_on[k]) continue;
+        if (k > 0 && (size_t)k >= l->tmp.cells.n) break; /* a row with fewer cells: its last took the width of the rest */
+        if ((size_t)k + 1 == l->tmp.cells.n && l->tmp.cells.n < l->col_n) cw = a.x + a.w - cx;
         if (k == 0 && l->opt.tree) {
           const int g = draw_guides(l, f, cx, y, cw, src, open, guide, aw);
           cx += g;
@@ -1045,7 +1161,14 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
           const int w = rolltui_frame_text_width(l->draw, c, cn, aw);
           if (w < cw) cx += cw - w;
         }
-        put_cut(l, f, cx, y, c, cn, st, cw, aw);
+        if (l->cols[k].role && !lit && !l->tmp.role) { /* a column of its own kind: keys in the shortcut role */
+          RolltuiStyle cs = styles[l->cols[k].role];
+          cs.bg = ground.bg;
+          if (marked) cs.bold = 1;
+          put_cut(l, f, cx, y, c, cn, cs, cw, aw);
+        } else {
+          put_cut(l, f, cx, y, c, cn, st, cw, aw);
+        }
       }
     }
     if (l->tmp.busy) { /* what the row is doing is running */
@@ -1106,6 +1229,7 @@ static int handle_mouse(RolltuiList* l, const RolltuiMouseEvent* m) {
     const size_t i = l->top + (size_t)(m->y - l->body_y);
     size_t src;
     if (i >= n) return 1; /* below the last row: nobody's, and it moves nothing */
+    if (heading_at(l, i)) return 1; /* a heading names its rows; it is not one */
     src = source_of(l, i);
     if (m->kind == 8) { /* the terminal's double click is Enter on that row */
       fetch(l, src);

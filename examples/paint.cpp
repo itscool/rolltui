@@ -179,8 +179,8 @@ struct Tool {
 // app's minimum size is stated once, here, rather than in a second place that could drift.
 constexpr const char* kDefaultLayout = R"({
   "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
-  "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys",
-               "app.filepicker": "Open a picture", "app.save": "Save the sheet as text" },
+  "actions": { "app.theme": "edit the theme", "app.keys": "edit the keys",
+               "app.filepicker": "open a picture", "app.save": "save the sheet as text" },
   "popups": [
     { "id": "theme", "dismiss": false, "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,

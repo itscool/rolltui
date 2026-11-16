@@ -181,7 +181,8 @@ int main() {
     const std::string th = run(bin + " --frame 70x12 --keys \"F4\" 2>&1", erc);
     const std::string ke = run(bin + " --frame 70x12 --keys \"F5\" 2>&1", erc);
     check(th.find("theme editor") != std::string::npos, "F4 opens the theme editor in paint");
-    check(ke.find("keys editor") != std::string::npos, "F5 opens the keys editor in paint");
+    check(ke.find("This program") != std::string::npos && ke.find("add a key") != std::string::npos,
+          "F5 opens the keys sheet in paint: every key under its heading, and the keys to change them");
     check(th.find("keys editor") == std::string::npos && ke.find("theme editor") == std::string::npos,
           "…and each chord opens its own, not the other");
   }

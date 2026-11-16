@@ -183,6 +183,11 @@ size_t rolltui_windows_help_scope_count(const RolltuiWindows* w);
 const char* rolltui_windows_help_scope_at(const RolltuiWindows* w, size_t i, size_t* len);
 const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len);
 const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len);
+/* The bindings store a host handed over for its keys (`rolltui_windows_set_bindings_store`), kept so every keys sheet of the screen,
+ * `help` included, edits into it. BORROWED; NULL when none was. */
+struct RolltuiPresetStore;
+void rolltui_windows_remember_keys_store(RolltuiWindows* w, struct RolltuiPresetStore* s, int persist);
+struct RolltuiPresetStore* rolltui_windows_keys_store(const RolltuiWindows* w, int* persist);
 
 const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
 

@@ -786,8 +786,28 @@ int main() {
     check(back && rep.clean() && bindings_equal(back, d), "to_json / from_json round-trips the default exactly");
     rolltui_bindings_free(back);
     RolltuiBindings* edited = rolltui_bindings_clone(d);
-    bindings_bind(edited, "input.word_left", *parse_chord("alt+b"));
+    check(bindings_equal(edited, d), "a copy is equal: the control for the edit below");
+    bindings_bind(edited, "input.word_left", *parse_chord("ctrl+alt+j"));
     check(!bindings_equal(edited, d), "an edit makes the tables unequal (the label-by-comparison rule can stand on this)");
+    {
+      // THE SAME KEYS, laid out differently: a row holding no key, and a row moved, are still the same table.
+      RolltuiBindings* same = rolltui_bindings_clone(d);
+      rolltui_bindings_add_action(same, "mine.declared", 13, "", 0);
+      rolltui_bindings_clear(same, "mine.declared", 13);
+      check(bindings_equal(same, d), "a row that holds no key does not make two tables differ");
+      rolltui_bindings_free(same);
+    }
+    {
+      // ONLY WHAT CHANGED, ONTO ANOTHER TABLE: the edit above, made again on a copy of the default, and nothing else.
+      RolltuiBindings* into = rolltui_bindings_clone(d);
+      rolltui_bindings_take_changes(into, d, edited);
+      check(bindings_equal(into, edited), "take_changes makes the edit again on another table");
+      RolltuiBindings* back_again = rolltui_bindings_clone(into);
+      rolltui_bindings_take_changes(back_again, edited, d);
+      check(bindings_equal(back_again, d), "…and the reverse change takes it back to equal");
+      rolltui_bindings_free(back_again);
+      rolltui_bindings_free(into);
+    }
     rolltui_bindings_free(edited);
     rolltui_bindings_free(d);
   }

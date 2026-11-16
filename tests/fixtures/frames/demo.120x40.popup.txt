@@ -12,17 +12,17 @@
 │ │                                 │             │ Event, table-tested              │ ││                              │
 │ │ Cell grid + frame diff + SGR/   │ build       │ single header, pure, golden-     │ ││                              │
 │ │ colour downgrade    ╭ help ────────────────────────────────────────────────────────────────╮                       │
-│ │ Wrap engine         │ input:                                                               •                       │
-│ │                     │   Enter                   send the line (always Enter)               │                       │
-│ │ Windows, layers, pla│   Alt-Enter               insert a newline                           │                       │
-│ │ abs/rel per axis), f│   Backspace               erase before the caret (or the selection)  │                       │
-│ │                     │   Delete                  erase after the caret (or the selection)   │                       │
-│ │ Menu widget (hierarc│   Ctrl-W, Alt-Backspace   kill the word before the caret             │                       │
-│ │ filterable) + list/t│   Alt-D, Ctrl-Delete      kill the word after the caret              │                       │
-│ │ Layout files (JSON: │   Ctrl-U                  kill to the start of the line              │                       │
-│ │ placements + content│   Ctrl-K                  kill to the end of the line                │                       │
-│ │ Markdown block rende│   Left                    move one grapheme left          ▼ 81 more  │                       │
-│ │ → styled wrapped lin╰──────────────────────────────────────────────────────────────────────╯                       │
+│ │ Wrap engine         │ This program ─────────────────────────────────────────────────────── •                       │
+│ │                     │ open help                                                     F1, ?  │                       │
+│ │ Windows, layers, pla│ open the settings and commands menu                           F2     │                       │
+│ │ abs/rel per axis), f│ open the session details                                      F3     │                       │
+│ │                     │ open the command palette                                      Ctrl-P │                       │
+│ │ Menu widget (hierarc│ repaint the screen                                            Ctrl-L │                       │
+│ │ filterable) + list/t│ find in the transcript                                        Ctrl-F │                       │
+│ │ Layout files (JSON: │ edit the theme                                                F4     │                       │
+│ │ placements + content│ app.help                                                             │                       │
+│ │ Markdown block rende│ Enter add a key  Delete remove  Ctrl-Z undo  Ctrl-O load  Ctrl-S sa… │                       │
+│ │ → styled wrapped lin╰──────────────────────────────────────────────────────────── default ─╯                       │
 │ │ Theme (roles → styles, JSON     │ build       │ single header                    │ ┃│                              │
 │ │ loader, built-ins)              │             │                                  │ ┃│                              │
 │ └─────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃│                              │

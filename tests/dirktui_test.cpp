@@ -164,8 +164,8 @@ int main() {
     const std::string th = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
     check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in dirktui");
     const std::string ke = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
-    check(has(ke, "keys editor") && has(ke, "Actions by scope"), "F5 opens the keys editor in dirktui");
-    check(!has(th, "keys editor") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
+    check(has(ke, "This program") && has(ke, "add a key"), "F5 opens the keys sheet in dirktui");
+    check(!has(th, "add a key") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
   }
 
   // ---- 0a. THE PRODUCT BINARY CANNOT TEST ITSELF -------------------------------------------
@@ -954,19 +954,14 @@ int main() {
     const std::string reverted = sample_fg(frame(three + " Down Down Escape Enter Enter"));  // back to the role, then into fg again
     check(!committed.empty() && previewed != committed && reverted == committed,
           "a colour previewed in the list is put back to the committed one when Escape leaves the list [" + committed + " / " + previewed + " / " + reverted + "]");
-    // the key editor, the same
-    const std::string keys3 = "F5 Enter Enter Enter";
-    check(title(frame(keys3), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input \xE2\x80\xBA submit  Enter", "the key editor opens three levels deep on an action [" + title(frame(keys3), "keys editor") + "]");
-    check(title(frame(keys3 + " Escape"), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input", "Escape goes back one level there too");
-    check(title(frame(keys3 + " Escape Escape Escape"), "keys editor") == "keys editor" && title(frame(keys3 + " Escape Escape Escape Escape"), "keys editor").empty(),
-          "…to the top, and only from the top does it close");
-    // a chord being captured is abandoned first: the level stays, and the next Escape leaves it
-    const std::string capture = keys3 + " Enter";
-    check(has(frame(capture), "press the chord for input.submit"), "(the control: Enter on `add a chord` starts a capture)");
+    // the keys sheet: Enter on a row waits for a key, Escape drops that first, then a filter, and only then closes
+    const std::string capture = "F5 Enter";
+    check(has(frame(capture), "press the key to add") && has(frame(capture), "press a key"), "Enter on a row waits for the key to add, on the row itself");
     const std::string cancelled = frame(capture + " Escape");
-    check(has(cancelled, "capture cancelled") && title(cancelled, "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input \xE2\x80\xBA submit  Enter",
-          "Escape while a chord is being captured cancels the capture and leaves the level where it was");
-    check(title(frame(capture + " Escape Escape"), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input", "…and the next Escape leaves the level");
+    check(has(cancelled, "no key added") && title(cancelled, "keys") == "keys", "Escape while a key is awaited drops that, and the sheet stays");
+    check(title(frame(capture + " Escape Escape"), "keys").empty(), "…and the next Escape closes it");
+    check(title(frame("F5 / s u b Enter Escape"), "keys") == "keys" && title(frame("F5 / s u b Enter Escape Escape"), "keys").empty(),
+          "a filter goes before the sheet does");
     // the settings menu, unchanged
     check(title(frame("F2 " + keys_down("theme") + " Enter Escape"), "settings") == "settings" && title(frame("F2 " + keys_down("theme") + " Enter Escape Escape"), "settings").empty(),
           "the settings menu still closes its dropdown first and itself second");

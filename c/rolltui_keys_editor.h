@@ -122,6 +122,14 @@ int rolltui_keys_editor_redo(RolltuiKeysEditor* e);
 size_t rolltui_keys_editor_undo_depth(const RolltuiKeysEditor* e);
 size_t rolltui_keys_editor_redo_depth(const RolltuiKeysEditor* e);
 
+/* THE SAME EDITS, NAMED DIRECTLY, for a view that is not this editor's menu (the `keys` sheet). `_capture` makes the next key taken
+ * by `_take_key` a chord of `action`; `_take_key` is what the menu's capture does with it (Escape cancels, a chord another action of
+ * the scope holds moves, Enter is refused). `_unbind` removes one chord and commits. Each fills `*out` as `_handle` does. */
+void rolltui_keys_editor_capture(RolltuiKeysEditor* e, const char* action, size_t len);
+void rolltui_keys_editor_take_key(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKeysEditorOutcome* out);
+void rolltui_keys_editor_unbind(RolltuiKeysEditor* e, const char* action, size_t len, const RolltuiChord* k,
+                                RolltuiKeysEditorOutcome* out);
+
 /* Puts a whole table in as the new committed value (a reset). ADOPTS `b`. */
 void rolltui_keys_editor_replace(RolltuiKeysEditor* e, RolltuiBindings* b);
 

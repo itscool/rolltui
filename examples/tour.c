@@ -23,8 +23,8 @@
 
 static const char kLayout[] =
     "{ \"name\": \"tour\", \"min_width\": 48, \"min_height\": 12, \"focus\": \"main\",\n"
-    "  \"actions\": { \"app.help\": \"Every key\", \"app.menu\": \"Settings: the theme, light or dark, the keys\",\n"
-    "               \"app.theme\": \"Edit the theme\", \"app.keys\": \"Edit the keys\", \"app.quit\": \"Quit\" },\n"
+    "  \"actions\": { \"app.help\": \"every key\", \"app.menu\": \"settings: the theme, light or dark, the keys\",\n"
+    "               \"app.theme\": \"edit the theme\", \"app.keys\": \"edit the keys\", \"app.quit\": \"quit\" },\n"
     "  \"popups\": [\n"
     "    { \"id\": \"menu\", \"dismiss\": true, \"x\": \"50%\", \"y\": \"50%\", \"w\": 48, \"h\": 8, \"anchor\": \"center\",\n"
     "      \"modal\": true,\n"

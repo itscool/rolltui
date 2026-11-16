@@ -322,6 +322,36 @@ The shipped `vim` bindings preset is the default table with j and k, h and l, `g
 Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages. In the column browser
 those letters are keys rather than jumps to a name.
 
+## The keys sheet
+
+A `keys` window and a `help` window are one sheet: every key the program has, under a heading for
+each scope, the program's own (`app`) first. A row says what the action does, and its keys stand
+beside it in the shortcut role. The line under the rows names the cursor's action as a bindings
+file spells it, the whole description when the row is cut, and what is wrong with its keys.
+`help:<scope>` shows one scope.
+
+- `rolltui_windows_set_bindings_store(windows, "keys", 4, store, persist)` says where an edit
+  goes: the app's Bindings preset store. Every keys sheet on the screen, `help` included, then
+  edits into it. Without a store the sheet only shows the keys, and says so.
+- Enter on a row takes the next key pressed as a new key for that action, and Escape cancels.
+  Delete removes the row's last key. Ctrl-Z and Ctrl-Y undo and redo, Ctrl-O loads a preset,
+  Ctrl-S saves the keys as one, and Ctrl-R goes back to the preset that was loaded. These are the
+  `keys.*` actions, bound in a bindings file like any other.
+- An edit lands in the store's working copy, labelled "(modified)" in the sheet's footer until it
+  equals its preset again. Only what the person changed is written: the keys a program suggests
+  for its own actions stay the program's.
+- A key the program has for one of its own actions that a window's scope also has is marked on
+  both rows. Where that window has focus, its action wins.
+- The lead of `rolltui_context_set_help` is the sheet's first section, "About", and its note the
+  last, "More".
+- `/` filters the sheet as it filters any list.
+- `rolltui_windows_set_keys_editor_show_presets(windows, "keys", 4, 0)` takes the load and save
+  keys away from a program with one table; editing, undo and reset stay.
+
+A bindings file that does not name a library action takes the shipped default's keys for it, each
+one its scope has free. A saved file names every action, an unbound one as `[]`, so an action it
+does not name is newer than the file.
+
 ## Hover
 
 Set `RolltuiTerminalOptions.hover` and the terminal also reports the pointer as it moves with no
@@ -330,7 +360,7 @@ something a click would act on, that thing is drawn in the theme's `hover` role:
 
 - a menu row, an option in an open dropdown, and a menu's ▲ and ▼ scroll markers;
 - an entry in the column browser;
-- the "N more" marker of a text, file or help window;
+- the "N more" marker of a text or file window;
 - a hint in a hint bar.
 
 The keyboard's cursor never moves with the pointer, and hover sends no menu event. The cursor's
@@ -441,8 +471,12 @@ many rows there are, and `row(ctx, i, out)` fills row `i`: its `key`, its cells
 leave. The rest are `width` cells, or as wide as the widest cell they have shown; that width only
 grows, so the columns stay put as the list scrolls. `align` puts a column's text at its right
 edge, and `min_screen` shows a column only while the list is at least that wide. When the first
-column would be narrower than 8 cells, columns go from the right. A cell that does not fit ends in
-an ellipsis. The header row names the columns in bold, the sorted one marked ▲ or ▼.
+column would be narrower than 8 cells, columns go from the right, except a column marked `keep`:
+the first is cut instead. `max_share` holds a measured column to that percentage of the width.
+`role` draws a column's cells in a role of their own on a plain row, as the keys sheet draws its
+keys in the shortcut role. A row with fewer cells than the table has columns draws its last cell
+across the columns it has none for. A cell that does not fit ends in an ellipsis. The header row
+names the columns in bold, the sorted one marked ▲ or ▼.
 
 `rolltui_windows_set_list_options`:
 
@@ -457,6 +491,9 @@ an ellipsis. The header row names the columns in bold, the sorted one marked ▲
   cursor stays in the middle.
 - `wrap`: the cursor goes from the last row to the first and back.
 - `hide_header`: no header row.
+- `headings`: with `tree`, a row at depth 0 is a section heading, drawn bold with a rule after its
+  name. The cursor passes over headings, a heading is always open, and a filter keeps a heading
+  while a row under it matches.
 
 Where the terminal draws ambiguous-width glyphs two cells wide, the guides, the openers, the sort
 arrows and the mark are ASCII.
@@ -485,7 +522,8 @@ press on a column's title sorts by it, and a second press sorts the other way. T
 
 A filter is space-separated terms, and a row is shown when every term matches within one of its
 cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, and `!term` not at all.
-Case is ignored. Enter keeps the filter and gives the keys back to the list; Escape clears it. In a
+Case is ignored. Each new query puts the cursor on the row that matches it best, with the rows in
+their own order. Enter keeps the filter and gives the keys back to the list; Escape clears it. In a
 tree, a filter keeps the parents of what it matches, and shows them open.
 
 A `ROLLTUI_LIST_SORT_TEXT` column sorts in natural order. A `ROLLTUI_LIST_SORT_NUMBER` column

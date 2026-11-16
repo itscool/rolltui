@@ -24,6 +24,7 @@ const RolltuiListActions* rolltui_list_default_actions(void);
 /* The roles a draw needs, handed in as bytes: this file names no role. */
 typedef struct RolltuiListRoles {
   unsigned char text, text_muted, header, cursor, cursor_away, mark, hover, prompt;
+  unsigned char heading; /* a section heading's name (`headings`), as a menu names its sections; 0: `header` */
 } RolltuiListRoles;
 
 typedef struct RolltuiList RolltuiList;
@@ -49,6 +50,8 @@ int rolltui_list_typing(const RolltuiList* l);
 /* What the list says in its window's footer, into `out` (replaced): "12 of 340" while it shows more rows than fit or a filter
  * narrows it, and "5 marked". 0 when it has nothing to say. */
 int rolltui_list_footer(RolltuiList* l, RolltuiStr* out);
+/* The cells column `k` was given when the list was last laid out; 0 for a column that did not fit. */
+int rolltui_list_column_width(const RolltuiList* l, size_t k);
 void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int ambiguous_wide);
 /* Draws what the last layout placed. `hover_y` is the row under the pointer, -1 for none. */
 void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int focused,

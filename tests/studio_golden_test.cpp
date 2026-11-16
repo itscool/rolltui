@@ -410,8 +410,8 @@ int main(int argc, char** argv) {
       {"layout-editor.120x40.drag-fixed-after", "--frame 120x40 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-right.json' --keys \"F6 Click 65,10 Drag 50,10 Release\""},
       // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
       // input obeying it, and the keys editor
-      {"keys.120x40.help-default", "--frame 120x40 --theme default-dark --keys \"F1 PageDown\""},
-      {"keys.120x40.help-vim", "--frame 120x40 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"F1 PageDown\""},
+      {"keys.120x40.help-default", "--frame 120x40 --theme default-dark --keys \"F1 / Type:one_word Enter\""},
+      {"keys.120x40.help-vim", "--frame 120x40 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"F1 / Type:one_word Enter\""},
       {"keys.80x24.input-default", "--frame 80x24 --theme default-dark --keys \"Type:hello_world AltH Type:X\""},
       {"keys.80x24.input-vim", "--frame 80x24 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"Type:hello_world AltH Type:X\""},
       {"keys-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F7\""},
@@ -846,7 +846,7 @@ int main(int argc, char** argv) {
           "an unmarked entry in a marked document never moves, under any theme or tick [" + row(fx0, 12) + "]");
 
     check(kh_default.find("Ctrl-Left, Alt-Left") != std::string::npos && kh_default.find("move one word left") != std::string::npos,
-          "the default help popup (scrolled a page) is rendered from the table: word motions on Ctrl/Alt-arrows");
+          "the default help popup (filtered to the word motions) is rendered from the table: word motions on Ctrl/Alt-arrows");
     check(kh_vim.find("Alt-H") != std::string::npos && kh_vim.find("Alt-J") != std::string::npos, "with vim-ish.json the help popup shows Alt-H / Alt-J: it is rendered from the LIVE table");
     check(row(ki_vim, 21).rfind("\xE2\x94\x82 > hello Xworld", 0) == 0, "with vim-ish.json Alt-H moves a word back, so the X lands before 'world' [" + row(ki_vim, 21) + "]");
     check(row(ki_default, 21).rfind("\xE2\x94\x82 > hello worldX", 0) == 0, "with the default table Alt-H is unbound and the X lands at the end [" + row(ki_default, 21) + "]");
@@ -863,9 +863,9 @@ int main(int argc, char** argv) {
     check(ke_open.find("\xE2\x94\x8C keys editor ") != std::string::npos && ke_open.find("Actions by scope") != std::string::npos && ke_open.find("preset: default") != std::string::npos,
           "F7 opens the keys editor on the shipped default");
     check(ke_capture.find("press the chord for input.word_left") != std::string::npos, "'add a chord' on word_left captures: the status asks for the chord");
-    check(ke_bound.find("bound Alt-J \xE2\x86\x92 word_left") != std::string::npos && ke_bound.find("remove Alt-J") != std::string::npos && ke_bound.find("preset: default (modified)") != std::string::npos,
+    check(ke_bound.find("bound Alt-J \xE2\x86\x92 move one word left") != std::string::npos && ke_bound.find("remove Alt-J") != std::string::npos && ke_bound.find("preset: default (modified)") != std::string::npos,
           "Alt-J becomes the chord: the status, a 'remove Alt-J' item and the preset label ('default (modified)') all say so");
-    check(ke_moved.find("(was kill_word_forward") != std::string::npos, "Alt-D, bound to kill_word_forward, moves and the status names the loser");
+    check(ke_moved.find("(was kill the") != std::string::npos, "Alt-D, bound to kill_word_forward, moves and the status names the loser in words");
     // ---- milestone 16: the layout editor, asserted beyond the bytes ----
     check(le_open.find("\xE2\x94\x8C layout editor ") != std::string::npos && le_open.find("layout editor \xE2\x80\xA2 transcript") != std::string::npos && le_open.find("focus:editor") != std::string::npos,
           "F6 opens the layout editor with the transcript selected");
@@ -897,14 +897,13 @@ int main(int argc, char** argv) {
     // ---- the design editor ----
     // The Done-when, end to end through the real binary: a window that did not exist,
     // holding a widget of a kind this layout never had, DRAWN in the same frame — and
-    // the kind picker is the only thing that put it there. "Ctrl-W, Alt-Backspace" is
-    // a chord pair only a `help` widget renders (from the LIVE bindings), so finding it
-    // in the second pane is the widget itself, not a title the editor wrote — and it
-    // survives the pane being narrow enough to wrap the descriptions.
+    // the kind picker is the only thing that put it there. "This program ───" is a heading only a
+    // `help` widget draws (the program's own keys, from the LIVE bindings), so finding it in the
+    // second pane is the widget itself, not a title the editor wrote.
     // Two panes are two boxes side by side: `┐┌` where they meet, each drawn by its own window.
     // "Widget kind: help" rather than "help ▸" now — the field is an input the
     // author types into, not a closed list they step through.
-    check(le_widget.find("\xE2\x94\x90\xE2\x94\x8C transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
+    check(le_widget.find("\xE2\x94\x90\xE2\x94\x8C transcript-2 ") != std::string::npos && le_widget.find("This program \xE2\x94\x80") != std::string::npos &&
               le_widget.find("Widget kind: help") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
           "a `help` widget typed into the kind field alone draws in the next frame, with the Source field emptied and disabled");
     check(le_actions.find("app.zoom") != std::string::npos && le_actions.find("add an action (name)") != std::string::npos,
@@ -1117,8 +1116,14 @@ int main(int argc, char** argv) {
       check(menu_out.find("item 'n' names the action 'app.nowhere', which no layout declares") != std::string::npos,
             "…and an item naming an action nobody declared is reported by name, not left dead");
       const std::string help_out = run(base + " --frame 100x90 --keys \"F1\"", rc);
-      check(rc == 0 && help_out.find("Ctrl-G      zoom the transcript") != std::string::npos,
-            "…and `help` RENDERS an action that exists only because a layout file declared it, with its chord");
+      {
+        std::istringstream in(help_out);
+        std::string r, zoom;
+        while (std::getline(in, r))
+          if (r.find("zoom the transcript") != std::string::npos) zoom = r;
+        check(rc == 0 && zoom.find("Ctrl-G") != std::string::npos,
+              "…and `help` RENDERS an action that exists only because a layout file declared it, with its chord [" + zoom + "]");
+      }
     }
     // ---- the tool scopes are NOT in library_actions() --------------------------------
     // The milestone's "every studio key still works", through the real binary and with a
@@ -1140,10 +1145,8 @@ int main(int argc, char** argv) {
       for (const auto& [keys, want] : {std::pair<const char*, const char*>{"F7", "[keys editor]"}, {"F4", "[theme editor]"}, {"F6", "[layout editor]"}})
         check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
-      // "N more" IS A CONTROL, SO IT BEHAVES LIKE ONE. It is drawn like a label at the foot of
-      // any scrolled text view, and a person who can see "74 more" and click it expects to arrive
-      // there. The transcript had this; `text`, `file` and `help` share one engine that had no
-      // mouse handling at all, so in the help popup it was decoration.
+      // A ROW IS A CONTROL. A click on a row of the keys sheet puts the cursor there, and the detail line under the rows names
+      // that row's action: the sheet is driven by the mouse as by the keys.
       {
         const std::string plain = run(base + " --keys \"F1\"", rc);
         std::size_t row = 0, col = 0;
@@ -1151,18 +1154,31 @@ int main(int argc, char** argv) {
           std::istringstream in(plain);
           std::size_t y = 0;
           for (std::string r; std::getline(in, r); ++y) {
-            const std::size_t at = r.find("\xE2\x96\xBC");
+            const std::size_t at = r.find("repaint the screen");
             if (at == std::string::npos) continue;
             std::size_t cells = 0;
             for (std::size_t i = 0; i < at; ++i)
               if ((r[i] & 0xC0) != 0x80) ++cells;
-            row = y; col = cells + 3;  // a few cells into the marker, not its first
+            row = y; col = cells + 2;
           }
         }
-        check(row != 0, "the help popup shows a \"N more\" marker to click");
-        const std::string clicked = run(base + " --keys \"F1 Click " + std::to_string(col) + "," +
-                                        std::to_string(row) + "\"", rc);
-        check(clicked != plain, "…and clicking it scrolls the help, rather than being a label that lies");
+        check(row != 0 && plain.find("app.repaint") == std::string::npos, "the help popup shows the repaint row, and the cursor is not on it");
+        const std::string clicked = run(base + " --keys \"F1 Click " + std::to_string(col) + "," + std::to_string(row) + "\"", rc);
+        check(clicked.find("app.repaint") != std::string::npos, "…and a click on it puts the cursor there: the detail line names app.repaint");
+      }
+
+      // A PROBLEM SHOWS WHERE IT IS. The program's Ctrl-P opens the palette, and a list and the file picker have Ctrl-P for the row
+      // above: where one of those has focus, the palette is not reached. The palette's row says so on its detail line.
+      {
+        const std::string out = run(base + " --frame 120x40 --keys \"F1 / Type:command_palette Enter\"", rc);
+        check(out.find("app.palette") != std::string::npos && out.find("Ctrl-P in Files is the row above") != std::string::npos,
+              "a key the program and a window both have is marked on the program's row, naming the window's action");
+      }
+      // THE HELP'S OWN WORDS ARE IN IT: what the program says after its keys is the sheet's last section.
+      {
+        const std::string out = run(base + " --frame 120x40 --keys \"F1 End\"", rc);
+        check(out.find("More \xE2\x94\x80") != std::string::npos && out.find("mouse: drag selects") != std::string::npos,
+              "the help's note is the sheet's last section, under its own heading");
       }
 
       // PREVIEWING A DIFFERENT DOCUMENT ACTUALLY SHOWS IT. The parser reuses `e0`, `e1`, … for
@@ -1233,8 +1249,17 @@ int main(int argc, char** argv) {
         const std::string rolled = run(base + " --keys \"F1 WheelDown WheelDown\"", rc);
         check(plain.find("focus:help") != std::string::npos, "the help popup opens");
         check(rolled != plain, "…and the WHEEL scrolls it, though `help` implements no mouse handling of its own");
+        // Back the same distance shows the same rows: the view is a position, not a drift. The cursor came along inside the margin
+        // on the way down and stays where it was carried, so the detail line naming its action is left out of the comparison.
+        auto rows_only = [](const std::string& f) {
+          std::istringstream in(f);
+          std::string out;
+          for (std::string r; std::getline(in, r);)
+            if (r.find("\xE2\x94\x82 app.") == std::string::npos) out += r + "\n";
+          return out;
+        };
         const std::string back = run(base + " --keys \"F1 WheelDown WheelDown WheelUp WheelUp\"", rc);
-        check(back == plain, "…and rolling back the same distance returns the same frame, so it is a position and not a drift");
+        check(rows_only(back) == rows_only(plain), "…and rolling back the same distance shows the same rows, so it is a position and not a drift");
       }
 
       // A CYCLE IS THE CLAIM, SO A CYCLE IS WHAT IS ASSERTED. Naming the theme two presses along
@@ -1277,7 +1302,7 @@ int main(int argc, char** argv) {
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
       check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
             "the keys editor lists the app, editor and studio scopes");
-      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Down Down Enter\"", rc);
+      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Down Down Down Enter\"", rc);
       check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
             "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
       // A USER'S OWN bindings file — every one of the eleven rows in it — loads clean and

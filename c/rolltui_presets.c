@@ -2236,6 +2236,7 @@ static void* bindings_domain_parse(const RolltuiPresetDomain* d, const char* tex
     rolltui_json_free(root);
     return NULL;
   }
+  rolltui_bindings_fill_unnamed(b, text, len); /* a table older than a library action still has a key for it */
   if (rolltui_json_is_object(root)) {
     const size_t on = rolltui_json_object_size(root);
     for (i = 0; i < on; ++i) {

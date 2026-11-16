@@ -416,6 +416,122 @@ void test_tree() {
 
 }  // namespace
 
+// GROUPED UNDER HEADINGS: the rows of each group under its heading, the cursor passing over headings, and the filter keeping a heading
+// while a row under it matches.
+void test_headings() {
+  Data d;
+  const char* names[] = {"Lists", "the row above", "the row below", "The editor", "move one word left", "move one word right"};
+  const int depth[] = {0, 1, 1, 0, 1, 1};
+  for (int i = 0; i < 6; ++i) {
+    d.keys.push_back(names[i]);
+    d.a.push_back(names[i]);
+    d.depth.push_back(depth[i]);
+  }
+  Screen s(30, 12);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.tree = 1;
+  o.headings = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  auto rows = s.paint();
+  check(starts(rows[0], "Lists \xE2\x94\x80") && starts(rows[1], "the row above") && starts(rows[3], "The editor \xE2\x94\x80"),
+        "a heading is its name and a rule; its rows under it, with no guide lines [" + rows[0] + "|" + rows[1] + "]");
+  check(s.cursor() == "the row above", "the cursor starts on the first row, not on a heading");
+  s.key(ROLLTUI_KEY_DOWN);
+  s.key(ROLLTUI_KEY_DOWN);
+  check(s.cursor() == "move one word left", "Down passes over a heading");
+  s.key(ROLLTUI_KEY_UP);
+  check(s.cursor() == "the row below", "…and so does Up");
+  s.chr('/');
+  for (char c : std::string("word")) s.chr(static_cast<char32_t>(c));
+  rows = s.paint();
+  check(starts(rows[0], "The editor") && starts(rows[1], "move one word left") && !starts(rows[0], "Lists"),
+        "a filter keeps a heading while a row under it matches, and drops the others [" + rows[0] + "]");
+}
+
+// THE COLUMNS OF A SHEET: a column that is kept however narrow, one held to a share of the width, and a row with fewer cells than
+// columns spreading its last one across the rest.
+void test_sheet_columns() {
+  auto columns = [](Screen& s, unsigned char keep, unsigned char share, int width) {
+    RolltuiListColumn cols[2]{};
+    cols[1].keep = keep;
+    cols[1].max_share = share;
+    cols[1].width = width;
+    rolltui_windows_set_list_columns(s.w, "things", 6, cols, 2);
+  };
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  {
+    Data d;
+    d.keys = {"a"};
+    d.a = {"what this key does, at length"};
+    d.b = {"Ctrl-K"};
+    Screen dropped(14, 3), kept(14, 3);
+    rolltui_windows_bind_list(dropped.w, "things", 6, count_fn, row_fn, &d, nullptr);
+    rolltui_windows_bind_list(kept.w, "things", 6, count_fn, row_fn, &d, nullptr);
+    rolltui_windows_set_list_options(dropped.w, "things", 6, &o);
+    rolltui_windows_set_list_options(kept.w, "things", 6, &o);
+    columns(dropped, 0, 0, 0);
+    columns(kept, 1, 0, 0);
+    check(dropped.paint()[0].find("Ctrl-K") == std::string::npos, "(the control: a narrow list drops its second column)");
+    const std::string row = kept.paint()[0];
+    check(row.find("Ctrl-K") != std::string::npos && row.find("\xE2\x80\xA6") != std::string::npos,
+          "a kept column stays however narrow the list, and the first is cut instead [" + row + "]");
+  }
+  {
+    Data d;
+    d.keys = {"a"};
+    d.a = {"extend the selection"};
+    d.b = {"Ctrl-Shift-Right, Alt-Shift-Right, Alt-Shift-F"};
+    Screen s(50, 3);
+    rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+    rolltui_windows_set_list_options(s.w, "things", 6, &o);
+    columns(s, 0, 40, 0);
+    const std::string row = s.paint()[0];
+    check(row.find("extend the selection") != std::string::npos && row.find("Alt-Shift-F") == std::string::npos &&
+              row.find("\xE2\x80\xA6") != std::string::npos,
+          "a measured column held to 40% of the width is cut, and the first keeps the rest [" + row + "]");
+  }
+  {
+    Data d;
+    const std::string line = "a line of text long enough for both columns";
+    d.keys = {"two", "one"};
+    d.a = {line, line};
+    d.b = {"K"};  // the second row has one cell
+    Screen s(50, 3);
+    rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+    rolltui_windows_set_list_options(s.w, "things", 6, &o);
+    columns(s, 0, 0, 20);
+    const auto rows = s.paint();
+    check(rows[0].find(line) == std::string::npos, "(the control: a row with both cells has its first cut at the column) [" + rows[0] + "]");
+    check(rows[1].find(line) != std::string::npos, "a row with one cell draws it across the columns it has none for [" + rows[1] + "]");
+  }
+}
+
+// A NEW QUERY PUTS THE CURSOR ON ITS BEST MATCH. "kettle" is spelled, letter by letter, by "kill to the start of the line" too,
+// which comes first; the row that says it is the better match.
+void test_best_match() {
+  Data d;
+  d.keys = {"kill", "kettle"};
+  d.a = {"kill to the start of the line", "put the kettle on"};
+  Screen s(40, 6);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  s.chr('/');
+  for (char c : std::string("kettle")) s.chr(static_cast<char32_t>(c));
+  auto rows = s.paint();
+  check(starts(rows[0], "kill to the start") && starts(rows[1], "put the kettle"), "both rows match, in their own order [" + rows[0] + "]");
+  check(s.cursor() == "kettle", "…and the cursor is on the better match, not the first [" + s.cursor() + "]");
+  s.key(ROLLTUI_KEY_ENTER);
+  s.key(ROLLTUI_KEY_UP);
+  s.paint();
+  check(s.cursor() == "kill", "a cursor moved after the query stays where it was put, through the next frame");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -426,5 +542,8 @@ int main() {
   test_narrow();
   test_marks();
   test_tree();
+  test_headings();
+  test_sheet_columns();
+  test_best_match();
   return testkit::report("list_test");
 }

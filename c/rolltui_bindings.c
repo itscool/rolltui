@@ -681,19 +681,64 @@ RolltuiBindings* rolltui_bindings_clone(const RolltuiBindings* b) {
   return out;
 }
 
-int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
+/* The same keys in the same order; a missing row holds none. */
+static int row_same(const Row* a, const Row* b) {
+  const size_t ac = a ? a->chord_count : 0, as = a ? a->seq_count : 0;
+  size_t i;
+  if (ac != (b ? b->chord_count : 0) || as != (b ? b->seq_count : 0)) return 0;
+  for (i = 0; i < ac; ++i)
+    if (!chord_eq(&a->chords[i], &b->chords[i])) return 0;
+  for (i = 0; i < as; ++i)
+    if (!seq_eq(&a->seqs[i], b->seqs[i].c, b->seqs[i].n)) return 0;
+  return 1;
+}
+
+/* `action`'s row in `into` made `from`'s keys (none for NULL); the row stays, so a saved table says the action has no key. */
+static void row_take(RolltuiBindings* into, const char* action, size_t len, const Row* from) {
+  Row* r = make_row(into, action, len);
+  size_t i;
+  r->chord_count = 0;
+  r->seq_count = 0;
+  if (!from) return;
+  for (i = 0; i < from->chord_count; ++i) row_push(r, &from->chords[i]);
+  for (i = 0; i < from->seq_count; ++i) row_push_seq(r, from->seqs[i].c, from->seqs[i].n);
+}
+
+void rolltui_bindings_take_changes(RolltuiBindings* into, const RolltuiBindings* before, const RolltuiBindings* after) {
+  size_t i;
+  for (i = 0; i < after->row_count; ++i) {
+    const Row* a = &after->rows[i];
+    if (!row_same(a, find_row(before, a->action.p, a->action.len))) row_take(into, a->action.p, a->action.len, a);
+  }
+  for (i = 0; i < before->row_count; ++i) {
+    const Row* b = &before->rows[i];
+    if (!find_row(after, b->action.p, b->action.len) && !row_same(b, NULL)) row_take(into, b->action.p, b->action.len, NULL);
+  }
+}
+
+/* Every row of `a` that holds a key is in `b` with the same keys in the same order. */
+static int rows_within(const RolltuiBindings* a, const RolltuiBindings* b) {
   size_t i, j;
-  if (a == b) return 1;
-  if (!a || !b || a->row_count != b->row_count) return 0;
   for (i = 0; i < a->row_count; ++i) {
-    if (!str_is(&a->rows[i].action, b->rows[i].action.p, b->rows[i].action.len)) return 0;
-    if (a->rows[i].chord_count != b->rows[i].chord_count || a->rows[i].seq_count != b->rows[i].seq_count) return 0;
-    for (j = 0; j < a->rows[i].chord_count; ++j)
-      if (!chord_eq(&a->rows[i].chords[j], &b->rows[i].chords[j])) return 0;
-    for (j = 0; j < a->rows[i].seq_count; ++j)
-      if (!seq_eq(&a->rows[i].seqs[j], b->rows[i].seqs[j].c, b->rows[i].seqs[j].n)) return 0;
+    const Row* r = &a->rows[i];
+    const Row* o;
+    if (r->chord_count == 0 && r->seq_count == 0) continue;
+    o = find_row(b, r->action.p, r->action.len);
+    if (!o || o->chord_count != r->chord_count || o->seq_count != r->seq_count) return 0;
+    for (j = 0; j < r->chord_count; ++j)
+      if (!chord_eq(&r->chords[j], &o->chords[j])) return 0;
+    for (j = 0; j < r->seq_count; ++j)
+      if (!seq_eq(&r->seqs[j], o->seqs[j].c, o->seqs[j].n)) return 0;
   }
   return 1;
+}
+
+/* THE SAME KEYS: each action holds the same keys in both. Where a row sits, and a row holding none (an action declared since), make
+ * no difference to what a person presses. */
+int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
+  if (a == b) return 1;
+  if (!a || !b) return 0;
+  return rows_within(a, b) && rows_within(b, a);
 }
 
 /* ---- the file format --------------------------------------------------------------------- */
@@ -1221,6 +1266,37 @@ static const char* default_bindings_json(size_t* len) {
   return "";
 }
 
+void rolltui_bindings_fill_unnamed(RolltuiBindings* b, const char* text, size_t len) {
+  RolltuiJsonValue* root = rolltui_json_parse(text, len, NULL);
+  const RolltuiJsonValue* map = root ? rolltui_json_get(root, K("bindings")) : NULL;
+  RolltuiBindings* d;
+  RolltuiBindingsReport rep;
+  size_t dlen = 0, i, j;
+  const char* dtext;
+  if (!rolltui_json_is_object(map)) {
+    rolltui_json_free(root);
+    return;
+  }
+  d = rolltui_bindings_new_seeded();
+  dtext = default_bindings_json(&dlen);
+  memset(&rep, 0, sizeof rep);
+  if (rolltui_bindings_load_json(d, dtext, dlen, ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, NULL, NULL, NULL, &rep)) {
+    const size_t n = rolltui_library_action_count();
+    for (i = 0; i < n; ++i) {
+      size_t alen = 0, slen = 0;
+      const char* a = rolltui_library_action_name(i, &alen);
+      const char* s = rolltui_bindings_scope_of(a, alen, &slen);
+      const Row* r = find_row(d, a, alen);
+      if (!r || rolltui_json_has(map, a, alen)) continue;
+      for (j = 0; j < r->chord_count; ++j)
+        if (!holder_row(b, &r->chords[j], s, slen) && !rolltui_bindings_breaks_enter_rule(b, a, alen, &r->chords[j]))
+          rolltui_bindings_add_chord(b, a, alen, &r->chords[j]);
+    }
+  }
+  rolltui_bindings_report_release(&rep);
+  rolltui_bindings_free(d);
+  rolltui_json_free(root);
+}
 
 RolltuiBindings* rolltui_bindings_new_seeded(void) {
   RolltuiBindings* b = rolltui_bindings_new();

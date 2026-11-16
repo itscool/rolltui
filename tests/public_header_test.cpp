@@ -516,7 +516,9 @@ int main() {
     // filled, drawn and bound to a window) and INTERNAL 884 (its draw in roles, and the table's charts by name). Then text cut to
     // fit: PUBLIC 528 (drawn, and as text) and INTERNAL 887 (a list's footer, and the terminal's focus set and read). Then the loop a
     // step at a time: PUBLIC 531. Then a host's own key sequences (PUBLIC 532), and a window's own ground while it draws (INTERNAL 889).
-    check(totals["PUBLIC"] == 532 && totals["INTERNAL"] == 889 && totals.size() == 2,
+    // Then the keys sheet: the editor's capture, take and unbind, the screen's one keys store, and a loaded table taking the keys of
+    // a library action newer than it, a commit of only what the person changed, and a column's width (INTERNAL 897).
+    check(totals["PUBLIC"] == 532 && totals["INTERNAL"] == 897 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

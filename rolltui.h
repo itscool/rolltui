@@ -1046,17 +1046,18 @@ RolltuiBindings* rolltui_bindings_new_seeded(void);
 
 const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c);
 
-/* ---- the `keys` widget kind's one call ------------------------------------------------------
- * An app gets a keys editor by NAMING `keys` in a layout and binding a key to whatever holds it. What it edits needs no call: the
- * editor's baseline is the table the stack already routes keys through, and a screen's own `app.*` actions are in the tree because
- * the screen declared them. What an app must say is WHERE A COMMIT GOES: the Bindings preset store it already keeps. The editor lists
- * its presets in the Load choice and writes every commit back, so an app that watches `rolltui_bindings_store_version` picks a
- * rebinding up the way it picks up a loaded preset. */
+/* ---- the keys sheet: `keys` and `help` ------------------------------------------------------
+ * `keys` and `help` in a layout are one sheet: every key under its scope's heading, the program's own first, each row what the
+ * action does and its keys. It shows the table the stack routes keys through, so a screen's own `app.*` actions are in it because the
+ * screen declared them. This call says WHERE AN EDIT GOES: the Bindings preset store the app already keeps. Every keys sheet on the
+ * screen, `help` included, then edits into it; without it the sheet only shows the keys. Only what the person changed is written to
+ * the store's working copy, so an app that watches `rolltui_bindings_store_version` picks a rebinding up the way it picks up a
+ * loaded preset. */
 void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len,
                                         RolltuiBindingsStore* store, int persist);
 
-/* Whether the editor's "Load keys" / "Save keys as" / "Write a SHIPPED preset" appear at all (on by default). An app with exactly one
- * binding table turns this off and keeps edit, undo/redo and "Reset to the loaded preset". `content` as above. */
+/* Whether the sheet loads and saves presets (on by default). An app with exactly one binding table turns this off and keeps editing,
+ * undo and redo, and reset. `content` as above. */
 void rolltui_windows_set_keys_editor_show_presets(RolltuiWindows* w, const char* content, size_t len, int show);
 
 void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r); /* frees everything; zeroes */
@@ -3402,8 +3403,9 @@ void rolltui_context_set_dir(RolltuiContext* ctx, const char* dir, size_t len);
  * name is bound again or `w` is freed. `_count` / `_name_at` enumerate every host menu. */
 void rolltui_context_add_menu(RolltuiContext* ctx, const char* name, size_t len, const char* json, size_t json_len);
 
-/* what a `help` window renders: an optional lead line, the scopes to list in order, an optional trailing note. `set_help` REPLACES
- * lead and note; the scope list is built separately (`clear_help_scopes`, then `add_help_scope` per entry), one call at a time. */
+/* what a `help` window shows: the lead as its first section ("About"), the scopes to list in order, and the note as its last
+ * ("More"). `set_help` REPLACES lead and note; the scope list is built separately (`clear_help_scopes`, then `add_help_scope` per
+ * entry), one call at a time. */
 void rolltui_context_set_help(RolltuiContext* ctx, const char* lead, size_t lead_len, const char* note,
                               size_t note_len);
 
@@ -3566,15 +3568,23 @@ typedef void (*RolltuiListRowFn)(void* ctx, size_t i, RolltuiListRow* out);
 #define ROLLTUI_LIST_SORT_NUMBER 1 /* by the number a cell starts with, a size's K, M, G, T and an age's m, h, d read; text after */
 #define ROLLTUI_LIST_ALIGN_LEFT 0
 #define ROLLTUI_LIST_ALIGN_RIGHT 1
-/* A TABLE'S COLUMN. The first takes the width the others leave; the rest are `width` cells, or as wide as the widest cell they
- * have shown (a measured column only grows, so it does not jitter as the list scrolls). `min_screen`: shown only while the list
- * is at least this wide, so a narrow screen drops the column. */
+/* A TABLE'S COLUMN. A row with fewer cells than the table has columns draws its last cell across the columns it has none for.
+ * The first takes the width the others leave; the rest are `width` cells, or as wide as the widest cell they
+ * have shown (a measured column only grows, so it does not jitter as the list scrolls), up to `max_share` percent of the list's
+ * width (0: no limit) so the first keeps the rest. `min_screen`: shown only while the list is at least this wide, so a narrow
+ * screen drops the column. */
 typedef struct RolltuiListColumn {
   RolltuiStr title;
   int width ROLLTUI_DEFAULT(0);
   unsigned char align ROLLTUI_DEFAULT(ROLLTUI_LIST_ALIGN_LEFT);
   int min_screen ROLLTUI_DEFAULT(0);
   unsigned char sort ROLLTUI_DEFAULT(ROLLTUI_LIST_SORT_TEXT);
+  /* The role this column's cells are drawn in on a plain row: a column of keys in the shortcut role, as keys are drawn everywhere.
+   * 0: the row's. A row with a role of its own, the cursor's and the hovered row keep theirs. */
+  unsigned char role ROLLTUI_DEFAULT(0);
+  unsigned char max_share ROLLTUI_DEFAULT(0);
+  /* Kept however narrow the list: the first column is cut rather than this one dropped (a sheet's keys are what it is for). */
+  unsigned char keep ROLLTUI_DEFAULT(0);
 } RolltuiListColumn;
 
 typedef struct RolltuiListOptions {
@@ -3591,6 +3601,10 @@ typedef struct RolltuiListOptions {
   int scrolloff ROLLTUI_DEFAULT(0);              /* rows kept between the cursor and the edge; past half the view, centred */
   unsigned char wrap ROLLTUI_DEFAULT(0);         /* the cursor goes from the last row to the first, and back */
   unsigned char hide_header ROLLTUI_DEFAULT(0);  /* no row of the columns' titles (the sorted one marked ▲ or ▼) */
+  /* GROUPED UNDER HEADINGS, with `tree` set: a row at depth 0 is a section heading (bold, a rule to the edge), its rows at depth 1
+   * under it. The cursor passes over headings, every group stays open, no guide lines are drawn, a filter keeps a heading while a
+   * row under it matches, and the footer counts the rows, not the headings. */
+  unsigned char headings ROLLTUI_DEFAULT(0);
 } RolltuiListOptions;
 
 /* WHAT HAPPENED, popped one at a time: the cursor moved to `key`, `key` was activated (Enter, a double click), the marks changed,

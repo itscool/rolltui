@@ -1,8 +1,6 @@
 {
   "name": "anvil-plain", "min_width": 0, "min_height": 0, "focus": "anvil_note",
   "actions": {
-    "editor.undo": "undo the last binding change",
-    "editor.redo": "redo it",
     "app.quench": "an action this screen declares and no binary knows"
   },
   "root": { "row": [

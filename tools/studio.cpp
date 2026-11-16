@@ -693,7 +693,7 @@ struct App {
         "drag on a seam resizes";
     rolltui_context_set_help(ctx, "", 0, kMouseHelp, std::strlen(kMouseHelp));
     rolltui_context_clear_help_scopes(ctx);
-    for (const char* s : {"input", "transcript", "app", "editor", "studio", "stack"})
+    for (const char* s : {"app", "studio", "editor", "input", "transcript", "stack"})
       rolltui_context_add_help_scope(ctx, s, std::strlen(s));
   }
 
@@ -2811,6 +2811,9 @@ int main(int argc, char** argv) {
   }
   app.load_theme_arg();
   app.load_bindings_arg();
+  // A screen's keys sheets (`keys`, and `help`) edit the studio's own keys: what they commit lands in the store, and the studio
+  // takes the table from there like any other change.
+  rolltui_windows_set_bindings_store(app.windows, "keys", 4, app.bstore, app.persist ? 1 : 0);
   {
     // Where the picker opens: beside the document being previewed, which is where a person
     // looking for another one is almost always looking. Set once — setting it per frame would

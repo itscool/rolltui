@@ -293,6 +293,25 @@
     "stack.focus_prev": [
       "shift+tab"
     ],
+    "keys.remove": [
+      "delete",
+      "backspace"
+    ],
+    "keys.undo": [
+      "ctrl+z"
+    ],
+    "keys.redo": [
+      "ctrl+y"
+    ],
+    "keys.load": [
+      "ctrl+o"
+    ],
+    "keys.save": [
+      "ctrl+s"
+    ],
+    "keys.reset": [
+      "ctrl+r"
+    ],
     "app.help": [
       "f1",
       "?"

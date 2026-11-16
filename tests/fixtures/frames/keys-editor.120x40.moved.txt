@@ -34,7 +34,7 @@
 │ │   return a + b;                                                   │ transpose_chars  Ctrl-T                      ▸ │
 │ └───────────────────────────────────────────────────────────────────│ transpose_words  Alt-T                       ▼ │
 └─────────────────────────────────────────────────────────────────────│ preset: default (modified) · Enter on an actio │
-┌─────────────────────────────────────────────────────────────────────│ bound Alt-D → word_left (was kill_word_forward │
+┌─────────────────────────────────────────────────────────────────────│ bound Alt-D → move one word left (was kill the │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
  default [keys editor]  default  120x40  line 77/110  follow  truecolor  focus:editor

@@ -247,6 +247,8 @@ void rolltui_window_config_free(RolltuiWindowConfig* c) {
 }
 
 struct RolltuiWindows {
+  struct RolltuiPresetStore* keys_store; /* BORROWED: the bindings store a host handed over for its keys, which every keys sheet edits into */
+  int keys_persist;
   /* BORROWED, and it must outlive this: the session whose widget-kind registry
    * `sync` resolves a window's `kind[:source]` against. A layout is plain data and portable
    * between contexts precisely because that resolution happens HERE, per frame, and not at load. */
@@ -1676,6 +1678,17 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
 }
 
 /* ---- what can follow: the keys on the way, and the panel that lists what to press next ---------------------------------------- */
+
+void rolltui_windows_remember_keys_store(RolltuiWindows* w, struct RolltuiPresetStore* s, int persist) {
+  if (!w) return;
+  w->keys_store = s;
+  w->keys_persist = persist;
+}
+struct RolltuiPresetStore* rolltui_windows_keys_store(const RolltuiWindows* w, int* persist) {
+  if (!w) return NULL;
+  if (persist) *persist = w->keys_persist;
+  return w->keys_store;
+}
 
 size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text) {
   size_t i;

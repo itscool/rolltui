@@ -30,11 +30,11 @@
 │ this screen emits (app.kettle and app.find).                            ▼ 27 more  ││                                │
 └────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
 ┌ the live key table ──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ input:                                                                                                               •
-│   Enter                   send the line (always Enter)                                                               │
-│   Alt-Enter               insert a newline                                                                           │
-│   Backspace               erase before the caret (or the selection)                                                  │
-│   Delete                  erase after the caret (or the selection)                                                   │
-│   Ctrl-W, Alt-Backspace   kill the word before the caret                                                  ▼ 68 more  │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│ This program ─────────────────────────────────────────────────────────────────────────────────────────────────────── •
+│ put the kettle on                                                                                             Ctrl-J │
+│ find in the transcript                                                                                        Ctrl-T │
+│ The studio ───────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ app.kettle                                                                                                           │
+│ Enter add a key  Delete remove  Ctrl-Z undo  Ctrl-O load  Ctrl-S save as  Ctrl-R reset  / find                       │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────── kettle ─┘
  default  kettle  120x40  line 14/31  follow  truecolor  focus:kettle_menu

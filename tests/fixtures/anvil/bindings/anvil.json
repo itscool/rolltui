@@ -205,10 +205,10 @@
     "app.find": [
       "ctrl+f"
     ],
-    "editor.undo": [
+    "keys.undo": [
       "ctrl+o"
     ],
-    "editor.redo": [
+    "keys.redo": [
       "ctrl+g"
     ]
   }

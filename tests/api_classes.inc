@@ -425,6 +425,7 @@ ROLLTUI_API(rolltui_bindings_sequence_for, INTERNAL)  /* the window table's keys
 ROLLTUI_API(rolltui_bindings_sequence_next, INTERNAL)  /* the panel of what can follow */
 ROLLTUI_API(rolltui_chord_bound_form, INTERNAL)  /* every lookup's form of a pressed key */
 ROLLTUI_API(rolltui_list_typing, INTERNAL)  /* the list kind says a digit is the filter's */
+ROLLTUI_API(rolltui_list_column_width, INTERNAL)  /* the keys sheet reads a cut row in full on its detail line */
 ROLLTUI_API(rolltui_list_footer, INTERNAL)  /* the list kind's footer */
 ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a name with an ellipsis, at its end, middle or start */
 ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
@@ -441,6 +442,7 @@ ROLLTUI_API(rolltui_bindings_default, PUBLIC)
 ROLLTUI_API(rolltui_bindings_description, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_dump_json, PUBLIC)
 ROLLTUI_API(rolltui_bindings_equal, INTERNAL)
+ROLLTUI_API(rolltui_bindings_take_changes, INTERNAL)  /* a keys sheet commits only what the person changed */
 ROLLTUI_API(rolltui_bindings_free, PUBLIC)
 ROLLTUI_API(rolltui_bindings_has, PUBLIC)  /* KEPT: matching part — `rolltui_bindings_declare` is consumer-used, and this is how a host tells a LIVE shortcut from a kept-but-inert row */
 ROLLTUI_API(rolltui_bindings_has_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
@@ -457,6 +459,7 @@ ROLLTUI_API(rolltui_bindings_report_add_unknown_action, INTERNAL)  /* the loader
 ROLLTUI_API(rolltui_bindings_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_bindings_report_clean, INTERNAL)
 ROLLTUI_API(rolltui_bindings_report_release, PUBLIC)
+ROLLTUI_API(rolltui_bindings_fill_unnamed, INTERNAL)  /* a loaded table older than a library action takes its default keys */
 ROLLTUI_API(rolltui_bindings_report_set_error, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_bindings_report_summary, PUBLIC)  /* Phase 26: its INTERNAL reason argued the opposite of what it concluded — a host that loads its own bindings FILE is the case it named. Phase 21 wall 6: the explorer hand-wrote six loops for it. */
 ROLLTUI_API(rolltui_bindings_row_at, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
@@ -493,6 +496,9 @@ ROLLTUI_API(rolltui_keys_editor_replace, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_set_presets, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_set_shipped, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_status_line, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_capture, INTERNAL)   /* the keys sheet starts a capture on the row Enter was pressed on */
+ROLLTUI_API(rolltui_keys_editor_take_key, INTERNAL)  /* …and hands it the key that came */
+ROLLTUI_API(rolltui_keys_editor_unbind, INTERNAL)    /* …and removes a row's key */
 ROLLTUI_API(rolltui_keys_editor_undo, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_undo_depth, INTERNAL)
 
@@ -770,6 +776,8 @@ ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c re
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_note, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_windows_remember_keys_store, INTERNAL)  /* every keys sheet of a screen, help included, edits into the one store */
+ROLLTUI_API(rolltui_windows_keys_store, INTERNAL)
 ROLLTUI_API(rolltui_windows_help_scope_at, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_scope_count, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_host_menu, INTERNAL)  /* only the library's own .c reaches it */
