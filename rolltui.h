@@ -277,6 +277,10 @@ typedef struct RolltuiMouseEvent {
 
 #define ROLLTUI_EVENT_PASTE 2
 
+/* The terminal's window gained the person's focus (`focused` 1) or lost it (0): the terminal reports it (mode 1004), which every
+ * terminal entered is asked to. `rolltui_run` hands it to the app's `focus` rather than to `event`. */
+#define ROLLTUI_EVENT_FOCUS 5
+
 /* ONE event. `text` is a BORROW valid only for the `emit` call: an Unknown key's raw bytes or a paste's contents; NULL otherwise.
  * A resize has no kind here: the Terminal makes it. */
 typedef struct RolltuiEvent {
@@ -285,6 +289,7 @@ typedef struct RolltuiEvent {
   RolltuiMouseEvent mouse;
   const char* text;
   size_t text_len;
+  unsigned char focused ROLLTUI_DEFAULT(0); /* ROLLTUI_EVENT_FOCUS: 1 gained, 0 lost */
 } RolltuiEvent;
 
 /* The three protocol names. ORDER IS ABI (`rolltui_key_active_protocol` returns the byte). */
@@ -4163,6 +4168,9 @@ typedef struct RolltuiTerminalOptions {
  * (`RolltuiTerminalOptions::facts_events`), and only after a remembered answer was used and then checked against the terminal. A host
  * ignores kinds it does not know. */
 #define ROLLTUI_TERM_EVENT_FACTS 4
+/* The window gained or lost the person's focus; `focused` says which. A light or dark change the terminal reports while the program
+ * runs (mode 2031) is a FACTS event: the background's side is a fact. */
+#define ROLLTUI_TERM_EVENT_FOCUS ROLLTUI_EVENT_FOCUS
 
 /* ---- what the terminal is ------------------------------------------------------------------
  * Facts no host should have to remember to ask: how many colours the terminal can show, whether its background is light or dark, how
@@ -4213,6 +4221,7 @@ typedef struct RolltuiTermEvent {
   const char* text;
   size_t text_len;
   int w, h;
+  unsigned char focused; /* FOCUS: 1 gained, 0 lost */
 } RolltuiTermEvent;
 
 /* Called once per event, in order. */
@@ -4383,6 +4392,8 @@ typedef struct RolltuiRunApp {
   /* Once per wake, after its events — and after a wake that brought none, when the wait ran out. Where an app acts on
    * what its events led to, and advances anything that moves with time. */
   void (*settle)(void* ctx, RolltuiRun* run) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* The terminal's window gained the person's focus (1) or lost it (0). NULL: nothing is done. */
+  void (*focus)(void* ctx, RolltuiRun* run, int focused) ROLLTUI_DEFAULT(ROLLTUI_NULL);
 } RolltuiRunApp;
 
 /* Runs `app` on `in_fd`/`out_fd` until it stops. `opts` is `rolltui_terminal_new`'s, and `facts_events` is always on:
@@ -4396,6 +4407,10 @@ void rolltui_run_stop(RolltuiRun* run);
 /* The terminal the run entered, for `rolltui_terminal_facts` and the like. A BORROW valid for the run; the app never
  * frees it, and never calls `rolltui_terminal_poll` or `rolltui_terminal_present` on it — that is the loop's. */
 RolltuiTerminal* rolltui_run_terminal(RolltuiRun* run);
+/* STOPS THE JOB, as Ctrl-Z does in a shell: the terminal is left as it was found, the process stops, and when the shell continues it
+ * (`fg`) the terminal is entered again and the screen repainted whole. A host binds it to a key of its own; a stop sent from outside
+ * (`kill -TSTP`) does the same with no host code. 0 where there is no job control (Windows), and nothing happens. */
+int rolltui_run_suspend_job(RolltuiRun* run);
 /* Repaint the whole screen at the next frame: a keypress that asks for it, a change of palette. */
 void rolltui_run_invalidate(RolltuiRun* run);
 /* THE RUN'S OWN TASKS, made on first use (two workers), woken through the terminal and drained every wake, before `settle`. Freed

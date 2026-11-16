@@ -434,6 +434,51 @@ static void on_fatal_signal(int sig) {
   raise(sig);
 }
 
+/* A STOP FROM OUTSIDE (`kill -TSTP`, a shell's job control): the terminal is left as it was found, the stop goes through, and on
+ * continuing the handler is put back and the loop woken to enter the terminal again. */
+static _Atomic int g_resumed = 0;
+static void on_tstp(int sig) {
+  const int fd = g_out_fd;
+  const int wake = g_wake_fd;
+  sigset_t s;
+  struct sigaction sa;
+  (void)sig;
+  if (fd >= 0) {
+    write_all_fd(fd, g_leave, g_leave_len);
+    if (g_have_tio) tcsetattr(fd, TCSANOW, &g_saved_tio);
+  }
+  signal(SIGTSTP, SIG_DFL);
+  sigemptyset(&s);
+  sigaddset(&s, SIGTSTP);
+  sigprocmask(SIG_UNBLOCK, &s, NULL);
+  raise(SIGTSTP); /* stopped here until continued */
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = on_tstp;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGTSTP, &sa, NULL);
+  if (fd >= 0) {
+    g_resumed = 1;
+    if (wake >= 0) {
+      char c = 'c';
+      ssize_t r = write(wake, &c, 1);
+      (void)r;
+    }
+  }
+}
+
+int rolltui_os_tty_take_resumed(void) { return atomic_exchange(&g_resumed, 0); }
+
+int rolltui_os_stop_process(void) {
+  struct sigaction dfl, prev;
+  memset(&dfl, 0, sizeof dfl);
+  dfl.sa_handler = SIG_DFL;
+  sigemptyset(&dfl.sa_mask);
+  sigaction(SIGTSTP, &dfl, &prev);
+  kill(0, SIGTSTP); /* the whole job, as the shell's Ctrl-Z stops it */
+  sigaction(SIGTSTP, &prev, NULL);
+  return 1;
+}
+
 static void on_winch(int sig) {
   const int fd = g_wake_fd;
   (void)sig;
@@ -470,6 +515,8 @@ void rolltui_os_tty_install_handlers(void) {
   sa.sa_handler = on_crash_signal;
   sigemptyset(&sa.sa_mask);
   for (i = 0; i < CRASH_SIGNALS; ++i) sigaction(kCrashSignals[i], &sa, &g_crash_prev[i]);
+  sa.sa_handler = on_tstp;
+  sigaction(SIGTSTP, &sa, NULL);
   atexit(rolltui_os_tty_restore_now); /* a host's `exit` with the terminal still entered: nothing once it is freed */
 }
 

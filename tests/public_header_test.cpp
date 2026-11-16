@@ -509,8 +509,9 @@ int main() {
     // asked and driven) and INTERNAL 861 (the widget itself and the table's lists by name). Then speed: INTERNAL 867 (the diff's cell
     // compare, row hash and scrolled-row blank, the SGR delta, and whether the terminal erases in the background colour) and 870 (a
     // row compared whole, an ASCII run and a ground written whole). Then the layout at run time: PUBLIC 516 (a node shown, hidden or
-    // resized, a window maximised, a tab shown and read) and INTERNAL 872 (a tabbed window's tabs).
-    check(totals["PUBLIC"] == 516 && totals["INTERNAL"] == 872 && totals.size() == 2,
+    // resized, a window maximised, a tab shown and read) and INTERNAL 872 (a tabbed window's tabs). Then the terminal's events:
+    // PUBLIC 517 (the job stopped as Ctrl-Z stops it) and INTERNAL 874 (the stop, and continuing from one sent from outside).
+    check(totals["PUBLIC"] == 517 && totals["INTERNAL"] == 874 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -680,11 +681,11 @@ int main() {
     // drawn and sized. Bind 108, run 172, release 15: workers lent to the table and an input's changes bound; tasks, jobs,
     // timers and debounce; the tasks freed. Bind 113, run 178, release 16, widget 39: a list bound, shaped and refreshed, its
     // row filled; its filter, cursor, marks and events, and its actions by name; its event released; natural order and the fuzzy match.
-    // Run 184: the layout at run time (shown, sized, maximised, a tab shown and read).
+    // Run 184: the layout at run time (shown, sized, maximised, a tab shown and read). 185: the job stopped.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 113 && rt["HOST_RUN"] == 184 && rt["HOST_RELEASE"] == 16 &&
+              rt["HOST_BIND"] == 113 && rt["HOST_RUN"] == 185 && rt["HOST_RELEASE"] == 16 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 39,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 113 / run 184 / "
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 113 / run 185 / "
           "release 16, tool interop 0, widget 39 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

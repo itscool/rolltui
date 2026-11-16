@@ -14,6 +14,7 @@ typedef struct RunEvent {
   size_t at;      /* where its `text` starts in `RolltuiRun::text` */
   int has_text;   /* an empty-but-present `text` is a real state (an unknown key with no bytes left) */
   int is_resize;
+  int is_focus, focused;
   int w, h;
 } RunEvent;
 
@@ -123,10 +124,15 @@ static void collect(void* vctx, const RolltuiTermEvent* te) {
   RolltuiRun* r = (RolltuiRun*)vctx;
   RunEvent* re;
   if (te->kind == ROLLTUI_TERM_EVENT_FACTS) { r->facts = 1; return; }
-  if (te->kind > ROLLTUI_TERM_EVENT_FACTS) return; /* a kind this loop does not know is not an input */
+  if (te->kind > ROLLTUI_TERM_EVENT_FACTS && te->kind != ROLLTUI_TERM_EVENT_FOCUS) return; /* not a kind this loop knows */
   r->ev = (RunEvent*)rolltui_grow(r->ev, &r->ev_cap, r->ev_n + 1, sizeof *r->ev);
   re = &r->ev[r->ev_n++];
   memset(re, 0, sizeof *re);
+  if (te->kind == ROLLTUI_TERM_EVENT_FOCUS) {
+    re->is_focus = 1;
+    re->focused = te->focused;
+    return;
+  }
   if (te->kind == ROLLTUI_TERM_EVENT_RESIZE) {
     re->is_resize = 1;
     re->w = te->w;
@@ -196,6 +202,8 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
         r.h = r.rows > 0 && r.rows < r.ev[i].h ? r.rows : r.ev[i].h;
         rolltui_swap_invalidate(r.swap);
         if (app->resized) app->resized(app->ctx, &r, r.w, r.h);
+      } else if (r.ev[i].is_focus) {
+        if (app->focus) app->focus(app->ctx, &r, r.ev[i].focused);
       } else {
         app->event(app->ctx, &r, &r.ev[i].e);
       }
@@ -223,6 +231,20 @@ void rolltui_run_stop(RolltuiRun* run) {
 }
 
 RolltuiTerminal* rolltui_run_terminal(RolltuiRun* run) { return run ? run->term : NULL; }
+
+int rolltui_run_suspend_job(RolltuiRun* run) {
+#ifdef _WIN32
+  (void)run;
+  return 0; /* no job control: nothing to suspend into */
+#else
+  if (!run || !run->term) return 0;
+  rolltui_terminal_suspend(run->term); /* as it was found, with nothing of this program's left on it */
+  rolltui_os_stop_process();          /* until the shell continues it */
+  rolltui_terminal_resume(run->term);
+  if (run->swap) rolltui_swap_invalidate(run->swap); /* a resize while stopped arrives as one, after */
+  return 1;
+#endif
+}
 
 void rolltui_run_invalidate(RolltuiRun* run) {
   if (run && run->swap) rolltui_swap_invalidate(run->swap);

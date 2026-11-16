@@ -2087,6 +2087,7 @@ struct App {
 
   void run_action(StrView action) {
     if (action == "app.quit") quit = true;
+    else if (action == "app.suspend") { if (run) rolltui_run_suspend_job(run); }
     // A panel this screen declares is the library's to open — see
     // `rolltui_window_stack_action_popup`. `help`, `theme` and `keys` are three lines
     // this file does not have.
@@ -2167,7 +2168,10 @@ struct App {
       std::size_t len = 0;
       const bool typing = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt && focused_content().starts_with("input:");
       if (const char* a = typing ? nullptr : rolltui_bindings_action_for(bindings, &e.key, "app", 3, &len)) {
-        if (len != 0) { run_action(StrView(a, len)); return; }
+        /* STOPPING THE JOB is the shell's only where nothing is being typed: in a line, the same chord is that line's own (Ctrl-Z
+         * its undo), and the key goes on to it */
+        const bool in_line = StrView(a, len) == "app.suspend" && focused_content().starts_with("input:");
+        if (len != 0 && !in_line) { run_action(StrView(a, len)); return; }
       }
       // THE CLOSE KEY IN THE PATH LINE OR THE FIND FIELD hands the focus back to the columns —
       // the path put back as it was — the way it closes a popup: the same chord, read from the

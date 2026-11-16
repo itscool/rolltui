@@ -164,6 +164,7 @@ ROLLTUI_API(rolltui_syntax_check, PUBLIC)  /* dirktui languages: how a person fi
 ROLLTUI_API(rolltui_run, PUBLIC)  /* dirktui and paint: the loop every terminal app wrote for itself, written once */
 ROLLTUI_API(rolltui_run_stop, PUBLIC)  /* the callbacks' half: an app that no longer owns the loop stops it by name */
 ROLLTUI_API(rolltui_run_terminal, PUBLIC)  /* dirktui reads the terminal's facts and key protocol before its first frame */
+ROLLTUI_API(rolltui_run_suspend_job, PUBLIC)  /* a host's key does what Ctrl-Z does in a shell: dirktui */
 ROLLTUI_API(rolltui_run_invalidate, PUBLIC)  /* a keypress that asks for a repaint */
 ROLLTUI_API(rolltui_run_suspend, PUBLIC)  /* dirktui hands the terminal to an editor... */
 ROLLTUI_API(rolltui_run_resume, PUBLIC)  /* ...and takes it back, repainted whole: the half an app used to forget */
@@ -1487,6 +1488,8 @@ ROLLTUI_API(rolltui_os_tty_publish, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_withdraw, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_restore_now, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_install_handlers, INTERNAL)
+ROLLTUI_API(rolltui_os_tty_take_resumed, INTERNAL)  /* the poll enters the terminal again after a stop from outside */
+ROLLTUI_API(rolltui_os_stop_process, INTERNAL)  /* rolltui_run_suspend_job's stop */
 ROLLTUI_API(rolltui_os_tty_listen_resize, INTERNAL)
 ROLLTUI_API(rolltui_fatal, INTERNAL)  /* every stop in the library: the terminal put back, then the message */
 ROLLTUI_API(rolltui_terminal_wake, PUBLIC)

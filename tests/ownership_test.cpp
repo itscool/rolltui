@@ -600,9 +600,10 @@ int main() {
     // the terminal splits grapheme clusters, beside its glyph width. 35: what handled the crash signals before the library (1
     // POSIX, 2 Windows), gone on to after a crash puts the terminal back.
     // 35 -> 39: the entered terminal's way of drawing pictures and its cell's pixels (three), and the pictures' id counter.
-    // 40: whether the entered terminal erases in the background colour, which the renderer's short forms stand on.
-    check(ctx == 0 && proc == 40,
-          "the boundary is 0 CONTEXT + 40 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // 40: whether the entered terminal erases in the background colour, which the renderer's short forms stand on. 41: whether a stop
+    // from outside has been continued.
+    check(ctx == 0 && proc == 41,
+          "the boundary is 0 CONTEXT + 41 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

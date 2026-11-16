@@ -189,6 +189,10 @@ void rolltui_os_tty_publish(RolltuiOsTty* t, const char* leave, size_t len);
 void rolltui_os_tty_withdraw(void);
 void rolltui_os_tty_restore_now(void);
 void rolltui_os_tty_install_handlers(void);
+/* 1 once after the process was stopped from outside and continued (the stop's handler left the terminal as it was found); clears it. */
+int rolltui_os_tty_take_resumed(void);
+/* Stops the process as Ctrl-Z in a shell would, and returns when it is continued: 1; 0 where there is no job control. */
+int rolltui_os_stop_process(void);
 void rolltui_os_tty_listen_resize(RolltuiOsTty* t);
 
 /* A FATAL ERROR, SAID WHERE IT CAN BE READ: the terminal is put back (the alternate screen left, the mode restored) before the

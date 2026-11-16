@@ -131,6 +131,9 @@ ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_leave_len", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_saved_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_have_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_handlers_installed", PROCESS)
+/* …and whether a stop sent from outside has been continued, which the stop's handler sets and the next poll reads to enter the
+ * terminal again. */
+ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_resumed", PROCESS)
 /* What handled each crash signal before the library: a crash puts the terminal back, then goes on to it. A process has one
  * disposition per signal. */
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_crash_prev", PROCESS)

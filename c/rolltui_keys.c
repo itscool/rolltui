@@ -94,6 +94,14 @@ static void emit_key(RolltuiEventFn emit, void* ctx, RolltuiChord k, const char*
   emit(ctx, &e);
 }
 
+static void emit_focus(RolltuiEventFn emit, void* ctx, int focused) {
+  RolltuiEvent e;
+  memset(&e, 0, sizeof e);
+  e.kind = ROLLTUI_EVENT_FOCUS;
+  e.focused = (unsigned char)(focused != 0);
+  emit(ctx, &e);
+}
+
 static void emit_mouse(RolltuiEventFn emit, void* ctx, const RolltuiMouseEvent* m) {
   RolltuiEvent e;
   memset(&e, 0, sizeof e);
@@ -218,6 +226,10 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
   int mod;
   RolltuiChord e;
 
+  if (body_len == 0 && (final == 'I' || final == 'O')) { /* focus in, focus out (mode 1004): no key is spelled CSI I or CSI O */
+    emit_focus(emit, ctx, final == 'I');
+    return 1;
+  }
   if (body_len > 0 && body[0] == '<' && (final == 'M' || final == 'm')) { /* SGR mouse */
     RolltuiMouseEvent m;
     int b, low, motion;
@@ -433,9 +445,10 @@ void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t le
       }
       seq_len = (size_t)n;
       /* A REPLY, not a key: Primary and Secondary DA (`CSI ? ... c`, `CSI > ... c`), kitty's
-       * flags (`CSI ? ... u`), xterm's modifyOtherKeys (`CSI > ... m`). No key is ever spelled
-       * with one of these leads, so dropping them is never dropping typing. */
-      if (seq_len >= 4 && ((d->buf[2] == '?' && (d->buf[seq_len - 1] == 'c' || d->buf[seq_len - 1] == 'u')) ||
+       * flags (`CSI ? ... u`), xterm's modifyOtherKeys (`CSI > ... m`), a private status report
+       * (`CSI ? ... n`: the light-or-dark report of mode 2031). No key is ever spelled with one of
+       * these leads, so dropping them is never dropping typing. */
+      if (seq_len >= 4 && ((d->buf[2] == '?' && (d->buf[seq_len - 1] == 'c' || d->buf[seq_len - 1] == 'u' || d->buf[seq_len - 1] == 'n')) ||
                            (d->buf[2] == '>' && (d->buf[seq_len - 1] == 'm' || d->buf[seq_len - 1] == 'c')))) {
         if (d->reply) d->reply(d->reply_ctx, d->buf, seq_len);
         buf_drop_front(d->buf, &d->buf_len, seq_len);

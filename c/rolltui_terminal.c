@@ -173,6 +173,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ev.mouse = e->mouse;
   ev.text = e->text;
   ev.text_len = e->text_len;
+  ev.focused = e->focused;
   if (ec->t && !inline_mouse(ec->t, &ev)) return; /* outside an inline region: not this program's */
   ec->fn(ec->ctx, &ev);
   if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
@@ -280,7 +281,10 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
   if (opts.mouse && opts.hover) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1003h");
   if (opts.bracketed_paste) seq_append(t->enter_seq, &t->enter_len, "\x1b[?2004h");
   if (opts.hide_cursor) seq_append(t->enter_seq, &t->enter_len, "\x1b[?25l");
+  /* FOCUS and LIGHT-OR-DARK, reported as they change (modes 1004 and 2031). A terminal that has neither ignores the modes. */
+  seq_append(t->enter_seq, &t->enter_len, "\x1b[?1004h\x1b[?2031h");
   seq_append(t->leave_seq, &t->leave_len, "\x1b[0m"); /* attributes off before anything else */
+  seq_append(t->leave_seq, &t->leave_len, "\x1b[?2031l\x1b[?1004l");
   if (opts.hide_cursor) seq_append(t->leave_seq, &t->leave_len, "\x1b[?25h");
   if (opts.bracketed_paste) seq_append(t->leave_seq, &t->leave_len, "\x1b[?2004l");
   if (opts.mouse && opts.hover) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1003l");
@@ -586,6 +590,15 @@ static void on_reply(void* ctx, const char* bytes, size_t len) {
   char tmp[512];
   if (len == 0 || len >= sizeof tmp) return;
   memcpy(tmp, bytes, len);
+  /* LIGHT OR DARK, CHANGED while the program runs (mode 2031): `CSI ? 997 ; 1 n` dark, `; 2 n` light */
+  if (len == 9 && memcmp(tmp, "\x1b[?997;", 7) == 0 && tmp[8] == 'n' && (tmp[7] == '1' || tmp[7] == '2')) {
+    const unsigned char mode = tmp[7] == '1' ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT;
+    t->facts.mode = mode;
+    t->facts.mode_source = ROLLTUI_FACT_PROBE;
+    if (t->publishing) rolltui_termfacts_set_active_mode(mode);
+    if (t->facts_events && mode != t->reported_mode) t->facts_dirty = 1;
+    return;
+  }
   memset(&rep, 0, sizeof rep);
   rolltui_termreplies_take(tmp, len, 0, &rep);
   if (rep.has_bg) late_background(t, rep.bg);
@@ -1108,6 +1121,20 @@ int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, Rolltu
 /* ---- poll -------------------------------------------------------------------------------- */
 
 static void poll_inner(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn emit, void* ctx) {
+  /* BACK FROM A STOP SENT FROM OUTSIDE: the handler left the terminal as it was found; it is entered again whole, and the screen
+   * repainted as after a resize. */
+  if (rolltui_os_tty_take_resumed() && t->entered) {
+    RolltuiTermEvent ev;
+    t->entered = 0;
+    t->protocol_on = 0; /* the handler's leaving popped the keyboard flags */
+    term_enter(t, 0);
+    rolltui_terminal_refresh_size(t);
+    memset(&ev, 0, sizeof ev);
+    ev.kind = ROLLTUI_TERM_EVENT_RESIZE;
+    ev.w = t->w;
+    ev.h = t->h;
+    emit(ctx, &ev);
+  }
   /* Decoded during a query (negotiate_keyboard/query_background); handed out by the next
    * poll(), BEFORE anything below — even if the syscall poll fails, whatever was already
    * queued is still reported (see the C++ original's identical ordering). */

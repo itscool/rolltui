@@ -98,8 +98,24 @@ screen against each frame, cell by cell.
 5. restores the terminal before returning.
 
 The app is a `RolltuiRunApp`: `render` and `event` are required; `start`, `ground`, `resized`,
-`facts_changed` and `settle` are optional. `rolltui_run` returns `ROLLTUI_RUN_STOPPED`,
+`facts_changed`, `settle` and `focus` are optional. `rolltui_run` returns `ROLLTUI_RUN_STOPPED`,
 `ROLLTUI_RUN_NOT_A_TERMINAL` or `ROLLTUI_RUN_BAD_APP`.
+
+Every terminal entered is asked to report two things as they change:
+
+- Its window gaining or losing the person's focus (mode 1004). `rolltui_run` calls the app's
+  `focus` with 1 or 0; a loop of its own gets a `ROLLTUI_TERM_EVENT_FOCUS` event with `focused`.
+- Its background turning light or dark (mode 2031), when the system's appearance changes. The
+  terminal's facts change and the app's `facts_changed` re-resolves the theme, as for a stale
+  cached answer, so a theme in `auto` mode follows.
+
+A terminal that has neither mode ignores the request.
+
+`rolltui_run_suspend_job(run)` does what Ctrl-Z does in a shell: the terminal is left as it was
+found, the job stops, and when the shell continues it (`fg`) the terminal is entered again and the
+screen repainted whole. A stop sent from outside (`kill -TSTP`) does the same with no app code.
+On Windows there is no job control, and it answers 0. dirktui binds it to Ctrl-Z
+(`app.suspend`) wherever nothing is being typed; in a line, Ctrl-Z is the line's undo.
 
 An app with threads of its own builds its loop from `rolltui_terminal_new`,
 `rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and

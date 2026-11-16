@@ -660,6 +660,9 @@ static LONG WINAPI on_unhandled(EXCEPTION_POINTERS* info) {
   return g_filter_prev ? g_filter_prev(info) : EXCEPTION_CONTINUE_SEARCH;
 }
 
+int rolltui_os_tty_take_resumed(void) { return 0; } /* no job control */
+int rolltui_os_stop_process(void) { return 0; }
+
 void rolltui_os_tty_install_handlers(void) {
   if (InterlockedExchange(&g_handlers_installed, 1)) return;
   SetConsoleCtrlHandler(on_console_event, TRUE);
