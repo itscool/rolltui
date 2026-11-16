@@ -33,7 +33,9 @@ A terminal UI library in C, with a C++ API on top.
 | Tree | ✗ | ✓ | ✗ | ✓ | ✓ | partial |
 | Tabs | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Charts | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
-| Multi-line text editor | partial | ✓ | ratatui-textarea | ✓ | ✓ | partial |
+| Multi-line text editor | ✓ | ✓ | ratatui-textarea | ✓ | ✓ | partial |
+| Progress bar and spinner | ✓ | ✓ | gauge only | ✓ | bar only | ✓ |
+| Toast notifications | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | Command palette | ✓ | ✓ | ✗ | partial | ✗ | ✗ |
 | **Terminal** | | | | | | |
 | Capabilities probed and remembered per terminal | ✓ | ✗ | ✗ | probed | probed | ✗ |

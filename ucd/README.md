@@ -15,6 +15,7 @@ offline.
 | `WordBreakProperty.txt` | generator | UAX #29 Word_Break, for word boundaries |
 | `UnicodeData.txt` | generator | Canonical_Combining_Class and the canonical decompositions, for UAX #15 normalization |
 | `DerivedNormalizationProps.txt` | generator | Full_Composition_Exclusion: which decompositions are not composed back |
+| `UnicodeData.txt`, `CaseFolding.txt` | generator | the simple case mappings (upper, lower, title) and simple case folding (statuses C and S), for word case and caseless matching |
 | `GraphemeBreakTest.txt` | `rolltui-grapheme-break-test` | the UAX #29 grapheme conformance suite, in full |
 | `LineBreakTest.txt` | `rolltui-line-break-test` | the UAX #14 conformance suite, in full |
 | `WordBreakTest.txt` | `rolltui-word-break-test` | the UAX #29 word conformance suite, in full |

@@ -322,12 +322,12 @@ int main(void) {
     RolltuiContext* b = rolltui_context_new();
     size_t row_a = (size_t)-1, row_b = (size_t)-1;
     check(a != NULL && b != NULL && a != b, "two contexts in one process");
-    check(rolltui_widget_kind_register(a, "gauge", 5, ROLLTUI_SOURCE_REQUIRED, "a number", 8) == ROLLTUI_REGISTER_OK,
+    check(rolltui_widget_kind_register(a, "meter", 5, ROLLTUI_SOURCE_REQUIRED, "a number", 8) == ROLLTUI_REGISTER_OK,
           "…a host kind registers into the first");
-    check(rolltui_widget_kind_resolve(a, "gauge", 5, &row_a, NULL, NULL, NULL) == ROLLTUI_KIND_HOST &&
+    check(rolltui_widget_kind_resolve(a, "meter", 5, &row_a, NULL, NULL, NULL) == ROLLTUI_KIND_HOST &&
               row_a >= rolltui_widget_kind_library_count(),
           "…the first resolves it, as a row past the library's boundary");
-    check(rolltui_widget_kind_resolve(b, "gauge", 5, &row_b, NULL, NULL, NULL) == ROLLTUI_KIND_UNKNOWN,
+    check(rolltui_widget_kind_resolve(b, "meter", 5, &row_b, NULL, NULL, NULL) == ROLLTUI_KIND_UNKNOWN,
           "…AND THE SECOND DOES NOT SEE IT AT ALL — the registries are separate");
     check(rolltui_widget_kind_count(a) == rolltui_widget_kind_library_count() + 1 &&
               rolltui_widget_kind_count(b) == rolltui_widget_kind_library_count(),
@@ -337,7 +337,7 @@ int main(void) {
               rolltui_widget_kind_resolve(b, "transcript", 10, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_LIBRARY,
           "…and both resolve the library's own rung identically");
     rolltui_context_free(b);
-    check(rolltui_widget_kind_resolve(a, "gauge", 5, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_HOST,
+    check(rolltui_widget_kind_resolve(a, "meter", 5, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_HOST,
           "…freeing one leaves the other's registry intact");
     rolltui_context_free(a);
   }

@@ -687,6 +687,74 @@ void rolltui_u_word_range(RolltuiUnicodeScratch* sc, const char* utf8, size_t le
   *out_end = offs[end - 1] + lens[end - 1];
 }
 
+/* ---- case ------------------------------------------------------------------------------- */
+
+static const RolltuiUnicodeCase* find_case(RolltuiCodepoint cp) {
+  size_t lo = 0, hi = ROLLTUI_U_TABLE_CASE_COUNT;
+  while (lo < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    if (rolltui_u_table_case[mid].cp < cp) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < ROLLTUI_U_TABLE_CASE_COUNT && rolltui_u_table_case[lo].cp == cp ? &rolltui_u_table_case[lo] : NULL;
+}
+
+RolltuiCodepoint rolltui_u_to_upper(RolltuiCodepoint cp) {
+  const RolltuiUnicodeCase* c = find_case(cp);
+  return c ? c->upper : cp;
+}
+RolltuiCodepoint rolltui_u_to_lower(RolltuiCodepoint cp) {
+  const RolltuiUnicodeCase* c = find_case(cp);
+  return c ? c->lower : cp;
+}
+RolltuiCodepoint rolltui_u_to_title(RolltuiCodepoint cp) {
+  const RolltuiUnicodeCase* c = find_case(cp);
+  return c ? c->title : cp;
+}
+RolltuiCodepoint rolltui_u_fold(RolltuiCodepoint cp) {
+  if (cp < 0x80) return cp >= 'A' && cp <= 'Z' ? cp + 32 : cp; /* the common case, without the search */
+  {
+    const RolltuiUnicodeCase* c = find_case(cp);
+    return c ? c->fold : cp;
+  }
+}
+
+void rolltui_u_case(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, int how, RolltuiStr* out) {
+  RolltuiCodepoint* cps;
+  size_t *offs, *lens;
+  unsigned char* b = NULL;
+  size_t n, i;
+  int titled = 0;
+  rolltui_str_clear(out);
+  if (len == 0) return;
+  cps = sc->cps = rolltui_grow(sc->cps, &sc->cps_cap, len, sizeof *sc->cps);
+  offs = sc->offs = rolltui_grow(sc->offs, &sc->offs_cap, len, sizeof *sc->offs);
+  lens = sc->lens = rolltui_grow(sc->lens, &sc->lens_cap, len, sizeof *sc->lens);
+  n = rolltui_u_decode_utf8(utf8, len, cps, offs, lens);
+  if (how == ROLLTUI_CASE_TITLE) {
+    b = sc->bounds = rolltui_grow(sc->bounds, &sc->bounds_cap, n + 1, 1);
+    rolltui_u_word_boundaries(sc, cps, n, b);
+  }
+  for (i = 0; i < n; ++i) {
+    const RolltuiCodepoint cp = cps[i];
+    const RolltuiUnicodeCase* c = find_case(cp);
+    RolltuiCodepoint m = cp;
+    char buf[4];
+    if (b && b[i]) titled = 0;
+    if (c) {
+      switch (how) {
+        case ROLLTUI_CASE_UPPER: m = c->upper; break;
+        case ROLLTUI_CASE_LOWER: m = c->lower; break;
+        case ROLLTUI_CASE_FOLD: m = c->fold; break;
+        default: m = titled ? c->lower : c->title; titled = 1; break;
+      }
+    }
+    /* A code point that maps to itself keeps its own bytes, so a malformed byte passes through as it was. */
+    if (m == cp) rolltui_str_append(out, utf8 + offs[i], lens[i]);
+    else rolltui_str_append(out, buf, rolltui_u_append_utf8(m, buf));
+  }
+}
+
 /* ---- sanitising -------------------------------------------------------------------------- */
 
 /* Skips a string sequence's payload up to and including its terminator (BEL, or ESC \, or the

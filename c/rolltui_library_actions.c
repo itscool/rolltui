@@ -64,6 +64,13 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(input,     eof,               "input.eof",                   "end of input on an empty line, else delete") \
   X(input,     undo,              "input.undo",                  "undo the last group of edits") \
   X(input,     redo,              "input.redo",                  "redo") \
+  X(input,     yank,              "input.yank",                  "put back what the last kills took") \
+  X(input,     transpose_chars,   "input.transpose_chars",       "swap the graphemes either side of the caret") \
+  X(input,     transpose_words,   "input.transpose_words",       "swap the word before the caret with the next") \
+  X(input,     upcase_word,       "input.upcase_word",           "uppercase to the end of the word") \
+  X(input,     downcase_word,     "input.downcase_word",         "lowercase to the end of the word") \
+  X(input,     capitalize_word,   "input.capitalize_word",       "capitalise to the end of the word") \
+  X(input,     overwrite,         "input.overwrite",             "typing replaces what is under the caret, or inserts again") \
   X(transcript, page_up,           "transcript.page_up",          "scroll a page up") \
   X(transcript, page_down,         "transcript.page_down",        "scroll a page down") \
   X(transcript, top,               "transcript.top",              "scroll to the top") \

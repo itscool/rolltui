@@ -2560,6 +2560,11 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
         }
         if (show && used + 3 <= left_max) rolltui_frame_put_swatch(f, draw, x0 + used + 1, y + r, sc, is_sel ? base : name_style, 2, aw);
       }
+      if (it->busy && used + 2 <= left_max) { /* its action is running: a spinner after the label */
+        RolltuiStyle sp = is_sel ? base : styles[roles->shortcut];
+        rolltui_style_on(&sp, base.bg);
+        rolltui_spinner_draw(f, x0 + used + 1, y + r, sp, it->busy_since_ms);
+      }
       if (rw > 0 && rw <= w) {
         /* A CHOICE's right column is its current answer, so it is a value; a submenu's marker
          * is punctuation and stays the row's own colour. */

@@ -1304,6 +1304,7 @@ struct App {
     rolltui_picker_status_release(&st);
     int want = moving ? 16 : idle;
     if (look > 0 && look < want) want = look;
+    if (toast_wait >= 0 && toast_wait < want) want = toast_wait;
     // A note holds, then fades, then the name fades back in: frames until all of that is done.
     if (now_ms && (!hint.empty() || now_ms < title_back_since + kTitleBackMs) && want > 100) want = 100;
     if (opt.sparkle && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
@@ -1552,7 +1553,7 @@ struct App {
     FILE* f = open_file(file.c_str(), "wb");
     const bool ok = f && std::fwrite(out.data(), 1, out.size(), f) == out.size();
     if (f) std::fclose(f);
-    if (!ok) hint = "could not write " + file;
+    if (!ok) fail("could not write " + file);
   }
 
   // ---- update checking ----------------------------------------------------------------------
@@ -2134,7 +2135,7 @@ struct App {
       const unsigned long long v = rolltui_theme_store_version(theme_store);
       if (v != theme_seen) { theme_seen = v; sync_theme(); }
     }
-    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms, static_cast<unsigned char>(!opt.motion || now_ms == 0)};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
@@ -2195,22 +2196,28 @@ struct App {
         // AN EXECUTABLE — a binary, a script with the x bit — by the `exec` setting: to the command
         // line so arguments can follow (the default; a picker never runs anything unasked), run
         // here on this terminal, or the system opener.
-        if (opt.exec == Exec::Run) hint = open_with(kRunProgram, path) ? "ran " + name : "could not run " + name;
-        else if (opt.exec == Exec::Open) hint = open_with(kSystemProgram, path) ? "opened " + name : "could not open " + name;
+        if (opt.exec == Exec::Run) {
+          if (open_with(kRunProgram, path)) hint = "ran " + name;
+          else fail("could not run " + name);
+        } else if (opt.exec == Exec::Open) {
+          if (open_with(kSystemProgram, path)) hint = "opened " + name;
+          else fail("could not open " + name);
+        }
         else to_command_line(path);
       } else {
         const TypeGroup* g = group_of(name);
         const RolltuiStr prog = g ? program_for(*g) : RolltuiStr(kShellProgram);
         if (prog == kShellProgram) to_command_line(path);
         else if (open_with(prog, path)) hint = "opened " + name + " with " + program_label(prog);
-        else hint = "could not open " + name + " with " + program_label(prog);
+        else fail("could not open " + name + " with " + program_label(prog));
       }
     } else if (ev.kind == ROLLTUI_PICKER_EVENT_CANCELLED) {
       quit = true;
     } else if (ev.kind == ROLLTUI_PICKER_EVENT_COPY) {
       const bool relative = opt.copy_relative != (ev.inverse != 0);  // the Option chord inverts the setting
       const RolltuiStr text = relative ? relative_to_start(path) : rolltui::own(path);
-      hint = copy_to_clipboard(text) ? "copied " + text : "could not copy: no clipboard command";
+      if (copy_to_clipboard(text)) hint = "copied " + text;
+      else fail("could not copy: no clipboard command");
     }
     rolltui_picker_event_release(&ev);
   }
@@ -2423,10 +2430,11 @@ struct App {
 
   void handle(const RolltuiEvent& e) {
     // The moment an event lands is this frame's: the widgets read the clock from the env.
-    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms, static_cast<unsigned char>(!opt.motion || now_ms == 0)};
     rolltui_context_set_env(ctx, &env);
     // A PRESS ON A KEY HINT is that key: the bar answers with the action, and it runs as the
     // chord would — the global scope, so it works wherever the focus is.
+    if (rolltui_windows_toast_event(windows, &e)) return;  // a press on a toast dismisses it, and nothing under it
     if (e.kind == ROLLTUI_EVENT_MOUSE && e.mouse.kind == RolltuiMouseEvent::Kind::Press) {
       std::size_t n = 0;
       if (const char* a = rolltui_hint_bar_hit(hints, e.mouse.x, e.mouse.y, &n)) { run_action(StrView(a, n)); return; }
@@ -2498,7 +2506,7 @@ struct App {
         RolltuiThemePresetReport trep{};
         const bool edited = theme_store && rolltui_theme_store_modified(theme_store) != 0;
         if (theme_store && rolltui_theme_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = edited ? "theme: " + name + " loaded over your edits" : "theme: " + name;
-        else hint = "could not load the theme " + name;
+        else fail("could not load the theme " + name);
         rolltui_theme_preset_report_release(&trep);
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "mode") {
@@ -2514,7 +2522,7 @@ struct App {
         RolltuiBindingsPresetReport brep{};
         const bool edited = keys_store && rolltui_bindings_store_modified(keys_store) != 0;
         if (keys_store && rolltui_bindings_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = edited ? "key bindings: " + name + " loaded over your edits" : "key bindings: " + name; }
-        else hint = "could not load the key bindings " + name;
+        else fail("could not load the key bindings " + name);
         rolltui_bindings_preset_report_release(&brep);
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id.starts_with("open_")) {
@@ -2703,8 +2711,13 @@ struct App {
       if (at < right)
         rolltui_frame_put_fields(f, draw_scratch, at, h - 1, &status_facts, style(ROLLTUI_ROLE_LABEL), style(ROLLTUI_ROLE_VALUE), right - at, 0);
     }
+    // A FAILURE IS A TOAST, over everything: "could not open" must not fade out of a status line nobody was reading.
+    toast_wait = rolltui_windows_draw_toasts(windows, f, area(), styles, now_ms);
     apply_effects(f);
   }
+  int toast_wait = -1;  // when the toasts next change, from the last frame
+  // What went wrong, said where it is seen: an error toast, kept in the window table's message history.
+  void fail(StrView what) { rolltui_windows_post(windows, ROLLTUI_MESSAGE_ERROR, what.data(), what.size(), now_ms); }
 
   // The one line every host has: after the whole screen composed and before the diff, the
   // theme's motion is applied to whatever was marked. Also run for a headless frame, so a

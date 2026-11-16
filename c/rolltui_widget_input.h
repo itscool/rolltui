@@ -29,7 +29,7 @@
  *   4. **NO `std::function` CROSSES.** The host's clipboard is a function pointer plus a
  *      `void*`, set once.
  *   5. **THIS FILE NAMES NO ROLE AND NO ACTION.** The four roles a draw needs are bytes in
- *      `RolltuiInputRoles`; the thirty action names are handed over ONCE, in command order,
+ *      `RolltuiInputRoles`; the action names are handed over ONCE, in command order,
  *      as `RolltuiInputActions`. The C knows what each command DOES and none of the words —
  *      the same trade `RolltuiStackActions` makes for the three the stack owns.
  */
@@ -39,6 +39,7 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_syntax.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,6 +72,17 @@ size_t rolltui_input_word_right_of(const RolltuiInput* in, size_t pos);
 
 int rolltui_input_history_prev(RolltuiInput* in);
 int rolltui_input_history_next(RolltuiInput* in);
+/* ---- the editor's other edits ------------------------------------------------------------- */
+void rolltui_input_yank(RolltuiInput* in);
+void rolltui_input_transpose_chars(RolltuiInput* in);
+void rolltui_input_transpose_words(RolltuiInput* in);
+void rolltui_input_change_case(RolltuiInput* in, int how); /* ROLLTUI_CASE_*: the selection, or the caret to its word's end */
+void rolltui_input_set_overwrite(RolltuiInput* in, int on);
+int rolltui_input_overwrite(const RolltuiInput* in);
+/* The kill buffer: what `yank` inserts. A BORROW, valid until the next kill. */
+const char* rolltui_input_killed(const RolltuiInput* in, size_t* len);
+/* THE LANGUAGES `language` is looked up in, BORROWED (the window table's); NULL draws plain text. */
+void rolltui_input_set_syntax(RolltuiInput* in, RolltuiSyntax* syntax);
 
 int rolltui_input_rows_for(const RolltuiInput* in, int width);
 /* The grapheme under a screen cell as [begin, end). 0 only before any layout(). */
@@ -86,8 +98,6 @@ void rolltui_input_options_init(RolltuiInputOptionsRaw* o);
 RolltuiInput* rolltui_input_new(void);
 void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */
 void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
-size_t rolltui_input_caret(const RolltuiInput* in);
-void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
 void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelectionRaw* out);
 /* The selected bytes, a BORROW into the text; `*len` 0 when there is no selection. */
 const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len);
@@ -101,10 +111,6 @@ int rolltui_input_redo(RolltuiInput* in);
 int rolltui_input_can_undo(const RolltuiInput* in);
 int rolltui_input_can_redo(const RolltuiInput* in);
 /* ---- history ----------------------------------------------------------------------------- */
-void rolltui_input_push_history(RolltuiInput* in, const char* entry, size_t len);
-size_t rolltui_input_history_count(const RolltuiInput* in);
-/* A BORROW, valid until the history next changes. */
-const char* rolltui_input_history_at(const RolltuiInput* in, size_t i, size_t* len);
 size_t rolltui_input_history_cursor(const RolltuiInput* in);
 unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, const RolltuiBindings* bindings,
                                    const RolltuiInputActions* actions, unsigned long long now_ms);

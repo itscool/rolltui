@@ -589,6 +589,9 @@ static const KindRow kKinds[] = {
     /* OPTIONAL and a PATH: where a picker starts is the one thing a screen can usefully say about
      * it, and a screen that says nothing gets the host's answer instead. */
     {"filepicker", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_TEXT, "the directory it opens in"},
+    {"gauge", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a gauge the host binds"},
+    /* FORBIDDEN: the history is the window table's own, which every `messages` window on the screen shows alike. */
+    {"messages", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 

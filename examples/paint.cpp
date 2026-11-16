@@ -564,6 +564,7 @@ struct App {
   // The clock effects are applied at — 0 under --frame, so a frame dump stays a pure
   // function of state; the real one in the event loop.
   std::uint64_t effect_ms = 0;
+  bool headless = false;  // a --frame dump: one moment, drawn still
 
   App() {
     layout = rolltui_layout_new();
@@ -758,7 +759,7 @@ struct App {
     FILE* out = std::fopen(path.c_str(), "wb");
     const bool wrote = out && std::fwrite(text.data(), 1, text.size(), out) == text.size();
     if (out) std::fclose(out);
-    if (!wrote) { picture_note = RolltuiStr("could not write ") + path; return; }
+    if (!wrote) { fail(RolltuiStr("could not write ") + path); return; }
     picture_note = rolltui::format("saved %s (%dx%d)", path.c_str(), c->inner.w, c->inner.h);
     last_dir = std::move(dir);
     while (rolltui_window_stack_has_popup(stack, "save", 4)) rolltui_window_stack_pop(stack);
@@ -787,7 +788,8 @@ struct App {
   void prepare() {
     take_picked_file();
     sync_theme();
-    const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms};
+    // A FRAME DUMP IS ONE MOMENT: nothing the library moves by itself is caught halfway (`still`).
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms, static_cast<unsigned char>(headless)};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
@@ -814,13 +816,14 @@ struct App {
     if (!c) { picture_note = "no sheet to open it into"; return; }
     Image img;
     RolltuiStr why = load_png(path, img);
-    if (!why.empty()) { picture_note = std::move(why); return; }
+    if (!why.empty()) { fail(why); return; }
     fit_image_into(img, *c, tool.ramp);
     picture_note = rolltui::format("opened %s (%dx%d)", path.c_str(), img.w, img.h);
     last_dir = rolltui::own(rolltui::path_dir(path));
   }
 
   void handle(const RolltuiEvent& e) {
+    if (rolltui_windows_toast_event(windows, &e)) return;  // a press on a toast dismisses it, and nothing under it
     // The app's own scope first, so a global chord works wherever the focus is. ANY `app.<id>`
     // naming a popup this screen declares opens it: a panel is a layout entry and a chord, and
     // this file gains nothing per panel.
@@ -905,11 +908,15 @@ struct App {
     // EFFECTS ARE ONE LINE, and it is the same line roll and the studio have. A paint app
     // marks nothing today, so this frame is unchanged; the point is that a `canvas` that DID
     // mark a span would move here with no library change.
+    toast_wait = rolltui_windows_draw_toasts(windows, f, area(), styles, effect_ms);
     if (rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       RolltuiEffectReport rep{};
       rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, effect_ms, 0, &rep, nullptr, nullptr);
     }
   }
+  int toast_wait = -1;  // when the toasts next change, from the last frame
+  // What went wrong, said where it is seen: an error toast.
+  void fail(const RolltuiStr& what) { rolltui_windows_post(windows, ROLLTUI_MESSAGE_ERROR, what.data(), what.size(), effect_ms); }
 
   static void draw_slot(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     App& a = *static_cast<App*>(ctx);
@@ -919,6 +926,7 @@ struct App {
   // The redraw interval this frame's motion asks for, or `idle_ms` when nothing moves — the
   // whole of a host's animation loop (`rolltui_effects.h`).
   int poll_timeout_ms(const RolltuiFrame* f, int idle_ms) const {
+    if (toast_wait >= 0 && (idle_ms < 0 || toast_wait < idle_ms)) idle_ms = toast_wait;
     if (!f || rolltui_frame_mark_count(f) == 0 || !effects || rolltui_effect_map_empty(effects)) return idle_ms;
     const int tick = rolltui_effects_tick_ms(ctx, f, effects);
     if (tick <= 0) return idle_ms;
@@ -1104,6 +1112,7 @@ int main(int argc, char** argv) {
 
 #ifdef ROLLTUI_SELFTEST
   if (!frame_spec.empty()) {
+    app.headless = true;
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
     // The shared script FIRST, so a chord that opens a panel is in force before the tool flags

@@ -851,7 +851,7 @@ int main() {
     scan(menu_fields, menu_n);
     scan(trans_fields, trans_n);
     scan(scroll_fields, scroll_n);
-    check(input_n == 30 && menu_n == 15 && trans_n == 11 && scroll_n == 6,
+    check(input_n == 37 && menu_n == 15 && trans_n == 11 && scroll_n == 6,
           "the four tables are the sizes the headers declare [" + std::to_string(input_n) + "/" +
               std::to_string(menu_n) + "/" + std::to_string(trans_n) + "/" + std::to_string(scroll_n) + "]");
     check(missing == 0, "…every member is filled by the expansion [" + std::to_string(missing) + " NULL]");

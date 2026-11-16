@@ -722,6 +722,17 @@ int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t l
 size_t rolltui_u_fit(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int max_cells,
                      int ambiguous_wide, int* out_cells);
 
+/* ---- case ------------------------------------------------------------------------------ */
+/* WHAT `rolltui_u_case` DOES to each code point, by Unicode's simple mappings (one code point to one: `ß` stays `ß` uppercased, and
+ * the text can change length in bytes). FOLD is for caseless matching: two texts that differ only in case fold to the same text. TITLE
+ * titles each word's first cased letter and lowers the rest of the word. */
+#define ROLLTUI_CASE_UPPER 0
+#define ROLLTUI_CASE_LOWER 1
+#define ROLLTUI_CASE_FOLD 2
+#define ROLLTUI_CASE_TITLE 3
+/* REPLACES `*out` with `utf8` mapped by `how`. Bytes that are not UTF-8 pass through unchanged. */
+void rolltui_u_case(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int how, RolltuiStr* out);
+
 /* ========================================================================================
  * wrap — the wrap engine roll draws with
  * ======================================================================================== */
@@ -2021,7 +2032,35 @@ typedef struct RolltuiInputOptionsRaw {
   /* ONE ROW: a newline is dropped, the text never wraps, and the row slides under the caret
    * — a menu field, an address bar. Off: the text wraps and the window grows with it. */
   unsigned char single_line ROLLTUI_DEFAULT(0);
+  /* ---- the editor ---------------------------------------------------------------------------
+   * A row breaks after a space rather than at the area's edge, so a word is never split; a word longer than the row still is. */
+  unsigned char wrap_words ROLLTUI_DEFAULT(0);
+  /* Rows wrap at this many text columns, or at the area's edge when that is nearer: a commit message's 72. 0: the area's edge. */
+  int wrap_column ROLLTUI_DEFAULT(0);
+  /* A gutter after the prompt numbering each line, in `RolltuiInputRoles::line_number`; a wrapped line's later rows leave it blank. */
+  unsigned char line_numbers ROLLTUI_DEFAULT(0);
+  /* A newline starts the new line with the spaces and tabs the line it breaks begins with. */
+  unsigned char auto_indent ROLLTUI_DEFAULT(0);
+  /* A LANGUAGE the syntax engine knows (`"c"`, `"json"`, a name a fence would carry): the text is highlighted as that language's code,
+   * by the library's own languages and the person's (`<config>/rolltui/syntax/`). Empty: plain text. */
+  RolltuiStr language;
+  /* WHAT IS SHOWN of a secret: ROLLTUI_INPUT_SHOW_ALL (0), _MASKED (one `•` a grapheme, `*` where that glyph is drawn two cells wide)
+   * or _NOTHING (the caret stays after the prompt, as `sudo` asks). Anything but ALL is never copied, never kept in the history, and
+   * moves by whole lines, so word motions cannot spell out where the spaces are. */
+  unsigned char secret ROLLTUI_DEFAULT(0);
+  /* Submit does nothing while the text is empty or only spaces, tabs and newlines. */
+  unsigned char refuse_empty ROLLTUI_DEFAULT(0);
+  /* Up and Down recall only the entries that begin with the text before the caret when the first Up was pressed: type `git` and Up
+   * finds the last `git` line; with the caret at the start (or nothing typed), every entry. */
+  unsigned char history_prefix ROLLTUI_DEFAULT(1);
+  /* 0: a printable key is an action like any other, looked up in the bindings, and nothing is typed when none is bound — a modal
+   * editor's normal mode, made from a bindings table and `rolltui_input_perform`. 1: a printable key types itself. */
+  unsigned char insert_typed ROLLTUI_DEFAULT(1);
 } RolltuiInputOptionsRaw;
+
+#define ROLLTUI_INPUT_SHOW_ALL 0
+#define ROLLTUI_INPUT_SHOW_MASKED 1
+#define ROLLTUI_INPUT_SHOW_NOTHING 2
 
 /* ---- the selection ------------------------------------------------------------------------ */
 /* `rolltui::InputSelection` IS this struct. RolltuiInputSelectionRaw: the plain data.
@@ -2035,7 +2074,7 @@ typedef struct RolltuiInputSelectionRaw {
 /* THE HOST'S CLIPBOARD: a function pointer and a context. Set once; NULL turns it off. The text is a BORROW for the call. */
 typedef void (*RolltuiCopyFn)(void* ctx, const char* text, size_t len);
 
-/* The thirty action names, in command order. The input knows what each command DOES and none of the words. */
+/* The thirty-seven action names, in command order. The input knows what each command DOES and none of the words. */
 
 typedef struct RolltuiInputActions {
   const char* submit;
@@ -2068,6 +2107,13 @@ typedef struct RolltuiInputActions {
   const char* eof;
   const char* undo;
   const char* redo;
+  const char* yank;            /* the text the last run of kills took, at the caret */
+  const char* transpose_chars; /* the graphemes either side of the caret change places (the last two at a line's end) */
+  const char* transpose_words; /* the word at or before the caret and the one after it change places */
+  const char* upcase_word;     /* the caret to the end of its word uppercased, or the selection */
+  const char* downcase_word;
+  const char* capitalize_word; /* each word's first letter titled and the rest lowered */
+  const char* overwrite;       /* typing replaces the grapheme at the caret, until pressed again */
 } RolltuiInputActions;
 
 /* THE FOUR ROLES A DRAW NEEDS, handed in as bytes. `prompt` is the OPTIONS' role, which is
@@ -2077,6 +2123,7 @@ typedef struct RolltuiInputRoles {
   unsigned char text;
   unsigned char selection;
   unsigned char placeholder;
+  unsigned char line_number; /* the gutter's numbers (`line_numbers`) */
 } RolltuiInputRoles;
 
 
@@ -2102,9 +2149,39 @@ void rolltui_input_clear(RolltuiInput* in);
 void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
 void rolltui_input_select_all(RolltuiInput* in);
 
-/* The LIBRARY'S OWN thirty, so a consumer need not spell them to call `handle`. BORROWS static storage; a host with different words
+/* The LIBRARY'S OWN thirty-seven, so a consumer need not spell them to call `handle`. BORROWS static storage; a host with different words
  * still passes its own struct. */
 const RolltuiInputActions* rolltui_input_default_actions(void);
+
+/* THE CARET, as a byte offset into the text, snapped to a grapheme boundary. `extend` 1 moves the selection's head and keeps its
+ * anchor, so two calls select a range: a rename puts the caret before a file's extension, or selects the name without it. */
+size_t rolltui_input_caret(const RolltuiInput* in);
+void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
+
+/* The text as it is WRAPPED at `column` text columns (0: as last drawn), each soft break a newline and the spaces before it dropped. A
+ * commit message typed into a 72-column editor is read back with the breaks it was seen with. REPLACES `*out`. */
+void rolltui_input_wrapped_text(RolltuiInput* in, int column, RolltuiStr* out);
+
+/* RUNS ONE COMMAND BY ITS ACTION NAME, as a bound key would: one of the `RolltuiInputActions` names in `actions`. Returns what
+ * `rolltui_input_handle` would (ROLLTUI_INPUT_IGNORED for a name that is not one of them). A modal editor's normal mode is a host's
+ * bindings table over these, with `insert_typed` off. */
+int rolltui_input_perform(RolltuiInput* in, const RolltuiInputActions* actions, const char* action, size_t len,
+                          unsigned long long now_ms);
+
+/* ---- history ---------------------------------------------------------------------------------- */
+/* What Submit keeps: the newest last, a run of the same entry kept once, at most `history_limit` (the oldest go). A secret is never
+ * kept. Up and Down browse it (`history_prefix`). */
+void rolltui_input_push_history(RolltuiInput* in, const char* entry, size_t len);
+size_t rolltui_input_history_count(const RolltuiInput* in);
+/* A BORROW, valid until the history next changes; "" past the end. */
+const char* rolltui_input_history_at(const RolltuiInput* in, size_t i, size_t* len);
+void rolltui_input_history_clear(RolltuiInput* in);
+/* THE HISTORY IN A FILE, kept across runs: a JSON array of strings, the newest last. `load` REPLACES the history with the file's (a
+ * missing file is an empty history, not an error). `save` reads the file again first and writes its entries followed by the ones this
+ * input gained since it last loaded or saved, capped at `history_limit`, through a temporary file and a rename — so two instances
+ * saving in turn keep both their entries, and a reader never sees half a file. 0 on failure with the reason in `*err` (may be NULL). */
+int rolltui_input_history_load(RolltuiInput* in, const char* path, size_t path_len, RolltuiStr* err);
+int rolltui_input_history_save(RolltuiInput* in, const char* path, size_t path_len, RolltuiStr* err);
 
 /* ---- layout and drawing -------------------------------------------------------------------------- */
 void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptionsRaw* o);
@@ -2352,6 +2429,10 @@ typedef struct RolltuiMenuItem {
    * Choice's value and each option, an Input's text as typed, hollow until it parses. An Input of type `color` needs no flag.
    * File key: `"swatch": true`. */
   unsigned char swatch ROLLTUI_DEFAULT(0);
+  /* WHAT IT DOES IS RUNNING: a spinner after the label, from `busy_since_ms`, until the host clears it. Set at run time, never by a
+   * file: a host that started the action marks the row it came from. */
+  unsigned char busy ROLLTUI_DEFAULT(0);
+  unsigned long long busy_since_ms ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpecRaw spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
@@ -2543,7 +2624,7 @@ typedef struct RolltuiMenuActions {
   const char* cancel;
   const char* step_up;
   const char* step_down;
-  /* …and the INPUT widget's own thirty, because a typed field forwards every key it does not claim to the editor. */
+  /* …and the INPUT widget's own actions, because a typed field forwards every key it does not claim to the editor. */
   const RolltuiInputActions* input;
 } RolltuiMenuActions;
 
@@ -3131,9 +3212,23 @@ typedef struct RolltuiNoteRaw {
 /* note: `out` is the caller's `RolltuiNote`, already cleared, filled in place. */
 typedef void (*RolltuiNoteFn)(void* ctx, RolltuiNoteRaw* out);
 
+/* gauge: how far something has got, which a `gauge:` window draws on one row — the label, a bar and the percent; a spinner and the
+ * label while how far is not known. `label` is OWNED; `rolltui_gauge_release` frees it (C++ frees it itself). */
+typedef struct RolltuiGauge {
+  double fraction ROLLTUI_DEFAULT(0);             /* 0..1 done; below 0, not known */
+  RolltuiStr label;                               /* what is being done: "copying 3 files" */
+  unsigned char failed ROLLTUI_DEFAULT(0);        /* it stopped short: the bar and the percent in the error role */
+  unsigned long long since_ms ROLLTUI_DEFAULT(0); /* when it began, on the clock the env's `now_ms` reads: the spinner's phase */
+} RolltuiGauge;
+void rolltui_gauge_release(RolltuiGauge* g);
+/* gauge: `out` is the caller's `RolltuiGauge`, its label cleared, filled in place. */
+typedef void (*RolltuiGaugeFn)(void* ctx, RolltuiGauge* out);
+
 typedef struct RolltuiWidgetEnv {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   unsigned long long now_ms ROLLTUI_DEFAULT(0);
+  /* THE PERSON ASKED FOR NO MOTION: what the library moves by itself (a toast sliding in) is placed where it ends at once. */
+  unsigned char still ROLLTUI_DEFAULT(0);
 } RolltuiWidgetEnv;
 
 /* THE TWO ROLES THE WINDOW ITSELF DRAWS WITH: the scrollbar's track and thumb, which live in the window's border column and which a
@@ -3192,6 +3287,44 @@ void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len
 
 void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteFn fn, void* ctx,
                                void (*free_ctx)(void*));
+
+void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,
+                                void (*free_ctx)(void*));
+
+/* ---- progress a host draws itself ---------------------------------------------------------- */
+/* A GAUGE ON ONE ROW, as a `gauge:` window draws it, for a host's own widget (a status line, a row of a list): the label, a bar of
+ * eighth blocks and the percent, the label dropped first when the row is narrow; a spinner and the label while the fraction is below
+ * 0. Drawn in the table's roles (`styles` indexed by role). Returns the cells used. */
+int rolltui_gauge_draw(RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, int width, const RolltuiGauge* g,
+                       const RolltuiStyle* styles, int ambiguous_wide);
+/* A SPINNER IN ONE CELL: a still glyph marked `waiting` since `since_ms`, which the theme's `waiting` effect turns (every shipped theme
+ * maps it; a theme that maps nothing shows it still). A row of a list whose operation is running carries one. */
+void rolltui_spinner_draw(RolltuiFrame* f, int x, int y, RolltuiStyle style, unsigned long long since_ms);
+
+/* ---- messages: what the app tells the person ---------------------------------------------------
+ * A host POSTS a message. The table keeps it in a history (the newest last, at most ROLLTUI_MESSAGE_HISTORY) and shows it as a TOAST,
+ * a box in the screen's bottom-right corner, for ROLLTUI_TOAST_MS (an error twice as long), the newest at the bottom and the stack at
+ * most a third of the screen tall. A toast slides in from the right unless the env is `still`. A press on one dismisses it. A
+ * `messages` window lists the history; one row tall, it shows the newest message while its toast would, which is a status line's
+ * message. Each level is drawn in its own role and glyph, so it reads without colour. */
+#define ROLLTUI_MESSAGE_INFO 0    /* accent_1, i */
+#define ROLLTUI_MESSAGE_OK 1      /* accent_2, a check */
+#define ROLLTUI_MESSAGE_WARNING 2 /* warning, ! */
+#define ROLLTUI_MESSAGE_ERROR 3   /* error, a cross */
+#define ROLLTUI_TOAST_MS 6000
+#define ROLLTUI_MESSAGE_HISTORY 500
+void rolltui_windows_post(RolltuiWindows* w, int level, const char* text, size_t len, unsigned long long now_ms);
+size_t rolltui_windows_message_count(const RolltuiWindows* w);
+/* Message `i`, the oldest first: its text as a BORROW valid until the next post, its level and when it was posted. NULL past the end.
+ * Any out-param may be NULL. */
+const char* rolltui_windows_message_at(const RolltuiWindows* w, size_t i, size_t* len, int* level, unsigned long long* at_ms);
+/* DRAWS THE TOASTS over `screen`, AFTER everything else in the frame. Returns how long until they next change (one ends, or one moves
+ * as it slides): milliseconds, or -1 when none is showing. A render returns the smaller of this and its own wait. */
+int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
+                                unsigned long long now_ms);
+/* A press on a toast dismisses it: 1 when `e` was one, and the host stops there. Ask before routing a mouse event to the windows. */
+int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e);
+void rolltui_windows_dismiss_toasts(RolltuiWindows* w);
 
 /* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
  * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
@@ -3327,6 +3460,8 @@ typedef struct RolltuiBuiltinRoles {
   unsigned char text, text_muted, error, scroll_marker, label, value;
   unsigned char input_text, input_selection, input_placeholder;
   unsigned char hover; /* what a click at the pointer would act on (`RolltuiResolvedNode::hover`) */
+  /* a gauge's bar, a toast's ground and border, and the three message levels that are not `error` */
+  unsigned char gauge, panel, border, info, ok, warning;
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use: this file knows the rule and none of the words (the same trade

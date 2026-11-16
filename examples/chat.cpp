@@ -418,7 +418,8 @@ struct App {
   RolltuiStr title_written;
   int details_top = 0;
 
-  explicit App(bool threaded) : responder(threaded) {
+  bool headless = false;  // a --frame dump: one moment, drawn still
+  explicit App(bool threaded) : responder(threaded), headless(!threaded) {
     rolltui_context_set_library_defaults(ctx);
     effects = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
     // THE TWO KINDS the shipped `default` screen names and only a host can draw. The name goes to the
@@ -610,9 +611,25 @@ struct App {
 
   static void on_submit(void* c, const char* text, std::size_t len) { static_cast<App*>(c)->submit(StrView(text, len)); }
 
+  // WHAT WAS TYPED, kept across runs: Up recalls a message from an earlier session. Empty (headless) keeps nothing.
+  RolltuiStr history_path;
+  void load_history() {
+    if (history_path.empty()) return;
+    RolltuiStr err;
+    if (!rolltui_input_history_load(rolltui_windows_input(windows, "prompt", 6), history_path.data(), history_path.size(), &err))
+      say_note(err);
+  }
+  void save_history() {
+    if (history_path.empty()) return;
+    RolltuiStr err;
+    if (!rolltui_input_history_save(rolltui_windows_input(windows, "prompt", 6), history_path.data(), history_path.size(), &err))
+      rolltui_windows_post(windows, ROLLTUI_MESSAGE_ERROR, err.data(), err.size(), now);
+  }
+
   void submit(StrView text) {
     hint.clear();
     if (text.empty()) return;
+    save_history();
     if (text[0] == '/') { command(text); return; }
     if (replying || !approval_cmd.empty()) {
       queued.push_back(rolltui::own(text));
@@ -1131,7 +1148,8 @@ struct App {
     sync_popups();
     sync_find();
     sync_prompt_options();
-    const RolltuiWidgetEnv env{ambiguous, now};
+    // A FRAME DUMP IS ONE MOMENT: nothing the library moves by itself is caught halfway (`still`).
+    const RolltuiWidgetEnv env{ambiguous, now, static_cast<unsigned char>(headless)};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
@@ -1145,6 +1163,7 @@ struct App {
     prepare();
     rolltui_window_stack_compose(stack, f, area(), styles, rolltui_layout_default_roles(), draw_slot, this, ambiguous,
                                  compose_scratch);
+    toast_wait = rolltui_windows_draw_toasts(windows, f, area(), styles, now);
     if (rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       RolltuiEffectReport rep{};
       rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, now, 0, &rep, nullptr, nullptr);
@@ -1156,8 +1175,10 @@ struct App {
   }
   // NOTHING ON SCREEN MOVES unless the frame marked something that does, so an idle loop sleeps
   // until a key, a resize or the other thread's wake.
+  int toast_wait = -1;  // when the toasts next change, from the last frame
   int poll_timeout_ms(const RolltuiFrame* f) {
     int t = rolltui_transcript_wants_tick(transcript()) ? 50 : -1;
+    if (toast_wait >= 0) t = t < 0 ? toast_wait : std::min(t, toast_wait);
     if (f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       const int tick = rolltui_effects_tick_ms(ctx, f, effects);
       if (tick > 0) t = t < 0 ? tick : std::min(t, tick);
@@ -1360,6 +1381,7 @@ struct App {
 
   void handle(const RolltuiEvent& in) {
     RolltuiEvent e = in;
+    if (rolltui_windows_toast_event(windows, &e)) return;  // a press on a toast dismisses it, and nothing under it
     // A PASTE IS TEXT FROM SOMEWHERE ELSE, and is stripped like a reply before it reaches the prompt.
     RolltuiStr clean;
     if (e.kind == ROLLTUI_EVENT_PASTE && e.text) {
@@ -1676,6 +1698,10 @@ int main(int argc, char** argv) {
   app.open_stores(user_presets_dir());
   app.apply_environment();
   app.mount();
+  if (!headless) {
+    app.history_path = user_presets_dir() + "/chat/history.json";
+    app.load_history();
+  }
   {
     // END OF INIT: what the screen names that this app does not provide, said before a frame is drawn.
     RolltuiGapReport gaps{};

@@ -151,6 +151,10 @@ const RolltuiDocumentRaw* rolltui_windows_document(const RolltuiWindows* w, cons
 int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t len);
 /* 1 when something was bound and got called; 0 (a no-op) when nothing is bound to `name`. */
 int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRows* out);
+int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t len);
+int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
+/* The table's message log, which its `messages` kind reads. */
+const struct RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w);
 
 int rolltui_windows_has_submit(const RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen);
@@ -170,6 +174,9 @@ const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len);
 const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
 
 const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w);
+/* THE LIBRARY'S LANGUAGES this table highlights with (the shipped ones and the person's), made on first use and kept until `w` is
+ * freed. An input naming a `language` borrows it. */
+RolltuiSyntax* rolltui_windows_syntax(RolltuiWindows* w);
 
 
 /* ---- INTERNAL: not part of the public API ---------------------------------------------------

@@ -424,9 +424,10 @@ constexpr RolltuiInputRoles kInputRoles = {
     /*text=*/static_cast<unsigned char>(Role::input_text),
     /*selection=*/static_cast<unsigned char>(Role::selection),
     /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
+    /*line_number=*/static_cast<unsigned char>(Role::text_muted),
 };
 // THE LIBRARY'S OWN TABLES, not copies of them. This block used to hold a
-// verbatim copy of `Input.cpp`'s thirty action names AND of `Menu.cpp`'s fifteen, with the
+// verbatim copy of `Input.cpp`'s action names AND of `Menu.cpp`'s fifteen, with the
 // comment "a caller of the menu has to hand this table over itself" — which was true, and was
 // the defect: `Menu.cpp`'s table was in an ANONYMOUS namespace, so no consumer could reach it
 // and every one that needed it copied it. Two consumers writing the same wrapper is the tell

@@ -239,6 +239,11 @@ ROLLTUI_API(rolltui_u_scratch_new, PUBLIC)
 ROLLTUI_API(rolltui_u_strip_escape_sequences, PUBLIC)
 ROLLTUI_API(rolltui_u_word_boundaries, INTERNAL)
 ROLLTUI_API(rolltui_u_word_range, INTERNAL)
+ROLLTUI_API(rolltui_u_case, PUBLIC)  /* KEPT: a host that matches without case folds both sides; the input's word case is built on it */
+ROLLTUI_API(rolltui_u_to_upper, INTERNAL)  /* one code point's mapping; a host maps text with rolltui_u_case */
+ROLLTUI_API(rolltui_u_to_lower, INTERNAL)  /* one code point's mapping; a host maps text with rolltui_u_case */
+ROLLTUI_API(rolltui_u_to_title, INTERNAL)  /* one code point's mapping; a host maps text with rolltui_u_case */
+ROLLTUI_API(rolltui_u_fold, INTERNAL)  /* one code point's folding; a host folds text with rolltui_u_case */
 
 /* ---- rolltui_wrap.h — the wrap engine roll draws with; default PUBLIC -------------------- */
 ROLLTUI_API(rolltui_wrap, PUBLIC)
@@ -683,9 +688,20 @@ ROLLTUI_API(rolltui_windows_autosize, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_document, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_note, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_rows, PUBLIC)
+ROLLTUI_API(rolltui_windows_bind_gauge, PUBLIC)  /* KEPT: a host with work that takes a while shows how far it has got in a `gauge:` window */
+ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
+ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
+ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
+ROLLTUI_API(rolltui_windows_message_count, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */
+ROLLTUI_API(rolltui_windows_message_at, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */
+ROLLTUI_API(rolltui_windows_draw_toasts, PUBLIC)  /* every host here draws them last */
+ROLLTUI_API(rolltui_windows_toast_event, PUBLIC)  /* every host here asks it first */
+ROLLTUI_API(rolltui_windows_dismiss_toasts, PUBLIC)  /* KEPT: a host clears them on a key of its own ("dismiss all") */
+ROLLTUI_API(rolltui_windows_messages, INTERNAL)  /* the messages kind reads the table's log */
 ROLLTUI_API(rolltui_windows_bind_sample_document, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_submit, PUBLIC)
 ROLLTUI_API(rolltui_windows_bindings, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_windows_syntax, INTERNAL)  /* the table's languages, which an input naming a `language` borrows */
 ROLLTUI_API(rolltui_windows_call_note, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_call_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_call_submit, INTERNAL)  /* only the library's own .c reaches it */
@@ -733,6 +749,23 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+/* ---- rolltui_feedback.h — a gauge, a spinner, the message log and its toasts --- */
+ROLLTUI_API(rolltui_gauge_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiGauge it owns and C has no destructor */
+ROLLTUI_API(rolltui_gauge_draw, PUBLIC)  /* KEPT: a host draws a gauge inside its own widget: a status line, a row of a list */
+ROLLTUI_API(rolltui_spinner_draw, PUBLIC)  /* KEPT: a host marks a row of its own list whose operation is running */
+ROLLTUI_API(rolltui_gauge_draw_roles, INTERNAL)  /* the gauge kind's body, in roles handed in */
+ROLLTUI_API(rolltui_message_log_init, INTERNAL)  /* the window table's own log */
+ROLLTUI_API(rolltui_message_log_release, INTERNAL)  /* the window table's own log */
+ROLLTUI_API(rolltui_message_log_post, INTERNAL)  /* a host posts through rolltui_windows_post */
+ROLLTUI_API(rolltui_message_log_count, INTERNAL)  /* a host reads through rolltui_windows_message_count */
+ROLLTUI_API(rolltui_message_log_at, INTERNAL)  /* a host reads through rolltui_windows_message_at */
+ROLLTUI_API(rolltui_message_log_draw_toasts, INTERNAL)  /* a host draws through rolltui_windows_draw_toasts */
+ROLLTUI_API(rolltui_message_log_toast_event, INTERNAL)  /* a host asks through rolltui_windows_toast_event */
+ROLLTUI_API(rolltui_message_log_dismiss, INTERNAL)  /* a host clears through rolltui_windows_dismiss_toasts */
+ROLLTUI_API(rolltui_toast_ms, INTERNAL)  /* how long a level shows, for the toasts and the messages kind */
+ROLLTUI_API(rolltui_message_role, INTERNAL)  /* a level's role, for the toasts and the messages kind */
+ROLLTUI_API(rolltui_message_glyph, INTERNAL)  /* a level's glyph, for the toasts and the messages kind */
+
 ROLLTUI_API(rolltui_hint_bar_new, PUBLIC)  /* a status line's keys, clickable: dirktui */
 ROLLTUI_API(rolltui_hint_bar_free, PUBLIC)  /* KEPT: the release half of a pair a consumer holds */
 ROLLTUI_API(rolltui_hint_bar_clear, PUBLIC)  /* rebuilt when the bindings change */
@@ -822,7 +855,7 @@ ROLLTUI_API(rolltui_document_release, PUBLIC)  /* KEPT: rule 1's pair: roll hold
 /* ---- rolltui_widget_input.h — the input widget: a host sets, selects, undoes and reads; default PUBLIC --- */
 ROLLTUI_API(rolltui_input_can_redo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_can_undo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
-ROLLTUI_API(rolltui_input_caret, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_caret, PUBLIC)  /* KEPT: a rename reads where the caret is to put it before a file's extension */
 ROLLTUI_API(rolltui_input_cell_of, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_clear, PUBLIC)
 ROLLTUI_API(rolltui_input_clear_selection, INTERNAL)  /* the widget clears its own selection on the next event */
@@ -833,8 +866,8 @@ ROLLTUI_API(rolltui_input_erase_forward, INTERNAL)  /* the handler's step */
 ROLLTUI_API(rolltui_input_erase_selection, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_input_free, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_handle, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
-ROLLTUI_API(rolltui_input_history_at, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
-ROLLTUI_API(rolltui_input_history_count, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_history_at, PUBLIC)  /* KEPT: a host that shows its history (a picker of past commands) reads it */
+ROLLTUI_API(rolltui_input_history_count, PUBLIC)  /* KEPT: a host that shows its history reads how long it is */
 ROLLTUI_API(rolltui_input_history_cursor, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_history_next, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_input_history_prev, INTERNAL)  /* only the library's own .c reaches it */
@@ -860,19 +893,32 @@ ROLLTUI_API(rolltui_input_options_equal, PUBLIC)
 ROLLTUI_API(rolltui_input_options_init, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_options_release, PUBLIC)
 ROLLTUI_API(rolltui_input_preview_insert, INTERNAL)  /* the handler's step */
-ROLLTUI_API(rolltui_input_push_history, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_push_history, PUBLIC)  /* KEPT: a host that submits by its own key keeps the entry as Submit would */
 ROLLTUI_API(rolltui_input_redo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_rows, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_rows_for, INTERNAL)  /* a step of the input's layout (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_input_select_all, PUBLIC)  /* an address bar's rule on reaching it: dirktui's path line */
 ROLLTUI_API(rolltui_input_selected_text, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_selection, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
-ROLLTUI_API(rolltui_input_set_caret, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_set_caret, PUBLIC)  /* KEPT: a rename puts the caret before a file's extension, or selects the name without it */
 ROLLTUI_API(rolltui_input_set_copy, PUBLIC)
 ROLLTUI_API(rolltui_input_set_options, PUBLIC)
 ROLLTUI_API(rolltui_input_set_text, PUBLIC)  /* a host prefills: dirktui's path line */
 ROLLTUI_API(rolltui_input_text, PUBLIC)
 ROLLTUI_API(rolltui_input_top_row, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_wrapped_text, PUBLIC)  /* KEPT: a commit message typed at 72 columns is read back with its breaks */
+ROLLTUI_API(rolltui_input_perform, PUBLIC)  /* KEPT: a modal editor's normal mode runs the input's commands by name */
+ROLLTUI_API(rolltui_input_history_clear, PUBLIC)  /* KEPT: a host forgets what was typed ("clear history") */
+ROLLTUI_API(rolltui_input_history_load, PUBLIC)
+ROLLTUI_API(rolltui_input_history_save, PUBLIC)
+ROLLTUI_API(rolltui_input_yank, INTERNAL)  /* the handler's step */
+ROLLTUI_API(rolltui_input_transpose_chars, INTERNAL)  /* the handler's step */
+ROLLTUI_API(rolltui_input_transpose_words, INTERNAL)  /* the handler's step */
+ROLLTUI_API(rolltui_input_change_case, INTERNAL)  /* the handler's step */
+ROLLTUI_API(rolltui_input_set_overwrite, INTERNAL)  /* the handler's step (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_input_overwrite, INTERNAL)  /* the handler's state (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_input_killed, INTERNAL)  /* the kill buffer; a host sends events (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_input_set_syntax, INTERNAL)  /* the input kind hands it the window table's languages */
 ROLLTUI_API(rolltui_input_undo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_word_left_of, INTERNAL)  /* the handler's step */
 ROLLTUI_API(rolltui_input_word_right_of, INTERNAL)  /* the handler's step */

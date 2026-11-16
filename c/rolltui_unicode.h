@@ -103,6 +103,12 @@ size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, si
  * hold at least `len` entries. Returns the number of scalars. */
 size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
 
+/* ---- case: the simple (one code point to one) mappings and folding ------------------------- */
+RolltuiCodepoint rolltui_u_to_upper(RolltuiCodepoint cp);
+RolltuiCodepoint rolltui_u_to_lower(RolltuiCodepoint cp);
+RolltuiCodepoint rolltui_u_to_title(RolltuiCodepoint cp);
+RolltuiCodepoint rolltui_u_fold(RolltuiCodepoint cp);
+
 /* ---- UAX #15: normalization -------------------------------------------------------------- */
 /* Canonical_Combining_Class: 0 for a starter. */
 unsigned char rolltui_u_combining_class(RolltuiCodepoint cp);

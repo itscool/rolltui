@@ -293,7 +293,8 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 140}, /* +2: `RolltuiMenuCells::v` (a row's cells) and `RolltuiMenuColumns::v` (a level's columns), each an
+        {"rolltui.h", 147}, /* +7: the input's seven new action names (`RolltuiInputActions::yank` to `::overwrite`), each a
+                              BORROW of a name the host keeps for the input's life, like the thirty before them. Before that 140, +2: `RolltuiMenuCells::v` (a row's cells) and `RolltuiMenuColumns::v` (a level's columns), each an
                               OWNED array freed by its `_release`, which the type's C++ destructor calls. Before that, 138 —
                               +18, and NOT new members: every one is a defaulted member (`T* v ROLLTUI_DEFAULT(nullptr);`) the scanner
                               skipped until it learned that ROLLTUI_DEFAULT's parenthesis is not an argument list. Fourteen OWN what
@@ -337,6 +338,8 @@ int main() {
         {"c/rolltui_syntax.h", 0},        /* opaque handles; a run is offsets and a class, and a set of languages is only ever borrowed by what colours with it */
         {"c/rolltui_mermaid.h", 1},       /* an opaque handle; the one stored pointer is a run's text, a BORROW into the handle's own pool, valid until the next render */
         {"c/rolltui_hints.h", 0},  /* likewise */
+        {"c/rolltui_feedback.h", 4}, /* the message log's ring, and its three scratches: each OWNED, freed by
+                                        `rolltui_message_log_release` */
         {"c/rolltui_str.h", 0},
         {"str.hpp", 2}, /* `StrView` stores the text it looks at: a BORROW of a `RolltuiStr`'s buffer or of a literal, never owned and
                            never freed, alive only as long as that text is (the header says so at the top). `StrVec` stores its array of
@@ -445,8 +448,9 @@ int main() {
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
     // 168 -> 193: the 25 defaulted members the scanner had been skipping, each named at its row above. 193 -> 195: a menu
-    // table's two lists. 195 -> 196: rolltui_os.h's Windows lock.
-    check(total == 196, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
+    // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h).
+    check(total == 207, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

@@ -13,7 +13,7 @@
 │               │   Delete                  erase after the    │               │
 │ Here is the fu│ caret (or the selection)                     │               │
 │               │   Ctrl-W, Alt-Backspace   kill the word      │               │
-│ ┌ cpp ────────│ before the caret                 ▼ 100 more  │               │
+│ ┌ cpp ────────│ before the caret                 ▼ 114 more  │               │
 │ │ int add(int ╰──────────────────────────────────────────────╯               │
 │ │   return a + b;                          │ ╻│                              │
 │ └──────────────────────────────────────────┘ ╹│                              │

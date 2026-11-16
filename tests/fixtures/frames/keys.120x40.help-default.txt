@@ -21,7 +21,7 @@
 │ │ filterable) + list/t│   Down                    down a row, or the next history entry      │                       │
 │ │ Layout files (JSON: │   Shift-Left              extend the selection one grapheme left     │                       │
 │ │ placements + content│   Shift-Right             extend the selection one grapheme right    │                       │
-│ │ Markdown block rende│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 57 more  │                       │
+│ │ Markdown block rende│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 67 more  │                       │
 │ │ → styled wrapped lin╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ Theme (roles → styles, JSON     │ build       │ single header                    │ ┃│                              │
 │ │ loader, built-ins)              │             │                                  │ ┃│                              │

@@ -146,6 +146,121 @@ outside the windows, `rolltui_window_stack_pointer` gives the pointer's cell and
 
 dirktui, `rolltui-chat`, paint and the studio turn hover on.
 
+## The editor
+
+An `input:<target>` window is a text editor. With `single_line` off (the default) its text
+wraps and its window grows with it. `RolltuiInputOptions` sets the rest:
+
+- `wrap_words`: a row breaks after a space, so a word moves to the next row whole. A word longer
+  than the row is still broken at the edge.
+- `wrap_column`: rows wrap at this many columns of text, or at the window's edge when that is
+  nearer. `rolltui_input_wrapped_text(in, column, out)` gives the text with a newline at each
+  soft break and the spaces before it dropped: a commit message typed at 72 columns is read back
+  with the breaks it was seen with.
+- `line_numbers`: a gutter numbering each line, in the `text_muted` role. A wrapped line's later
+  rows leave it blank.
+- `language`: a language name the syntax engine knows (`"c"`, `"json"`, a fence's tag). The text
+  is highlighted as code by the shipped languages and the person's own.
+- `auto_indent`: a newline starts with the spaces and tabs the broken line begins with.
+- `secret`: `ROLLTUI_INPUT_SHOW_MASKED` draws one `•` per grapheme (`*` where that glyph is two
+  cells wide); `ROLLTUI_INPUT_SHOW_NOTHING` draws nothing and keeps the caret after the prompt.
+  A secret is never copied, never kept in the history or the kill buffer, and word motions move
+  by whole lines.
+- `refuse_empty`: Enter does nothing while the text is only spaces, tabs and newlines.
+- `insert_typed` off: a printable key is looked up in the bindings like any other key, and types
+  nothing when none is bound.
+
+The editing keys are the readline set. Each is an action in the `input` scope, so a bindings
+file rebinds it:
+
+| Action | Default | Does |
+|---|---|---|
+| `input.kill_word_backward` | Ctrl-W, Alt-Backspace | kill the word before the caret |
+| `input.kill_word_forward` | Alt-D, Ctrl-Delete | kill the word after the caret |
+| `input.kill_to_line_start` | Ctrl-U | kill to the line's start |
+| `input.kill_to_line_end` | Ctrl-K | kill to the line's end |
+| `input.yank` | Alt-Y | put back what the last run of kills took |
+| `input.transpose_chars` | Ctrl-T | swap the graphemes either side of the caret |
+| `input.transpose_words` | Alt-T | swap the word before the caret with the next |
+| `input.upcase_word` | Alt-U | uppercase to the end of the word, or the selection |
+| `input.downcase_word` | Alt-L | lowercase the same way |
+| `input.capitalize_word` | Alt-Shift-C | capitalise the same way |
+| `input.overwrite` | Insert | typing replaces the grapheme under the caret, until pressed again |
+
+A run of kills is one kill: killing three words one at a time yanks back as the three. Ctrl-Y is
+redo here, so yank is Alt-Y. Overwrite never replaces a newline. Case follows Unicode's simple
+mappings, so `é` uppercases to `É`. `rolltui_u_case` maps a whole text the same way, and its
+`ROLLTUI_CASE_FOLD` is for matching without case.
+
+`rolltui_input_perform(in, actions, name, len, now)` runs one command by its action name, as a
+bound key would. A modal editor's normal mode is a bindings table over these commands with
+`insert_typed` off.
+
+`rolltui_input_set_caret(in, byte, extend)` places the caret; a second call with `extend` 1
+selects up to the first. A rename puts the caret before a file's extension this way, or selects
+the name without it.
+
+### History
+
+Enter keeps what was sent in the input's history, the newest last, a repeated entry kept once,
+at most `history_limit` entries. Up and Down browse it from the first and last rows. With
+`history_prefix` on (the default), they recall only entries that begin with the text before the
+caret: type `git` and Up finds the last `git` line. With the caret at the start, every entry
+matches.
+
+`rolltui_input_history_load` and `rolltui_input_history_save` keep the history in a file, a JSON
+array of strings. A save reads the file again first and writes its entries followed by the ones
+this input gained since it last loaded or saved, through a temporary file and a rename. Two
+instances saving in turn keep both their entries, and a reader never sees half a file.
+`rolltui-chat` keeps its prompt's history in `<config>/rolltui/chat/history.json`.
+
+## Progress
+
+A `gauge:<source>` window shows how far something has got, on one row: the label, a bar of
+eighth blocks in the `accent_2` role, and the percent. The host binds the source with
+`rolltui_windows_bind_gauge` and fills a `RolltuiGauge` each frame:
+
+- `fraction` from 0 to 1. The percent is rounded down, so 100% is said only when it is done.
+- `fraction` below 0: how far is not known. The window draws a spinner and the label.
+- `failed`: the bar and the percent are drawn in the `error` role.
+- `since_ms`: when the work began, the spinner's phase.
+
+A narrow window drops the label before the bar. Where the terminal draws ambiguous-width glyphs
+two cells wide, the bar is `#` and `-`.
+
+`rolltui_gauge_draw` draws the same row inside a host's own widget. `rolltui_spinner_draw` puts
+a spinner in one cell: a still glyph marked `waiting`, which the theme's `waiting` effect turns.
+Every shipped theme maps `waiting`. A menu row whose action is running sets `busy` and
+`busy_since_ms`, and the row shows a spinner after its label until the host clears it.
+
+## Messages
+
+`rolltui_windows_post(windows, level, text, len, now)` tells the person something. The levels
+are `ROLLTUI_MESSAGE_INFO` (`accent_1`, `i`), `_OK` (`accent_2`, `✓`), `_WARNING` (`warning`,
+`!`) and `_ERROR` (`error`, `✗`), so a level reads without colour.
+
+- The window table keeps the newest `ROLLTUI_MESSAGE_HISTORY` (500) messages.
+  `rolltui_windows_message_count` and `_message_at` read them.
+- Each message shows as a TOAST in the screen's bottom-right corner for `ROLLTUI_TOAST_MS`
+  (6 seconds), an error for twice that. The newest is at the bottom; the stack takes at most a
+  third of the screen, and the newest always shows. A toast slides in from the right unless the
+  env is `still`.
+- A `messages` window lists the history, newest at the bottom, and scrolls. One row tall, it
+  shows the newest message while its toast would: a status line's message.
+
+A host draws the toasts last, after compose:
+`rolltui_windows_draw_toasts(windows, frame, screen, styles, now)` returns how long until they
+next change, which the render's wait takes into account. A press on a toast dismisses it:
+`rolltui_windows_toast_event` answers 1 for one, and the host stops there.
+`rolltui_windows_dismiss_toasts` clears them all.
+
+`RolltuiWidgetEnv.still` says the person asked for no motion: what the library moves by itself
+is placed where it ends. A frame dump is one moment, and the hosts here draw it still. dirktui
+sets it from its motion setting.
+
+dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
+note for what went right.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.

@@ -36,6 +36,10 @@
 //   Composition          UnicodeData.txt and           the primary composites: every two-code-point
 //                        DerivedNormalizationProps.txt canonical decomposition whose composite is
 //                                                      not Full_Composition_Exclusion
+// And one sorted list, for word case and caseless matching:
+//   CaseMap              UnicodeData.txt and           every code point with a simple upper, lower or
+//                        CaseFolding.txt               title mapping or a simple case folding (C and S)
+//                                                      other than itself
 //
 // `# @missing:` lines give the value of every code point a file does not list, and
 // MUST be applied: a file has one for the whole codespace and may have more for
@@ -61,6 +65,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -327,6 +332,9 @@ void load_flag(Table& t, const UcdFile& f, const std::string& property) {
 struct UnicodeData {
   std::vector<uint8_t> ccc = std::vector<uint8_t>(kMaxCp + 1, 0);
   std::map<char32_t, std::vector<char32_t>> canonical;  // code point -> its canonical decomposition
+  // Fields 12, 13 and 14: the simple upper, lower and title mappings, only where one is given. An empty
+  // title field means the title mapping IS the upper one (UAX #44, UnicodeData.txt).
+  std::map<char32_t, char32_t> upper, lower, title;
   size_t rows = 0;
 };
 UnicodeData parse_unicode_data(const std::string& path) {
@@ -354,10 +362,51 @@ UnicodeData parse_unicode_data(const std::string& path) {
       if (seq.empty() || seq.size() > 2) die(path + ": a canonical decomposition is one or two code points: " + line);
       d.canonical[cp] = seq;
     }
+    auto mapping = [&](const std::string& field, std::map<char32_t, char32_t>& into) {
+      if (field.empty()) return;
+      char32_t m = 0, m2 = 0;
+      if (!parse_range(field, m, m2) || m != m2) die(path + ": bad case mapping: " + line);
+      into[cp] = m;
+    };
+    mapping(f[12], d.upper);
+    mapping(f[13], d.lower);
+    mapping(f[14].empty() ? f[12] : f[14], d.title);
     ++d.rows;
   }
   if (d.rows < 30000) die(path + ": only " + std::to_string(d.rows) + " rows: truncated?");
   return d;
+}
+
+// CaseFolding.txt: `<code>; <status>; <mapping>; # <name>`. The SIMPLE folding is status C (common) plus S
+// (simple, where the full one differs); F (full, one to many) and T (Turkic, locale-specific) are left out.
+struct CaseFolding {
+  std::map<char32_t, char32_t> fold;
+  std::string version, date;
+};
+CaseFolding parse_case_folding(const std::string& path) {
+  CaseFolding c;
+  std::istringstream in(read_file(path));
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.rfind("# CaseFolding-", 0) == 0) {
+      const size_t a = std::strlen("# CaseFolding-"), b = line.find(".txt");
+      if (b != std::string::npos) c.version = line.substr(a, b - a);
+      continue;
+    }
+    if (line.rfind("# Date:", 0) == 0) { c.date = trim(line.substr(7)); continue; }
+    const size_t hash = line.find('#');
+    const std::string body = trim(hash == std::string::npos ? line : line.substr(0, hash));
+    if (body.empty()) continue;
+    const std::vector<std::string> f = split(body, ';');
+    if (f.size() < 3) die(path + ": bad line: " + line);
+    const std::string status = trim(f[1]);
+    if (status != "C" && status != "S") continue;
+    char32_t cp = 0, hi = 0, m = 0, m2 = 0;
+    if (!parse_range(trim(f[0]), cp, hi) || !parse_range(trim(f[2]), m, m2)) die(path + ": bad line: " + line);
+    c.fold[cp] = m;
+  }
+  if (c.fold.size() < 1000) die(path + ": only " + std::to_string(c.fold.size()) + " simple foldings: truncated?");
+  return c;
 }
 
 std::string hex(char32_t c) {
@@ -475,6 +524,7 @@ int main(int argc, char** argv) {
   UcdFile emoji = parse_ucd(ucd_dir + "emoji-data.txt");
   UcdFile dnp = parse_ucd(ucd_dir + "DerivedNormalizationProps.txt");
   const UnicodeData udata = parse_unicode_data(ucd_dir + "UnicodeData.txt");
+  const CaseFolding cfold = parse_case_folding(ucd_dir + "CaseFolding.txt");
 
   // Every versioned file must agree on the Unicode version; emoji-data.txt carries
   // "# Version: 17.0" (major.minor only), so it is checked as a prefix.
@@ -485,6 +535,7 @@ int main(int argc, char** argv) {
           " is " + f->version);
   if (version.rfind(emoji.version, 0) != 0)
     die("emoji-data.txt Version: " + emoji.version + " does not match " + version);
+  if (cfold.version != version) die("CaseFolding.txt is " + cfold.version + " but " + lb.name + " is " + version);
 
   // ---- build -----------------------------------------------------------------------
   auto field = [](size_t n) {
@@ -566,6 +617,25 @@ int main(int argc, char** argv) {
     if (compositions[i].first == compositions[i - 1].first && compositions[i].second == compositions[i - 1].second)
       die("two composites for one pair at " + hex(compositions[i].first) + " " + hex(compositions[i].second));
 
+  // Every code point whose simple upper, lower or title mapping, or simple folding, is not itself. A field a
+  // code point has no mapping for is the code point itself.
+  struct Case { char32_t cp, upper, lower, title, fold; };
+  std::vector<Case> cases;
+  {
+    std::map<char32_t, Case> all;
+    auto touch = [&](char32_t cp) -> Case& {
+      auto it = all.find(cp);
+      if (it == all.end()) it = all.emplace(cp, Case{cp, cp, cp, cp, cp}).first;
+      return it->second;
+    };
+    for (const auto& [cp, m] : udata.upper) touch(cp).upper = m;
+    for (const auto& [cp, m] : udata.lower) touch(cp).lower = m;
+    for (const auto& [cp, m] : udata.title) touch(cp).title = m;
+    for (const auto& [cp, m] : cfold.fold) touch(cp).fold = m;
+    for (const auto& [cp, c] : all)
+      if (c.upper != cp || c.lower != cp || c.title != cp || c.fold != cp) cases.push_back(c);
+  }
+
   // ---- the commit line -------------------------------------------------------------
   if (commit.empty()) {
     std::string git = "git -C '" + ucd_dir + "' ";
@@ -593,6 +663,7 @@ int main(int argc, char** argv) {
           o << "//   " << s << "\n";
         }
     o << "//   " << dnp.name << "  (" << dnp.date << ")\n";
+    o << "//   CaseFolding.txt  (" << cfold.date << ")\n";
     o << "// generator commit: " << commit << "\n"
          "//\n"
          "// Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui\n"
@@ -656,7 +727,16 @@ int main(int argc, char** argv) {
          "  RolltuiCodepoint first;\n"
          "  RolltuiCodepoint second;\n"
          "  RolltuiCodepoint composite;\n"
-         "} RolltuiUnicodeComposition;\n";
+         "} RolltuiUnicodeComposition;\n"
+         "\n"
+         "/* A code point's simple case mappings and simple case folding; a field equal to `cp` has none. */\n"
+         "typedef struct RolltuiUnicodeCase {\n"
+         "  RolltuiCodepoint cp;\n"
+         "  RolltuiCodepoint upper;\n"
+         "  RolltuiCodepoint lower;\n"
+         "  RolltuiCodepoint title;\n"
+         "  RolltuiCodepoint fold;\n"
+         "} RolltuiUnicodeCase;\n";
     for (const Table* t : tables) {
       if (t->flag || t->numeric) continue;
       o << "\n/* " << t->enum_name << " */\n";
@@ -677,7 +757,9 @@ int main(int argc, char** argv) {
          "#define ROLLTUI_U_TABLE_DECOMPOSITION_COUNT " << udata.canonical.size() << "\n"
          "extern const RolltuiUnicodeComposition rolltui_u_table_composition[" << compositions.size()
       << "];  /* sorted by first, then second */\n"
-         "#define ROLLTUI_U_TABLE_COMPOSITION_COUNT " << compositions.size() << "\n";
+         "#define ROLLTUI_U_TABLE_COMPOSITION_COUNT " << compositions.size() << "\n"
+         "extern const RolltuiUnicodeCase rolltui_u_table_case[" << cases.size() << "];  /* sorted by cp */\n"
+         "#define ROLLTUI_U_TABLE_CASE_COUNT " << cases.size() << "\n";
     o << "\n"
          "#ifdef __cplusplus\n"
          "}  /* extern \"C\" */\n"
@@ -747,6 +829,11 @@ int main(int argc, char** argv) {
          "const RolltuiUnicodeComposition rolltui_u_table_composition[" << compositions.size() << "] = {\n";
     for (const Pair& c : compositions)
       o << "  {" << hex(c.first) << ", " << hex(c.second) << ", " << hex(c.composite) << "},\n";
+    o << "};\n"
+         "\n/* Case: " << cases.size() << " code points with a simple case mapping or folding (cp, upper, lower, title, fold) */\n"
+         "const RolltuiUnicodeCase rolltui_u_table_case[" << cases.size() << "] = {\n";
+    for (const Case& c : cases)
+      o << "  {" << hex(c.cp) << ", " << hex(c.upper) << ", " << hex(c.lower) << ", " << hex(c.title) << ", " << hex(c.fold) << "},\n";
     o << "};\n";
     source = o.str();
   }

@@ -22,6 +22,8 @@
 // decode_utf8` becomes `rolltui_u_decode_utf8_chars` into a caller-owned buffer.
 //
 #include <cstddef>
+#include <cstdio>
+#include <unistd.h>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -36,6 +38,7 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_widget_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
@@ -120,7 +123,7 @@ void init_options(RolltuiInputOptions& o) {
   rolltui_input_options_init(&o);
 }
 
-// THE LIBRARY'S THIRTY, not a copy of them. This block used to hold a verbatim
+// THE LIBRARY'S THIRTY-SEVEN, not a copy of them. This block used to hold a verbatim
 // copy of `Input.cpp`'s table, with the comment "since a caller of `rolltui_input_handle` has
 // to hand this table over itself" — true, and the reason `rolltui_library_actions.c` counted
 // FOUR copies of the 59-row vocabulary. `rolltui_input_default_actions()` is the caller's
@@ -131,6 +134,7 @@ constexpr RolltuiInputRoles kRoles = {
     ROLLTUI_ROLE_INPUT_TEXT,
     ROLLTUI_ROLE_SELECTION,
     ROLLTUI_ROLE_INPUT_PLACEHOLDER,
+    ROLLTUI_ROLE_TEXT_MUTED,
 };
 
 // The one draw scratch this test binary needs (Input.cpp kept one per thread; this binary
@@ -311,6 +315,15 @@ InputPtr fresh(int width = 80, int height = 1) {
   return in;
 }
 
+// Up and Down browse every entry, whatever was typed first: what these history tests are about.
+void browse_all(RolltuiInput* in) {
+  RolltuiInputOptions o;
+  rolltui_input_options_copy(&o, rolltui_input_options(in));
+  o.history_prefix = 0;
+  rolltui_input_set_options(in, &o);
+  rolltui_input_options_release(&o);
+}
+
 const char* kWoman = "\xF0\x9F\x91\xA9";   // U+1F469
 const char* kZwj = "\xE2\x80\x8D";         // U+200D
 const char* kLaptop = "\xF0\x9F\x92\xBB";  // U+1F4BB
@@ -481,6 +494,7 @@ void test_vertical_movement_keeps_a_goal_column() {
 
 void test_history_with_a_draft() {
   InputPtr in = fresh();
+  browse_all(in.get());
   push_history(in.get(), "one");
   push_history(in.get(), "two");
   push_history(in.get(), "two");
@@ -512,6 +526,7 @@ void test_history_with_a_draft() {
   check(text_of(in.get()) == "two", "and Up after clear recalls the newest again");
   // Up in a multi-line buffer moves rows first; only the first row browses.
   InputPtr m = fresh(80, 3);
+  browse_all(m.get());
   set_text(m.get(), "a\nb");
   push_history(m.get(), "h");
   set_text(m.get(), "a\nb");
@@ -970,6 +985,7 @@ void test_undo_redo_new_edit_drops_the_redo_branch() {
 
 void test_undo_redo_and_history_never_touch_each_other() {
   InputPtr in = fresh();
+  browse_all(in.get());
   push_history(in.get(), "one");
   push_history(in.get(), "two");
   type(in.get(), "draft");
@@ -1062,6 +1078,296 @@ void test_degenerate_sizes() {
         "a 1-cell window still advances one glyph per row (a 2-cell glyph overflows rather than stalling)");
 }
 
+
+// Options built from the defaults, changed by `edit`, applied.
+void with_options(RolltuiInput* in, const std::function<void(RolltuiInputOptions&)>& edit) {
+  RolltuiInputOptions o;
+  rolltui_input_options_copy(&o, rolltui_input_options(in));
+  edit(o);
+  rolltui_input_set_options(in, &o);
+  rolltui_input_options_release(&o);
+}
+std::string killed_of(const RolltuiInput* in) {
+  std::size_t n = 0;
+  const char* p = rolltui_input_killed(in, &n);
+  return std::string(p ? p : "", n);
+}
+std::string wrapped_of(RolltuiInput* in, int column) {
+  RolltuiStr out;
+  rolltui_input_wrapped_text(in, column, &out);
+  return std::string(out.data(), out.size());
+}
+std::string row_text(const FrameC& f, int y, int w) {
+  std::string r;
+  for (int x = 0; x < w; ++x) r += std::string(f.glyph(x, y));
+  while (!r.empty() && r.back() == ' ') r.pop_back();
+  return r;
+}
+
+void test_kill_and_yank() {
+  InputPtr in = fresh();
+  type(in.get(), "one two three");
+  handle(in.get(), ctrl('w'));
+  handle(in.get(), ctrl('w'));
+  check(text_of(in.get()) == "one " && killed_of(in.get()) == "two three",
+        "two backward kills in a row are one kill: the buffer holds both words, in order");
+  handle(in.get(), alt('y'));
+  check(text_of(in.get()) == "one two three", "Alt-Y yanks them back at the caret");
+  handle(in.get(), key(ROLLTUI_KEY_HOME));
+  handle(in.get(), ctrl('k'));
+  check(text_of(in.get()).empty() && killed_of(in.get()) == "one two three", "a move ends the run: Ctrl-K starts a new kill");
+  check(rolltui_input_undo(in.get()) != 0 && text_of(in.get()) == "one two three", "a kill undoes as one step");
+  set_text(in.get(), "abc def");
+  set_caret(in.get(), 0);
+  handle(in.get(), alt('d'));
+  handle(in.get(), alt('d'));
+  check(text_of(in.get()).empty() && killed_of(in.get()) == "abc def", "forward kills add to the end of the run");
+  InputPtr none = fresh();
+  check(handle(none.get(), alt('y')) == InputAction::Ignored, "a yank with nothing killed is Ignored");
+}
+
+void test_transpose() {
+  InputPtr in = fresh();
+  set_text(in.get(), "abcd");
+  set_caret(in.get(), 2);
+  handle(in.get(), ctrl('t'));
+  check(text_of(in.get()) == "acbd" && rolltui_input_caret(in.get()) == 3, "Ctrl-T swaps the graphemes either side and moves past them");
+  set_caret(in.get(), 4);
+  handle(in.get(), ctrl('t'));
+  check(text_of(in.get()) == "acdb", "at the line's end Ctrl-T swaps the last two");
+  set_text(in.get(), std::string("x") + kEacute + "\ny");
+  set_caret(in.get(), 4);
+  handle(in.get(), ctrl('t'));
+  check(text_of(in.get()) == std::string("x") + kEacute + "\ny", "at a line's start it does nothing: lines never trade");
+  set_caret(in.get(), 3);
+  handle(in.get(), ctrl('t'));
+  check(text_of(in.get()) == std::string(kEacute) + "x\ny", "a two-byte grapheme moves whole");
+  set_text(in.get(), "first second third");
+  set_caret(in.get(), 5);
+  handle(in.get(), alt('t'));
+  check(text_of(in.get()) == "second first third" && rolltui_input_caret(in.get()) == 12,
+        "Alt-T swaps the word before the caret with the next, the caret after both");
+  set_caret(in.get(), 0);
+  handle(in.get(), alt('t'));
+  check(text_of(in.get()) == "first second third", "at the first word it swaps with the next");
+  set_caret(in.get(), 18);
+  handle(in.get(), alt('t'));
+  check(text_of(in.get()) == "first third second", "at the end it swaps the last two");
+}
+
+void test_word_case() {
+  InputPtr in = fresh();
+  set_text(in.get(), "hello world");
+  set_caret(in.get(), 0);
+  handle(in.get(), alt('u'));
+  check(text_of(in.get()) == "HELLO world" && rolltui_input_caret(in.get()) == 5, "Alt-U uppercases to the word's end");
+  handle(in.get(), alt_shift('c'));
+  check(text_of(in.get()) == "HELLO World", "Alt-Shift-C capitalises the next word");
+  set_caret(in.get(), 0);
+  handle(in.get(), alt('l'));
+  check(text_of(in.get()) == "hello World", "Alt-L lowercases");
+  set_text(in.get(), "\xC3\xA9lan \xCF\x83\xCE\xBF\xCF\x86\xCE\xAF\xCE\xB1");  // élan σοφία
+  rolltui_input_select_all(in.get());
+  handle(in.get(), alt('u'));
+  check(text_of(in.get()) == "\xC3\x89LAN \xCE\xA3\xCE\x9F\xCE\xA6\xCE\x8A\xCE\x91" && sel_of(in.get()) == std::string(text_of(in.get())),
+        "with a selection the whole selection is uppercased, by Unicode's mappings, and stays selected");
+  RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
+  RolltuiStr folded;
+  rolltui_u_case(u, "Stra\xC3\x9F" "E \xE1\xBA\x9E", 11, ROLLTUI_CASE_FOLD, &folded);
+  check(std::string(folded.data(), folded.size()) == "stra\xC3\x9F" "e \xC3\x9F", "FOLD maps capital sharp s to sharp s (simple folding)");
+  rolltui_u_case(u, "\xFF" "Ab", 3, ROLLTUI_CASE_LOWER, &folded);
+  check(std::string(folded.data(), folded.size()) == "\xFF" "ab", "a byte that is not UTF-8 passes through");
+  rolltui_u_case(u, "the QUICK fox", 13, ROLLTUI_CASE_TITLE, &folded);
+  check(std::string(folded.data(), folded.size()) == "The Quick Fox", "TITLE titles each word and lowers the rest");
+  rolltui_u_scratch_free(u);
+}
+
+void test_overwrite() {
+  InputPtr in = fresh();
+  set_text(in.get(), "abc\nd");
+  set_caret(in.get(), 1);
+  handle(in.get(), key(ROLLTUI_KEY_INSERT));
+  check(rolltui_input_overwrite(in.get()) != 0, "Insert turns overwrite on");
+  type(in.get(), "XYZ");
+  check(text_of(in.get()) == "aXYZ\nd", "typing replaces what is under the caret, and inserts at the line's end, never eating the newline");
+  check(rolltui_input_undo(in.get()) != 0 && text_of(in.get()) == "abc\nd", "the run undoes as one step");
+  handle(in.get(), key(ROLLTUI_KEY_INSERT));
+  set_caret(in.get(), 1);
+  type(in.get(), "Q");
+  check(text_of(in.get()) == "aQbc\nd", "Insert again: typing inserts");
+}
+
+void test_secret() {
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
+  InputPtr in = fresh(20, 1);
+  with_options(in.get(), [](RolltuiInputOptions& o) { o.secret = ROLLTUI_INPUT_SHOW_MASKED; });
+  std::string copied;
+  rolltui_input_set_copy(in.get(), call_copy, &copied);
+  type(in.get(), "pa ss");
+  rolltui_input_layout(in.get(), {0, 0, 20, 1});
+  FrameC f(20, 1);
+  rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
+  check(f.glyph(2, 0) == "\xE2\x80\xA2" && f.glyph(4, 0) == "\xE2\x80\xA2" && f.glyph(6, 0) == "\xE2\x80\xA2" &&
+            f.cursor().x == 7,
+        "masked: one bullet a grapheme, the space too, and the caret after them");
+  rolltui_input_select_all(in.get());
+  check(handle(in.get(), alt('c')) == InputAction::Ignored && copied.empty(), "a secret is never copied");
+  handle(in.get(), key(ROLLTUI_KEY_END));
+  handle(in.get(), key(ROLLTUI_KEY_LEFT, false, true));
+  check(rolltui_input_caret(in.get()) == 0, "a word motion moves by the whole line: where the space is is not spelled out");
+  rolltui_input_push_history(in.get(), "pa ss", 5);
+  check(rolltui_input_history_count(in.get()) == 0, "a secret is never kept in the history");
+  handle(in.get(), ctrl('w'));
+  check(killed_of(in.get()).empty(), "…nor in the kill buffer");
+  InputPtr hid = fresh(20, 1);
+  with_options(hid.get(), [](RolltuiInputOptions& o) { o.secret = ROLLTUI_INPUT_SHOW_NOTHING; });
+  type(hid.get(), "secret");
+  rolltui_input_layout(hid.get(), {0, 0, 20, 1});
+  FrameC g(20, 1);
+  rolltui_input_draw(hid.get(), g, draw_scratch(), th.styles, &kRoles, true);
+  check(g.glyph(2, 0) == " " && g.cursor().x == 2 && text_of(hid.get()) == "secret",
+        "nothing shown: the text is kept, nothing is drawn, the caret stays after the prompt");
+}
+
+void test_submit_rules_and_modes() {
+  InputPtr in = fresh();
+  with_options(in.get(), [](RolltuiInputOptions& o) { o.refuse_empty = 1; });
+  type(in.get(), " \t ");
+  check(handle(in.get(), key(ROLLTUI_KEY_ENTER)) == InputAction::Handled, "refuse_empty: Enter on blanks submits nothing");
+  type(in.get(), "x");
+  check(handle(in.get(), key(ROLLTUI_KEY_ENTER)) == InputAction::Submit, "…and submits once there is text");
+  InputPtr nm = fresh();
+  with_options(nm.get(), [](RolltuiInputOptions& o) { o.insert_typed = 0; });
+  set_text(nm.get(), "abc");
+  check(handle(nm.get(), chr('x')) == InputAction::Ignored && text_of(nm.get()) == "abc",
+        "insert_typed off: an unbound printable key types nothing");
+  check(rolltui_input_perform(nm.get(), rolltui_input_default_actions(), "input.line_start", 16, 0) == ROLLTUI_INPUT_HANDLED &&
+            rolltui_input_caret(nm.get()) == 0,
+        "rolltui_input_perform runs a command by its action name");
+  check(rolltui_input_perform(nm.get(), rolltui_input_default_actions(), "input.nope", 10, 0) == ROLLTUI_INPUT_IGNORED,
+        "…and a name that is none of them is Ignored");
+  InputPtr ai = fresh(80, 4);
+  with_options(ai.get(), [](RolltuiInputOptions& o) { o.auto_indent = 1; });
+  type(ai.get(), "  if (x) {");
+  handle(ai.get(), key(ROLLTUI_KEY_ENTER, false, false, true));
+  check(text_of(ai.get()) == "  if (x) {\n  ", "auto_indent: a newline carries the line's own indent");
+}
+
+void test_history_by_prefix() {
+  InputPtr in = fresh();
+  for (const char* e : {"git status", "ls -la", "git log", "make"}) push_history(in.get(), e);
+  type(in.get(), "git");
+  handle(in.get(), key(ROLLTUI_KEY_UP));
+  check(text_of(in.get()) == "git log", "Up finds the newest entry beginning with what was typed");
+  handle(in.get(), key(ROLLTUI_KEY_UP));
+  check(text_of(in.get()) == "git status", "…then the one before, skipping what does not match");
+  check(handle(in.get(), key(ROLLTUI_KEY_UP)) == InputAction::Handled && text_of(in.get()) == "git status",
+        "…and stays at the oldest match");
+  handle(in.get(), key(ROLLTUI_KEY_DOWN));
+  handle(in.get(), key(ROLLTUI_KEY_DOWN));
+  check(text_of(in.get()) == "git", "Down past the newest match restores what was typed");
+  set_caret(in.get(), 0);
+  handle(in.get(), key(ROLLTUI_KEY_UP));
+  check(text_of(in.get()) == "make", "with the caret at the start every entry is a match");
+}
+
+void test_history_file() {
+  char tmpl[] = "/tmp/rolltui_input_hist_XXXXXX";
+  const char* dir = mkdtemp(tmpl);
+  check(dir != nullptr, "a scratch directory");
+  if (!dir) return;
+  const std::string path = std::string(dir) + "/sub/history.json";
+  InputPtr a = fresh(), b = fresh();
+  check(rolltui_input_history_load(a.get(), path.data(), path.size(), nullptr) && rolltui_input_history_count(a.get()) == 0,
+        "a missing file loads as an empty history");
+  rolltui_input_history_load(b.get(), path.data(), path.size(), nullptr);
+  push_history(a.get(), "from a");
+  push_history(b.get(), "from b\nwith a second line");
+  check(rolltui_input_history_save(a.get(), path.data(), path.size(), nullptr) != 0, "a saves (making the folder)");
+  check(rolltui_input_history_save(b.get(), path.data(), path.size(), nullptr) != 0, "b saves after it");
+  InputPtr c = fresh();
+  rolltui_input_history_load(c.get(), path.data(), path.size(), nullptr);
+  check(history_of(c.get()) == std::vector<std::string>{"from a", "from b\nwith a second line"},
+        "the file keeps both instances' entries, a's then b's, a newline inside an entry intact");
+  check(history_of(b.get()) == history_of(c.get()), "…and b now holds what the file holds");
+  RolltuiInputOptions o;
+  init_options(o);
+  o.history_limit = 1;
+  rolltui_input_set_options(c.get(), &o);
+  rolltui_input_options_release(&o);
+  push_history(c.get(), "newest");
+  rolltui_input_history_save(c.get(), path.data(), path.size(), nullptr);
+  InputPtr d = fresh();
+  rolltui_input_history_load(d.get(), path.data(), path.size(), nullptr);
+  check(history_of(d.get()) == std::vector<std::string>{"newest"}, "a save keeps at most history_limit, the newest");
+  const std::string bad = std::string(dir) + "/bad.json";
+  std::FILE* fp = std::fopen(bad.c_str(), "wb");
+  std::fputs("{\"not\": \"an array\"}", fp);
+  std::fclose(fp);
+  RolltuiStr err;
+  check(!rolltui_input_history_load(d.get(), bad.data(), bad.size(), &err) && std::string(err.data(), err.size()).find("not a history file") != std::string::npos,
+        "a file that is not a history is refused, and says so");
+  std::remove(bad.c_str());
+  std::remove(path.c_str());
+  rmdir((std::string(dir) + "/sub").c_str());
+  rmdir(dir);
+}
+
+void test_word_wrap_and_wrapped_text() {
+  InputPtr in = fresh(12, 4);
+  with_options(in.get(), [](RolltuiInputOptions& o) { o.wrap_words = 1; });
+  type(in.get(), "hello world again");
+  rolltui_input_layout(in.get(), {0, 0, 12, 4});
+  check(rolltui_input_rows(in.get()) == 3 && cell_of(in.get(), 6).row == 1 && cell_of(in.get(), 6).col == 2 &&
+            cell_of(in.get(), 12).row == 2,
+        "wrap_words: a word that would not fit starts the next row whole");
+  check(wrapped_of(in.get(), 0) == "hello\nworld\nagain", "the wrapped text has a newline at each soft break, the space before it dropped");
+  check(wrapped_of(in.get(), 40) == "hello world again", "…and at a wider column, none");
+  check(rolltui_input_rows(in.get()) == 3, "asking for the wrapped text leaves the drawn flow as it was");
+  InputPtr col = fresh(80, 4);
+  with_options(col.get(), [](RolltuiInputOptions& o) {
+    o.wrap_words = 1;
+    o.wrap_column = 10;
+  });
+  type(col.get(), "hello world again");
+  rolltui_input_layout(col.get(), {0, 0, 80, 4});
+  check(rolltui_input_rows(col.get()) == 3, "wrap_column: rows wrap at ten text columns in an 80-wide area");
+  InputPtr longw = fresh(8, 4);
+  with_options(longw.get(), [](RolltuiInputOptions& o) { o.wrap_words = 1; });
+  type(longw.get(), "abcdefghij");
+  rolltui_input_layout(longw.get(), {0, 0, 8, 4});
+  check(rolltui_input_rows(longw.get()) == 2 && cell_of(longw.get(), 6).row == 1, "a word longer than the row is still broken at the edge");
+}
+
+void test_line_numbers_and_highlighting() {
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
+  InputPtr in = fresh(30, 12);
+  with_options(in.get(), [](RolltuiInputOptions& o) {
+    o.line_numbers = 1;
+    o.prompt = "";
+    o.language = "c";
+  });
+  std::string text;
+  for (int i = 0; i < 10; ++i) text += "int x" + std::to_string(i) + ";\n";
+  text += "return 0;";
+  set_text(in.get(), text);
+  RolltuiSyntax* syn = rolltui_syntax_new_standard(nullptr);
+  rolltui_input_set_syntax(in.get(), syn);
+  rolltui_input_layout(in.get(), {0, 0, 30, 12});
+  FrameC f(30, 12);
+  rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
+  check(row_text(f, 0, 30) == " 1 int x0;" && row_text(f, 9, 30) == "10 int x9;" && row_text(f, 10, 30) == "11 return 0;",
+        "line_numbers: each line's number, right-aligned in a gutter as wide as the widest [" + row_text(f, 0, 30) + "]");
+  check(f.at(1, 0).style == th.style(ROLLTUI_ROLE_TEXT_MUTED), "…drawn in the line-number role");
+  check(f.at(3, 0).style != th.style(ROLLTUI_ROLE_INPUT_TEXT) && f.at(7, 0).style == th.style(ROLLTUI_ROLE_INPUT_TEXT),
+        "language c: the keyword is highlighted, the name after it is plain text");
+  check(cell_of(in.get(), 0).col == 3, "the caret's column counts the gutter");
+  rolltui_input_set_syntax(in.get(), nullptr);
+  rolltui_syntax_free(syn);
+}
+
 }  // namespace
 
 int main() {
@@ -1084,5 +1390,15 @@ int main() {
   test_undo_redo_and_history_never_touch_each_other();
   test_undo_group_closes_on_select_all_and_mouse();
   test_degenerate_sizes();
+  test_kill_and_yank();
+  test_transpose();
+  test_word_case();
+  test_overwrite();
+  test_secret();
+  test_submit_rules_and_modes();
+  test_history_by_prefix();
+  test_history_file();
+  test_word_wrap_and_wrapped_text();
+  test_line_numbers_and_highlighting();
   return testkit::report("rolltui_input_test");
 }

@@ -99,6 +99,27 @@
     "input.redo": [
       "ctrl+y"
     ],
+    "input.yank": [
+      "alt+y"
+    ],
+    "input.transpose_chars": [
+      "ctrl+t"
+    ],
+    "input.transpose_words": [
+      "alt+t"
+    ],
+    "input.upcase_word": [
+      "alt+u"
+    ],
+    "input.downcase_word": [
+      "alt+l"
+    ],
+    "input.capitalize_word": [
+      "alt+shift+c"
+    ],
+    "input.overwrite": [
+      "insert"
+    ],
     "transcript.page_up": [
       "pageup",
       "alt+pageup"

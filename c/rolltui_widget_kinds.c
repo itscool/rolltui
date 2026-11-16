@@ -5,6 +5,7 @@
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
 #include "rolltui/c/rolltui_widget_kinds.h"
+#include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_widget_picker.h"
 
@@ -793,6 +794,177 @@ static const RolltuiWidgetPlugin kRowsPlugin = {
     rows_ctx_destroy, rows_ctx_layout, rows_ctx_draw, rows_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */
 };
 
+
+/* ============================================================================================
+ * gauge:<source> — how far something has got, from a gauge the host binds.
+ * ============================================================================================ */
+
+typedef struct RolltuiGaugeCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  RolltuiGauge g;
+  RolltuiDrawScratch* draw;
+} RolltuiGaugeCtx;
+
+static int gauge_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiGaugeCtx* gc = (RolltuiGaugeCtx*)ctx;
+  if (rolltui_windows_has_gauge(gc->w, gc->source.p ? gc->source.p : "", gc->source.n)) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &gc->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+static void gauge_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
+static void gauge_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiGaugeCtx* gc = (RolltuiGaugeCtx*)ctx;
+  const RolltuiWidgetEnv* env = rolltui_windows_env(gc->w);
+  RolltuiRect r;
+  rolltui_str_clear(&gc->g.label);
+  gc->g.fraction = 0;
+  gc->g.failed = 0;
+  gc->g.since_ms = 0;
+  if (!rolltui_windows_call_gauge(gc->w, gc->source.p ? gc->source.p : "", gc->source.n, &gc->g)) return;
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  rolltui_gauge_draw_roles(f, gc->draw, r.x, r.y + (r.h - 1) / 2, r.w, &gc->g, rolltui_windows_styles(gc->w),
+                           rolltui_windows_builtin_roles(gc->w), env->ambiguous_wide);
+}
+static void gauge_ctx_destroy(void* ctx) {
+  RolltuiGaugeCtx* gc = (RolltuiGaugeCtx*)ctx;
+  rolltui_str_free(&gc->source);
+  rolltui_gauge_release(&gc->g);
+  rolltui_draw_scratch_free(gc->draw);
+  rolltui_mem_free(gc);
+}
+
+static const RolltuiWidgetPlugin kGaugePlugin = {
+    gauge_ctx_destroy, gauge_ctx_layout, gauge_ctx_draw, gauge_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */
+};
+
+/* ============================================================================================
+ * messages — what the app posted (`rolltui_windows_post`), newest at the bottom. One row tall, the newest while its toast would show.
+ * ============================================================================================ */
+
+typedef struct RolltuiMessagesCtx {
+  RolltuiScrollTextBase base;
+  RolltuiStr built;      /* one line per message: its glyph, a space, its text with newlines as spaces */
+  unsigned char* levels; /* per line of `built` */
+  size_t levels_cap;
+  size_t seen; /* how many messages `built` holds: a new one brings the view down to it */
+} RolltuiMessagesCtx;
+
+static void messages_ctx_build(RolltuiMessagesCtx* m) {
+  const RolltuiMessageLog* log = rolltui_windows_messages(m->base.w);
+  const size_t n = rolltui_message_log_count(log);
+  size_t i, k;
+  rolltui_str_clear(&m->built);
+  m->levels = (unsigned char*)rolltui_grow(m->levels, &m->levels_cap, n ? n : 1, 1);
+  for (i = 0; i < n; ++i) {
+    const RolltuiMessage* msg = rolltui_message_log_at(log, i);
+    size_t glen;
+    const char* g = rolltui_message_glyph(msg->level, &glen);
+    m->levels[i] = (unsigned char)msg->level;
+    if (i) rolltui_str_append(&m->built, "\n", 1);
+    rolltui_str_append(&m->built, g, glen);
+    rolltui_str_append(&m->built, " ", 1);
+    for (k = 0; k < msg->text.n; ++k) {
+      const char c = msg->text.p[k];
+      rolltui_str_append(&m->built, c == '\n' || c == '\r' ? " " : &msg->text.p[k], 1);
+    }
+  }
+}
+
+static void messages_paint(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* t, size_t n,
+                           int cells, size_t src, int first, RolltuiStyle plain, RolltuiStyleColorRaw ground, int aw) {
+  RolltuiMessagesCtx* m = (RolltuiMessagesCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(m->base.w);
+  size_t glen = 0;
+  if (first && src < rolltui_message_log_count(rolltui_windows_messages(m->base.w))) {
+    RolltuiStyle mark = styles[rolltui_message_role(&m->base.roles, m->levels[src])];
+    int used;
+    rolltui_message_glyph(m->levels[src], &glen);
+    if (glen > n) glen = n;
+    rolltui_style_on(&mark, ground);
+    used = rolltui_frame_put_text(f, draw, x, y, t, glen, mark, cells, aw, 0);
+    rolltui_frame_put_text(f, draw, x + used, y, t + glen, n - glen, plain, cells - used > 0 ? cells - used : 0, aw, 0);
+    return;
+  }
+  rolltui_frame_put_text(f, draw, x, y, t, n, plain, cells, aw, 0);
+}
+
+static void messages_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiMessagesCtx* m = (RolltuiMessagesCtx*)ctx;
+  const size_t n = rolltui_message_log_count(rolltui_windows_messages(m->base.w));
+  const int was_at_end = m->base.top >= m->base.total - (m->base.area.h > 0 ? m->base.area.h : 1);
+  messages_ctx_build(m);
+  scroll_text_base_layout(&m->base, rn, m->built.p ? m->built.p : "", m->built.n);
+  if (n != m->seen || was_at_end) { /* a new message, or a view already at the newest: the newest stays in view */
+    const int max_top = m->base.total - (m->base.area.h > 0 ? m->base.area.h : 1);
+    m->base.top = max_top > 0 ? max_top : 0;
+  }
+  m->seen = n;
+}
+
+static void messages_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiMessagesCtx* m = (RolltuiMessagesCtx*)ctx;
+  const RolltuiMessageLog* log = rolltui_windows_messages(m->base.w);
+  const RolltuiWidgetEnv* env = rolltui_windows_env(m->base.w);
+  const RolltuiStyle* styles = rolltui_windows_styles(m->base.w);
+  const size_t n = rolltui_message_log_count(log);
+  RolltuiRect r;
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  if (r.h == 1) { /* a status line's message: the newest, while its toast would show */
+    const RolltuiMessage* last = n ? rolltui_message_log_at(log, n - 1) : NULL;
+    if (last && env->now_ms < last->at_ms + rolltui_toast_ms(last->level)) {
+      RolltuiStyle plain = styles[m->base.roles.text];
+      plain.bg = scroll_text_ground(f, r.x, r.y);
+      messages_ctx_build(m);
+      {
+        const char* t = m->built.p ? m->built.p : "";
+        size_t start = m->built.n, len;
+        while (start > 0 && t[start - 1] != '\n') --start;
+        len = m->built.n - start;
+        messages_paint(m, f, m->base.draw, r.x, r.y, t + start, len, r.w, n - 1, 1, plain, plain.bg, env->ambiguous_wide);
+      }
+    }
+    return;
+  }
+  messages_ctx_layout(ctx, rn);
+  if (n == 0) { /* AN EMPTY HISTORY SAYS SO, centred, rather than a blank that reads as broken */
+    static const char kEmpty[] = "no messages yet";
+    RolltuiStyle muted = styles[m->base.roles.text_muted];
+    const int w = (int)sizeof kEmpty - 1;
+    muted.bg = scroll_text_ground(f, r.x, r.y + r.h / 2);
+    rolltui_frame_put_text(f, m->base.draw, r.x + (r.w > w ? (r.w - w) / 2 : 0), r.y + r.h / 2, kEmpty, sizeof kEmpty - 1, muted,
+                           r.w, env->ambiguous_wide, 0);
+    return;
+  }
+  m->base.total = scroll_text_base_draw_with(&m->base, rn, f, m->built.p ? m->built.p : "", m->built.n, messages_paint, m);
+}
+static int messages_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  return scroll_text_base_handle(&((RolltuiMessagesCtx*)ctx)->base, e);
+}
+static int messages_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  return scroll_text_base_scroll_extent(&((RolltuiMessagesCtx*)ctx)->base, axis, out);
+}
+static int messages_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  return scroll_text_base_scroll_to(&((RolltuiMessagesCtx*)ctx)->base, axis, first);
+}
+static void messages_ctx_destroy(void* ctx) {
+  RolltuiMessagesCtx* m = (RolltuiMessagesCtx*)ctx;
+  scroll_text_base_release(&m->base);
+  rolltui_str_free(&m->built);
+  rolltui_mem_free(m->levels);
+  rolltui_mem_free(m);
+}
+
+static const RolltuiWidgetPlugin kMessagesPlugin = {
+    messages_ctx_destroy, messages_ctx_layout, messages_ctx_draw, NULL, NULL, NULL, messages_ctx_handle,
+    messages_ctx_scroll_extent, messages_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */
+};
+
 /* ============================================================================================
  * the error panel — the window that could not be understood, never blank (Layout.hpp).
  * ============================================================================================ */
@@ -904,6 +1076,48 @@ static RolltuiWidget rows_widget_factory(void* c, RolltuiWindows* w, const char*
   rc->role_value = roles->value;
   out.vt = &kRowsPlugin;
   out.ctx = rc;
+  return out;
+}
+
+static RolltuiWidget gauge_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiGaugeCtx* gc;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  gc = (RolltuiGaugeCtx*)rolltui_mem_alloc(sizeof *gc);
+  memset(gc, 0, sizeof *gc);
+  gc->w = w;
+  rolltui_str_set(&gc->source, source, source_len);
+  gc->draw = rolltui_draw_scratch_new();
+  out.vt = &kGaugePlugin;
+  out.ctx = gc;
+  return out;
+}
+
+static RolltuiWidget messages_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  RolltuiMessagesCtx* m;
+  RolltuiWidget out;
+  (void)c;
+  (void)content;
+  (void)n;
+  m = (RolltuiMessagesCtx*)rolltui_mem_alloc(sizeof *m);
+  memset(m, 0, sizeof *m);
+  scroll_text_base_init(&m->base, w);
+  out.vt = &kMessagesPlugin;
+  out.ctx = m;
   return out;
 }
 
@@ -1186,6 +1400,8 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "theme", 5, theme_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "keys", 4, keys_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "filepicker", 10, picker_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "gauge", 5, gauge_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "messages", 8, messages_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
@@ -1212,6 +1428,12 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*input_selection=*/ROLLTUI_ROLE_SELECTION,
       /*input_placeholder=*/ROLLTUI_ROLE_INPUT_PLACEHOLDER,
       /*hover=*/ROLLTUI_ROLE_HOVER,
+      /*gauge=*/ROLLTUI_ROLE_ACCENT_2,
+      /*panel=*/ROLLTUI_ROLE_PANEL_BACKGROUND,
+      /*border=*/ROLLTUI_ROLE_BORDER,
+      /*info=*/ROLLTUI_ROLE_ACCENT_1,
+      /*ok=*/ROLLTUI_ROLE_ACCENT_2,
+      /*warning=*/ROLLTUI_ROLE_WARNING,
   };
   static const RolltuiMenuRoles kMenuRoles = {
       /*item=*/ROLLTUI_ROLE_MENU_ITEM,
@@ -1366,6 +1588,8 @@ static void input_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   iroles.text = ic->roles.input_text;
   iroles.selection = ic->roles.input_selection;
   iroles.placeholder = ic->roles.input_placeholder;
+  iroles.line_number = ic->roles.text_muted;
+  if (rolltui_input_options(ic->ed)->language.n) rolltui_input_set_syntax(ic->ed, rolltui_windows_syntax(ic->w));
   rolltui_input_layout(ic->ed, tr);
   rolltui_input_draw(ic->ed, f, ic->draw, styles, &iroles, rn->focused);
   note = input_ctx_note_info(ic);
@@ -1888,6 +2112,7 @@ static void menu_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   iroles.text = br->input_text;
   iroles.selection = br->input_selection;
   iroles.placeholder = br->input_placeholder;
+  iroles.line_number = br->text_muted;
   rolltui_menu_set_hover(mc->m, rn->hover, rn->hover_x, rn->hover_y);
   rolltui_menu_draw(mc->m, f, mc->draw, rolltui_windows_styles(mc->w), rolltui_windows_menu_roles(mc->w), &iroles,
                     rn->focused);
@@ -2252,6 +2477,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     iroles.text = br->input_text;
     iroles.selection = br->input_selection;
     iroles.placeholder = br->input_placeholder;
+    iroles.line_number = br->text_muted;
     rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
     rolltui_menu_draw(m, f, tc->draw, styles, rolltui_windows_menu_roles(tc->w), &iroles, rn->focused);
   }
@@ -2702,6 +2928,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
     iroles.text = br->input_text;
     iroles.selection = br->input_selection;
     iroles.placeholder = br->input_placeholder;
+    iroles.line_number = br->text_muted;
     rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
     rolltui_menu_draw(m, f, kc->draw, styles, rolltui_windows_menu_roles(kc->w), &iroles, rn->focused);
   }

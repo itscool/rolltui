@@ -11,7 +11,8 @@
 //   emoji-data.txt  (2025-07-25, 17:54:31 GMT)
 //   UnicodeData.txt  (40575 rows; the file names no version or date)
 //   DerivedNormalizationProps-17.0.0.txt  (2025-01-27, 18:09:14 GMT)
-// generator commit: 195d1b826197-dirty
+//   CaseFolding.txt  (2025-07-30, 23:54:36 GMT)
+// generator commit: bedad2a5397d-dirty
 //
 // Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui
 // Verify:      gen_unicode_tables rolltui/ucd --check rolltui
@@ -67,6 +68,15 @@ typedef struct RolltuiUnicodeComposition {
   RolltuiCodepoint second;
   RolltuiCodepoint composite;
 } RolltuiUnicodeComposition;
+
+/* A code point's simple case mappings and simple case folding; a field equal to `cp` has none. */
+typedef struct RolltuiUnicodeCase {
+  RolltuiCodepoint cp;
+  RolltuiCodepoint upper;
+  RolltuiCodepoint lower;
+  RolltuiCodepoint title;
+  RolltuiCodepoint fold;
+} RolltuiUnicodeCase;
 
 /* LineBreak */
 #define ROLLTUI_LINEBREAK_AI 0
@@ -230,6 +240,8 @@ extern const RolltuiUnicodeDecomposition rolltui_u_table_decomposition[2081];  /
 #define ROLLTUI_U_TABLE_DECOMPOSITION_COUNT 2081
 extern const RolltuiUnicodeComposition rolltui_u_table_composition[961];  /* sorted by first, then second */
 #define ROLLTUI_U_TABLE_COMPOSITION_COUNT 961
+extern const RolltuiUnicodeCase rolltui_u_table_case[2992];  /* sorted by cp */
+#define ROLLTUI_U_TABLE_CASE_COUNT 2992
 
 #ifdef __cplusplus
 }  /* extern "C" */

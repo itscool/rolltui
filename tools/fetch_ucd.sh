@@ -44,6 +44,7 @@ auxiliary/WordBreakTest.txt         1de23a75f37904abc7d206239ee8d34f8fdf0fb4ab32
 UnicodeData.txt                     2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c
 DerivedNormalizationProps.txt       71fd6a206a2c0cdd41feb6b7f656aa31091db45e9cedc926985d718397f9e488
 NormalizationTest.txt               5019ffd530751a741900c849c0e010332f142a3612234639bd200b82138a87db
+CaseFolding.txt                     ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183
 '
 
 refresh=0

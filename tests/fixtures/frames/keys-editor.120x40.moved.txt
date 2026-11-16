@@ -30,9 +30,9 @@
 │ Here is the function you asked for:                                 │ eof  Ctrl-D                                  ▸ │
 │                                                                     │ undo  Ctrl-Z                                 ▸ │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ redo  Ctrl-Y                                 ▸ │
-│ │ int add(int a, int b) {                                           │                                                │
-│ │   return a + b;                                                   │                                                │
-│ └───────────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │ yank  Alt-Y                                  ▸ │
+│ │   return a + b;                                                   │ transpose_chars  Ctrl-T                      ▸ │
+│ └───────────────────────────────────────────────────────────────────│ transpose_words  Alt-T                       ▼ │
 └─────────────────────────────────────────────────────────────────────│ preset: default (modified) · Enter on an actio │
 ┌─────────────────────────────────────────────────────────────────────│ bound Alt-D → word_left (was kill_word_forward │
 │ > type here                                                         │                                                │

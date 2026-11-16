@@ -71,7 +71,7 @@ void rolltui_context_set_builtin_roles(RolltuiContext* ctx, const RolltuiBuiltin
 void rolltui_context_set_scroll_text_actions(RolltuiContext* ctx, const RolltuiScrollTextActions* a);
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w);
 
-/* THE THIRTY ACTION NAMES the `input` kind's own keys use, carried the same way — BORROWED,
+/* THE ACTION NAMES the `input` kind's own keys use, carried the same way — BORROWED,
  * valid for the process (`rolltui::input_actions()`'s `constexpr` table today). It joins the
  * two above because the `input` FACTORY is this file's now: there is no caller left in the
  * middle to hand them down per construction. */

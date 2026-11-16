@@ -613,7 +613,7 @@ struct App {
   const RolltuiMenuRoles* editor_menu_roles() const { return rolltui_windows_menu_roles(windows); }
   RolltuiInputRoles editor_input_roles() const {
     const RolltuiBuiltinRoles* r = rolltui_windows_builtin_roles(windows);
-    return {r->input_text, r->input_selection, r->input_placeholder};
+    return {r->input_text, r->input_selection, r->input_placeholder, r->text_muted};
   }
   static RolltuiDrawScratch*& editor_draw_scratch_slot() {
     static RolltuiDrawScratch* s = nullptr;
@@ -1070,7 +1070,10 @@ struct App {
     const bool wrote = out && std::fwrite(text.data(), 1, text.size(), out) == text.size();
     if (out) std::fclose(out);
     if (wrote) note = RolltuiStr("wrote the ") + what + " to " + path;
-    else note = RolltuiStr("could not write ") + path;
+    else {
+      const RolltuiStr why = RolltuiStr("could not write ") + path;
+      rolltui_windows_post(windows, ROLLTUI_MESSAGE_ERROR, why.data(), why.size(), effect_ms);
+    }
     if (wrote) close_popup("save");
   }
 
@@ -1897,7 +1900,8 @@ struct App {
     take_picked_file();
     // Every frame, not just on open: the hint changes when an action lands, and the kind draws it.
     if (editor_open && editor_mode == EditorMode::Theme) push_theme_hint();
-    RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms};
+    // A FRAME DUMP IS ONE MOMENT: nothing the library moves by itself is caught halfway (`still`).
+    RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms, static_cast<unsigned char>(!persist)};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
@@ -2149,6 +2153,7 @@ struct App {
     // actually sees, and before the frame diff.
     RolltuiEffectReport rep{};
     effects_unknown_kinds.clear();
+    toast_wait = rolltui_windows_draw_toasts(windows, f, RolltuiRect{0, 0, w, h}, theme_styles, effect_ms);
     rolltui_effects_apply(ctx, f, effect_scratch, theme_styles, nullptr, effects_map, effect_ms, ambiguous ? 1 : 0, &rep,
         [](void* ctx, const char* kind, std::size_t len) { static_cast<App*>(ctx)->effects_unknown_kinds.add(StrView(kind, len)); },
         this);
@@ -2159,6 +2164,7 @@ struct App {
   bool handle(const RolltuiEvent& ev) {
     // App-level keys first; everything else is routed by the stack.
     sync_look();
+    if (rolltui_windows_toast_event(windows, &ev)) return true;  // a press on a toast dismisses it, and nothing under it
     if (ev.kind == ROLLTUI_EVENT_KEY) note.clear();  // a file dialog's last word lasts until the next key
     if (ev.kind == ROLLTUI_EVENT_KEY) {
       const RolltuiChord& k = ev.key;
@@ -2349,7 +2355,9 @@ struct App {
     rolltui_transcript_tick(transcript());
   }
   // The redraw interval this frame's motion asks for, or `idle_ms` when nothing moves.
+  int toast_wait = -1;  // when the toasts next change, from the last frame
   int poll_timeout_ms(const RolltuiFrame* f, int idle_ms) const {
+    if (toast_wait >= 0 && (idle_ms < 0 || toast_wait < idle_ms)) idle_ms = toast_wait;
     if (!f || rolltui_frame_mark_count(f) == 0 || !effects_map || rolltui_effect_map_empty(effects_map)) return idle_ms;
     const int tick = rolltui_effects_tick_ms(ctx, f, effects_map);
     if (tick <= 0) return idle_ms;

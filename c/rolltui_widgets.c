@@ -10,6 +10,7 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widget_input.h"
@@ -113,6 +114,12 @@ typedef struct RowsBinding {
   void* ctx;
   void (*free_ctx)(void*);
 } RowsBinding;
+
+typedef struct GaugeBinding {
+  RolltuiGaugeFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+} GaugeBinding;
 
 typedef struct SubmitBinding {
   RolltuiSubmitFn fn;
@@ -255,6 +262,8 @@ struct RolltuiWindows {
    * why the two maps are separate rather than one map with an ownership flag. */
   RolltuiMap owned_documents;
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
+  RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
+  RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
 
@@ -274,6 +283,9 @@ struct RolltuiWindows {
   void* highlight_ctx;
   void (*highlight_free_ctx)(void*);
   unsigned char highlight_on_block; /* the library's own languages stand on the block; a host's highlighter does not */
+  /* THE LIBRARY'S LANGUAGES, read once and shared: the default highlighter's, and what an input that names a `language` is
+   * highlighted by. Made on first use, so a screen that shows no code pays nothing for them. */
+  RolltuiSyntax* syntax;
 
   RolltuiMap inputs;      /* source -> RolltuiInput*, OWNED */
   RolltuiMap transcripts; /* source -> RolltuiTranscript*, OWNED */
@@ -284,17 +296,14 @@ struct RolltuiWindows {
  * `<config>/rolltui/syntax/`, the set the picker's preview uses. Parsed when the first code line is drawn, so a screen that
  * shows no code pays nothing for them. */
 typedef struct DefaultHighlight {
-  RolltuiSyntax* syn;
+  RolltuiWindows* w; /* BORROWED: whose languages it reads */
   RolltuiSyntaxMd* md;
 } DefaultHighlight;
 
 static void default_highlight(void* ctx, const char* lang, size_t lang_n, const RolltuiMdCodeLine* lines, size_t line_count,
                               size_t index, RolltuiMdSpanSink emit, void* sink) {
   DefaultHighlight* d = (DefaultHighlight*)ctx;
-  if (!d->md) {
-    d->syn = rolltui_syntax_new_standard(NULL);
-    d->md = rolltui_syntax_md_new(d->syn, rolltui_md_roles()->code_block);
-  }
+  if (!d->md) d->md = rolltui_syntax_md_new(rolltui_windows_syntax(d->w), rolltui_md_roles()->code_block);
   rolltui_syntax_md_highlight(d->md, lang, lang_n, lines, line_count, index, emit, sink);
 }
 
@@ -302,7 +311,6 @@ static void default_highlight_free(void* ctx) {
   DefaultHighlight* d = (DefaultHighlight*)ctx;
   if (!d) return;
   rolltui_syntax_md_free(d->md);
-  rolltui_syntax_free(d->syn);
   rolltui_mem_free(d);
 }
 
@@ -313,13 +321,21 @@ RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   w->highlight_fn = default_highlight;
   w->highlight_ctx = rolltui_mem_alloc(sizeof(DefaultHighlight));
   memset(w->highlight_ctx, 0, sizeof(DefaultHighlight));
+  ((DefaultHighlight*)w->highlight_ctx)->w = w;
   w->highlight_free_ctx = default_highlight_free;
   w->highlight_on_block = 1;
   /* The session's configuration, made on first use like every other subsystem it owns. A second
    * `RolltuiWindows` on the same context gets the SAME one, which is the point of the split:
    * two screens in one session are configured once, not twice. */
   w->cfg = rolltui_context_window_config(ctx);
+  rolltui_message_log_init(&w->messages);
   return w;
+}
+
+RolltuiSyntax* rolltui_windows_syntax(RolltuiWindows* w) {
+  if (!w) return NULL;
+  if (!w->syntax) w->syntax = rolltui_syntax_new_standard(NULL);
+  return w->syntax;
 }
 
 /* The session this was made for — what the built-in kinds resolve a content string against. */
@@ -349,6 +365,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
   free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
+  rolltui_syntax_free(w->syntax); /* after the highlighter that borrowed it */
   /* the host-binding surface: `documents` is BORROWS only, nothing to free per entry —
    * but `owned_documents` holds the samples those borrows may point INTO, so it is released
    * after it rather than before. */
@@ -365,6 +382,13 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->rows);
+  for (i = 0; i < rolltui_map_count(&w->gauges); ++i) {
+    GaugeBinding* b = (GaugeBinding*)rolltui_map_value_at(&w->gauges, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->gauges);
+  rolltui_message_log_release(&w->messages);
   for (i = 0; i < rolltui_map_count(&w->submits); ++i) {
     SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->submits, i);
     free_binding_ctx(b->ctx, b->free_ctx);
@@ -692,6 +716,62 @@ int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, R
   b->fn(b->ctx, out);
   return 1;
 }
+
+void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,
+                                void (*free_ctx)(void*)) {
+  GaugeBinding* b = (GaugeBinding*)rolltui_mem_alloc(sizeof *b);
+  GaugeBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  prev = (GaugeBinding*)rolltui_map_put(&w->gauges, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->gauges, name, len) != NULL;
+}
+
+int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out) {
+  GaugeBinding* b = (GaugeBinding*)rolltui_map_get(&w->gauges, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, out);
+  return 1;
+}
+
+/* ---- messages ------------------------------------------------------------------------------ */
+
+void rolltui_windows_post(RolltuiWindows* w, int level, const char* text, size_t len, unsigned long long now_ms) {
+  if (w) rolltui_message_log_post(&w->messages, level, text, len, now_ms);
+}
+size_t rolltui_windows_message_count(const RolltuiWindows* w) { return w ? rolltui_message_log_count(&w->messages) : 0; }
+const char* rolltui_windows_message_at(const RolltuiWindows* w, size_t i, size_t* len, int* level, unsigned long long* at_ms) {
+  const RolltuiMessage* m = w ? rolltui_message_log_at(&w->messages, i) : NULL;
+  if (!m) {
+    if (len) *len = 0;
+    return NULL;
+  }
+  if (len) *len = m->text.n;
+  if (level) *level = m->level;
+  if (at_ms) *at_ms = m->at_ms;
+  return m->text.p ? m->text.p : "";
+}
+int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
+                                unsigned long long now_ms) {
+  if (!w || !f || !styles) return -1;
+  return rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
+                                         w->cfg->env.still);
+}
+int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e) {
+  return w && e ? rolltui_message_log_toast_event(&w->messages, e) : 0;
+}
+void rolltui_windows_dismiss_toasts(RolltuiWindows* w) {
+  if (w) rolltui_message_log_dismiss(&w->messages);
+}
+const RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w) { return &w->messages; }
 
 void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len, RolltuiSubmitFn fn, void* ctx,
                                  void (*free_ctx)(void*), int on_submit) {
