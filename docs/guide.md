@@ -433,6 +433,39 @@ match at the start of a word, and a match early in the text, so candidates sorte
 likeliest first. `positions` receives each matched letter's byte offset in the text, for
 lighting what matched.
 
+## Charts and dashboards
+
+A `chart:<source>` window draws numbers the host binds with
+`rolltui_windows_bind_chart(windows, name, len, fill, ctx, free_ctx)`. Before each frame `fill` is
+handed the window's chart, cleared, and sets:
+
+- the kind, with `rolltui_chart_set_kind`: `ROLLTUI_CHART_LINE` (the default), `ROLLTUI_CHART_BARS`
+  or `ROLLTUI_CHART_SPARK`;
+- up to four series, with `rolltui_chart_set_series(chart, i, label, len, role, values, n)`: a name
+  (or none), a role (0 for the accents in order) and the values, copied;
+- the range, with `rolltui_chart_set_range(chart, lo, hi)`, when it is fixed (a percentage is 0 to
+  100 however high it has been). Otherwise it is the values' own, and bars and sparklines stand on
+  zero.
+
+A line is drawn in braille, two dots across and four down a cell, each point joined to the next so
+a steep change is a line. Bars are a group a value, a bar a series in it, in eighth blocks. A
+sparkline is one row a series, a block a value. More values than fit shows the newest, and a NaN
+value is a gap. The range's labels are on the left, the most at the top; the series' names, each
+in its colour and bold, are on the top row. Braille is narrow in every terminal; where ambiguous
+glyphs are two cells wide, the blocks are ASCII.
+
+`rolltui_chart_new`, the same setters and `rolltui_chart_draw(chart, frame, scratch, area, styles,
+ambiguous_wide)` draw a chart inside a host's own widget.
+
+A dashboard is a `"grid"` in the layout file: rows of cells, each cell a node.
+
+```json
+{ "grid": [ [ { "content": "chart:cpu" }, { "content": "chart:mem" } ],
+            [ { "content": "list:procs" }, { "content": "output:log" } ] ] }
+```
+
+A grid is a column whose children are rows; it is written back as that column of rows.
+
 ## Progress
 
 A `gauge:<source>` window shows how far something has got, on one row: the label, a bar of

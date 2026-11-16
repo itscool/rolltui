@@ -137,7 +137,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 46; /* +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 47; /* +rolltui_chart.h; +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -512,8 +512,9 @@ int main() {
     // resized, a window maximised, a tab shown and read) and INTERNAL 872 (a tabbed window's tabs). Then the terminal's events:
     // PUBLIC 517 (the job stopped as Ctrl-Z stops it) and INTERNAL 874 (the stop, and continuing from one sent from outside).
     // Then key sequences: PUBLIC 518 (the keys on the way) and INTERNAL 881 (a table's sequences, what they make and what can
-    // follow, a pressed key's bound form, and the list saying a digit is its filter's).
-    check(totals["PUBLIC"] == 518 && totals["INTERNAL"] == 881 && totals.size() == 2,
+    // follow, a pressed key's bound form, and the list saying a digit is its filter's). Then charts: PUBLIC 526 (a chart made,
+    // filled, drawn and bound to a window) and INTERNAL 884 (its draw in roles, and the table's charts by name).
+    check(totals["PUBLIC"] == 526 && totals["INTERNAL"] == 884 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -684,11 +685,12 @@ int main() {
     // timers and debounce; the tasks freed. Bind 113, run 178, release 16, widget 39: a list bound, shaped and refreshed, its
     // row filled; its filter, cursor, marks and events, and its actions by name; its event released; natural order and the fuzzy match.
     // Run 184: the layout at run time (shown, sized, maximised, a tab shown and read). 185: the job stopped. 186: the keys on the way.
+    // Bind 114, widget 46: a chart bound to a window, and a chart made, filled and drawn.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 91 &&
-              rt["HOST_BIND"] == 113 && rt["HOST_RUN"] == 186 && rt["HOST_RELEASE"] == 16 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 39,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 113 / run 186 / "
-          "release 16, tool interop 0, widget 39 (got " +
+              rt["HOST_BIND"] == 114 && rt["HOST_RUN"] == 186 && rt["HOST_RELEASE"] == 16 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 46,
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 91 / bind 114 / run 186 / "
+          "release 16, tool interop 0, widget 46 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

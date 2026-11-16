@@ -341,6 +341,7 @@ int main() {
         {"c/rolltui_mermaid.h", 1},       /* an opaque handle; the one stored pointer is a run's text, a BORROW into the handle's own pool, valid until the next render */
         {"c/rolltui_hints.h", 0},  /* likewise */
         {"c/rolltui_widget_list.h", 0}, /* an opaque handle; the roles it is drawn with are bytes */
+        {"c/rolltui_chart.h", 0},       /* likewise */
         {"c/rolltui_feedback.h", 4}, /* the message log's ring, and its three scratches: each OWNED, freed by
                                         `rolltui_message_log_release` */
         {"c/rolltui_str.h", 0},

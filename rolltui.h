@@ -3621,6 +3621,37 @@ int rolltui_fuzzy_match(const char* pattern, size_t pattern_len, const char* tex
                         size_t cap);
 
 /* ========================================================================================
+ * charts — numbers drawn: a line, bars, a sparkline
+ * ======================================================================================== */
+
+/* A CHART of up to four series. A LINE is drawn in braille dots, two across and four down a cell, its points joined; BARS stand on
+ * zero, a group a value and a bar a series in it; a SPARKLINE is one row a series, a block a value. More values than fit shows the
+ * newest. The range is the values' own (bars and sparklines from zero) unless set. A NaN value is a gap. The range's labels are on
+ * the left and the series' names, each in its colour and bold, on the top row. Braille is narrow in every terminal; where ambiguous
+ * glyphs are two cells wide the blocks are ASCII. */
+#define ROLLTUI_CHART_LINE 0
+#define ROLLTUI_CHART_BARS 1
+#define ROLLTUI_CHART_SPARK 2
+#define ROLLTUI_CHART_SERIES_MAX 4
+typedef struct RolltuiChart RolltuiChart;
+RolltuiChart* rolltui_chart_new(void);
+void rolltui_chart_free(RolltuiChart* c); /* a no-op on NULL */
+/* Back to a line with no series and its own range: what a fill function is handed. */
+void rolltui_chart_clear(RolltuiChart* c);
+void rolltui_chart_set_kind(RolltuiChart* c, unsigned char kind);
+/* Series `i` (0-3): its name (may be empty), its role (0: the accents in order) and its values, copied. 0 for an `i` past the last. */
+int rolltui_chart_set_series(RolltuiChart* c, size_t i, const char* label, size_t label_len, unsigned char role, const double* values,
+                             size_t n);
+/* The range the chart spans, fixed: a percentage is 0 to 100 however high it has been. Ignored unless `hi` > `lo`. */
+void rolltui_chart_set_range(RolltuiChart* c, double lo, double hi);
+/* Draws `c` into `area` in the table's roles (`styles` indexed by role): a host's own widget, a dashboard cell. */
+void rolltui_chart_draw(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect area, const RolltuiStyle* styles,
+                        int ambiguous_wide);
+/* A `chart:<name>` window's numbers: `fn` fills the chart it is handed (cleared first) before each frame. */
+typedef void (*RolltuiChartFn)(void* ctx, RolltuiChart* out);
+void rolltui_windows_bind_chart(RolltuiWindows* w, const char* name, size_t len, RolltuiChartFn fn, void* ctx, void (*free_ctx)(void*));
+
+/* ========================================================================================
  * images — pictures, fitted to a window and drawn the best way the terminal has
  * ======================================================================================== */
 
@@ -3681,6 +3712,8 @@ typedef struct RolltuiBuiltinRoles {
   unsigned char gauge, panel, border, info, ok, warning;
   /* a list's cursor, focused and not, the mark on a marked row, and the filter's prompt */
   unsigned char cursor, cursor_away, mark, prompt;
+  /* a chart's series, when one names no role of its own */
+  unsigned char series[ROLLTUI_CHART_SERIES_MAX];
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use: this file knows the rule and none of the words (the same trade

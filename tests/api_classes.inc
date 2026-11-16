@@ -878,6 +878,19 @@ ROLLTUI_API(rolltui_list_handle, INTERNAL)
 ROLLTUI_API(rolltui_list_scroll_extent, INTERNAL)
 ROLLTUI_API(rolltui_list_scroll_to, INTERNAL)
 
+/* ---- charts: numbers drawn --- */
+ROLLTUI_API(rolltui_chart_new, PUBLIC)  /* a host draws a chart in its own widget: a status line's sparkline, a dashboard cell */
+ROLLTUI_API(rolltui_chart_free, PUBLIC)  /* KEPT: the release half of a pair a consumer holds */
+ROLLTUI_API(rolltui_chart_clear, PUBLIC)  /* reused frame to frame */
+ROLLTUI_API(rolltui_chart_set_kind, PUBLIC)
+ROLLTUI_API(rolltui_chart_set_series, PUBLIC)
+ROLLTUI_API(rolltui_chart_set_range, PUBLIC)
+ROLLTUI_API(rolltui_chart_draw, PUBLIC)
+ROLLTUI_API(rolltui_windows_bind_chart, PUBLIC)  /* a host's numbers in a `chart:` window */
+ROLLTUI_API(rolltui_chart_draw_roles, INTERNAL)  /* the chart kind's body, in roles handed in */
+ROLLTUI_API(rolltui_windows_fill_chart, INTERNAL)  /* the kind asks the table for its chart, filled */
+ROLLTUI_API(rolltui_windows_has_chart, INTERNAL)
+
 /* ---- rolltui_feedback.h — a gauge, a spinner, the message log and its toasts --- */
 ROLLTUI_API(rolltui_gauge_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiGauge it owns and C has no destructor */
 ROLLTUI_API(rolltui_gauge_draw, PUBLIC)  /* KEPT: a host draws a gauge inside its own widget: a status line, a row of a list */

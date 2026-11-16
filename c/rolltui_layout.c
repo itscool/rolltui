@@ -646,6 +646,7 @@ static const KindRow kKinds[] = {
     {"output", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "another program's output the host binds"},
     {"image", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_TEXT, "a picture's path, or a picture the host binds"},
     {"list", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a list the host binds"},
+    {"chart", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "numbers the host binds"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
@@ -1438,7 +1439,7 @@ static void collect_ids(const RolltuiLayoutNode* n, SeenIds* seen, const char* w
  * silently leaked). Direct port of `node_from_json`. */
 static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t where_len,
                            const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report, RolltuiLayoutNode* n) {
-  int has_row, has_col, has_content, has_tabs, tab_given = 0, border_given = 0;
+  int has_row, has_col, has_content, has_tabs, has_grid, tab_given = 0, border_given = 0;
   size_t i, cnt;
 
   if (!rolltui_json_is_object(v)) {
@@ -1449,15 +1450,17 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
   has_col = rolltui_json_has(v, K("column"));
   has_content = rolltui_json_has(v, K("content"));
   has_tabs = rolltui_json_has(v, K("tabs"));
+  has_grid = rolltui_json_has(v, K("grid"));
   if (has_content && has_tabs) {
     bad_at(report, where, where_len, ": a window has \"content\" or \"tabs\", not both");
     return;
   }
-  if (has_row + has_col + (has_content || has_tabs) != 1) {
+  if (has_row + has_col + has_grid + (has_content || has_tabs) != 1) {
     bad_at(report, where, where_len, ": a node has exactly one of \"content\", \"row\", \"column\"");
     return;
   }
-  n->kind = (unsigned char)(has_row ? ROLLTUI_NODE_ROW : has_col ? ROLLTUI_NODE_COLUMN : ROLLTUI_NODE_WINDOW);
+  /* A GRID is rows of cells: a column whose children are rows, each cell a node */
+  n->kind = (unsigned char)(has_row ? ROLLTUI_NODE_ROW : (has_col || has_grid) ? ROLLTUI_NODE_COLUMN : ROLLTUI_NODE_WINDOW);
 
   cnt = rolltui_json_object_size(v);
   for (i = 0; i < cnt; ++i) {
@@ -1486,6 +1489,25 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
           app(&cat, "]");
           child = rolltui_node_list_add(&n->children); /* the C's emplace_back: fresh, already inited */
           node_from_json(rolltui_json_array_at(x, ai), cat.p, cat.n, hooks, report, child);
+          rolltui_str_free(&cat);
+        }
+      }
+    } else if (streq(k, klen, "grid")) {
+      size_t rn = rolltui_json_is_array(x) ? rolltui_json_array_size(x) : 0, ri;
+      if (!rolltui_json_is_array(x)) bad_at(report, at.p, at.n, ": expected rows, each an array of nodes");
+      for (ri = 0; ri < rn; ++ri) {
+        const RolltuiJsonValue* row = rolltui_json_array_at(x, ri);
+        RolltuiLayoutNode* rnode = rolltui_node_list_add(&n->children);
+        size_t cn = rolltui_json_is_array(row) ? rolltui_json_array_size(row) : 0, ci;
+        rnode->kind = ROLLTUI_NODE_ROW;
+        if (!rolltui_json_is_array(row)) bad_at(report, at.p, at.n, ": each row of a grid is an array of nodes");
+        for (ci = 0; ci < cn; ++ci) {
+          RolltuiStr cat = {0};
+          char buf[48];
+          const int bl = snprintf(buf, sizeof buf, "[%zu][%zu]", ri, ci);
+          appn(&cat, at.p, at.n);
+          appn(&cat, buf, (size_t)(bl > 0 ? bl : 0));
+          node_from_json(rolltui_json_array_at(row, ci), cat.p, cat.n, hooks, report, rolltui_node_list_add(&rnode->children));
           rolltui_str_free(&cat);
         }
       }

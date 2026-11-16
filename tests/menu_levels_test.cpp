@@ -39,7 +39,7 @@ int main() {
 
   // These hold NO menu: a text page, a file, help, a rows list, an error, the column browser (its levels are columns, which
   // Left steps through), a single-line input, the transcript, a gauge and the message history.
-  const std::set<std::string> flat = {"Text", "File", "Help", "Rows", "Error", "Picker", "Input", "Transcript", "Gauge", "Messages", "Output", "Image"};
+  const std::set<std::string> flat = {"Text", "File", "Help", "Rows", "Error", "Picker", "Input", "Transcript", "Gauge", "Messages", "Output", "Image", "Chart"};
   // These hold levels of their own, so each closes one before the popup closes: the three that hold a menu, and the list (its
   // filter, then its marks).
   const std::set<std::string> menus = {"Menu", "Theme", "Keys", "List"};

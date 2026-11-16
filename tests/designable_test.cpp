@@ -108,6 +108,7 @@ const Covered kLayout[] = {
     {"dismiss", "popup.find.dismiss", "per popup"},
     {"focus", "focus", "a choice over the focusable windows"},
     {"focusable", "focusable", ""},
+    {"grid", "", "STRUCTURE: rows of cells, written back as the column of rows it is"},
     {"h", "popup.find.h", "per popup"},
     {"id", "id", "renaming carries the selection and `focus` with it"},
     {"inline", "inline", "the screen's own: drawn below the prompt in the normal screen"},

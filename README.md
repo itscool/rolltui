@@ -32,7 +32,7 @@ A terminal UI library in C, with a C++ API on top.
 | Data table | ✓ | ✓ | ✓ | ✓ | ✗ | partial |
 | Tree | ✓ | ✓ | ✗ | ✓ | ✓ | partial |
 | Tabs | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ |
-| Charts | ✗ | ✓ | ✓ | ✗ | ✓ | ✓ |
+| Charts | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ |
 | Multi-line text editor | ✓ | ✓ | ratatui-textarea | ✓ | ✓ | partial |
 | Progress bar and spinner | ✓ | ✓ | gauge only | ✓ | bar only | ✓ |
 | Toast notifications | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |

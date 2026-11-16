@@ -121,6 +121,12 @@ typedef struct GaugeBinding {
   void* ctx;
   void (*free_ctx)(void*);
 } GaugeBinding;
+typedef struct ChartBinding {
+  RolltuiChartFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+  RolltuiChart* chart; /* OWNED: refilled before each frame */
+} ChartBinding;
 
 typedef struct OutputBinding {
   const RolltuiAnsiText* text; /* BORROWED: the host keeps it alive while it is bound */
@@ -269,6 +275,7 @@ struct RolltuiWindows {
   RolltuiMap owned_documents;
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
+  RolltuiMap charts;     /* name -> ChartBinding*, OWNED: the fill and the chart it fills */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
@@ -408,6 +415,13 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->gauges);
+  for (i = 0; i < rolltui_map_count(&w->charts); ++i) {
+    ChartBinding* b = (ChartBinding*)rolltui_map_value_at(&w->charts, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_chart_free(b->chart);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->charts);
   for (i = 0; i < rolltui_map_count(&w->outputs); ++i) rolltui_mem_free(rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
   rolltui_map_release(&w->images);
@@ -746,6 +760,34 @@ int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, R
   if (!b || !b->fn) return 0;
   b->fn(b->ctx, out);
   return 1;
+}
+
+void rolltui_windows_bind_chart(RolltuiWindows* w, const char* name, size_t len, RolltuiChartFn fn, void* ctx,
+                                void (*free_ctx)(void*)) {
+  ChartBinding* b = (ChartBinding*)rolltui_mem_alloc(sizeof *b);
+  ChartBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  b->chart = rolltui_chart_new();
+  prev = (ChartBinding*)rolltui_map_put(&w->charts, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_chart_free(prev->chart);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_chart(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->charts, name, len) != NULL;
+}
+
+RolltuiChart* rolltui_windows_fill_chart(RolltuiWindows* w, const char* name, size_t len) {
+  ChartBinding* b = (ChartBinding*)rolltui_map_get(&w->charts, name, len);
+  if (!b) return NULL;
+  rolltui_chart_clear(b->chart);
+  if (b->fn) b->fn(b->ctx, b->chart);
+  return b->chart;
 }
 
 void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,

@@ -7,6 +7,7 @@
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_widget_list.h"
+#include "rolltui/c/rolltui_chart.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_widget_picker.h"
 
@@ -1301,6 +1302,56 @@ static const RolltuiWidgetPlugin kListPlugin = {
 
 
 /* ============================================================================================
+ * chart:<source> — numbers the host binds, drawn.
+ * ============================================================================================ */
+
+typedef struct RolltuiChartCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  RolltuiDrawScratch* draw;
+} RolltuiChartCtx;
+
+static int chart_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiChartCtx* cc = (RolltuiChartCtx*)ctx;
+  if (rolltui_windows_has_chart(cc->w, cc->source.p ? cc->source.p : "", cc->source.n)) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &cc->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+static void chart_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  (void)ctx;
+  (void)rn;
+}
+static void chart_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiChartCtx* cc = (RolltuiChartCtx*)ctx;
+  RolltuiChart* c = rolltui_windows_fill_chart(cc->w, cc->source.p ? cc->source.p : "", cc->source.n);
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(cc->w);
+  RolltuiChartRoles roles;
+  RolltuiRect r;
+  size_t i;
+  if (!c) return;
+  roles.axis = br->text_muted;
+  for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) roles.series[i] = br->series[i];
+  rolltui_content_rect(rn, &r);
+  rolltui_chart_draw_roles(c, f, cc->draw, r, rolltui_windows_styles(cc->w), &roles, rolltui_windows_env(cc->w)->ambiguous_wide);
+}
+static void chart_ctx_destroy(void* ctx) {
+  RolltuiChartCtx* cc = (RolltuiChartCtx*)ctx;
+  rolltui_str_free(&cc->source);
+  rolltui_draw_scratch_free(cc->draw);
+  rolltui_mem_free(cc);
+}
+
+static const RolltuiWidgetPlugin kChartPlugin = {
+    chart_ctx_destroy, chart_ctx_layout, chart_ctx_draw, chart_ctx_problem, NULL, NULL, NULL,
+    NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
+    NULL,
+    NULL
+};
+
+/* ============================================================================================
  * the error panel — the window that could not be understood, never blank (Layout.hpp).
  * ============================================================================================ */
 
@@ -1526,6 +1577,34 @@ static RolltuiWidget list_widget_factory(void* c, RolltuiWindows* w, const char*
   rolltui_str_set(&lc->source, source, source_len);
   out.vt = &kListPlugin;
   out.ctx = lc;
+  return out;
+}
+
+static RolltuiWidget chart_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiChartCtx* cc;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  cc = (RolltuiChartCtx*)rolltui_mem_alloc(sizeof *cc);
+  memset(cc, 0, sizeof *cc);
+  cc->w = w;
+  rolltui_str_set(&cc->source, source, source_len);
+  cc->draw = rolltui_draw_scratch_new();
+  out.vt = &kChartPlugin;
+  out.ctx = cc;
   return out;
 }
 
@@ -1831,6 +1910,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "output", 6, output_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "image", 5, image_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "list", 4, list_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "chart", 5, chart_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
@@ -1867,6 +1947,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*cursor_away=*/ROLLTUI_ROLE_SELECTION,
       /*mark=*/ROLLTUI_ROLE_ACCENT_1,
       /*prompt=*/ROLLTUI_ROLE_PROMPT,
+      /*series=*/{ROLLTUI_ROLE_ACCENT_1, ROLLTUI_ROLE_ACCENT_2, ROLLTUI_ROLE_ACCENT_3, ROLLTUI_ROLE_ACCENT_4},
   };
   static const RolltuiMenuRoles kMenuRoles = {
       /*item=*/ROLLTUI_ROLE_MENU_ITEM,
