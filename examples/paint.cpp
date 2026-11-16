@@ -457,7 +457,7 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*desired_outer=*/nullptr,
     /*handle=*/canvas_handle,
     /*scroll_extent=*/nullptr,
-    /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One
@@ -725,7 +725,7 @@ struct App {
   }
 
   // WHAT THE PICKER HANDED BACK, taken once. The popup is opened by the library — any
-  // `app.<id>` naming a declared popup opens it, so `ctrl+e` needed no code here — and closing
+  // `app.<id>` naming a declared popup opens it, so its key needed no code here — and closing
   // the loop is the one thing a host must do: the picker knows a path was chosen, and only this
   // app knows that a path means a picture.
   // ---- the save dialog -------------------------------------------------------------------------

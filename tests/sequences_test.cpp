@@ -259,11 +259,52 @@ void test_app_scope() {
   check(s.cursor() == "#0", "…which finishes it");
 }
 
+// THE WINDOW WITH FOCUS FIRST. A program's own keys never take a key the focused window has for itself: being unable to use the
+// window in front of you is a hard break. The list here has Ctrl-P for the row above and Escape to go back from its filter; the
+// program has Ctrl-P for its palette and Escape to stop.
+void test_focus_first() {
+  std::string problems;
+  Screen s(load(R"({ "name": "t", "bindings": { "app.palette": ["ctrl+p"], "app.stop": ["escape"], "app.quit": ["ctrl+q"],
+                     "list.up": ["ctrl+p"], "list.back": ["escape"], "list.filter": ["/"] } })",
+                &problems));
+  RolltuiToolAction declared[3] = {{"app.palette", "Palette", nullptr}, {"app.stop", "Stop", nullptr}, {"app.quit", "Quit", nullptr}};
+  rolltui_bindings_declare(s.b, nullptr, 0, declared, 3);
+  s.paint();
+  auto app = [&](unsigned char key, char32_t ch, bool ctrl, std::string* action) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_KEY;
+    e.key.key = key;
+    e.key.ch = ch;
+    e.key.ctrl = ctrl ? 1 : 0;
+    const char* a = nullptr;
+    std::size_t n = 0;
+    const int r = rolltui_windows_app_key(s.w, &e, "app", 3, &a, &n);
+    if (action) *action = a ? std::string(a, n) : std::string();
+    return r;
+  };
+  std::string a;
+  RolltuiChord ctrl_p{};
+  ctrl_p.key = ROLLTUI_KEY_CHAR;
+  ctrl_p.ch = 'p';
+  ctrl_p.ctrl = 1;
+  check(rolltui_windows_focused_takes(s.w, &ctrl_p) == 1, "the focused list takes Ctrl-P: its scope binds it");
+  check(app(ROLLTUI_KEY_CHAR, 'p', true, &a) == ROLLTUI_SEQUENCE_NONE && a.empty(), "…so the program's palette does not get it");
+  check(app(ROLLTUI_KEY_CHAR, 'q', true, &a) == ROLLTUI_SEQUENCE_DONE && a == "app.quit",
+        "a key the list has nothing for is the program's (the control)");
+  check(app(ROLLTUI_KEY_ESCAPE, 0, false, &a) == ROLLTUI_SEQUENCE_DONE && a == "app.stop",
+        "Escape with nothing in the list to go back from is the program's");
+  s.key('/');
+  s.key('x');
+  check(app(ROLLTUI_KEY_ESCAPE, 0, false, &a) == ROLLTUI_SEQUENCE_NONE, "…and with a filter typed it is the list's, to clear the filter");
+  check(app(ROLLTUI_KEY_CHAR, 'q', false, &a) == ROLLTUI_SEQUENCE_NONE, "what is typed into the filter is the filter's");
+}
+
 }  // namespace
 
 int main() {
   test_bindings();
   test_table();
   test_app_scope();
+  test_focus_first();
   return testkit::report("sequences_test");
 }

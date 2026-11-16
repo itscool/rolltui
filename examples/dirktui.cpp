@@ -2165,21 +2165,15 @@ struct App {
       if (const char* a = rolltui_hint_bar_hit(hints, e.mouse.x, e.mouse.y, &n)) { run_action(StrView(a, n)); return; }
       if (!editing_path() && rolltui_window_stack_depth(stack) == 1 && press_on_crumbs(e.mouse.x, e.mouse.y)) return;
     }
-    // The app's OWN scope first, so a global chord works wherever the focus is — roll's rule —
-    // EXCEPT a bare printable key while a line is being typed into: that is the text's.
+    // The app's OWN scope, for a key the window with focus does not take itself (the library asks it first: what is typed into
+    // a line is the line's, and so are its own keys, Ctrl-Z its undo).
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t len = 0;
-      const bool typing = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt && focused_content().starts_with("input:");
       const char* a = nullptr;
       // The app's chords and SEQUENCES (`ctrl+x ctrl+s`): a key on the way to one is taken here.
-      const int got = typing ? ROLLTUI_SEQUENCE_NONE : rolltui_windows_app_key(windows, &e, "app", 3, &a, &len);
+      const int got = rolltui_windows_app_key(windows, &e, "app", 3, &a, &len);
       if (got == ROLLTUI_SEQUENCE_PREFIX) return;
-      if (got == ROLLTUI_SEQUENCE_DONE && a) {
-        /* STOPPING THE JOB is the shell's only where nothing is being typed: in a line, the same chord is that line's own (Ctrl-Z
-         * its undo), and the key goes on to it */
-        const bool in_line = StrView(a, len) == "app.suspend" && focused_content().starts_with("input:");
-        if (len != 0 && !in_line) { run_action(StrView(a, len)); return; }
-      }
+      if (got == ROLLTUI_SEQUENCE_DONE && a && len != 0) { run_action(StrView(a, len)); return; }
       // THE CLOSE KEY IN THE PATH LINE OR THE FIND FIELD hands the focus back to the columns —
       // the path put back as it was — the way it closes a popup: the same chord, read from the
       // stack's own table, so a rebinding moves both.

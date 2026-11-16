@@ -32,6 +32,7 @@
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme_editor.h"
+#include "rolltui/c/rolltui_theme_gen.h"
 #include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
 
@@ -55,6 +56,29 @@ static int keys_menu(void* ctx, const char** scope, size_t* len) {
   (void)ctx;
   *scope = "menu", *len = 4;
   return 0; /* a digit filters the level */
+}
+
+/* ---- WHAT A FOCUSED WIDGET TAKES before the program's own keys (`takes`) ---------------------------------------------------- */
+
+/* A character that is typed: no Ctrl or Alt with it. */
+static int takes_typed(const RolltuiChord* k) { return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt; }
+/* The action `k` is bound to in `scope` of the table the windows route with, or NULL. */
+static const char* takes_action(const RolltuiBindings* b, const RolltuiChord* k, const char* scope, size_t* n) {
+  *n = 0;
+  return b ? rolltui_bindings_action_for(b, k, scope, strlen(scope), n) : NULL;
+}
+static int takes_is(const char* a, size_t n, const char* want) { return a && n == strlen(want) && memcmp(a, want, n) == 0; }
+static int takes_bound(const RolltuiBindings* b, const RolltuiChord* k, const char* scope) {
+  size_t n = 0;
+  return takes_action(b, k, scope, &n) != NULL;
+}
+/* A list's own keys: its going back one level only while it has a filter or marks to go back from. */
+static int takes_list(const RolltuiBindings* b, RolltuiList* l, const RolltuiChord* k) {
+  size_t n = 0;
+  const char* a = takes_action(b, k, "list", &n);
+  if (!a || !l) return 0;
+  if (rolltui_list_typing(l) && (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE)) return 1;
+  return takes_is(a, n, "list.back") ? rolltui_list_has_back(l) : 1;
 }
 
 
@@ -325,7 +349,8 @@ static const RolltuiWidgetPlugin kTextPlugin = {
     text_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 /* ============================================================================================
@@ -444,7 +469,8 @@ static const RolltuiWidgetPlugin kFilePlugin = {
     file_ctx_scroll_extent, file_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 /* ============================================================================================
@@ -700,7 +726,8 @@ static const RolltuiWidgetPlugin kRowsPlugin = {
     rows_ctx_destroy, rows_ctx_layout, rows_ctx_draw, rows_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 
@@ -751,7 +778,8 @@ static const RolltuiWidgetPlugin kGaugePlugin = {
     gauge_ctx_destroy, gauge_ctx_layout, gauge_ctx_draw, gauge_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 /* ============================================================================================
@@ -877,7 +905,8 @@ static const RolltuiWidgetPlugin kMessagesPlugin = {
     messages_ctx_scroll_extent, messages_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 
@@ -997,7 +1026,8 @@ static const RolltuiWidgetPlugin kOutputPlugin = {
     output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 
@@ -1087,7 +1117,8 @@ static const RolltuiWidgetPlugin kImagePlugin = {
     image_ctx_destroy, image_ctx_layout, image_ctx_draw, image_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 
@@ -1169,6 +1200,13 @@ static int list_ctx_footer(void* ctx, RolltuiStr* out) {
   RolltuiList* l = list_of((RolltuiListCtx*)ctx);
   return l ? rolltui_list_footer(l, out) : 0;
 }
+/* A filter being typed takes what is typed; otherwise the keys its scope binds. */
+static int list_ctx_takes(void* ctx, const RolltuiChord* k) {
+  RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
+  RolltuiList* l = list_of(lc);
+  if (l && rolltui_list_typing(l) && (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE)) return 1;
+  return takes_list(rolltui_windows_bindings(lc->w), l, k);
+}
 static int list_ctx_perform(void* ctx, const char* action, size_t len) {
   RolltuiList* l = list_of((RolltuiListCtx*)ctx);
   return l ? rolltui_list_perform(l, rolltui_list_default_actions(), action, len) : 0;
@@ -1183,7 +1221,8 @@ static const RolltuiWidgetPlugin kListPlugin = {
     list_ctx_destroy, list_ctx_layout, list_ctx_draw, list_ctx_problem, NULL, NULL, list_ctx_handle,
     list_ctx_scroll_extent, list_ctx_scroll_to, NULL /* title: the layout's */, list_ctx_back /* the filter, then the marks */,
     list_ctx_keys, list_ctx_perform,
-    list_ctx_footer
+    list_ctx_footer,
+    list_ctx_takes
 };
 
 
@@ -1235,7 +1274,8 @@ static const RolltuiWidgetPlugin kChartPlugin = {
     NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 /* ============================================================================================
@@ -1296,7 +1336,8 @@ static const RolltuiWidgetPlugin kErrorPlugin = {
     error_ctx_destroy, error_ctx_layout, error_ctx_draw, error_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     NULL,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 static RolltuiWidget make_error_widget(RolltuiWindows* w, unsigned char role_error, const char* why, size_t len) {
@@ -1696,7 +1737,8 @@ static const RolltuiWidgetPlugin kPickerPlugin = {
     NULL,               picker_ctx_handle, picker_ctx_scroll_extent, picker_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_picker,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 static RolltuiWidget picker_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
@@ -2065,12 +2107,23 @@ static void input_ctx_destroy(void* ctx) {
   rolltui_mem_free(ic);
 }
 
+/* Typing is the input's, and so is every key its scope binds (Ctrl-E the end of the line, Ctrl-Z its undo). */
+static int input_ctx_takes(void* ctx, const RolltuiChord* k) {
+  RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
+  size_t n = 0, sl = 0;
+  const char* a = takes_action(rolltui_windows_bindings(ic->w), k, "input", &n);
+  if (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE || k->key == ROLLTUI_KEY_DELETE) return 1;
+  if (takes_is(a, n, "input.clear_selection")) return rolltui_input_selected_text(ic->ed, &sl) && sl != 0; /* nothing selected: not its */
+  return a != NULL;
+}
+
 static const RolltuiWidgetPlugin kInputPlugin = {
     input_ctx_destroy,  input_ctx_layout, input_ctx_draw, input_ctx_problem, NULL,
     input_ctx_desired_outer, input_ctx_handle, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_input,
     NULL,
-    NULL
+    NULL,
+    input_ctx_takes
 };
 
 const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlugin; }
@@ -2205,7 +2258,8 @@ static const RolltuiWidgetPlugin kTranscriptPlugin = {
     NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL
+    NULL,
+    NULL /* takes: the keys scope's */
 };
 
 static const RolltuiWidgetPlugin* transcript_widget_plugin(void) { return &kTranscriptPlugin; }
@@ -2560,12 +2614,19 @@ static void menu_ctx_destroy(void* ctx) {
   rolltui_mem_free(mc);
 }
 
+/* What is typed filters the menu, or goes into the field being edited; and the keys its scope binds. */
+static int menu_ctx_takes(void* ctx, const RolltuiChord* k) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  return takes_typed(k) || takes_bound(rolltui_windows_bindings(mc->w), k, "menu");
+}
+
 static const RolltuiWidgetPlugin kMenuPlugin = {
     menu_ctx_destroy, menu_ctx_layout, menu_ctx_draw, menu_ctx_problem, menu_ctx_note_at,
     NULL,             NULL,            menu_ctx_scroll_extent, menu_ctx_scroll_to, menu_ctx_title, menu_ctx_back,
     keys_menu,
     NULL,
-    NULL
+    NULL,
+    menu_ctx_takes
 };
 
 const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugin; }
@@ -2633,6 +2694,19 @@ typedef struct RolltuiThemeCtx {
   RolltuiStr line, hint;
   int hint_is_problem; /* a refusal is drawn in `error`; "saved preset 'x'" is not a refusal */
   int persist;
+  int show_presets;               /* the load and save keys are offered */
+  RolltuiList* list;              /* OWNED: the roles, under their headings */
+  RolltuiList* presets;           /* OWNED: the Load choice */
+  RolltuiInput* name;             /* OWNED: a name for Save as */
+  RolltuiStrListRaw preset_names; /* what the Load choice lists */
+  struct ThemeRow* rows;
+  size_t row_n, row_cap, row_init; /* rows filled, allocated, and ever zeroed */
+  int sheet_mode;                 /* THEME_SHEET, _EDITING, _CHOOSING or _NAMING */
+  unsigned char edit_role;        /* the role whose row is being edited */
+  int field;                      /* its field: fg, bg, then each attribute */
+  int typing;                     /* a colour is being typed into the field */
+  RolltuiStr typed, scratch;
+  unsigned long long seed;        /* the last seed a generated theme came from */
 } RolltuiThemeCtx;
 
 /* The store's working colours into the editor, and the store's preset names into the Load
@@ -2812,207 +2886,701 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
   }
 }
 
-static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
+/* ---- THE THEME SHEET ---------------------------------------------------------------------------
+ * Every role on one list, under the headings the roles fall into: what the role is for, drawn in the role itself, its fg and bg
+ * with a swatch of each, and its attributes. Enter edits the row where it is; the screen behind shows the edit as it is made. */
+
+#define THEME_SHEET 0
+#define THEME_EDITING 1
+#define THEME_CHOOSING 2
+#define THEME_NAMING 3
+
+/* the fields of a row being edited: fg, bg, then the attributes */
+#define THEME_FIELD_FG 0
+#define THEME_FIELD_BG 1
+#define THEME_FIELD_ATTR 2
+
+typedef struct ThemeRow {
+  unsigned char heading;
+  unsigned char role;
+  int fix; /* the fix proposed for the role, or -1 */
+  RolltuiStr key, words, fg, bg, attrs;
+} ThemeRow;
+
+static ThemeRow* theme_sheet_row(RolltuiThemeCtx* tc) {
+  ThemeRow* r;
+  tc->rows = (ThemeRow*)rolltui_grow(tc->rows, &tc->row_cap, tc->row_n + 1, sizeof *tc->rows);
+  if (tc->row_n == tc->row_init) memset(&tc->rows[tc->row_init++], 0, sizeof *tc->rows);
+  r = &tc->rows[tc->row_n++];
+  r->heading = 0;
+  r->role = 0;
+  r->fix = -1;
+  rolltui_str_clear(&r->key);
+  rolltui_str_clear(&r->words);
+  rolltui_str_clear(&r->fg);
+  rolltui_str_clear(&r->bg);
+  rolltui_str_clear(&r->attrs);
+  return r;
+}
+
+static void theme_colour_text(RolltuiStyleColorRaw c, RolltuiStr* out) {
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  rolltui_str_set(out, buf, rolltui_color_to_string(c, buf, sizeof buf));
+}
+
+static void theme_sheet_build(RolltuiThemeCtx* tc) {
+  const RolltuiStyle* st = rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0);
+  const size_t fixes = rolltui_theme_editor_fix_count(tc->ed);
+  size_t i, k;
+  tc->row_n = 0;
+  for (i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+    size_t sl = 0, wl = 0, rn = 0;
+    const char* sec = rolltui_theme_editor_section_at((unsigned char)i, &sl);
+    const char* words = rolltui_role_words((unsigned char)i, &wl);
+    const char* name = rolltui_role_name((unsigned char)i, &rn);
+    const unsigned char on[6] = {st[i].bold, st[i].italic, st[i].underline, st[i].dim, st[i].reverse, st[i].strike};
+    ThemeRow* r;
+    if (sec) {
+      ThemeRow* h = theme_sheet_row(tc);
+      h->heading = 1;
+      rolltui_str_set(&h->key, K("section:"));
+      rolltui_str_append(&h->key, sec, sl);
+      rolltui_str_set(&h->words, sec, sl);
+    }
+    r = theme_sheet_row(tc);
+    r->role = (unsigned char)i;
+    rolltui_str_set(&r->key, name, rn);
+    rolltui_str_set(&r->words, words, wl);
+    theme_colour_text(st[i].fg, &r->fg);
+    theme_colour_text(st[i].bg, &r->bg);
+    for (k = 0; k < 6; ++k)
+      if (on[k]) {
+        size_t al = 0;
+        const char* a = rolltui_theme_editor_attr_name(k, &al);
+        if (r->attrs.n) rolltui_str_append(&r->attrs, K(", "));
+        rolltui_str_append(&r->attrs, a, al);
+      }
+    for (k = 0; k < fixes; ++k)
+      if (rolltui_theme_editor_fix_at(tc->ed, k)->role == i) {
+        r->fix = (int)k;
+        break;
+      }
+  }
+  rolltui_list_refresh(tc->list);
+}
+
+static size_t theme_sheet_count(void* ctx) { return ((RolltuiThemeCtx*)ctx)->row_n; }
+static void theme_sheet_fill(void* ctx, size_t i, RolltuiListRow* out) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  const ThemeRow* r = &tc->rows[i];
+  rolltui_str_set(&out->key, r->key.p ? r->key.p : "", r->key.n);
+  rolltui_list_row_cell(out, r->words.p ? r->words.p : "", r->words.n);
+  out->depth = r->heading ? 0 : 1;
+  if (r->heading) return;
+  rolltui_list_row_cell(out, r->fg.p ? r->fg.p : "", r->fg.n);
+  rolltui_list_row_cell(out, r->bg.p ? r->bg.p : "", r->bg.n);
+  rolltui_list_row_cell(out, r->attrs.p ? r->attrs.p : "", r->attrs.n);
+  out->styled = 1;            /* what the role is for, drawn in the role */
+  out->cell_role[0] = r->role;
+  out->swatch = 2 | 4;        /* fg and bg, each after a swatch of itself */
+  if (r->fix >= 0) out->role = rolltui_windows_builtin_roles(tc->w)->warning;
+}
+
+/* The row under the cursor, or NULL on a heading. */
+static const ThemeRow* theme_sheet_cursor(RolltuiThemeCtx* tc) {
+  size_t i;
+  if (!rolltui_list_cursor(tc->list, &tc->scratch) || tc->scratch.n == 0) return NULL;
+  for (i = 0; i < tc->row_n; ++i)
+    if (!tc->rows[i].heading && rolltui_str_eq(&tc->rows[i].key, tc->scratch.p, tc->scratch.n)) return &tc->rows[i];
+  return NULL;
+}
+
+/* THE SCREEN SHOWS THE EDIT AS IT IS MADE: what is previewed goes to the store's working copy unpersisted, so the whole program is
+ * drawn in it, and a restart still comes back to what was kept. */
+static void theme_ctx_push(RolltuiThemeCtx* tc, int persist) {
+  size_t olen = 0;
+  const char* origin;
+  if (!tc->store) return;
+  origin = rolltui_preset_store_origin(tc->store, &olen);
+  rolltui_preset_store_edit(tc->store, theme_set_colours,
+                            rolltui_theme_editor_shown_json(tc->ed, origin ? origin : "", olen), persist);
+}
+
+static void theme_edit_begin(RolltuiThemeCtx* tc, const ThemeRow* r) {
+  tc->sheet_mode = THEME_EDITING;
+  tc->edit_role = r->role;
+  tc->field = THEME_FIELD_FG;
+  tc->typing = 0;
+  rolltui_str_clear(&tc->typed);
+  rolltui_str_clear(&tc->hint);
+}
+
+static void theme_edit_end(RolltuiThemeCtx* tc, int keep) {
   RolltuiThemeEditorOutcome o;
-  const unsigned char mode_before = rolltui_theme_editor_mode(tc->ed);
   memset(&o, 0, sizeof o);
-  rolltui_theme_editor_handle(tc->ed, e, rolltui_windows_bindings(tc->w), &o);
-  theme_ctx_apply(tc, &o);
-  if (rolltui_theme_editor_mode(tc->ed) != mode_before) theme_ctx_preview_mode(tc);
-  {
-    const int consumed = o.kind != ROLLTUI_THEME_EDIT_NONE;
+  tc->sheet_mode = THEME_SHEET;
+  tc->typing = 0;
+  if (keep) {
+    rolltui_theme_editor_commit(tc->ed, &o);
+    if (o.kind == ROLLTUI_THEME_EDIT_COMMITTED) {
+      theme_ctx_push(tc, tc->persist);
+      rolltui_str_set(&tc->hint, K("kept"));
+    }
     rolltui_theme_editor_outcome_release(&o);
-    return consumed;
+  } else if (rolltui_theme_editor_previewing(tc->ed)) {
+    rolltui_theme_editor_drop_preview(tc->ed);
+    theme_ctx_push(tc, 0);
+    rolltui_str_set(&tc->hint, K("dropped"));
   }
 }
 
-/* A CLOSE KEY GOES BACK ONE LEVEL, as a `menu` window's does, and only from the top of the editor's menu does it close the
- * popup (this returns 0, and the stack pops). The editor's menu is levels deep — "Roles › a role › fg › a colour" — and this
- * kind once said it had none, so Escape in the third of them closed everything and the next F4 came back to that level. */
-static int theme_ctx_back(void* ctx) {
-  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
-  RolltuiThemeEditorOutcome o;
-  int did;
-  memset(&o, 0, sizeof o);
-  did = rolltui_theme_editor_back(tc->ed, &o);
-  if (did) theme_ctx_apply(tc, &o);
-  rolltui_theme_editor_outcome_release(&o);
-  return did;
+/* The colour a field being edited shows: what is typed, else what the role has now. */
+static RolltuiStyleColorRaw theme_field_colour(RolltuiThemeCtx* tc) {
+  const RolltuiStyle* s = &rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0)[tc->edit_role];
+  return tc->field == THEME_FIELD_BG ? s->bg : s->fg;
 }
 
-/* The bottom six rows are the sample box and the two status lines, exactly as the menu's own
- * scrolling assumes: the menu is laid out into what is left. */
-#define ROLLTUI_THEME_BOX_ROWS 6
+static void theme_field_typed(RolltuiThemeCtx* tc) {
+  RolltuiStyleColorRaw c;
+  const int ok = rolltui_color_parse(tc->typed.p ? tc->typed.p : "", tc->typed.n, &c);
+  rolltui_theme_editor_preview_colour(tc->ed, tc->edit_role, tc->field == THEME_FIELD_BG, ok ? &c : NULL);
+  theme_ctx_push(tc, 0);
+}
 
-static void theme_ctx_menu_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
-  int box;
-  rolltui_content_rect(rn, out);
-  box = out->h < ROLLTUI_THEME_BOX_ROWS ? out->h : ROLLTUI_THEME_BOX_ROWS;
-  out->h -= box;
+/* Up and Down on a colour field: the theme's own colours, one step at a time. */
+static void theme_field_step(RolltuiThemeCtx* tc, int by) {
+  const size_t n = rolltui_theme_editor_palette_count(tc->ed);
+  const RolltuiStyleColorRaw now = theme_field_colour(tc);
+  size_t i, at = n;
+  RolltuiStyleColorRaw c;
+  if (n == 0) return;
+  for (i = 0; i < n; ++i)
+    if (rolltui_theme_editor_palette_color(tc->ed, i, &c) && c.kind == now.kind && c.index == now.index && c.r == now.r &&
+        c.g == now.g && c.b == now.b) {
+      at = i;
+      break;
+    }
+  at = at == n ? (by > 0 ? 0 : n - 1) : (at + n + (size_t)(by > 0 ? 1 : n - 1)) % n;
+  if (!rolltui_theme_editor_palette_color(tc->ed, at, &c)) return;
+  rolltui_theme_editor_preview_colour(tc->ed, tc->edit_role, tc->field == THEME_FIELD_BG, &c);
+  theme_colour_text(c, &tc->typed);
+  tc->typing = 0;
+  theme_ctx_push(tc, 0);
+}
+
+static int theme_attr_on(RolltuiThemeCtx* tc, size_t a) {
+  const RolltuiStyle* s = &rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0)[tc->edit_role];
+  const unsigned char on[6] = {s->bold, s->italic, s->underline, s->dim, s->reverse, s->strike};
+  return a < 6 && on[a];
+}
+
+static int theme_action(const RolltuiBindings* nav, const RolltuiChord* k, const char* scope, const char* want) {
+  size_t an = 0;
+  const char* a = rolltui_bindings_action_for(nav, k, scope, strlen(scope), &an);
+  return a && an == strlen(want) && memcmp(a, want, an) == 0;
+}
+
+static int theme_edit_handle(RolltuiThemeCtx* tc, const RolltuiEvent* e) {
+  const RolltuiBindings* nav = rolltui_windows_bindings(tc->w);
+  const size_t fields = THEME_FIELD_ATTR + rolltui_theme_editor_attr_count();
+  const RolltuiChord* k = &e->key;
+  if (e->kind != ROLLTUI_EVENT_KEY) return 1;
+  rolltui_str_clear(&tc->hint);
+  if (k->key == ROLLTUI_KEY_ENTER && !k->ctrl && !k->alt) {
+    theme_edit_end(tc, 1);
+    return 1;
+  }
+  if (k->key == ROLLTUI_KEY_LEFT || k->key == ROLLTUI_KEY_RIGHT || k->key == ROLLTUI_KEY_TAB) {
+    const int fwd = k->key == ROLLTUI_KEY_RIGHT || (k->key == ROLLTUI_KEY_TAB && !k->shift);
+    tc->field = (tc->field + (fwd ? 1 : (int)fields - 1)) % (int)fields;
+    tc->typing = 0;
+    rolltui_str_clear(&tc->typed);
+    return 1;
+  }
+  if (tc->field >= THEME_FIELD_ATTR) {
+    if (k->key == ROLLTUI_KEY_CHAR && k->ch == ' ' && !k->ctrl && !k->alt) {
+      const size_t a = (size_t)(tc->field - THEME_FIELD_ATTR);
+      rolltui_theme_editor_preview_attr(tc->ed, tc->edit_role, a, !theme_attr_on(tc, a));
+      theme_ctx_push(tc, 0);
+    }
+    return 1;
+  }
+  if (k->key == ROLLTUI_KEY_UP || k->key == ROLLTUI_KEY_DOWN) {
+    theme_field_step(tc, k->key == ROLLTUI_KEY_DOWN ? 1 : -1);
+    return 1;
+  }
+  if (k->key == ROLLTUI_KEY_BACKSPACE) {
+    if (!tc->typing) {
+      theme_colour_text(theme_field_colour(tc), &tc->typed);
+      tc->typing = 1;
+    }
+    if (tc->typed.n) --tc->typed.n;
+    theme_field_typed(tc);
+    return 1;
+  }
+  if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && k->ch > ' ' && k->ch < 0x7f) {
+    const char ch = (char)k->ch;
+    if (!tc->typing) { /* the first key typed replaces the colour, as in a spreadsheet's cell */
+      rolltui_str_clear(&tc->typed);
+      tc->typing = 1;
+    }
+    if (tc->typed.n < 32) rolltui_str_append(&tc->typed, &ch, 1);
+    theme_field_typed(tc);
+    return 1;
+  }
+  (void)nav;
+  return 1; /* every key is the row's while it is being edited */
+}
+
+static void theme_sheet_presets(RolltuiThemeCtx* tc) {
+  RolltuiPresetListRaw list;
+  size_t i;
+  memset(&list, 0, sizeof list);
+  rolltui_str_list_clear(&tc->preset_names);
+  if (tc->store) rolltui_preset_store_list(tc->store, &list);
+  for (i = 0; i < list.n; ++i) rolltui_str_list_add(&tc->preset_names, list.v[i].name.p, list.v[i].name.n);
+  rolltui_preset_list_release(&list);
+  rolltui_list_refresh(tc->presets);
+}
+static size_t theme_presets_count(void* ctx) { return ((RolltuiThemeCtx*)ctx)->preset_names.n; }
+static void theme_presets_fill(void* ctx, size_t i, RolltuiListRow* out) {
+  const RolltuiStr* s = &((RolltuiThemeCtx*)ctx)->preset_names.v[i];
+  rolltui_str_set(&out->key, s->p ? s->p : "", s->n);
+  rolltui_list_row_cell(out, s->p ? s->p : "", s->n);
+}
+
+static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  const RolltuiBindings* nav = rolltui_windows_bindings(tc->w);
+  RolltuiThemeEditorOutcome o;
+  RolltuiListEvent le;
+  int handled;
+  memset(&o, 0, sizeof o);
+  if (tc->sheet_mode == THEME_EDITING) return theme_edit_handle(tc, e);
+  if (tc->sheet_mode == THEME_NAMING) {
+    const unsigned char r = rolltui_input_handle(tc->name, e, nav, rolltui_input_default_actions(), rolltui_windows_env(tc->w)->now_ms);
+    if (r == ROLLTUI_INPUT_SUBMIT) {
+      size_t n = 0;
+      const char* t = rolltui_input_text(tc->name, &n);
+      tc->sheet_mode = THEME_SHEET;
+      if (n) {
+        o.kind = ROLLTUI_THEME_EDIT_SAVE_AS;
+        rolltui_str_set(&o.value, t, n);
+        theme_ctx_apply(tc, &o);
+      }
+    }
+    rolltui_theme_editor_outcome_release(&o);
+    return 1;
+  }
+  if (tc->sheet_mode == THEME_CHOOSING) {
+    handled = rolltui_list_handle(tc->presets, e, nav, rolltui_list_default_actions());
+    memset(&le, 0, sizeof le);
+    while (rolltui_list_event(tc->presets, &le))
+      if (le.kind == ROLLTUI_LIST_EVENT_ACTIVATE && le.key.n) {
+        o.kind = ROLLTUI_THEME_EDIT_LOAD_PRESET;
+        rolltui_str_set(&o.value, le.key.p, le.key.n);
+        tc->sheet_mode = THEME_SHEET;
+        theme_ctx_apply(tc, &o);
+        rolltui_theme_editor_outcome_release(&o);
+      }
+    rolltui_list_event_release(&le);
+    return handled || e->kind == ROLLTUI_EVENT_KEY;
+  }
+  if (e->kind == ROLLTUI_EVENT_KEY && !rolltui_list_typing(tc->list)) {
+    const RolltuiChord* k = &e->key;
+    rolltui_str_clear(&tc->hint);
+    tc->hint_is_problem = 0;
+    if (theme_action(nav, k, "sheet", "sheet.undo") || theme_action(nav, k, "sheet", "sheet.redo")) {
+      const int undo = theme_action(nav, k, "sheet", "sheet.undo");
+      if (undo ? rolltui_theme_editor_undo(tc->ed) : rolltui_theme_editor_redo(tc->ed)) {
+        theme_ctx_push(tc, tc->persist);
+        if (undo) rolltui_str_set(&tc->hint, K("undone"));
+        else rolltui_str_set(&tc->hint, K("redone"));
+      } else if (undo) {
+        rolltui_str_set(&tc->hint, K("nothing to undo"));
+      } else {
+        rolltui_str_set(&tc->hint, K("nothing to redo"));
+      }
+      return 1;
+    }
+    if (theme_action(nav, k, "sheet", "sheet.load") && tc->show_presets && tc->store) {
+      theme_sheet_presets(tc);
+      tc->sheet_mode = THEME_CHOOSING;
+      return 1;
+    }
+    if (theme_action(nav, k, "sheet", "sheet.save") && tc->show_presets && tc->store) {
+      rolltui_input_set_text(tc->name, "", 0);
+      tc->sheet_mode = THEME_NAMING;
+      return 1;
+    }
+    if (theme_action(nav, k, "sheet", "sheet.reset") && tc->store) {
+      o.kind = ROLLTUI_THEME_EDIT_RESET_LOADED;
+      theme_ctx_apply(tc, &o);
+      return 1;
+    }
+    if (theme_action(nav, k, "theme", "theme.variant")) {
+      rolltui_theme_editor_set_mode(tc->ed, rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT);
+      theme_ctx_preview_mode(tc);
+      if (rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT) rolltui_str_set(&tc->hint, K("editing the light variant"));
+      else rolltui_str_set(&tc->hint, K("editing the dark variant"));
+      return 1;
+    }
+    if (theme_action(nav, k, "theme", "theme.generate")) {
+      const uint64_t seed = ++tc->seed;
+      size_t nl = 0;
+      const char* nm;
+      char buf[160];
+      rolltui_theme_editor_generate(tc->ed, (unsigned char)(seed % ROLLTUI_RULESET_COUNT), seed, 0.0, &o);
+      if (o.kind == ROLLTUI_THEME_EDIT_COMMITTED) theme_ctx_push(tc, tc->persist);
+      nm = rolltui_theme_editor_variant_name(tc->ed, rolltui_theme_editor_mode(tc->ed), &nl);
+      snprintf(buf, sizeof buf, "made %.*s from seed %llu; Ctrl-Z goes back", (int)nl, nm ? nm : "", (unsigned long long)seed);
+      rolltui_str_set(&tc->hint, buf, strlen(buf));
+      rolltui_theme_editor_outcome_release(&o);
+      return 1;
+    }
+    if (theme_action(nav, k, "theme", "theme.fix")) {
+      const ThemeRow* r = theme_sheet_cursor(tc);
+      if (r && r->fix >= 0 && rolltui_theme_editor_apply_fix(tc->ed, (size_t)r->fix, &o)) {
+        if (o.kind == ROLLTUI_THEME_EDIT_COMMITTED) theme_ctx_push(tc, tc->persist);
+        rolltui_str_set(&tc->hint, K("fixed; Ctrl-Z puts it back"));
+      } else {
+        rolltui_str_set(&tc->hint, K("nothing to fix on this row"));
+      }
+      rolltui_theme_editor_outcome_release(&o);
+      return 1;
+    }
+  }
+  handled = rolltui_list_handle(tc->list, e, nav, rolltui_list_default_actions());
+  memset(&le, 0, sizeof le);
+  while (rolltui_list_event(tc->list, &le))
+    if (le.kind == ROLLTUI_LIST_EVENT_ACTIVATE) {
+      const ThemeRow* r = theme_sheet_cursor(tc);
+      if (r) theme_edit_begin(tc, r);
+      handled = 1;
+    }
+  rolltui_list_event_release(&le);
+  return handled;
+}
+
+/* ONE LEVEL BACK: a row being edited drops what it previewed, a load or a save is left, then the list's filter goes; only then is
+ * the popup the stack's to close. */
+static int theme_ctx_back(void* ctx) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  if (tc->sheet_mode == THEME_EDITING) {
+    theme_edit_end(tc, 0);
+    return 1;
+  }
+  if (tc->sheet_mode != THEME_SHEET) {
+    tc->sheet_mode = THEME_SHEET;
+    return 1;
+  }
+  rolltui_str_clear(&tc->hint);
+  return rolltui_list_back(tc->list);
+}
+
+static void theme_sheet_rects(const RolltuiResolvedNode* rn, RolltuiRect* list, int* detail_y, int* hint_y) {
+  RolltuiRect r;
+  int bottom;
+  rolltui_content_rect(rn, &r);
+  bottom = r.h >= 6 ? 2 : r.h >= 4 ? 1 : 0;
+  *list = r;
+  list->h = r.h - bottom;
+  *detail_y = bottom == 2 ? r.y + r.h - 2 : -1;
+  *hint_y = bottom >= 1 ? r.y + r.h - 1 : -1;
 }
 
 static void theme_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
   const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
-  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
-  RolltuiMenuOptions o = *rolltui_menu_options(m);
-  RolltuiRect r;
-  theme_ctx_menu_rect(rn, &r);
-  o.ambiguous_wide = env->ambiguous_wide;
-  o.inset = 0;
-  rolltui_menu_set_options_struct(m, &o);
-  rolltui_menu_layout(m, r);
+  RolltuiRect lr;
+  int dy, hy;
+  theme_sheet_build(tc);
+  theme_sheet_rects(rn, &lr, &dy, &hy);
+  rolltui_list_layout(tc->sheet_mode == THEME_CHOOSING ? tc->presets : tc->list, lr, env->ambiguous_wide);
+  if (tc->sheet_mode == THEME_NAMING && hy >= 0) {
+    RolltuiRect ir;
+    rolltui_content_rect(rn, &ir);
+    ir.y = hy, ir.h = 1;
+    ir.x += 9, ir.w -= 9; /* after "save as: " */
+    rolltui_input_layout(tc->name, ir);
+  }
 }
 
-static int theme_put(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, const char* text, size_t len,
-                     RolltuiStyle st, int max_cells) {
+static int theme_put(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, const char* text, size_t len, RolltuiStyle st,
+                     int max_cells) {
   const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
   if (max_cells <= 0) return 0;
-  return rolltui_frame_put_text(f, tc->draw, x, y, text, len, st, max_cells, env->ambiguous_wide, 0);
+  return rolltui_frame_put_text_cut(f, tc->draw, x, y, text, len, st, max_cells, ROLLTUI_CUT_END, env->ambiguous_wide, 0);
 }
 
-/* One colour swatch — the library's one, `rolltui_frame_put_swatch`, the same outlined square a menu row shows
- * beside a colour, so the two cannot come to disagree about what a colour looks like. */
-static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColorRaw c, RolltuiStyle frame,
-                        int max_cells) {
-  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
-  return rolltui_frame_put_swatch(f, tc->draw, x, y, c, frame, max_cells, env->ambiguous_wide);
+/* "Enter edit · Ctrl-F fix · …": the sheet's own keys as the table binds them now. */
+static void theme_sheet_hints(RolltuiThemeCtx* tc, RolltuiStr* out) {
+  const ThemeRow* r = theme_sheet_cursor(tc);
+  const char* other = rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? "dark" : "light";
+  const struct { const char* action; const char* say; int show; } hints[] = {
+      {"list.activate", "edit", 1},
+      {"theme.fix", "fix", r && r->fix >= 0},
+      {"sheet.undo", "undo", 1},
+      {"theme.variant", other, 1},
+      {"theme.generate", "generate", 1},
+      {"sheet.load", "load", tc->show_presets && tc->store != NULL},
+      {"sheet.save", "save as", tc->show_presets && tc->store != NULL},
+      {"sheet.reset", "reset", tc->store != NULL},
+      {"list.filter", "find", 1},
+  };
+  const RolltuiBindings* live = rolltui_windows_bindings(tc->w);
+  size_t i;
+  rolltui_str_clear(out);
+  for (i = 0; i < sizeof hints / sizeof hints[0]; ++i) {
+    RolltuiChord k;
+    char disp[ROLLTUI_CHORD_STRING_MAX];
+    if (!hints[i].show) continue;
+    memset(&k, 0, sizeof k);
+    if (!rolltui_bindings_chord_at(live, hints[i].action, strlen(hints[i].action), 0, &k)) continue;
+    if (out->n) rolltui_str_append(out, K("  "));
+    rolltui_str_append(out, disp, rolltui_chord_display(&k, disp, sizeof disp));
+    rolltui_str_append(out, K(" "));
+    rolltui_str_append(out, hints[i].say, strlen(hints[i].say));
+  }
+}
+
+/* THE ROW BEING EDITED, drawn over itself: what the role is for in the role, then fg and bg with their swatches, then the
+ * attributes, each its letter drawn as the attribute does. The field being edited is in the menu's cursor colours. */
+static void theme_edit_draw(RolltuiThemeCtx* tc, RolltuiFrame* f, const RolltuiRect* r, int y, const RolltuiStyle* styles,
+                            RolltuiStyle ground) {
+  static const char kLetters[6] = {'B', 'I', 'U', 'D', 'R', 'S'};
+  const RolltuiMenuRoles* mr = rolltui_windows_menu_roles(tc->w);
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(tc->w);
+  const RolltuiStyle* s = &rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0)[tc->edit_role];
+  RolltuiStyle plain = styles[br->text], cur = styles[mr->selected], muted = styles[br->text_muted], sample = *s;
+  const int tight = r->w < 60;          /* a narrow sheet packs the attribute letters together */
+  const int strip = tight ? 36 : 42;    /* "fg ▮▮ #rrggbb  bg ▮▮ #rrggbb  B I U D R S", each field 15 cells */
+  int x = r->x, wx, i;
+  size_t wl = 0;
+  const char* words = rolltui_role_words(tc->edit_role, &wl);
+  const RolltuiRect band = {r->x, y, r->w, 1};
+  plain.bg = ground.bg;
+  muted.bg = ground.bg;
+  if (sample.bg.kind == 0) sample.bg = ground.bg;
+  rolltui_frame_fill(f, tc->draw, band, plain, NULL, 0);
+  wx = r->w - strip > 8 ? r->w - strip : 8;
+  x += theme_put(tc, f, x, y, words, wl, sample, wx - 1);
+  x = r->x + wx;
+  for (i = 0; i < 2; ++i) {
+    const int focused = tc->field == i;
+    const RolltuiStyleColorRaw c = i ? s->bg : s->fg;
+    RolltuiStyle sw = plain;
+    RolltuiStr* text = &tc->line;
+    if (focused && (tc->typing || tc->typed.n)) text = &tc->typed;
+    else theme_colour_text(c, &tc->line);
+    x += theme_put(tc, f, x, y, i ? "bg " : "fg ", 3, focused ? cur : muted, r->x + r->w - x);
+    sw.bg = c;
+    if (c.kind != 0) x += theme_put(tc, f, x, y, "  ", 2, sw, r->x + r->w - x);
+    x += theme_put(tc, f, x, y, " ", 1, plain, r->x + r->w - x);
+    {
+      const int tx = x;
+      x += theme_put(tc, f, x, y, text->p ? text->p : "", text->n, focused ? cur : plain, r->x + r->w - x);
+      if (focused && tc->typing) rolltui_frame_set_cursor(f, tx + (x - tx), y, 1);
+    }
+    x += theme_put(tc, f, x, y, "  ", 2, plain, r->x + r->w - x);
+  }
+  for (i = 0; i < 6; ++i) {
+    RolltuiStyle a = theme_attr_on(tc, (size_t)i) ? plain : muted;
+    if (tc->field == THEME_FIELD_ATTR + i) a = cur;
+    a.bold = i == 0, a.italic = i == 1, a.underline = i == 2, a.dim = i == 3, a.reverse = i == 4, a.strike = i == 5;
+    x += theme_put(tc, f, x, y, &kLetters[i], 1, a, r->x + r->w - x);
+    if (!tight) x += theme_put(tc, f, x, y, " ", 1, plain, r->x + r->w - x);
+  }
 }
 
 static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
   const RolltuiStyle* styles = rolltui_windows_styles(tc->w);
   const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(tc->w);
-  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
-  RolltuiRect r, mr;
-  RolltuiStyle label, value;
-  unsigned char role = 0;
-  int y;
-
+  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
+  RolltuiStyle ground;
+  RolltuiListRoles roles;
+  RolltuiStyle muted, value;
+  RolltuiRect r, lr;
+  int dy, hy;
   rolltui_content_rect(rn, &r);
   if (r.w <= 0 || r.h <= 0) return;
   theme_ctx_layout(ctx, rn);
-  theme_ctx_menu_rect(rn, &mr);
-  if (mr.h > 0) {
-    RolltuiInputRoles iroles;
-    iroles.text = br->input_text;
-    iroles.selection = br->input_selection;
-    iroles.placeholder = br->input_placeholder;
-    iroles.line_number = br->text_muted;
-    rolltui_menu_set_hover(m, rn->hover, rn->hover_x, rn->hover_y);
-    rolltui_menu_draw(m, f, tc->draw, styles, rolltui_windows_menu_roles(tc->w), &iroles, rn->focused);
+  theme_sheet_rects(rn, &lr, &dy, &hy);
+  memset(&roles, 0, sizeof roles);
+  roles.text = br->text;
+  roles.text_muted = br->text_muted;
+  roles.header = br->label;
+  roles.cursor = br->cursor;
+  roles.cursor_away = br->cursor_away;
+  roles.mark = br->mark;
+  roles.hover = br->hover;
+  roles.prompt = br->prompt;
+  roles.heading = rolltui_windows_menu_roles(tc->w)->breadcrumb;
+  rolltui_list_draw(tc->sheet_mode == THEME_CHOOSING ? tc->presets : tc->list, f, styles, &roles, rn->focused,
+                    rn->hover && tc->sheet_mode != THEME_EDITING ? rn->hover_y : -1, env->ambiguous_wide);
+  rolltui_frame_ground(f, &ground);
+  if (tc->sheet_mode == THEME_EDITING) {
+    const int y = rolltui_list_cursor_y(tc->list);
+    if (y >= 0) theme_edit_draw(tc, f, &lr, y, styles, ground);
   }
-  label = styles[br->label];
-  value = styles[br->value];
-  y = r.y + mr.h;
-
-  if (rolltui_theme_editor_focused_role(tc->ed, &role)) {
-    const RolltuiStyle s = rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0)[role];
-    size_t rn_len = 0, a;
-    const char* rn_p = rolltui_role_name(role, &rn_len);
-    char buf[ROLLTUI_COLOR_STRING_MAX];
-    size_t clen = 0;
-    RolltuiStyleColorRaw highlighted;
+  muted = styles[br->text_muted];
+  value = styles[br->text];
+  muted.bg = ground.bg;
+  value.bg = ground.bg;
+  if (dy >= 0) { /* THE DETAIL LINE: the role as a theme file names it, and what is wrong with it */
+    const ThemeRow* cr = theme_sheet_cursor(tc);
     rolltui_str_clear(&tc->line);
-    rolltui_str_append(&tc->line, rn_p ? rn_p : "", rn_len);
-    rolltui_str_append(&tc->line, K("  fg "));
-    clen = rolltui_color_to_string(s.fg, buf, sizeof buf);
-    rolltui_str_append(&tc->line, buf, clen);
-    rolltui_str_append(&tc->line, K("  bg "));
-    clen = rolltui_color_to_string(s.bg, buf, sizeof buf);
-    rolltui_str_append(&tc->line, buf, clen);
-    {
-      /* The six attributes, in the order the editor's menu lists them. */
-      const char* const attrs[6] = {"bold", "italic", "underline", "dim", "reverse", "strikethrough"};
-      const unsigned char on[6] = {s.bold, s.italic, s.underline, s.dim, s.reverse, s.strike};
-      for (a = 0; a < 6; ++a)
-        if (on[a]) {
-          rolltui_str_append(&tc->line, K("  "));
-          rolltui_str_append(&tc->line, attrs[a], strlen(attrs[a]));
-        }
-    }
-    if (y < r.y + r.h) theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
-    if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_SAMPLE), s, r.w);
-    if (y < r.y + r.h) {
-      int x = r.x;
-      x += theme_put(tc, f, x, y, K("fg "), label, r.w - (x - r.x));
-      x += theme_swatch(tc, f, x, y, s.fg, label, r.w - (x - r.x));
-      x += theme_put(tc, f, x, y, K("  bg "), label, r.w - (x - r.x));
-      x += theme_swatch(tc, f, x, y, s.bg, label, r.w - (x - r.x));
-      if (rolltui_theme_editor_highlighted_color(tc->ed, &highlighted)) {
-        x += theme_put(tc, f, x, y, K(ROLLTUI_THEME_EDITOR_SWATCH_MARK), label, r.w - (x - r.x));
-        theme_swatch(tc, f, x, y, highlighted, label, r.w - (x - r.x));
+    if (tc->sheet_mode == THEME_CHOOSING) {
+      rolltui_str_append(&tc->line, K("load a theme: Enter loads, Esc goes back"));
+    } else if (tc->sheet_mode == THEME_EDITING) {
+      if (tc->field < THEME_FIELD_ATTR) {
+        rolltui_str_append(&tc->line, tc->field == THEME_FIELD_FG ? "the text colour" : "the ground colour",
+                           tc->field == THEME_FIELD_FG ? 15 : 17);
+        rolltui_str_append(&tc->line, K(": type #rrggbb, 0-255 or none"));
+      } else {
+        size_t al = 0;
+        const int on = theme_attr_on(tc, (size_t)(tc->field - THEME_FIELD_ATTR));
+        const char* a = rolltui_theme_editor_attr_name((size_t)(tc->field - THEME_FIELD_ATTR), &al);
+        rolltui_str_append(&tc->line, a, al);
+        if (on) rolltui_str_append(&tc->line, K(": on, Space turns it off"));
+        else rolltui_str_append(&tc->line, K(": off, Space turns it on"));
       }
-      ++y;
+    } else if (cr) {
+      rolltui_str_append_str(&tc->line, &cr->key);
+      if (cr->attrs.n && rolltui_list_column_width(tc->list, 3) == 0) { /* the attributes column did not fit */
+        rolltui_str_append(&tc->line, K("  \xC2\xB7  "));
+        rolltui_str_append_str(&tc->line, &cr->attrs);
+      }
+      if (cr->fix >= 0) {
+        const RolltuiFix* fx = rolltui_theme_editor_fix_at(tc->ed, (size_t)cr->fix);
+        const char* w = fx && fx->what.p ? fx->what.p : "";
+        const char* colon = memchr(w, ':', fx ? fx->what.n : 0);
+        RolltuiChord fk;
+        char disp[ROLLTUI_CHORD_STRING_MAX];
+        rolltui_str_append(&tc->line, K("  \xC2\xB7  "));
+        if (colon) rolltui_str_append(&tc->line, colon + 2, (size_t)(w + fx->what.n - colon - 2));
+        else if (fx) rolltui_str_append_str(&tc->line, &fx->what);
+        memset(&fk, 0, sizeof fk);
+        if (rolltui_bindings_chord_at(rolltui_windows_bindings(tc->w), K("theme.fix"), 0, &fk)) {
+          rolltui_str_append(&tc->line, K("  \xC2\xB7  "));
+          rolltui_str_append(&tc->line, disp, rolltui_chord_display(&fk, disp, sizeof disp));
+          rolltui_str_append(&tc->line, K(" fixes it"));
+        }
+      }
     }
-  } else {
-    if (y < r.y + r.h) {
-      rolltui_str_clear(&tc->line);
-      rolltui_str_append(&tc->line, K("preset: "));
-      if (tc->store) rolltui_preset_store_label(tc->store, &tc->line);
-      else rolltui_str_append(&tc->line, K("(this app keeps no theme presets)"));
-      theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
-    }
-    if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_BREADCRUMB), value, r.w);
-    if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_KEYS_HINT), value, r.w);
+    theme_put(tc, f, r.x, dy, tc->line.p, tc->line.n, muted, r.w);
   }
-  if (y < r.y + r.h) {
-    rolltui_str_clear(&tc->line);
-    rolltui_theme_editor_status_line(tc->ed, &tc->line);
-    theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, value, r.w);
-  }
-  if (y < r.y + r.h) {
-    if (tc->hint.n != 0) {
-      theme_put(tc, f, r.x, y++, tc->hint.p, tc->hint.n, styles[tc->hint_is_problem ? br->error : br->value], r.w);
+  if (hy >= 0) { /* THE BOTTOM LINE: what just happened, else the sheet's own keys */
+    if (tc->sheet_mode == THEME_NAMING) {
+      RolltuiInputRoles iroles;
+      theme_put(tc, f, r.x, hy, K("save as: "), styles[br->label], 9);
+      iroles.text = br->input_text;
+      iroles.selection = br->input_selection;
+      iroles.placeholder = br->input_placeholder;
+      iroles.line_number = br->text_muted;
+      rolltui_input_draw(tc->name, f, tc->draw, styles, &iroles, rn->focused);
     } else {
       rolltui_str_clear(&tc->line);
-      rolltui_theme_editor_badges_line(tc->ed, &tc->line);
-      theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
+      if (tc->hint.n) rolltui_str_append_str(&tc->line, &tc->hint);
+      else if (tc->sheet_mode == THEME_EDITING && tc->field < THEME_FIELD_ATTR)
+        rolltui_str_append(&tc->line, K("Enter keeps  Esc drops  Left Right fields  Up Down the theme's colours"));
+      else if (tc->sheet_mode == THEME_EDITING) rolltui_str_append(&tc->line, K("Enter keeps  Esc drops  Left Right fields  Space on, off"));
+      else theme_sheet_hints(tc, &tc->line);
+      theme_put(tc, f, r.x, hy, tc->line.p, tc->line.n, tc->hint_is_problem ? styles[br->error] : value, r.w);
     }
   }
 }
 
 static int theme_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
-  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
-  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
-  out->first = (size_t)rolltui_menu_scroll_first(m);
-  out->visible = (size_t)rolltui_menu_scroll_visible(m);
-  out->total = rolltui_menu_visible(m, NULL);
+  return axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_extent(tc->sheet_mode == THEME_CHOOSING ? tc->presets : tc->list, out);
+}
+static int theme_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  return axis == ROLLTUI_AXIS_VERTICAL && rolltui_list_scroll_to(tc->sheet_mode == THEME_CHOOSING ? tc->presets : tc->list, first);
+}
+
+/* THE TITLE: the layout's, else "theme", what the sheet is. */
+static int theme_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+  (void)ctx;
+  (void)given;
+  if (given_len) return 0;
+  rolltui_str_set(out, K("theme"));
   return 1;
 }
 
-/* The editor's menu names the window, as a `menu` window's does: "theme editor › Roles". */
-static int theme_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+/* THE FOOTER: which theme, which variant, whether it is changed, and how many problems it has. */
+static int theme_ctx_footer(void* ctx, RolltuiStr* out) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
-  rolltui_menu_title(rolltui_theme_editor_menu(tc->ed), given, given_len, out);
-  return out->n != 0;
+  const size_t problems = rolltui_theme_editor_fix_count(tc->ed);
+  char buf[48];
+  rolltui_str_clear(out);
+  if (tc->store) rolltui_preset_store_label(tc->store, out);
+  if (out->n) rolltui_str_append(out, K(" \xC2\xB7 "));
+  rolltui_str_append(out, rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? "light" : "dark",
+                     rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? 5 : 4);
+  if (problems) {
+    snprintf(buf, sizeof buf, " \xC2\xB7 %zu problem%s", problems, problems == 1 ? "" : "s");
+    rolltui_str_append(out, buf, strlen(buf));
+  }
+  return 1;
+}
+
+/* The sheet's own scope: no counts, since a digit is a colour being typed. */
+static int theme_sheet_keys(void* ctx, const char** scope, size_t* len) {
+  (void)ctx;
+  *scope = "theme", *len = 5;
+  return 0;
 }
 
 static void theme_ctx_destroy(void* ctx) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  size_t i;
   rolltui_theme_editor_free(tc->ed);
   rolltui_draw_scratch_free(tc->draw);
+  rolltui_list_free(tc->list);
+  rolltui_list_free(tc->presets);
+  rolltui_input_free(tc->name);
+  for (i = 0; i < tc->row_init; ++i) {
+    rolltui_str_free(&tc->rows[i].key);
+    rolltui_str_free(&tc->rows[i].words);
+    rolltui_str_free(&tc->rows[i].fg);
+    rolltui_str_free(&tc->rows[i].bg);
+    rolltui_str_free(&tc->rows[i].attrs);
+  }
+  rolltui_mem_free(tc->rows);
+  rolltui_str_list_release(&tc->preset_names);
+  rolltui_str_free(&tc->typed);
+  rolltui_str_free(&tc->scratch);
   rolltui_str_free(&tc->line);
   rolltui_str_free(&tc->hint);
   rolltui_mem_free(tc);
 }
 
+/* A row being edited or a name being typed takes every key; otherwise the sheet's, the theme's and the list's own. */
+static int theme_ctx_takes(void* ctx, const RolltuiChord* k) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  const RolltuiBindings* b = rolltui_windows_bindings(tc->w);
+  if (tc->sheet_mode == THEME_EDITING || tc->sheet_mode == THEME_NAMING) return 1;
+  return takes_bound(b, k, "theme") || takes_bound(b, k, "sheet") ||
+         takes_list(b, tc->sheet_mode == THEME_CHOOSING ? tc->presets : tc->list, k);
+}
+
 static const RolltuiWidgetPlugin kThemePlugin = {
     theme_ctx_destroy, theme_ctx_layout, theme_ctx_draw, NULL, NULL,
-    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL, theme_ctx_title, theme_ctx_back,
-    keys_menu,
+    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, theme_ctx_scroll_to, theme_ctx_title, theme_ctx_back,
+    theme_sheet_keys,
     NULL,
-    NULL
+    theme_ctx_footer,
+    theme_ctx_takes
 };
 
 static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
   RolltuiThemeCtx* tc;
   RolltuiWidget out;
+  RolltuiListOptions lo;
+  RolltuiListColumn cols[4];
   (void)c;
   (void)content;
   (void)n;
@@ -3023,6 +3591,33 @@ static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char
   tc->ed = rolltui_theme_editor_new();
   tc->draw = rolltui_draw_scratch_new();
   tc->persist = 1;
+  tc->show_presets = 1;
+  tc->list = rolltui_list_new();
+  rolltui_list_set_source(tc->list, theme_sheet_count, theme_sheet_fill, tc, NULL);
+  memset(&lo, 0, sizeof lo);
+  lo.tree = 1;
+  lo.headings = 1;
+  lo.hide_header = 1;
+  lo.scrolloff = 2;
+  rolltui_list_set_options(tc->list, &lo);
+  memset(cols, 0, sizeof cols);
+  rolltui_str_set(&cols[0].title, K("role"));
+  rolltui_str_set(&cols[1].title, K("fg"));
+  rolltui_str_set(&cols[2].title, K("bg"));
+  rolltui_str_set(&cols[3].title, K("attributes"));
+  cols[3].max_share = 25;
+  cols[3].min_screen = 64; /* narrower, the words keep the room and the detail line names the attributes */
+  rolltui_list_set_columns(tc->list, cols, 4);
+  rolltui_str_free(&cols[0].title);
+  rolltui_str_free(&cols[1].title);
+  rolltui_str_free(&cols[2].title);
+  rolltui_str_free(&cols[3].title);
+  tc->presets = rolltui_list_new();
+  rolltui_list_set_source(tc->presets, theme_presets_count, theme_presets_fill, tc, NULL);
+  memset(&lo, 0, sizeof lo);
+  lo.hide_header = 1;
+  rolltui_list_set_options(tc->presets, &lo);
+  tc->name = rolltui_input_new();
   out.vt = &kThemePlugin;
   out.ctx = tc;
   return out;
@@ -3329,7 +3924,7 @@ typedef struct KeysRow {
 static const struct { const char* scope; const char* title; } kScopeTitles[] = {
     {"app", "This program"},     {"input", "Typing"},        {"list", "Lists and tables"}, {"menu", "Menus"},
     {"picker", "Files"},         {"transcript", "Reading"},  {"stack", "Windows"},         {"edit", "Editing a value"},
-    {"keys", "Changing keys"},   {"editor", "The editor"},   {"studio", "The studio"},
+    {"sheet", "Editing a sheet"},   {"editor", "The editor"},   {"studio", "The studio"},
 };
 
 static const char* scope_title(const char* s, size_t n, size_t* len) {
@@ -3428,8 +4023,10 @@ static void keys_problem_add(KeysRow* r, const char* text, size_t n) {
   rolltui_str_append(&r->problem, text, n);
 }
 
-/* ONE KEY, TWO ACTIONS. A program's own key works everywhere, unless the window with focus has the same key for something of its
- * own: there the window's wins. Both rows say so, each naming the other, so the person sees it where they would look. */
+/* ONE KEY, TWO ACTIONS. A program's own key works everywhere a window with focus does not take it for something of its own; a key
+ * two of the program's scopes hold is the program's to settle. Both rows say so, each naming the other, so the person sees it where
+ * they would look. An editor sheet's own keys are left out: they apply only while the sheet has focus, which is when a person is
+ * using them. */
 static void keys_sheet_shadows(RolltuiKeysCtx* kc, const RolltuiBindings* b, unsigned char warning) {
   const size_t n = rolltui_bindings_action_count(b);
   size_t i, j, ci, cj;
@@ -3447,6 +4044,7 @@ static void keys_sheet_shadows(RolltuiKeysCtx* kc, const RolltuiBindings* b, uns
         size_t ol = 0, oc, d = 0;
         const char* o = rolltui_bindings_action_at(b, j, &ol);
         if (ol > 4 && memcmp(o, "app.", 4) == 0) continue;
+        if ((ol > 6 && memcmp(o, "sheet.", 6) == 0) || (ol > 6 && memcmp(o, "theme.", 6) == 0)) continue;
         oc = rolltui_bindings_chord_count(b, o, ol);
         for (cj = 0; cj < oc; ++cj) {
           RolltuiChord ok;
@@ -3463,20 +4061,24 @@ static void keys_sheet_shadows(RolltuiKeysCtx* kc, const RolltuiBindings* b, uns
           t = scope_title(o, d, &tl);
           ra = keys_row_of(kc, a, al);
           ro = keys_row_of(kc, o, ol);
-          /* on the program's row: where it does not reach */
+          /* each row names the other: "F3 also: cycle the shipped theme presets (The studio)" */
           w = keys_words(b, o, ol, &wl);
           rolltui_str_set(&say, disp, dl);
-          rolltui_str_append(&say, K(" in "));
-          rolltui_str_append(&say, t, tl);
-          rolltui_str_append(&say, K(" is "));
+          rolltui_str_append(&say, K(" also: "));
           rolltui_str_append(&say, w, wl);
+          rolltui_str_append(&say, K(" ("));
+          rolltui_str_append(&say, t, tl);
+          rolltui_str_append(&say, K(")"));
           keys_problem_add(ra, say.p, say.n);
           if (ra) ra->role = warning;
-          /* on the window's row: what it takes the key from */
           w = keys_words(b, a, al, &wl);
+          t = scope_title(K("app"), &tl);
           rolltui_str_set(&say, disp, dl);
-          rolltui_str_append(&say, K(" here, so not "));
+          rolltui_str_append(&say, K(" also: "));
           rolltui_str_append(&say, w, wl);
+          rolltui_str_append(&say, K(" ("));
+          rolltui_str_append(&say, t, tl);
+          rolltui_str_append(&say, K(")"));
           keys_problem_add(ro, say.p, say.n);
           if (ro) ro->role = warning;
         }
@@ -3599,8 +4201,8 @@ static int keys_sheet_cursor(RolltuiKeysCtx* kc) {
 /* "Enter add a key · Del remove · …": each of the sheet's own keys as the table binds it now. */
 static void keys_sheet_hints(RolltuiKeysCtx* kc, RolltuiStr* out) {
   static const struct { const char* action; const char* say; } kHints[] = {
-      {"list.activate", "add a key"}, {"keys.remove", "remove"}, {"keys.undo", "undo"},
-      {"keys.load", "load"},          {"keys.save", "save as"},  {"keys.reset", "reset"}, {"list.filter", "find"},
+      {"list.activate", "add a key"}, {"sheet.remove", "remove"}, {"sheet.undo", "undo"},
+      {"sheet.load", "load"},          {"sheet.save", "save as"},  {"sheet.reset", "reset"}, {"list.filter", "find"},
   };
   const RolltuiBindings* live = rolltui_windows_bindings(kc->w);
   size_t i;
@@ -3848,7 +4450,7 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
   }
   if (e->kind == ROLLTUI_EVENT_KEY && !rolltui_list_typing(kc->list)) {
     size_t an = 0;
-    const char* a = rolltui_bindings_action_for(nav, &e->key, K("keys"), &an);
+    const char* a = rolltui_bindings_action_for(nav, &e->key, K("sheet"), &an);
     if (a) {
       rolltui_str_clear(&kc->hint);
       kc->hint_is_problem = 0;
@@ -3856,7 +4458,7 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
         rolltui_str_set(&kc->hint, K("this program keeps no changes to its keys"));
         return 1;
       }
-      if (an == 11 && memcmp(a, "keys.remove", 11) == 0) {
+      if (an == 12 && memcmp(a, "sheet.remove", 12) == 0) {
         if (keys_sheet_cursor(kc)) {
           const RolltuiBindings* b = rolltui_keys_editor_current(kc->ed);
           const size_t n = rolltui_bindings_chord_count(b, kc->scratch.p, kc->scratch.n);
@@ -3871,8 +4473,8 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
         }
         return 1;
       }
-      if ((an == 9 && memcmp(a, "keys.undo", 9) == 0) || (an == 9 && memcmp(a, "keys.redo", 9) == 0)) {
-        const int undo = a[5] == 'u';
+      if ((an == 10 && memcmp(a, "sheet.undo", 10) == 0) || (an == 10 && memcmp(a, "sheet.redo", 10) == 0)) {
+        const int undo = a[6] == 'u';
         const int did = undo ? rolltui_keys_editor_undo(kc->ed) : rolltui_keys_editor_redo(kc->ed);
         if (did) {
           o.kind = ROLLTUI_KEYS_EDIT_COMMITTED;
@@ -3883,17 +4485,17 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
         }
         return 1;
       }
-      if (an == 9 && memcmp(a, "keys.load", 9) == 0 && kc->show_presets && kc->store) {
+      if (an == 10 && memcmp(a, "sheet.load", 10) == 0 && kc->show_presets && kc->store) {
         keys_sheet_presets(kc);
         kc->mode = KEYS_CHOOSING;
         return 1;
       }
-      if (an == 9 && memcmp(a, "keys.save", 9) == 0 && kc->show_presets && kc->store) {
+      if (an == 10 && memcmp(a, "sheet.save", 10) == 0 && kc->show_presets && kc->store) {
         rolltui_input_set_text(kc->name, "", 0);
         kc->mode = KEYS_NAMING;
         return 1;
       }
-      if (an == 10 && memcmp(a, "keys.reset", 10) == 0 && kc->store) {
+      if (an == 11 && memcmp(a, "sheet.reset", 11) == 0 && kc->store) {
         o.kind = ROLLTUI_KEYS_EDIT_RESET_LOADED;
         keys_sheet_done(kc, &o);
         return 1;
@@ -3990,7 +4592,7 @@ static int keys_ctx_title(void* ctx, const char* given, size_t given_len, Rolltu
 /* The sheet's own scope: no counts, since a digit is a key a row may be waiting for. */
 static int keys_sheet_keys(void* ctx, const char** scope, size_t* len) {
   (void)ctx;
-  *scope = "keys", *len = 4;
+  *scope = "sheet", *len = 5;
   return 0;
 }
 
@@ -4019,12 +4621,21 @@ static void keys_ctx_destroy(void* ctx) {
   rolltui_mem_free(kc);
 }
 
+/* A row waiting for its key, or a name being typed, takes every key; otherwise the sheet's and the list's own. */
+static int keys_ctx_takes(void* ctx, const RolltuiChord* k) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  const RolltuiBindings* b = rolltui_windows_bindings(kc->w);
+  if ((kc->editable && rolltui_keys_editor_capturing(kc->ed)) || kc->mode == KEYS_NAMING) return 1;
+  return takes_bound(b, k, "sheet") || takes_list(b, kc->mode == KEYS_CHOOSING ? kc->presets : kc->list, k);
+}
+
 static const RolltuiWidgetPlugin kKeysPlugin = {
     keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, keys_ctx_problem, NULL,
     NULL,             keys_ctx_handle, keys_ctx_scroll_extent, keys_ctx_scroll_to, keys_ctx_title, keys_ctx_back,
     keys_sheet_keys,
     NULL,
-    keys_ctx_footer
+    keys_ctx_footer,
+    keys_ctx_takes
 };
 
 /* ONE SHEET FOR BOTH KINDS: `keys` edits, and `help` is the same sheet, editable too when this program handed a store over for its

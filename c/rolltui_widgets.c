@@ -247,6 +247,7 @@ void rolltui_window_config_free(RolltuiWindowConfig* c) {
 }
 
 struct RolltuiWindows {
+  const RolltuiWindowStack* stack; /* BORROWED: the stack last synced, which says which window has focus */
   struct RolltuiPresetStore* keys_store; /* BORROWED: the bindings store a host handed over for its keys, which every keys sheet edits into */
   int keys_persist;
   /* BORROWED, and it must outlive this: the session whose widget-kind registry
@@ -1264,6 +1265,7 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
 void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
   const size_t depth = rolltui_window_stack_depth(stack);
   size_t i;
+  w->stack = stack;
   w->report_n = 0;
   /* THE MAP IS REBUILT IN PLACE, not cleared: a `clear()` destroys every node and the next
    * frame allocates them again, three a frame, for a window set that almost never changes. */
@@ -1627,6 +1629,21 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   return deliver(w, window, len, wd, e);
 }
 
+/* Whether the window with focus takes `k` itself: its widget says, else a key bound in its own scope. */
+static int focused_takes(const RolltuiWindows* w, const RolltuiChord* k) {
+  const RolltuiLayoutNode* n = w->stack ? rolltui_window_stack_focused(w->stack) : NULL;
+  const RolltuiWidget* wd = n && n->id.n ? rolltui_windows_at(w, n->id.p, n->id.n) : NULL;
+  const char* scope = NULL;
+  size_t slen = 0, an = 0;
+  if (!wd || !wd->vt) return 0;
+  if (wd->vt->takes) return wd->vt->takes(wd->ctx, k);
+  if (!wd->vt->keys) return 0;
+  (void)wd->vt->keys(wd->ctx, &scope, &slen);
+  return scope && slen && rolltui_bindings_action_for(rolltui_windows_bindings(w), k, scope, slen, &an) != NULL;
+}
+
+int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key) { return w && key && focused_takes(w, key); }
+
 int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t slen, const char** action,
                             size_t* alen) {
   const RolltuiBindings* b;
@@ -1659,6 +1676,7 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
     if (alen) *alen = got_n;
     return ROLLTUI_SEQUENCE_DONE;
   }
+  if (focused_takes(w, k)) return ROLLTUI_SEQUENCE_NONE; /* the window with focus first: the program never takes its keys */
   got = rolltui_bindings_action_for(b, k, scope, slen, &got_n);
   if (got) {
     if (action) *action = got;

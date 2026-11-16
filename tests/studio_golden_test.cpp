@@ -355,29 +355,26 @@ int main(int argc, char** argv) {
       // items name — nothing in the menu file spells a key out.
       {"menu.80x24.commands", "--frame 80x24 --theme default-dark --keys \"F2 Type:comm Enter\""},
       {"menu.80x24.editors", "--frame 80x24 --theme default-dark --keys \"F2 Type:Editors Enter\""},
-      {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:mono\""},
-      {"menu.80x24.palette-choose", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:stacked Enter\""},
+      {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"AltP Type:mono\""},
+      {"menu.80x24.palette-choose", "--frame 80x24 --theme default-dark --keys \"AltP Type:stacked Enter\""},
       {"menu.120x40.open", "--frame 120x40 --theme default-dark --keys \"F2\""},
       {"tiny.1x1.menu", "--frame 1x1 --theme default-dark --keys \"F2 Enter Down Enter\""},
       {"tiny.3x3.menu", "--frame 3x3 --theme default-dark --keys \"F2 Down Enter Type:s\""},
-      {"tiny.30x2.menu", "--frame 30x2 --theme default-dark --keys \"F2 Type:th Enter Down Enter CtrlP Type:q\""},
-      // milestone 14 (the theme editor); these get the scratch --presets appended
+      {"tiny.30x2.menu", "--frame 30x2 --theme default-dark --keys \"F2 Type:th Enter Down Enter AltP Type:q\""},
+      // the theme sheet; these get the scratch --presets appended
       {"editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F4\""},
-      {"editor.120x40.heading-fg", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down\""},
-      {"editor.120x40.heading-cancel", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Escape\""},
-      {"editor.120x40.heading-commit", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter\""},
-      {"editor.120x40.heading-undo", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter CtrlZ\""},
-      {"editor.120x40.confirm", "--frame 120x40 --theme default-dark --keys \"F4 Type:built Enter\""},
-      {"editor.120x40.save", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter Escape Escape Type:save Enter Type:mine Enter\""},
+      {"editor.120x40.heading-fg", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 / Type:a_heading Enter Enter Down Down\""},
+      {"editor.120x40.heading-cancel", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 / Type:a_heading Enter Enter Down Down Escape\""},
+      {"editor.120x40.heading-commit", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 / Type:a_heading Enter Enter Down Down Enter\""},
+      {"editor.120x40.heading-undo", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 / Type:a_heading Enter Enter Down Down Enter CtrlZ\""},
+      {"editor.120x40.reset", "--frame 120x40 --theme default-dark --keys \"F4 Enter Type:#ff0000 Enter CtrlR\""},
+      {"editor.120x40.save", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 / Type:a_heading Enter Enter Down Down Enter CtrlS Type:mine Enter\""},
       {"tiny.8x3.editor", "--frame 8x3 --theme default-dark --keys \"F4 Enter Down Enter Type:x\""},
-      // milestone 18: a typed field — Chaos is a float 0..1 with two digits: "1." is
-      // accepted, the 5 and the x are refused (the breadcrumb shows the hint and the
-      // reason, the row shows the label, the text and the caret); Up steps from 0 by 0.1
-      {"editor.120x40.chaos-typing", "--frame 120x40 --theme default-dark --keys \"F4 Type:generate Enter Down Down Enter Type:1.5x\""},
-      {"editor.120x40.chaos-step", "--frame 120x40 --theme default-dark --keys \"F4 Type:generate Enter Down Down Enter Up Up\""},
-      // milestone 15: the Check popup and the Fixes level
-      {"editor.120x40.check", "--frame 120x40 --theme default-dark --keys \"F4 Type:check Enter\""},
-      {"editor.120x40.fixes", "--frame 120x40 --theme default-dark --keys \"F4 Type:fixes Enter\""},
+      {"editor.120x40.generate", "--frame 120x40 --theme default-dark --keys \"F4 CtrlG\""},
+      {"editor.120x40.light", "--frame 120x40 --theme default-dark --keys \"F4 CtrlD\""},
+      // a problem shows on its row, with the key that fixes it
+      {"editor.120x40.problem", "--frame 120x40 --theme default-dark --keys \"F4 Enter Type:#14161a Enter\""},
+      {"editor.120x40.fixed", "--frame 120x40 --theme default-dark --keys \"F4 Enter Type:#14161a Enter CtrlF\""},
       // milestone 16 (the layout editor); the scratch --presets is appended
       {"layout-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F6\""},
       {"layout-editor.120x40.split", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter\""},
@@ -442,7 +439,7 @@ int main(int argc, char** argv) {
   std::string menu_commands;
   std::string menu_editors;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
-  std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
+  std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_reset, ed_save, ed_generate, ed_light, ed_problem, ed_fixed;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
   std::string le_widget, le_actions, le_new;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
@@ -526,10 +523,12 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "editor.120x40.heading-cancel") ed_cancel = out;
     if (std::string(c.name) == "editor.120x40.heading-commit") ed_commit = out;
     if (std::string(c.name) == "editor.120x40.heading-undo") ed_undo = out;
-    if (std::string(c.name) == "editor.120x40.confirm") ed_confirm = out;
+    if (std::string(c.name) == "editor.120x40.reset") ed_reset = out;
+    if (std::string(c.name) == "editor.120x40.generate") ed_generate = out;
+    if (std::string(c.name) == "editor.120x40.light") ed_light = out;
     if (std::string(c.name) == "editor.120x40.save") ed_save = out;
-    if (std::string(c.name) == "editor.120x40.check") ed_check = out;
-    if (std::string(c.name) == "editor.120x40.fixes") ed_fixes = out;
+    if (std::string(c.name) == "editor.120x40.problem") ed_problem = out;
+    if (std::string(c.name) == "editor.120x40.fixed") ed_fixed = out;
     if (std::string(c.name) == "layout-editor.120x40.open") le_open = out;
     if (std::string(c.name) == "layout-editor.120x40.split") le_split = out;
     if (std::string(c.name) == "layout-editor.120x40.undo") le_undo = out;
@@ -730,20 +729,32 @@ int main(int argc, char** argv) {
     check(menu_palette_choose.find("stacked") != std::string::npos && menu_palette_choose.find("\xE2\x95\xAD menu ") != std::string::npos &&
               menu_palette_choose.find("\xE2\x94\x8C transcript") == std::string::npos,
           "Enter on a palette row chooses the stacked layout (borderless transcript) with the menu still open");
-    // ---- milestone 14: the theme editor, asserted beyond the bytes ----
-    check(ed_open.find("\xE2\x94\x8C theme editor ") != std::string::npos && ed_open.find("focus:editor") != std::string::npos && ed_open.find("Roles") != std::string::npos,
-          "F4 opens the theme editor popup with focus and the Roles level");
-    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#adeeae bg=#14161a bold" &&
-              ed_fg.find("previewing") != std::string::npos,
-          "Roles › md_heading › fg two entries down previews #adeeae on the heading and says previewing [" + role_part(ed_fg) + "]");
-    check(role_part(ed_cancel) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos,
-          "Escape puts the committed #84b7f9 back and stays in the editor [" + role_part(ed_cancel) + "]");
-    check(role_part(ed_commit) == "md_heading fg=#adeeae bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
-          "Enter commits: the heading is #adeeae, undo depth 1 [" + role_part(ed_commit) + "]");
-    check(role_part(ed_undo) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_undo.find("undo 0") != std::string::npos && ed_undo.find("redo 1") != std::string::npos,
-          "Ctrl-Z undoes it: #84b7f9, undo 0, redo 1");
-    check(ed_confirm.find("\xE2\x95\xAD confirm ") != std::string::npos && ed_confirm.find("built-in default? (y/n)") != std::string::npos,
-          "Reset to the built-in default asks in a confirm popup, never applies bare");
+    // ---- the theme sheet, asserted beyond the bytes ----
+    check(ed_open.find("\xE2\x94\x8C theme editor ") != std::string::npos && ed_open.find("focus:editor") != std::string::npos &&
+              ed_open.find("Text & backgrounds \xE2\x94\x80") != std::string::npos,
+          "F4 opens the theme sheet with focus: every role under its heading");
+    check(ed_open.find("problem") == std::string::npos, "the shipped default has nothing to fix: no row is marked and the footer counts none");
+    check(role_part(ed_fg) == "md_heading fg=#adeeae bg=#14161a bold" && ed_fg.find("Enter keeps  Esc drops") != std::string::npos,
+          "the heading's row edited in place: two steps down its fg previews #adeeae on every heading [" + role_part(ed_fg) + "]");
+    check(role_part(ed_cancel) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos &&
+              ed_cancel.find("dropped") != std::string::npos,
+          "Escape puts the kept #84b7f9 back and stays in the sheet [" + role_part(ed_cancel) + "]");
+    check(role_part(ed_commit) == "md_heading fg=#adeeae bg=#14161a bold" && ed_commit.find("kept") != std::string::npos &&
+              ed_commit.find("(modified)") != std::string::npos,
+          "Enter keeps it: the heading is #adeeae, and the preset is labelled modified [" + role_part(ed_commit) + "]");
+    check(role_part(ed_undo) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_undo.find("undone") != std::string::npos,
+          "Ctrl-Z undoes it: #84b7f9 again");
+    check(ed_reset.find("reset to the loaded preset") != std::string::npos && ed_reset.find("#ff0000") == std::string::npos,
+          "Ctrl-R goes back to the preset that was loaded");
+    check(ed_generate.find("made ") != std::string::npos && ed_generate.find("from seed 1") != std::string::npos,
+          "Ctrl-G makes a theme from the next seed, and says which");
+    check(ed_light.find("editing the light variant") != std::string::npos && ed_light.find("\xC2\xB7 light") != std::string::npos,
+          "Ctrl-D edits the light variant, and the footer says so");
+    check(ed_problem.find("1 problem") != std::string::npos && ed_problem.find("contrast 1.0") != std::string::npos &&
+              ed_problem.find("fixe") != std::string::npos,
+          "text drawn in its own ground is a problem on its row, with the key that fixes it, and the footer counts it");
+    check(ed_fixed.find("fixed; Ctrl-Z puts it back") != std::string::npos && ed_fixed.find("problem") == std::string::npos,
+          "Ctrl-F fixes it from the row, and the problem is gone");
     check(ed_save.find("saved preset 'mine'") != std::string::npos && std::filesystem::exists(scratch + "/p/themes/mine.json"),
           "save-as writes themes/mine.json under the scratch presets directory (a manual save writes even under --frame)");
     {
@@ -1003,10 +1014,7 @@ int main(int argc, char** argv) {
             "the changed WORD of a paired line takes the _word role on BOTH sides, bold on the line's own colour");
     }
 
-    // ---- milestone 15: --check, --generate, the Check popup ----
-    check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,
-          "Check opens the report popup with the badges and the per-role numbers");
-    check(ed_fixes.find("nothing to fix") != std::string::npos, "the shipped default has nothing to fix");
+    // ---- milestone 15: --check and --generate ----
     {
       int rc = 0;
       const std::string bin = std::string("'") + ROLLTUI_STUDIO_BIN + "'";
@@ -1167,12 +1175,12 @@ int main(int argc, char** argv) {
         check(clicked.find("app.repaint") != std::string::npos, "…and a click on it puts the cursor there: the detail line names app.repaint");
       }
 
-      // A PROBLEM SHOWS WHERE IT IS. The program's Ctrl-P opens the palette, and a list and the file picker have Ctrl-P for the row
-      // above: where one of those has focus, the palette is not reached. The palette's row says so on its detail line.
+      // A PROBLEM SHOWS WHERE IT IS. The program's F3 opens the session details, and the studio's own F3 cycles the shipped themes:
+      // one of the two never runs. The details' row says so on its detail line, naming the other.
       {
-        const std::string out = run(base + " --frame 120x40 --keys \"F1 / Type:command_palette Enter\"", rc);
-        check(out.find("app.palette") != std::string::npos && out.find("Ctrl-P in Files is the row above") != std::string::npos,
-              "a key the program and a window both have is marked on the program's row, naming the window's action");
+        const std::string out = run(base + " --frame 120x40 --keys \"F1 / Type:session_details Enter\"", rc);
+        check(out.find("app.details") != std::string::npos && out.find("F3 also: cycle the shipped theme presets") != std::string::npos,
+              "a key two scopes both hold is marked on the program's row, naming the other action and its scope");
       }
       // THE HELP'S OWN WORDS ARE IN IT: what the program says after its keys is the sheet's last section.
       {
@@ -1198,9 +1206,9 @@ int main(int argc, char** argv) {
         const std::string effects = lines_of("effects.md", "");
         check(!demo.empty() && demo != effects,
               "the two fixture documents are different lengths, so a swap is visible at all");
-        // Ctrl-E opens the picker on the document's own directory with the cursor on its first
+        // Alt-O opens the picker on the document's own directory with the cursor on its first
         // entry, so one Down reaches the second; the entries sort with directories first.
-        const std::string picked = lines_of("demo.md", "CtrlE Down Enter");
+        const std::string picked = lines_of("demo.md", "AltO Down Enter");
         check(picked == effects,
               "…and choosing another one SHOWS it, rather than keeping the first [" + picked + " vs " + effects + "]");
       }
@@ -1302,7 +1310,7 @@ int main(int argc, char** argv) {
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
       check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
             "the keys editor lists the app, editor and studio scopes");
-      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Down Down Down Enter\"", rc);
+      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Type:app Enter\"", rc);
       check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
             "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
       // A USER'S OWN bindings file — every one of the eleven rows in it — loads clean and

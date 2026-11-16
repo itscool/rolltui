@@ -1544,7 +1544,7 @@ int main() {
   {
     const std::string odir = (world / "older").string();
     write_file(fs::path(odir) / "bindings" / "older.json",
-               R"({"name":"older","bindings":{"input.submit":["enter"],"keys.undo":[],"list.up":["ctrl+n"]}})");
+               R"({"name":"older","bindings":{"input.submit":["enter"],"sheet.undo":[],"list.up":["ctrl+n"]}})");
     BindingsStore bs(odir, false, "");
     BindingsPresetReport rep;
     check(bs.load("older", rep, false), "the older table loads [" + rep.summary() + "]");
@@ -1560,8 +1560,8 @@ int main() {
       }
       return out;
     };
-    check(chords("keys.remove") == "Delete Backspace", "an action the file does not name takes the default's keys [" + chords("keys.remove") + "]");
-    check(chords("keys.undo").empty(), "…one it names as [] stays without a key: that is the person's choice [" + chords("keys.undo") + "]");
+    check(chords("sheet.remove") == "Delete Backspace", "an action the file does not name takes the default's keys [" + chords("sheet.remove") + "]");
+    check(chords("sheet.undo").empty(), "…one it names as [] stays without a key: that is the person's choice [" + chords("sheet.undo") + "]");
     check(chords("list.down") == "Down", "…and a default key the file gave to another action in that scope is left to it [" + chords("list.down") + "]");
   }
   return report("rolltui_presets_test");

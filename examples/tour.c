@@ -302,6 +302,7 @@ static void sync_keys(Tour* t) {
   rolltui_bindings_report_release(&rep);
   declared = rolltui_layout_actions(t->layout, &n);
   rolltui_bindings_declare(t->bindings, declared, n, NULL, 0);
+  rolltui_context_set_bindings(t->ctx, t->bindings); /* the windows read the table they were given: the freed one, until this */
 }
 
 /* The settings menu, made from the shipped themes so a new one is offered with no change here. */
@@ -481,9 +482,9 @@ static void on_event(void* ctx, RolltuiRun* run, const RolltuiEvent* e) {
   RolltuiStr window;
   unsigned char kind;
   if (rolltui_windows_toast_event(t->windows, e)) return;
-  /* A PLAIN CHARACTER IS TEXT FIRST: typed into the table's filter or a menu's field, `?` is a question mark, so the app's own keys are
-   * the chords that cannot be typing (F1, Ctrl-Q). */
-  if (e->kind == ROLLTUI_EVENT_KEY && !(e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt)) {
+  /* The program's own keys, for a key the window with focus does not take itself: the library asks it first, so what is typed into
+   * the table's filter or a menu's field is that window's. */
+  if (e->kind == ROLLTUI_EVENT_KEY) {
     size_t alen = 0;
     const char* a = NULL;
     if (rolltui_windows_app_key(t->windows, e, "app", 3, &a, &alen) == ROLLTUI_SEQUENCE_PREFIX) return; /* on the way to one */

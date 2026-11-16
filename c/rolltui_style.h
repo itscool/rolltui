@@ -23,6 +23,8 @@ extern "C" {
  * static literal, valid for the life of the process; `*len` may be NULL. Returns "" for an
  * out-of-range value rather than reading past the table. */
 const char* rolltui_role_name(unsigned char role, size_t* len);
+/* What `role` is for, in words ("the caret", "a link's address"); its name when it has none. */
+const char* rolltui_role_words(unsigned char role, size_t* len);
 
 /* The role of that name, or -1 when there is none. This is what a theme LOADER needs and had
  * no way to ask for in C — `rolltui_theme_load` was handed a vocabulary by its caller for

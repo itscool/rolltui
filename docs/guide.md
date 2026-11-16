@@ -301,6 +301,13 @@ apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x 
   "app", 3, &action, &len)`, called for each key before the key is routed to a window: DONE
   names the action a chord or sequence finished, PREFIX says the key is on the way to one, and
   NONE hands the key on. A sequence on the way in a window is left to that window.
+- The window with focus comes first. A key it takes is NONE to the host's scope: a key its own
+  scope binds (Ctrl-E the end of a line, Ctrl-P the row above), anything typed into it, and every
+  key while an editor sheet waits for one. A list's or an input's Escape is its own only while it
+  has a filter, marks or a selection to clear. A widget kind answers this with the plugin's
+  `takes` slot; a host matching keys of its own outside `rolltui_windows_app_key` asks
+  `rolltui_windows_focused_takes` first. A program's own keys are therefore ones no window scope
+  uses: the shipped tables open the file picker on Alt-O and the palette on Alt-P.
 - A sequence's first chord cannot also be bound alone in the same scope, and two actions cannot
   share a sequence: the loader reports the conflict and keeps what came first.
 - A COUNT is digits typed before an action: `5` then Down moves five. Digits are a count only in a
@@ -336,12 +343,13 @@ file spells it, the whole description when the row is cut, and what is wrong wit
 - Enter on a row takes the next key pressed as a new key for that action, and Escape cancels.
   Delete removes the row's last key. Ctrl-Z and Ctrl-Y undo and redo, Ctrl-O loads a preset,
   Ctrl-S saves the keys as one, and Ctrl-R goes back to the preset that was loaded. These are the
-  `keys.*` actions, bound in a bindings file like any other.
+  `sheet.*` actions, which every editor sheet shares, bound in a bindings file like any other.
 - An edit lands in the store's working copy, labelled "(modified)" in the sheet's footer until it
   equals its preset again. Only what the person changed is written: the keys a program suggests
   for its own actions stay the program's.
-- A key the program has for one of its own actions that a window's scope also has is marked on
-  both rows. Where that window has focus, its action wins.
+- A key the program has for one of its own actions that another scope also has is marked on both
+  rows, each naming the other. An editor sheet's own keys are not marked: they apply only while
+  the sheet has focus.
 - The lead of `rolltui_context_set_help` is the sheet's first section, "About", and its note the
   last, "More".
 - `/` filters the sheet as it filters any list.
@@ -351,6 +359,24 @@ file spells it, the whole description when the row is cut, and what is wrong wit
 A bindings file that does not name a library action takes the shipped default's keys for it, each
 one its scope has free. A saved file names every action, an unbound one as `[]`, so an action it
 does not name is newer than the file.
+
+## The theme sheet
+
+A `theme` window is the theme as one sheet: every role under a heading for the part of the
+screen it colours, each row saying what the role is for in that role's own colours, then its fg
+and bg, each after a swatch, and its attributes. The footer names the preset, the variant and how
+many problems the theme has.
+
+- `rolltui_windows_set_theme_store(windows, "theme", 5, store, persist)` says where an edit goes.
+- Enter edits the row where it is. Type a colour (`#rrggbb`, 0 to 255, or `none`), or step through
+  the theme's own colours with Up and Down; Left and Right move between fg, bg and the attributes,
+  and Space turns an attribute on or off. The whole screen shows the edit as it is made. Enter
+  keeps it, and Escape puts back what was kept.
+- A role whose colours are too close to read is marked on its row, with what would fix it.
+  Ctrl-F (`theme.fix`) applies the fix; Ctrl-Z takes it back.
+- Ctrl-D (`theme.variant`) edits the other variant, light or dark. Ctrl-G (`theme.generate`) makes
+  a theme from the next seed. Undo, load, save and reset are the `sheet.*` keys every editor
+  sheet shares.
 
 ## Hover
 

@@ -293,24 +293,33 @@
     "stack.focus_prev": [
       "shift+tab"
     ],
-    "keys.remove": [
+    "sheet.remove": [
       "delete",
       "backspace"
     ],
-    "keys.undo": [
+    "sheet.undo": [
       "ctrl+z"
     ],
-    "keys.redo": [
+    "sheet.redo": [
       "ctrl+y"
     ],
-    "keys.load": [
+    "sheet.load": [
       "ctrl+o"
     ],
-    "keys.save": [
+    "sheet.save": [
       "ctrl+s"
     ],
-    "keys.reset": [
+    "sheet.reset": [
       "ctrl+r"
+    ],
+    "theme.variant": [
+      "ctrl+d"
+    ],
+    "theme.generate": [
+      "ctrl+g"
+    ],
+    "theme.fix": [
+      "ctrl+f"
     ],
     "app.help": [
       "f1",
@@ -329,10 +338,10 @@
       "f5"
     ],
     "app.filepicker": [
-      "ctrl+e"
+      "alt+o"
     ],
     "app.palette": [
-      "ctrl+p"
+      "alt+p"
     ],
     "app.repaint": [
       "ctrl+l"

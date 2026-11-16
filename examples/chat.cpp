@@ -566,6 +566,7 @@ struct App {
     rolltui_bindings_free(bindings);
     bindings = rolltui_bindings_store_copy_working(keys_store);
     declare_actions();
+    rolltui_context_set_bindings(ctx, bindings);  // the windows read the table they were given: the freed one, until this
   }
   void declare_actions() {
     if (!bindings || !shown) return;
@@ -1275,7 +1276,7 @@ struct App {
       out->since_ms = a.reply_since;
       return;
     }
-    out->text = "Enter sends \xC2\xB7 F1 help \xC2\xB7 F2 menu \xC2\xB7 Ctrl-P commands";
+    out->text = "Enter sends \xC2\xB7 F1 help \xC2\xB7 F2 menu \xC2\xB7 Alt-P commands";
   }
 
   static void status_fn(void* c, RolltuiRows* out) {
@@ -1332,7 +1333,7 @@ struct App {
     return 1;
   }
   static constexpr RolltuiWidgetPlugin kApprovalPlugin = {
-      approval_destroy, approval_layout, approval_draw, nullptr, nullptr, nullptr, approval_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+      approval_destroy, approval_layout, approval_draw, nullptr, nullptr, nullptr, approval_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr /* takes */ };
   static RolltuiWidget approval_factory(void* c, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kApprovalPlugin, c}; }
 
   // ---- the details kind: the session report --------------------------------------------------
@@ -1433,7 +1434,7 @@ struct App {
     return 0;
   }
   static constexpr RolltuiWidgetPlugin kDetailsPlugin = {
-      details_destroy, details_layout, details_draw, nullptr, nullptr, nullptr, details_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+      details_destroy, details_layout, details_draw, nullptr, nullptr, nullptr, details_handle, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr /* takes */ };
   static RolltuiWidget details_factory(void* c, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kDetailsPlugin, c}; }
 
   // ---- input ---------------------------------------------------------------------------------

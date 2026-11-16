@@ -97,6 +97,7 @@ ROLLTUI_API(rolltui_str_move, PUBLIC)  /* KEPT: a public C++ member in the defin
 ROLLTUI_API(rolltui_str_put, PUBLIC)  /* KEPT: matching part — `rolltui_preset_read_file` is consumer-used and takes a `RolltuiPutFn`; without the library's own sink over its own string type every consumer writes the same adapter */
 ROLLTUI_API(rolltui_role_from_name, INTERNAL)
 ROLLTUI_API(rolltui_role_name, INTERNAL)
+ROLLTUI_API(rolltui_role_words, INTERNAL)  /* the theme sheet says what a role is for */
 
 /* ---- rolltui_frame_ops.h — drawing into the cell grid; default PUBLIC -------------------- */
 ROLLTUI_API(rolltui_draw_scratch_free, PUBLIC)
@@ -345,6 +346,16 @@ ROLLTUI_API(rolltui_theme_style, PUBLIC)
 ROLLTUI_API(rolltui_theme_editor_badges_line, INTERNAL)
 ROLLTUI_API(rolltui_theme_editor_colours_json, INTERNAL)
 ROLLTUI_API(rolltui_theme_editor_fix_at, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_preview_colour, INTERNAL)  /* the theme sheet edits a role directly, with no menu walked */
+ROLLTUI_API(rolltui_theme_editor_drop_preview, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_commit, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_attr_count, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_attr_name, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_preview_attr, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_apply_fix, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_generate, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_section_at, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_shown_json, INTERNAL)
 ROLLTUI_API(rolltui_theme_editor_fix_count, INTERNAL)
 ROLLTUI_API(rolltui_theme_editor_focused_role, INTERNAL)
 ROLLTUI_API(rolltui_theme_editor_free, INTERNAL)
@@ -426,6 +437,9 @@ ROLLTUI_API(rolltui_bindings_sequence_next, INTERNAL)  /* the panel of what can 
 ROLLTUI_API(rolltui_chord_bound_form, INTERNAL)  /* every lookup's form of a pressed key */
 ROLLTUI_API(rolltui_list_typing, INTERNAL)  /* the list kind says a digit is the filter's */
 ROLLTUI_API(rolltui_list_column_width, INTERNAL)  /* the keys sheet reads a cut row in full on its detail line */
+ROLLTUI_API(rolltui_list_column_x, INTERNAL)  /* where a sheet draws a row it edits in place */
+ROLLTUI_API(rolltui_list_cursor_y, INTERNAL)
+ROLLTUI_API(rolltui_list_has_back, INTERNAL)  /* a focused list takes its back key only while it has something to go back from */
 ROLLTUI_API(rolltui_list_footer, INTERNAL)  /* the list kind's footer */
 ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a name with an ellipsis, at its end, middle or start */
 ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
@@ -772,6 +786,7 @@ ROLLTUI_API(rolltui_windows_free, PUBLIC)
 ROLLTUI_API(rolltui_windows_handle, PUBLIC)
 ROLLTUI_API(rolltui_windows_pending_keys, PUBLIC)  /* a status line shows the keys on the way, as vim does */
 ROLLTUI_API(rolltui_windows_app_key, PUBLIC)  /* a host's own scope gets chords and sequences: `ctrl+x ctrl+s` in dirktui, paint, chat, the tour */
+ROLLTUI_API(rolltui_windows_focused_takes, PUBLIC)  /* a host matching keys of its own asks first whether the focused window takes one */
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */

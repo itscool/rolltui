@@ -3165,6 +3165,10 @@ typedef struct RolltuiWidgetPlugin {
   /* The window's FOOTER this frame, into `out`: what only the widget knows, at the right of its bottom border (a list's "12 of 340").
    * 0 keeps the layout's own. Read once per frame by `rolltui_windows_autosize`. NULL: the layout's. */
   int (*footer)(void* ctx, RolltuiStr* out);
+  /* Whether this widget, focused, TAKES `key` itself: the program's own keys (`rolltui_windows_app_key`) never get a key the window
+   * with focus takes. 1 for a key bound in the widget's own scopes, and for any key while something in it is being typed into or is
+   * waiting for a key. NULL: a key bound in the `keys` scope. */
+  int (*takes)(void* ctx, const RolltuiChord* key);
 } RolltuiWidgetPlugin;
 
 /* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the
@@ -3557,6 +3561,10 @@ typedef struct RolltuiListRow {
   unsigned char depth ROLLTUI_DEFAULT(0); /* a tree's: 0 at the top; rows come in tree order, a parent before its children */
   unsigned char busy ROLLTUI_DEFAULT(0);  /* what it is doing is running: a spinner at the row's end, from `busy_since_ms` */
   unsigned long long busy_since_ms ROLLTUI_DEFAULT(0);
+  /* CELLS OF THEIR OWN. Bit k of `styled`: cell k is drawn in role `cell_role[k]` on every row, the cursor's included (a theme's
+   * sample of that role). Bit k of `swatch`: cell k is a colour's spelling, drawn after a swatch of that colour. */
+  unsigned char styled ROLLTUI_DEFAULT(0), swatch ROLLTUI_DEFAULT(0);
+  unsigned char cell_role[8];
 } RolltuiListRow;
 /* Appends one cell to `r`, copied. */
 void rolltui_list_row_cell(RolltuiListRow* r, const char* text, size_t len);
@@ -3961,10 +3969,14 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
 size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text);
 /* A HOST'S OWN SCOPE (`app`) with the sequences a window's has: call it for each key before routing the key to a window. DONE: the key
  * finished a chord or a sequence bound in `scope`, and `*action` (may be NULL) names it for the host to do. PREFIX: the key is on the
- * way to one (or Escape let go of one), and nothing else takes it. NONE: `scope` takes no part in it; route it on. A sequence already
- * on the way in a window's scope is left to that window. */
+ * way to one (or Escape let go of one), and nothing else takes it. NONE: `scope` takes no part in it; route it on. THE WINDOW WITH
+ * FOCUS COMES FIRST: a key it takes (its plugin's `takes`) is NONE here, so a program's own keys never stop the focused window working.
+ * A sequence already on the way in a window's scope is left to that window. */
 int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t scope_len, const char** action,
                             size_t* action_len);
+/* Whether the window with focus takes `key` itself (its plugin's `takes`, else a key bound in its own scope). A host that matches keys
+ * of its own outside `rolltui_windows_app_key` asks this first, and leaves a key the focused window takes to that window. */
+int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key);
 
 /* ========================================================================================
  * filepicker — the column browser, and directory reading a host can use on its own

@@ -205,10 +205,10 @@
     "app.find": [
       "ctrl+f"
     ],
-    "editor.undo": [
+    "sheet.undo": [
       "ctrl+o"
     ],
-    "editor.redo": [
+    "sheet.redo": [
       "ctrl+g"
     ]
   }

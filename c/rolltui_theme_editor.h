@@ -107,6 +107,8 @@ int rolltui_theme_editor_previewing(const RolltuiThemeEditor* e);
  * is stale under the edit being saved. OWNED: free with `rolltui_json_free`, or hand it
  * straight to a store. */
 RolltuiJsonValue* rolltui_theme_editor_colours_json(const RolltuiThemeEditor* e, const char* name, size_t len);
+/* The same tree for what is SHOWN now, a preview included: what a sheet hands the store, unkept, while a row is being edited. */
+RolltuiJsonValue* rolltui_theme_editor_shown_json(const RolltuiThemeEditor* e, const char* name, size_t len);
 
 /* The menu to lay out and draw. A BORROW of the editor's own; it outlives every call but not
  * the editor. */
@@ -122,6 +124,22 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
  * put back. Returns 1 when it did one of those, 0 when the menu is at its top with nothing open (the popup's to close).
  * `*out` is RESET first and is the caller's to release, as `_handle`'s. */
 int rolltui_theme_editor_back(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out);
+
+/* ---- A ROLE EDITED DIRECTLY: what the theme sheet does, with no menu walked ----------------------
+ * `preview_colour` shows `c` as `role`'s fg (bg when `bg`) in the variant being edited, live and uncommitted; NULL puts that field
+ * back; `preview_attr` turns an attribute on or off the same way. `drop_preview` puts every previewed field back; `commit` keeps
+ * what is previewed as one undoable change. `apply_fix` commits at once. `generate` replaces both variants with a seeded theme, undoable. `section_at` is the heading a role
+ * starts, or NULL. */
+void rolltui_theme_editor_preview_colour(RolltuiThemeEditor* e, unsigned char role, int bg, const RolltuiStyleColorRaw* c);
+void rolltui_theme_editor_drop_preview(RolltuiThemeEditor* e);
+void rolltui_theme_editor_commit(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out);
+size_t rolltui_theme_editor_attr_count(void);
+const char* rolltui_theme_editor_attr_name(size_t i, size_t* len);
+void rolltui_theme_editor_preview_attr(RolltuiThemeEditor* e, unsigned char role, size_t attr, int on);
+int rolltui_theme_editor_apply_fix(RolltuiThemeEditor* e, size_t i, RolltuiThemeEditorOutcome* out);
+void rolltui_theme_editor_generate(RolltuiThemeEditor* e, unsigned char ruleset, uint64_t seed, double chaos,
+                                   RolltuiThemeEditorOutcome* out);
+const char* rolltui_theme_editor_section_at(unsigned char role, size_t* len);
 
 int rolltui_theme_editor_undo(RolltuiThemeEditor* e); /* 0 when there is nothing to undo */
 int rolltui_theme_editor_redo(RolltuiThemeEditor* e);

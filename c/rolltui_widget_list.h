@@ -45,13 +45,18 @@ int rolltui_list_event(RolltuiList* l, RolltuiListEvent* out);
 int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t n);
 /* Closes one level of its own: the filter, then the marks; 0 when neither is there. */
 int rolltui_list_back(RolltuiList* l);
+/* Whether `back` would close something: a filter, or marks. */
+int rolltui_list_has_back(const RolltuiList* l);
 /* 1 while the filter is being typed: a printable key is the filter's. */
 int rolltui_list_typing(const RolltuiList* l);
 /* What the list says in its window's footer, into `out` (replaced): "12 of 340" while it shows more rows than fit or a filter
  * narrows it, and "5 marked". 0 when it has nothing to say. */
 int rolltui_list_footer(RolltuiList* l, RolltuiStr* out);
-/* The cells column `k` was given when the list was last laid out; 0 for a column that did not fit. */
+/* The cells column `k` was given when the list was last laid out, and where it starts; 0 and -1 for a column that did not fit. */
 int rolltui_list_column_width(const RolltuiList* l, size_t k);
+int rolltui_list_column_x(const RolltuiList* l, size_t k);
+/* The screen row the cursor's row is drawn on, or -1 while it is scrolled out of the window: where a sheet edits a row in place. */
+int rolltui_list_cursor_y(const RolltuiList* l);
 void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int ambiguous_wide);
 /* Draws what the last layout placed. `hover_y` is the row under the pointer, -1 for none. */
 void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int focused,

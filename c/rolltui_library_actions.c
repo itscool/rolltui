@@ -137,12 +137,15 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(stack,     next_tab,          "stack.next_tab",              "show the focused window's next tab") \
   X(stack,     prev_tab,          "stack.prev_tab",              "show the focused window's previous tab") \
   X(stack,     maximize,          "stack.maximize",              "make the focused window fill the screen, and put it back") \
-  X(keys,      remove,            "keys.remove",                 "remove the row's last key") \
-  X(keys,      undo,              "keys.undo",                   "undo the last change to the keys") \
-  X(keys,      redo,              "keys.redo",                   "do it again") \
-  X(keys,      load,              "keys.load",                   "load a set of keys") \
-  X(keys,      save,              "keys.save",                   "save these keys under a name") \
-  X(keys,      reset,             "keys.reset",                  "go back to the set of keys loaded")
+  X(sheet,     remove,            "sheet.remove",                "remove the row's last key") \
+  X(sheet,     undo,              "sheet.undo",                  "undo the last change") \
+  X(sheet,     redo,              "sheet.redo",                  "do it again") \
+  X(sheet,     load,              "sheet.load",                  "load a preset") \
+  X(sheet,     save,              "sheet.save",                  "save as a preset under a name") \
+  X(sheet,     reset,             "sheet.reset",                 "go back to the preset loaded") \
+  X(theme,     variant,           "theme.variant",               "edit the other variant, light or dark") \
+  X(theme,     generate,          "theme.generate",              "make a theme from the next seed") \
+  X(theme,     fix,               "theme.fix",                   "fix the problem on the role's row")
 
 static const LibAction kLibraryActions[] = {
 #define ROLLTUI_LA_ROW_(group, field, name, desc) {name, desc},
@@ -192,7 +195,8 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_stack(field, name)
 #define ROLLTUI_LA_picker(field, name)
 #define ROLLTUI_LA_list(field, name)
-#define ROLLTUI_LA_keys(field, name)
+#define ROLLTUI_LA_sheet(field, name)
+#define ROLLTUI_LA_theme(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input

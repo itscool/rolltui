@@ -264,7 +264,7 @@ int main() {
   const std::string undone =
       run(base + " --layout anvil --bindings anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
   check(has(undone, "undone") && !has(undone, "(modified)"),
-        "Ctrl-O undoes, because anvil's bindings file says keys.undo is Ctrl-O, and the preset is as it was again");
+        "Ctrl-O undoes, because anvil's bindings file says sheet.undo is Ctrl-O, and the preset is as it was again");
   const std::string shipped = run(base + " --layout anvil --keys \"" + to_word_left + " AltJ CtrlO\" 2>&1", rc);
   check(!has(shipped, "undone") && has(shipped, "(modified)"),
         "…and with the shipped bindings the same key does not undo: the FILE supplied the chord");

@@ -1,0 +1,40 @@
+┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
+│ │ Extended_Pictographic, InCB)    │             │                   │ Text & backgrounds ─────────────────────────── ╻
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│ text                       #d8dce2     #14161a ┃
+│ │ grapheme clusters, display      │             │ Unicode conformanc│ quieter text               #858d99     #14161a ┃
+│ │ width                           │             │                   │ the screen's ground        #d8dce2     #14161a ┃
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Mar│ a panel's ground           #d8dce2     #22252b ┃
+│ │                                 │             │ block tree is the │ Borders & labels ───────────────────────────── ┃
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│ a window's border          #444b55     #14161a ┃
+│ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│ the focused window's …     #84b7f9     #14161a ┃
+│ │ paste, mouse mode)              │             │                   │ a window's title           #84b7f9     #14161a ┃
+│ │ Key + mouse decoding            │ build       │ single header, pur│ a label                    #8f97a3     #22252b ┃
+│ │                                 │             │ Event, table-teste│ a value beside its la…     #d8dce2     #22252b ┃
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ Accents & status ───────────────────────────── ┃
+│ │ colour downgrade                │             │ tested            │ the first accent           #84b7f9     #14161a ┃
+│ │ Wrap engine                     │ build       │ single header over│ the second accent          #adeeae     #14161a ┃
+│ │                                 │             │ header            │ the third accent           #cba63a     #14161a ┃
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │ the fourth accent          #9a73b8     #14161a ┃
+│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ the prompt                 #6cc8c8     #14161a ┃
+│ │                                 │             │ Rect is a pure fun│ a note                     #858d99     #14161a ┃
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ a warning                  #cba63a     #14161a ┃
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ an error                   #c06a64     #14161a ┃
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Markdown ───────────────────────────────────── ┃
+│ │ placements + content slots)     │             │ parser; hot-reload│ a heading                  #84b7f9     #14161a ┃
+│ │ Markdown block renderer (blocks │ build       │ single header over│ emphasis                   #d8dce2     #14161a ╹
+│ │ → styled wrapped lines)         │             │                   │ strong text                #f1f5fb     #14161a │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │ code in a line of text     #cba63a     #32363c │
+│ │ loader, built-ins)              │             │                   │ a block of code            #d8dce2     #32363c │
+│ └─────────────────────────────────┴─────────────┴───────────────────│ a code block's langua…     #858d99     #14161a │
+│                                                                     │ a link                     #6cc8c8     #14161a │
+│ Here is the function you asked for:                                 │ a link's address           #858d99     #14161a │
+│                                                                     │ a quotation                #858d99     #14161a │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ a list's bullet            #84b7f9     #14161a │
+│ │ int add(int a, int b) {                                           │ a table's lines            #3a404a     #14161a │
+│ │   return a + b;                                                   │ a table's header           #84b7f9     #14161a │
+│ └───────────────────────────────────────────────────────────────────│ a rule across the page     #3a404a     #14161a │
+└─────────────────────────────────────────────────────────────────────│ struck-out text            #858d99     #14161a │
+┌─────────────────────────────────────────────────────────────────────│ text                                           │
+│ > type here                                                         │ reset to the loaded preset (undoable)          │
+└─────────────────────────────────────────────────────────────────────└──────────────────── default (modified) · dark ─┘
+ default (modified) [theme editor]  default  120x40  line 77/110  follow  truecolor  focus:editor

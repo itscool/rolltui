@@ -3,7 +3,7 @@
 │ keys F7    default           ││ │ wrapped ┃ open help                 F1, ?  ┃
 │ layout F6  wide-left         ││ │ lines)  ┃ open the settings and c…  F2     ┃
 │ size       80x24             ││ │ Theme   ┃ open the session details  F3     ┃
-│ line       181/197           ││ │ (roles →┃ open the command palette  Ctrl-P ┃
+│ line       181/197           ││ │ (roles →┃ open the command palette  Alt-P  ┃
 │ follow     yes               ││ │ styles, ┃ repaint the screen        Ctrl-L ┃
 │ depth      truecolor         ││ │ JSON    ┃ find in the transcript    Ctrl-F ┃
 │ focus      help              ││ │ loader, ┃ app.help                         ┃

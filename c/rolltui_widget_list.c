@@ -93,6 +93,9 @@ static void fetch(RolltuiList* l, size_t src) {
   l->tmp.depth = 0;
   l->tmp.busy = 0;
   l->tmp.busy_since_ms = 0;
+  l->tmp.styled = 0;
+  l->tmp.swatch = 0;
+  memset(l->tmp.cell_role, 0, sizeof l->tmp.cell_role);
   if (l->row_fn) l->row_fn(l->ctx, src, &l->tmp);
   if (l->tmp.key.n == 0) { /* no key of its own: its index is */
     char buf[32];
@@ -682,6 +685,16 @@ static void sorted(RolltuiList* l) {
 
 int rolltui_list_typing(const RolltuiList* l) { return l && l->filtering; }
 
+int rolltui_list_cursor_y(const RolltuiList* l) {
+  const size_t n = shown_n(l);
+  if (n == 0 || l->cursor < l->top || l->cursor >= l->top + (size_t)(l->body_h > 0 ? l->body_h : 0)) return -1;
+  return l->body_y + (int)(l->cursor - l->top);
+}
+
+int rolltui_list_column_x(const RolltuiList* l, size_t k) {
+  return k < l->col_n && l->col_on[k] ? l->col_x[k] : -1;
+}
+
 int rolltui_list_column_width(const RolltuiList* l, size_t k) {
   return k < l->col_n && l->col_on[k] ? l->col_w[k] : 0;
 }
@@ -710,6 +723,10 @@ int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
   if (n <= 0) return 0;
   rolltui_str_set(out, buf, (size_t)n);
   return 1;
+}
+
+int rolltui_list_has_back(const RolltuiList* l) {
+  return l->filtering || l->filter.n || rolltui_map_count(&l->marks) != 0;
 }
 
 int rolltui_list_back(RolltuiList* l) {
@@ -962,6 +979,7 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
       if (l->cols[k].width > 0) continue;
       c = cell(&l->tmp, (size_t)k, &cn);
       w = rolltui_frame_text_width(l->draw, c, cn, aw);
+      if (k < 8 && (l->tmp.swatch & (1u << k))) w += 3; /* its swatch and a space */
       if (w > l->seen_w[k]) l->seen_w[k] = w;
     }
   }
@@ -1161,13 +1179,25 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
           const int w = rolltui_frame_text_width(l->draw, c, cn, aw);
           if (w < cw) cx += cw - w;
         }
-        if (l->cols[k].role && !lit && !l->tmp.role) { /* a column of its own kind: keys in the shortcut role */
-          RolltuiStyle cs = styles[l->cols[k].role];
-          cs.bg = ground.bg;
-          if (marked) cs.bold = 1;
+        {
+          RolltuiStyle cs = st;
+          RolltuiStyleColorRaw sw;
+          if (k < 8 && (l->tmp.styled & (1u << k))) { /* a role's own sample, on every row */
+            cs = styles[l->tmp.cell_role[k] < ROLLTUI_ROLE_COUNT ? l->tmp.cell_role[k] : 0];
+            if (cs.bg.kind == 0) cs.bg = lit ? st.bg : ground.bg;
+          } else if (l->cols[k].role && !lit && !l->tmp.role) { /* a column of its own kind: keys in the shortcut role */
+            cs = styles[l->cols[k].role];
+            cs.bg = ground.bg;
+            if (marked) cs.bold = 1;
+          }
+          if (k < 8 && (l->tmp.swatch & (1u << k)) && cw >= 4 && rolltui_color_parse(c, cn, &sw)) { /* the colour, then its name */
+            RolltuiStyle ss = cs;
+            ss.bg = sw;
+            rolltui_frame_put_text(f, l->draw, cx, y, "  ", 2, ss, 2, aw, 0);
+            cx += 3;
+            cw -= 3;
+          }
           put_cut(l, f, cx, y, c, cn, cs, cw, aw);
-        } else {
-          put_cut(l, f, cx, y, c, cn, st, cw, aw);
         }
       }
     }

@@ -1,0 +1,40 @@
+┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
+│ │ Extended_Pictographic, InCB)    │             │                   │ Text & backgrounds ─────────────────────────── ╻
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│ text                       #22262c     #e9ecf2 ┃
+│ │ grapheme clusters, display      │             │ Unicode conformanc│ quieter text               #575d67     #e9ecf2 ┃
+│ │ width                           │             │                   │ the screen's ground        #22262c     #e9ecf2 ┃
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Mar│ a panel's ground           #22262c     #d7dbe2 ┃
+│ │                                 │             │ block tree is the │ Borders & labels ───────────────────────────── ┃
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│ a window's border          #a1a4aa     #e9ecf2 ┃
+│ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│ the focused window's …     #3a69a6     #e9ecf2 ┃
+│ │ paste, mouse mode)              │             │                   │ a window's title           #3a69a6     #e9ecf2 ┃
+│ │ Key + mouse decoding            │ build       │ single header, pur│ a label                    #515761     #d7dbe2 ┃
+│ │                                 │             │ Event, table-teste│ a value beside its la…     #22262c     #d7dbe2 ┃
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ Accents & status ───────────────────────────── ┃
+│ │ colour downgrade                │             │ tested            │ the first accent           #3a69a6     #e9ecf2 ┃
+│ │ Wrap engine                     │ build       │ single header over│ the second accent          #11521a     #e9ecf2 ┃
+│ │                                 │             │ header            │ the third accent           #816400     #e9ecf2 ┃
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │ the fourth accent          #603b7b     #e9ecf2 ┃
+│ │ abs/rel per axis), focus        │             │ resolve(Placement,│ the prompt                 #097475     #e9ecf2 ┃
+│ │                                 │             │ Rect is a pure fun│ a note                     #575d67     #e9ecf2 ┃
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ a warning                  #816400     #e9ecf2 ┃
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ an error                   #55050b     #e9ecf2 ┃
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ Markdown ───────────────────────────────────── ┃
+│ │ placements + content slots)     │             │ parser; hot-reload│ a heading                  #3a69a6     #e9ecf2 ┃
+│ │ Markdown block renderer (blocks │ build       │ single header over│ emphasis                   #22262c     #e9ecf2 ╹
+│ │ → styled wrapped lines)         │             │                   │ strong text                #11141a     #e9ecf2 │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │ code in a line of text     #603b7b     #c7ccd3 │
+│ │ loader, built-ins)              │             │                   │ a block of code            #22262c     #c7ccd3 │
+│ └─────────────────────────────────┴─────────────┴───────────────────│ a code block's langua…     #575d67     #e9ecf2 │
+│                                                                     │ a link                     #3a69a6     #e9ecf2 │
+│ Here is the function you asked for:                                 │ a link's address           #575d67     #e9ecf2 │
+│                                                                     │ a quotation                #575d67     #e9ecf2 │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ a list's bullet            #3a69a6     #e9ecf2 │
+│ │ int add(int a, int b) {                                           │ a table's lines            #bcbfc5     #e9ecf2 │
+│ │   return a + b;                                                   │ a table's header           #3a69a6     #e9ecf2 │
+│ └───────────────────────────────────────────────────────────────────│ a rule across the page     #bcbfc5     #e9ecf2 │
+└─────────────────────────────────────────────────────────────────────│ struck-out text            #575d67     #e9ecf2 │
+┌─────────────────────────────────────────────────────────────────────│ text                                           │
+│ > type here                                                         │ editing the light variant                      │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────── default · light ─┘
+ default [theme editor]  default  120x40  line 77/110  follow  truecolor  focus:editor

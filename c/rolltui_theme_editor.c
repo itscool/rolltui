@@ -401,10 +401,19 @@ const RolltuiJsonValue* rolltui_theme_editor_variant_meta(const RolltuiThemeEdit
 
 int rolltui_theme_editor_previewing(const RolltuiThemeEditor* e) { return e->previewing; }
 
+static RolltuiJsonValue* colours_json_of(const RolltuiThemeEditor* e, const Edit* c, const char* name, size_t len);
+
 RolltuiJsonValue* rolltui_theme_editor_colours_json(const RolltuiThemeEditor* e, const char* name, size_t len) {
+  return colours_json_of(e, committed_of(e), name, len);
+}
+
+RolltuiJsonValue* rolltui_theme_editor_shown_json(const RolltuiThemeEditor* e, const char* name, size_t len) {
+  return colours_json_of(e, &e->current, name, len);
+}
+
+static RolltuiJsonValue* colours_json_of(const RolltuiThemeEditor* e, const Edit* c, const char* name, size_t len) {
   /* {"name", "meta", "roles", ["effects"]} built in THAT order: a preset store compares this
    * tree against what it loaded, and a key-order difference alone reads as "modified". */
-  const Edit* c = committed_of(e);
   RolltuiJsonValue* root = rolltui_json_object();
   RolltuiJsonValue* meta;
   RolltuiJsonValue* badges;
@@ -956,10 +965,30 @@ static void broken_list(const RolltuiRoleCheck* roles, const RolltuiPairCheck* p
   }
 }
 
+static void generate_with(RolltuiThemeEditor* e, unsigned char rs, uint64_t seed, double chaos, RolltuiThemeEditorOutcome* out);
+
 static void run_generator(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
   RolltuiMenuItem* ruleset_item = rolltui_menu_find(e->menu, K("gen.ruleset"));
   RolltuiMenuItem* seed_item = rolltui_menu_find(e->menu, K("gen.seed"));
   RolltuiMenuItem* chaos_item = rolltui_menu_find(e->menu, K("gen.chaos"));
+  unsigned char rs = 0;
+  if (!ruleset_item || !rolltui_ruleset_from_name(ruleset_item->value.p, ruleset_item->value.n, &rs)) {
+    rolltui_str_set(&e->status, K("pick a ruleset first"));
+    out->kind = ROLLTUI_THEME_EDIT_CHANGED;
+    return;
+  }
+  generate_with(e, rs, seed_item && seed_item->value.p ? (uint64_t)strtoull(seed_item->value.p, NULL, 10) : 0,
+                chaos_item && chaos_item->value.p ? strtod(chaos_item->value.p, NULL) : 0.0, out);
+}
+
+void rolltui_theme_editor_generate(RolltuiThemeEditor* e, unsigned char ruleset, uint64_t seed, double chaos,
+                                   RolltuiThemeEditorOutcome* out) {
+  rolltui_theme_editor_outcome_release(out);
+  if (ruleset >= ROLLTUI_RULESET_COUNT) ruleset = 0;
+  generate_with(e, ruleset, seed, chaos, out);
+}
+
+static void generate_with(RolltuiThemeEditor* e, unsigned char rs, uint64_t seed, double chaos, RolltuiThemeEditorOutcome* out) {
   RolltuiStyle dark[ROLLTUI_ROLE_COUNT], light[ROLLTUI_ROLE_COUNT];
   RolltuiRoleCheck roles[ROLLTUI_ROLE_COUNT];
   RolltuiPairCheck pairs[ROLLTUI_MUST_DIFFER_COUNT];
@@ -967,20 +996,9 @@ static void run_generator(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out)
   RolltuiJsonValue *dark_meta = NULL, *light_meta = NULL;
   RolltuiStr dark_name, light_name, dark_broken, light_broken;
   RolltuiStrArray badge_names;
-  unsigned char rs = 0;
-  uint64_t seed;
-  double chaos;
   int repairs = 0;
   size_t i;
   int dark_mode;
-
-  if (!ruleset_item || !rolltui_ruleset_from_name(ruleset_item->value.p, ruleset_item->value.n, &rs)) {
-    rolltui_str_set(&e->status, K("pick a ruleset first"));
-    out->kind = ROLLTUI_THEME_EDIT_CHANGED;
-    return;
-  }
-  seed = seed_item && seed_item->value.p ? (uint64_t)strtoull(seed_item->value.p, NULL, 10) : 0;
-  chaos = chaos_item && chaos_item->value.p ? strtod(chaos_item->value.p, NULL) : 0.0;
 
   memset(&dark_name, 0, sizeof dark_name);
   memset(&light_name, 0, sizeof light_name);
@@ -1213,6 +1231,63 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
 done:
   rolltui_str_free(&id);
   rolltui_str_free(&value);
+}
+
+/* ---- A ROLE EDITED DIRECTLY: what a sheet does, with no menu walked ---------------------------- */
+
+void rolltui_theme_editor_preview_colour(RolltuiThemeEditor* e, unsigned char role, int bg, const RolltuiStyleColorRaw* c) {
+  RolltuiStyle* s;
+  const RolltuiStyle* was;
+  if (role >= ROLLTUI_ROLE_COUNT) return;
+  begin_preview(e);
+  s = &style_table(e, e->mode)[role];
+  was = &(e->mode == ROLLTUI_MODE_LIGHT ? e->preview.light : e->preview.dark)[role];
+  if (bg) s->bg = c ? *c : was->bg;
+  else s->fg = c ? *c : was->fg;
+}
+
+void rolltui_theme_editor_drop_preview(RolltuiThemeEditor* e) { cancel_preview(e); }
+
+void rolltui_theme_editor_commit(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
+  rolltui_theme_editor_outcome_release(out);
+  commit_current(e, out);
+}
+
+size_t rolltui_theme_editor_attr_count(void) { return ATTR_COUNT; }
+const char* rolltui_theme_editor_attr_name(size_t i, size_t* len) {
+  const char* a = i < ATTR_COUNT ? kAttrs[i] : "";
+  if (len) *len = strlen(a);
+  return a;
+}
+
+void rolltui_theme_editor_preview_attr(RolltuiThemeEditor* e, unsigned char role, size_t attr, int on) {
+  unsigned char* a;
+  if (role >= ROLLTUI_ROLE_COUNT || attr >= ATTR_COUNT) return;
+  begin_preview(e);
+  a = attr_of(&style_table(e, e->mode)[role], kAttrs[attr], strlen(kAttrs[attr]));
+  if (a) *a = (unsigned char)(on ? 1 : 0);
+}
+
+int rolltui_theme_editor_apply_fix(RolltuiThemeEditor* e, size_t i, RolltuiThemeEditorOutcome* out) {
+  rolltui_theme_editor_outcome_release(out);
+  if (i >= e->fixes.n) return 0;
+  begin_preview(e);
+  rolltui_apply_fix(style_table(e, e->mode), ROLLTUI_ROLE_COUNT, e->fixes.v[i].role, &e->fixes.v[i].after);
+  rolltui_str_set(&e->status, K("applied: "));
+  rolltui_str_append_str(&e->status, &e->fixes.v[i].what);
+  commit_current(e, out);
+  return 1;
+}
+
+const char* rolltui_theme_editor_section_at(unsigned char role, size_t* len) {
+  size_t rn = 0, s;
+  const char* name = rolltui_role_name(role, &rn);
+  for (s = 0; s < ROLLTUI_ROLE_SECTION_COUNT; ++s)
+    if (strlen(kRoleSections[s].role) == rn && memcmp(kRoleSections[s].role, name, rn) == 0) {
+      if (len) *len = strlen(kRoleSections[s].label);
+      return kRoleSections[s].label;
+    }
+  return NULL;
 }
 
 int rolltui_theme_editor_back(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {

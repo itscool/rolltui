@@ -162,10 +162,10 @@ int main() {
   {
     int erc = 0;
     const std::string th = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
-    check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in dirktui");
+    check(has(th, "Text & backgrounds") && has(th, "Enter edit"), "F4 opens the theme sheet in dirktui");
     const std::string ke = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
     check(has(ke, "This program") && has(ke, "add a key"), "F5 opens the keys sheet in dirktui");
-    check(!has(th, "add a key") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
+    check(!has(th, "add a key") && !has(ke, "Text & backgrounds"), "…and each chord opens its own, not the other");
   }
 
   // ---- 0a. THE PRODUCT BINARY CANNOT TEST ITSELF -------------------------------------------
@@ -919,10 +919,9 @@ int main() {
     check(has(help, "dirktui languages"), "the usage lists the command");
   }
 
-  // ---- ESCAPE GOES BACK ONE LEVEL IN EVERY MENU, THE EDITORS INCLUDED ----
-  // The settings menu did; the theme editor and the key editor said they had no levels, so Escape three deep in
-  // "Roles › text › fg" closed the whole popup and F4 came back to that level. Every popup that holds a menu is now asked
-  // for one level back before it is closed, and only from its top does it close.
+  // ---- ESCAPE GOES BACK ONE LEVEL IN EVERY POPUP, THE EDITOR SHEETS INCLUDED ----
+  // Every popup is asked for one level back before it is closed (a row being edited, a filter, a menu level), and only from its
+  // top does it close.
   {
     const fs::path cfg = scratch / "back-cfg";
     const std::string env = "ROLL_CONFIG_DIR='" + cfg.string() + "' ";
@@ -935,25 +934,23 @@ int main() {
       const std::size_t from = at + 4, to = fr.find(" \xE2\x94\x80", from);
       return fr.substr(from, to == std::string::npos ? std::string::npos : to - from);
     };
-    // the fg the editor's sample line shows for the role in focus: `text  fg #d8dce2  bg #14161a`
-    auto sample_fg = [](const std::string& fr) {
-      const std::size_t at = fr.find(" fg #");
-      return at == std::string::npos ? std::string() : fr.substr(at + 4, 7);
+    // the first colour on the `text` role's row: `│ text   #d8dce2   #14161a`, or the row being edited, `text  fg  #d8dce2`
+    auto text_fg = [](const std::string& fr) {
+      const std::size_t row = fr.find("\xE2\x94\x82 text ");
+      const std::size_t at = row == std::string::npos ? row : fr.find('#', row);
+      return at == std::string::npos ? std::string() : fr.substr(at, 7);
     };
-    const std::string three = "F4 Enter Enter Enter";
-    check(title(frame(three), "theme editor") == "theme editor \xE2\x80\xBA Roles \xE2\x80\xBA text \xE2\x80\xBA fg", "the theme editor opens three levels deep on a colour [" + title(frame(three), "theme editor") + "]");
-    check(title(frame(three + " Escape"), "theme editor") == "theme editor \xE2\x80\xBA Roles \xE2\x80\xBA text", "Escape goes back ONE level, to the role, and the editor stays open");
-    check(title(frame(three + " Escape Escape"), "theme editor") == "theme editor \xE2\x80\xBA Roles", "…the next to the roles");
-    check(title(frame(three + " Escape Escape Escape"), "theme editor") == "theme editor", "…the next to the top of the editor");
-    check(title(frame(three + " Escape Escape Escape Escape"), "theme editor").empty(), "…and only from the top does Escape close the popup");
-    check(title(frame("F4 Down Enter Escape Escape F4"), "theme editor") == "theme editor",
-          "closed from a sub level and opened again, the editor comes back at the TOP, not in the sub level it was left in");
-    // a colour highlighted in the list is previewed in the sample; going back puts the committed one back
-    const std::string committed = sample_fg(frame(three));
-    const std::string previewed = sample_fg(frame(three + " Down Down"));
-    const std::string reverted = sample_fg(frame(three + " Down Down Escape Enter Enter"));  // back to the role, then into fg again
-    check(!committed.empty() && previewed != committed && reverted == committed,
-          "a colour previewed in the list is put back to the committed one when Escape leaves the list [" + committed + " / " + previewed + " / " + reverted + "]");
+    // the theme sheet: Enter edits a row, Escape drops that edit first, then a filter, and only then closes
+    check(title(frame("F4 Enter Escape"), "theme") == "theme", "Escape on a row being edited drops the edit, and the sheet stays");
+    check(title(frame("F4 Enter Escape Escape"), "theme").empty(), "…and the next Escape closes it");
+    check(title(frame("F4 / Type:link Enter Escape"), "theme") == "theme" && title(frame("F4 / Type:link Enter Escape Escape"), "theme").empty(),
+          "a filter goes before the sheet does");
+    // a colour stepped to on the row shows at once; Escape puts the kept one back
+    const std::string kept = text_fg(frame("F4"));
+    const std::string stepped = text_fg(frame("F4 Enter Down"));
+    const std::string dropped = text_fg(frame("F4 Enter Down Escape"));
+    check(!kept.empty() && stepped != kept && dropped == kept,
+          "a colour stepped to on a row being edited is put back to the kept one by Escape [" + kept + " / " + stepped + " / " + dropped + "]");
     // the keys sheet: Enter on a row waits for a key, Escape drops that first, then a filter, and only then closes
     const std::string capture = "F5 Enter";
     check(has(frame(capture), "press the key to add") && has(frame(capture), "press a key"), "Enter on a row waits for the key to add, on the row itself");

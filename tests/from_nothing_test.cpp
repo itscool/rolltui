@@ -154,11 +154,8 @@ const char* kKeys =
     "Type:save Enter Type:sundial Enter";
 
 const char* kTheme =
-    "F4 Type:generate Enter "
-    "Type:seed Enter CtrlU Type:7 Enter Escape "
-    "Type:ruleset Enter Type:complementary Enter "
-    "Type:generate_ Enter "
-    "Type:save Enter Type:sundial Enter";
+    "F4 CtrlG "                        // a theme from the next seed
+    "CtrlS Type:sundial Enter";        // saved under its name
 
 }  // namespace
 

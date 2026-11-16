@@ -139,7 +139,7 @@
 // · F1 toggles the help popup · F2 opens the settings menu (milestone 11: a
 // rolltui::Menu in the layout's "menu" popup — Theme / Layout / Depth as choices,
 // ambiguous width as a toggle, reload / help / quit as actions; arrows, Enter, Left,
-// Esc, typing filters) · Ctrl-P the same menu flattened as a command palette · F3
+// Esc, typing filters) · Alt-P the same menu flattened as a command palette · F3
 // cycles the shipped theme presets · F4 opens the THEME EDITOR (milestone 14:
 // tools/theme_editor.hpp — a side popup drawn in the theme being edited; Roles ›
 // role › fg › palette entry with a live preview; Enter commits, Esc cancels, Ctrl-Z /
@@ -914,16 +914,20 @@ struct App {
     if (editor_mode == EditorMode::Theme) std::copy_n(teditor.current(), kRoleCount, theme_styles);
     else std::copy(std::begin(resolved_styles), std::end(resolved_styles), theme_styles);
     if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current().clone(); apply_layout(); }
+    // A NEW TABLE IS HANDED OVER THE MOMENT IT IS MADE: the windows read the table they were given until the next layout, and the
+    // one freed here is that table.
     if (bstore && rolltui_bindings_store_version(bstore) != bstore_seen) {
       bstore_seen = rolltui_bindings_store_version(bstore);
       rolltui_bindings_free(bindings);
       bindings = rolltui_bindings_clone(rolltui_bindings_store_working(bstore));
       declare_actions();
+      rolltui_context_set_bindings(ctx, bindings);
     }
     if (editor_mode == EditorMode::Keys) {
       rolltui_bindings_free(bindings);
       bindings = rolltui_bindings_clone(keditor.current());
       declare_actions();
+      rolltui_context_set_bindings(ctx, bindings);
     }
   }
   bool load_bindings_arg() {
@@ -1124,7 +1128,7 @@ struct App {
     { RolltuiLayer popup = editor_popup("theme editor", false, "theme"); rolltui_window_stack_push(stack, &popup); }
     // ONE EDITOR, and the window table owns it. `set_theme_store` also CREATES the widget if this
     // screen has none yet, so the editor exists to be adopted before the first draw.
-    rolltui_windows_set_theme_store(windows, "theme", 5, store, 0);
+    rolltui_windows_set_theme_store(windows, "theme", 5, store, persist ? 1 : 0);
     if (RolltuiThemeEditor* borrowed = rolltui_windows_theme_editor(windows, "theme", 5)) teditor.adopt(borrowed);
     push_theme_hint();
     sync_look();
@@ -1711,7 +1715,7 @@ struct App {
       case EditorMode::Layout: layout_outcome(leditor.handle(e, bindings)); return;
       case EditorMode::Keys:   keys_outcome(keditor.handle(e, bindings)); return;
       case EditorMode::Menu:   menu_outcome(meditor.handle(e, bindings)); return;
-      case EditorMode::Theme:  editor_outcome(teditor.handle(e, bindings)); return;
+      case EditorMode::Theme:  rolltui_windows_handle(windows, "editor", 6, e); return;  // the library's sheet drives itself
       case EditorMode::None:   return;
     }
   }
@@ -1904,7 +1908,7 @@ struct App {
   void ensure_layout() {
     take_picked_file();
     // Every frame, not just on open: the hint changes when an action lands, and the kind draws it.
-    if (editor_open && editor_mode == EditorMode::Theme) push_theme_hint();
+    if (editor_open && editor_mode == EditorMode::Theme && !hint.empty()) push_theme_hint();  // the studio's own word, when it has one
     // A FRAME DUMP IS ONE MOMENT: nothing the library moves by itself is caught halfway (`still`).
     RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms, static_cast<unsigned char>(!persist)};
     rolltui_context_set_env(ctx, &env);
@@ -2182,7 +2186,10 @@ struct App {
         keys_outcome(keditor.handle(&ev, bindings));
         return true;
       }
-      const StrView st = action_for(k, "studio"), app_a = action_for(k, "app"), ed = action_for(k, "editor");
+      // THE WINDOW WITH FOCUS FIRST: a key it takes is its own, and none of the studio's scopes below get it.
+      const bool mine = !rolltui_windows_focused_takes(windows, &k);
+      const StrView st = mine ? action_for(k, "studio") : StrView(), app_a = mine ? action_for(k, "app") : StrView(),
+                    ed = mine ? action_for(k, "editor") : StrView();
       if (st == "studio.quit") return false;
       if (st == "studio.cycle_theme") {
         RolltuiStrList sn;
@@ -2236,18 +2243,19 @@ struct App {
         const StrView sa = action_for(ev.key, "stack");
         if (sa == "stack.close_popup" || sa == "stack.focus_next" || sa == "stack.focus_prev") {
           hint.clear();
-          // The theme editor is the one that ignores a focus move; the tree editors read it.
-          if (editor_mode != EditorMode::Theme || sa == "stack.close_popup") route_editor_event(&ev);
+          // The theme sheet goes back one level (a row being edited, a filter) and closes only from its top; it ignores a focus
+          // move. The tree editors read both.
+          if (editor_mode == EditorMode::Theme) {
+            if (sa == "stack.close_popup" && !rolltui_windows_back(windows, "editor", 6)) close_editor();
+            return true;
+          }
+          route_editor_event(&ev);
           return true;
         }
       }
     }
-    // THE LIBRARY KIND DRAWS THE THEME EDITOR; THIS FILE DRIVES IT, and they share one editor
-    // object — adopted in `toggle_editor` from the window that owns it. The kind's own `handle`
-    // must not also consume these keys, because the studio reacts to OUTCOMES the kind has no
-    // notion of: a reset to the built-in that must ASK before it applies, and a check that opens
-    // a report popup. Deleting this branch turns both back into silent no-ops, which is exactly
-    // what two assertions caught when the drawing first moved.
+    // THE LIBRARY'S THEME SHEET DRAWS AND DRIVES ITSELF, against the store this file handed it: every key with the sheet focused
+    // goes to the window, as it would in any program that names `theme`.
     if (ev.kind == ROLLTUI_EVENT_KEY && editor_open && editor_mode == EditorMode::Theme) {
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       if (focused && focused->id == "editor") {
@@ -2398,7 +2406,7 @@ constexpr RolltuiWidgetPlugin kEditorPlugin = {
     // stack while an editor has focus (`App::handle` gives it to the editor, which abandons an edit,
     // then ascends, and asks to close only from its top level), and a press outside does not
     // dismiss this pane. The theme editor is the library's `theme` kind, which has its own.
-    /*back=*/nullptr, nullptr, nullptr, nullptr
+    /*back=*/nullptr, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 RolltuiWidget editor_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
 
@@ -2416,7 +2424,7 @@ int confirm_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kConfirmPlugin = {
     /*destroy=*/confirm_destroy, /*layout=*/confirm_layout, /*draw=*/confirm_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 RolltuiWidget confirm_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
 
@@ -2437,7 +2445,7 @@ int report_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kReportPlugin = {
     /*destroy=*/report_destroy, /*layout=*/report_layout, /*draw=*/report_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
@@ -2468,7 +2476,7 @@ void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f)
 constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
     /*destroy=*/placeholder_destroy, /*layout=*/placeholder_layout, /*draw=*/placeholder_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
   PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), RolltuiStr("[") + StrView(content, len) + "]"};
@@ -2814,6 +2822,7 @@ int main(int argc, char** argv) {
   // A screen's keys sheets (`keys`, and `help`) edit the studio's own keys: what they commit lands in the store, and the studio
   // takes the table from there like any other change.
   rolltui_windows_set_bindings_store(app.windows, "keys", 4, app.bstore, app.persist ? 1 : 0);
+  rolltui_windows_set_theme_store(app.windows, "theme", 5, app.store, app.persist ? 1 : 0);  // and a layout's theme sheet, its theme
   {
     // Where the picker opens: beside the document being previewed, which is where a person
     // looking for another one is almost always looking. Set once — setting it per frame would

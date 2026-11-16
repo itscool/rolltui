@@ -8,7 +8,7 @@
 │ │ styles,     │ open help                             F1, ?  │ecolor         │
 │ │ JSON        │ open the settings and commands menu   F2     │p              │
 │ │ loader,     │ open the session details              F3     │               │
-│ │ built-ins)  │ open the command palette              Ctrl-P │               │
+│ │ built-ins)  │ open the command palette              Alt-P  │               │
 │ └─────────────│ repaint the screen                    Ctrl-L │               │
 │               │ find in the transcript                Ctrl-F │               │
 │ Here is the fu│ edit the theme                        F4     │               │

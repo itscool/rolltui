@@ -5,7 +5,7 @@
 │ │ lines)      │             │              │ ││ size       80x24             │
 │ │ Theme       │ bu╭ menu › Commands ─────────────────────╮ 180/197           │
 │ │ (roles →    │   │ ◂ Back                               │ yes               │
-│ │ styles,     │   │ Open a document or a preset … Ctrl-E │ truecolor         │
+│ │ styles,     │   │ Open a document or a preset f… Alt-O │ truecolor         │
 │ │ JSON        │   │ Save the preset being edited … Alt-S │ menu              │
 │ │ loader,     │   │ Reload the fixture                F5 │                   │
 │ │ built-ins)  │   │ Help                           F1, ? │                   │

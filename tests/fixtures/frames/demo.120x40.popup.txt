@@ -16,7 +16,7 @@
 │ │                     │ open help                                                     F1, ?  │                       │
 │ │ Windows, layers, pla│ open the settings and commands menu                           F2     │                       │
 │ │ abs/rel per axis), f│ open the session details                                      F3     │                       │
-│ │                     │ open the command palette                                      Ctrl-P │                       │
+│ │                     │ open the command palette                                      Alt-P  │                       │
 │ │ Menu widget (hierarc│ repaint the screen                                            Ctrl-L │                       │
 │ │ filterable) + list/t│ find in the transcript                                        Ctrl-F │                       │
 │ │ Layout files (JSON: │ edit the theme                                                F4     │                       │

@@ -1,8 +1,8 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ Extended_Pictographic, InCB)    │             │                   │ Save theme as: mine                            │
-│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│                                                │
-│ │ grapheme clusters, display      │             │ Unicode conformanc│                                                │
-│ │ width                           │             │                   │                                                │
+│ │ Extended_Pictographic, InCB)    │             │                   │ Markdown ───────────────────────────────────── │
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│ a heading                  #adeeae     #14161a │
+│ │ grapheme clusters, display      │             │ Unicode conformanc│ Menus, find & scrollbar ────────────────────── │
+│ │ width                           │             │                   │ a menu's path and hea…     #858d99     #22252b │
 │ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Mar│                                                │
 │ │                                 │             │ block tree is the │                                                │
 │ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│                                                │
@@ -29,14 +29,14 @@
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ /save                                          │
-│ │ int add(int a, int b) {                                           │ mine                                           │
-│ │   return a + b;                                                   │ Roles › a role › fg › a colour; the screen is  │
-│ └───────────────────────────────────────────────────────────────────│ type to filter · Enter commits · Esc cancels · │
-└─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 1 · redo 0 · │
-┌─────────────────────────────────────────────────────────────────────│ saved preset 'mine'                            │
-│ > type here                                                         │                                                │
-└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │                                                │
+│ │   return a + b;                                                   │                                                │
+│ └───────────────────────────────────────────────────────────────────│                                                │
+└─────────────────────────────────────────────────────────────────────│ /a heading                                     │
+┌─────────────────────────────────────────────────────────────────────│ md_heading  ·  bold                            │
+│ > type here                                                         │ saved preset 'mine'                            │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────── mine · dark ─┘
  mine [theme editor]  default  120x40  line 77/110  follow  truecolor  focus:editor
 --- role ---
 md_heading fg=#adeeae bg=#14161a bold

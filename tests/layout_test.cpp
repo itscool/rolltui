@@ -795,7 +795,7 @@ void mine_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 constexpr RolltuiWidgetPlugin kMinePlugin = {
     /*destroy=*/mine_destroy, /*layout=*/mine_layout, /*draw=*/mine_draw,
     /*problem=*/nullptr,      /*note_at=*/nullptr,    /*desired_outer=*/nullptr,
-    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 RolltuiWidget mine_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   return RolltuiWidget{&kMinePlugin, new MineCtx(*static_cast<const MineCtx*>(ctx))};
@@ -848,7 +848,7 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*destroy=*/canvas_destroy,   /*layout=*/canvas_layout, /*draw=*/canvas_draw,
     /*problem=*/canvas_problem,   /*note_at=*/nullptr,      /*desired_outer=*/canvas_desired_outer,
-    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr
+    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr, nullptr, nullptr /* takes */
 };
 struct CanvasFactoryCtx {
   RolltuiWindows* windows;
@@ -1737,6 +1737,47 @@ int main() {
     check(f.at(cx, 2).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg,
           "…and its keys are drawn as a hotkey is drawn everywhere: in the shortcut role [" + row(2) + "]");
     check(f.at(cx, 2).style.fg != f.at(lx, 2).style.fg, "…so the two read apart");
+  }
+
+  std::printf("-- the theme sheet: each role drawn in itself, each colour beside its swatch\n");
+  {
+    ThemeFixture t;
+    builtin_theme_c("default-dark", t);
+    LayoutReport lr;
+    std::optional<RolltuiLayout> lay =
+        load_layout_c(R"({"name":"theme-only","root":{"column":[{"id":"th","content":"theme","background":"panel_background"}]}})", lr);
+    check(lay && lr.clean(), "the theme-only layout loads clean");
+    WindowsC windows;
+    StackC s(*lay);
+    const RolltuiRect box{0, 0, 80, 12};
+    windows.prepare(s, box);
+    FrameC f(80, 12, t.style(ROLLTUI_ROLE_BACKGROUND));
+    s.compose(f, box, t, [&](const RolltuiResolvedNode& rn, FrameC& fr) { windows.draw(rn, fr, t); });
+    auto row_of = [&](const std::string& words) {
+      for (int y = 0; y < 12; ++y) {
+        std::string out;
+        for (int x = 0; x < 80; ++x) out += f.glyph(x, y);
+        if (out.rfind(words, 0) == 0) return y;
+      }
+      return -1;
+    };
+    // the panel's own row: "a panel's ground", drawn in the panel_background role, then its fg and its bg, each after a swatch
+    const int y = row_of("a panel's ground");
+    check(y >= 0, "the panel role has its row, in words");
+    if (y >= 0) {
+      const RolltuiStyle panel = t.style(ROLLTUI_ROLE_PANEL_BACKGROUND);
+      check(f.at(0, y).style.fg == panel.fg && f.at(0, y).style.bg == panel.bg,
+            "what the role is for is drawn IN the role: the panel's own fg on its own ground");
+      int hash = -1;
+      for (int x = 0; x < 80; ++x)
+        if (f.glyph(x, y) == "#") { hash = x; break; }
+      check(hash >= 3 && f.at(hash - 3, y).style.bg == panel.fg && f.at(hash - 2, y).style.bg == panel.fg,
+            "…and the fg's spelling stands after a swatch of that colour");
+      int hash2 = -1;
+      for (int x = hash + 1; x < 80; ++x)
+        if (f.glyph(x, y) == "#") { hash2 = x; break; }
+      check(hash2 >= 3 && f.at(hash2 - 3, y).style.bg == panel.bg, "…and the bg's after a swatch of its own");
+    }
   }
 
   std::printf("-- widgets: one per content, by kind\n");

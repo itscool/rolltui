@@ -83,13 +83,15 @@ std::string read_file(const std::string& path) {
   return ss.str();
 }
 
-RolltuiEvent key_event(unsigned char k, RolltuiCodepoint ch = 0) {
+RolltuiEvent key_event(unsigned char k, RolltuiCodepoint ch = 0, bool ctrl = false) {
   RolltuiEvent e{};
   e.kind = ROLLTUI_EVENT_KEY;
   e.key.key = k;
   e.key.ch = ch;
+  e.key.ctrl = ctrl ? 1 : 0;
   return e;
 }
+RolltuiEvent ctrl_key(char c) { return key_event(ROLLTUI_KEY_CHAR, static_cast<RolltuiCodepoint>(c), true); }
 
 // The one screen the in-process half drives: a `theme` window and nothing else, written here
 // rather than read from a file because what is under test is the KIND, not the loader.
@@ -187,13 +189,10 @@ Session drive(const std::string& dir, bool hand_over_the_store) {
   out.version_before = rolltui_theme_store_version(s.store);
   snapshot(out.text_fg_before);
 
-  // Roles › the first role › fg › the next colour, committed.
+  // The first role's row: Enter edits it, Down steps its fg to the theme's next colour, Enter keeps it.
   const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
   const RolltuiEvent down = key_event(ROLLTUI_KEY_DOWN);
   s.send(enter);
-  s.send(enter);
-  s.send(enter);
-  s.send(down);
   s.send(down);
   s.send(enter);
 
@@ -213,35 +212,31 @@ int main() {
   const std::string presets = " --presets '" + scratch.string() + "'";
   const std::string base = studio + " --frame 100x30" + presets + " --theme default-dark";
 
-  // ---- 1. A LAYOUT ALONE GIVES A WORKING EDITOR ---------------------------------------------
+  // ---- 1. A LAYOUT ALONE GIVES A WORKING SHEET ---------------------------------------------
   int rc = 0;
   const std::string open = run(base + " --layout kiln --bindings kiln 2>&1", rc);
   check(rc == 0 && !open.empty(), "the studio runs a screen it has never heard of (rc " + std::to_string(rc) + ")");
-  check(has(open, "the theme") && has(open, "Roles") && has(open, "Generate a theme (seeded)"),
-        "…and the window whose content is `theme` draws the editor's own menu");
-  check(has(open, "badges:") && has(open, "Enter commits, Esc cancels"),
-        "…with the classification and the recovery model it states, drawn by the kind and not by the host");
+  check(has(open, "the theme") && has(open, "Text & backgrounds \xE2\x94\x80") && has(open, "the screen's ground"),
+        "…and the window whose content is `theme` draws the sheet: every role, what it is for, under its heading");
+  check(has(open, "Enter edit") && has(open, "Ctrl-O undo") && has(open, "default \xC2\xB7 dark"),
+        "…with its own keys along the bottom, as this table binds them, and the preset and variant in the footer");
 
   // ---- 2. IT IS DRIVABLE, with no host code between the keys and the model -------------------
-  const std::string edited =
-      run(base + " --layout kiln --bindings kiln --keys \"Enter Type:heading Enter Enter Down Down Enter\" 2>&1", rc);
-  check(has(edited, "md_heading  fg "), "keystrokes reach the editor: three levels down, the role sample names it");
-  check(has(edited, "undo 1"), "…and Enter on a colour COMMITS, so there is something to undo");
+  const std::string edited = run(base + " --layout kiln --bindings kiln --keys \"Enter Type:#ff0000 Enter\" 2>&1", rc);
+  check(has(edited, "#ff0000") && has(edited, "kept"), "keystrokes reach the sheet: Enter edits the row, a colour is typed into it, Enter keeps it");
+  check(has(edited, "default (modified)"), "…committed into the studio's store, so the preset is labelled modified");
 
   // ---- 3. THE ONE-WINDOW CONTROL ------------------------------------------------------------
   const std::string plain = run(base + " --layout kiln-plain --bindings kiln 2>&1", rc);
-  check(rc == 0 && !plain.empty() && !has(plain, "badges:") && !has(plain, "Generate a theme (seeded)"),
-        "the SAME screen with that one content string changed has no editor in it");
+  check(rc == 0 && !plain.empty() && !has(plain, "Text & backgrounds") && !has(plain, "Enter edit"),
+        "the SAME screen with that one content string changed has no sheet in it");
 
   // ---- 4. THE BINDINGS CONTROL --------------------------------------------------------------
-  const std::string undone =
-      run(base + " --layout kiln --bindings kiln --keys \"Enter Type:heading Enter Enter Down Down Enter CtrlO\" 2>&1",
-          rc);
-  check(has(undone, "undone \xC2\xB7 undo 0"), "Ctrl-O undoes, because kiln's bindings file says editor.undo is Ctrl-O");
-  const std::string shipped =
-      run(base + " --layout kiln --keys \"Enter Type:heading Enter Enter Down Down Enter CtrlO\" 2>&1", rc);
-  check(!has(shipped, "undone") && has(shipped, "undo 1"),
-        "…and with the shipped bindings the same key does nothing: the FILE supplied the chord");
+  const std::string undone = run(base + " --layout kiln --bindings kiln --keys \"Enter Type:#ff0000 Enter CtrlO\" 2>&1", rc);
+  check(has(undone, "undone") && !has(undone, "#ff0000"), "Ctrl-O undoes, because kiln's bindings file says sheet.undo is Ctrl-O");
+  const std::string shipped = run(base + " --layout kiln --keys \"Enter Type:#ff0000 Enter CtrlO\" 2>&1", rc);
+  check(!has(shipped, "undone") && has(shipped, "load a theme") && has(shipped, "(modified)"),
+        "…and with the shipped bindings the same key loads a theme instead, the edit kept: the FILE supplied the chord");
 
   // ---- 5. THE SOURCE CONTROL ----------------------------------------------------------------
   {
@@ -288,23 +283,10 @@ int main() {
     s.open(dir.string(), true);
     const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
     const RolltuiEvent down = key_event(ROLLTUI_KEY_DOWN);
-    const RolltuiEvent home = key_event(ROLLTUI_KEY_HOME);
-    const RolltuiEvent left = key_event(ROLLTUI_KEY_LEFT);
-
-    // BACK TO THE TOP LEVEL, and Left rather than Escape: Escape at the root CLOSES the menu,
-    // and one of either only ascends ONE level — the fields below are three deep. A filter typed
-    // at the wrong level matches nothing and the Enter after it does nothing, which is a save
-    // that silently never happened.
-    auto to_root = [&]() {
-      for (int i = 0; i < 4; ++i) s.send(left);
-      s.send(home);
-    };
     auto save_as = [&](const char* name) {
-      to_root();
-      s.type("save");  // the filter reaches "Save as preset"
-      s.send(enter);   // start editing the field
+      s.send(ctrl_key('s'));  // Save as: a name on the bottom line
       s.type(name);
-      s.send(enter);   // commit: the SaveAs outcome
+      s.send(enter);
     };
     auto preset_text_fg = [&](const char* name) {
       RolltuiThemePresetReport rep{};
@@ -323,13 +305,9 @@ int main() {
     check(first != 0, "Save as preset writes one, through the store the app handed over");
 
     // Now change the theme and try the same name again.
-    to_root();
-    s.send(enter);  // Roles
-    s.send(enter);  // the first role
-    s.send(enter);  // fg
-    s.send(down);
-    s.send(down);
-    s.send(enter);  // commit
+    s.send(enter);  // edit the first role's row
+    s.send(down);   // its fg to the theme's next colour
+    s.send(enter);  // kept
     save_as("mine");
     check(preset_text_fg("mine") == first,
           "…and the same name again leaves the saved preset as it was, rather than replacing it");
@@ -341,17 +319,13 @@ int main() {
     };
     const unsigned int edited = working_text_fg();
     check(edited != first, "the working copy is the edited theme, so a reset has something to undo");
-    to_root();
-    s.type("loaded");  // "Reset to the loaded preset…"
-    s.send(enter);
-    check(working_text_fg() == first,
-          "Reset to the loaded preset re-reads the PRESET: the working copy is what the file says again");
+    s.send(ctrl_key('r'));
+    check(working_text_fg() == first, "Ctrl-R resets to the loaded preset: the working copy is what the file says again");
   }
 
-  // ---- 9. A CLOSE GOES BACK ONE LEVEL, AS A `menu` WINDOW'S DOES; ONLY FROM THE TOP DOES IT CLOSE THE POPUP --------------
-  // The stack asks the focused window's `back` before it pops a popup. This kind once said it had no levels, so Escape three
-  // deep in "Roles › a role › fg" closed the whole editor, and the next F4 opened it at that same level. (That a colour
-  // previewed in the level just left is put back is checked on the screen, in dirktui_test's run of the real binary.)
+  // ---- 9. ESCAPE GOES BACK ONE LEVEL; ONLY FROM THE TOP DOES IT CLOSE THE POPUP ------------
+  // A row being edited goes first, putting back what it previewed; then a save being named, then the filter. At the top `back`
+  // says there is nothing left, and the popup is the stack's to close.
   {
     const fs::path dir = scratch / "back";
     fs::create_directories(dir);
@@ -360,22 +334,22 @@ int main() {
     const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
     const RolltuiEvent down = key_event(ROLLTUI_KEY_DOWN);
     auto back = [&]() { return rolltui_windows_back(s.windows, "kiln_edit", 9); };
-    check(back() == 0, "at the top of the editor's menu there is no level to go back from: the popup is the stack's to close");
-    s.send(enter);  // Roles
-    s.send(enter);  // the first role
-    s.send(enter);  // fg
-    s.send(down);   // a colour highlighted
-    check(back() == 1, "going back from the colour list leaves it");
-    check(back() == 1, "…a second goes back from the role to the roles");
-    check(back() == 1, "…a third goes back from the roles to the top");
-    check(back() == 0, "…and a fourth has nothing to go back from: now the popup closes");
-    // the same walk again, and this time counting: however deep it was entered, back leaves one level at a time and stops
-    for (int depth = 1; depth <= 3; ++depth) {
-      for (int i = 0; i < depth; ++i) s.send(enter);
-      int steps = 0;
-      while (back() == 1 && steps < 10) ++steps;
-      check(steps == depth, "entered " + std::to_string(depth) + " level" + (depth == 1 ? "" : "s") + " deep, back takes exactly " + std::to_string(depth) + " steps [" + std::to_string(steps) + "]");
-    }
+    auto working_fg = [&]() {
+      const RolltuiThemePresetValue* v = rolltui_theme_store_working(s.store);
+      return v ? text_fg(v->colours) : 0u;
+    };
+    const unsigned int start = working_fg();
+    check(back() == 0, "at the top of the sheet there is no level to go back from");
+    s.send(enter);
+    s.send(down);
+    check(working_fg() != start, "a colour stepped to on a row being edited shows at once: the store has it, unkept");
+    check(back() == 1 && working_fg() == start, "back drops the edit, and the colour is the one kept before");
+    check(back() == 0, "…and the next back is at the top");
+    s.type("/screen");
+    s.send(enter);
+    check(back() == 1 && back() == 0, "a filter is one level");
+    s.send(ctrl_key('s'));
+    check(back() == 1 && back() == 0, "a save being named is one level");
   }
 
   fs::remove_all(scratch);

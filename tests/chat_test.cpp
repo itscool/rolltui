@@ -237,13 +237,13 @@ int main() {
 
   // ---- the palette and the menu -----------------------------------------------------------------
   {
-    const std::string about = frame("Type:hi Enter Tick:5000 CtrlP Type:clear", "150x24");
+    const std::string about = frame("Type:hi Enter Tick:5000 AltP Type:clear", "150x24");
     check(has(about, "about") && has(about, "/clear: start again"), "the palette's focused row is described in the status panel");
     check(has(about, "1 you, 1 assistant"), "CONTROL: there is a conversation to clear");
-    check(has(frame("Type:hi Enter Tick:5000 CtrlP Type:clear Enter"), "0 you, 0 assistant"),
+    check(has(frame("Type:hi Enter Tick:5000 AltP Type:clear Enter"), "0 you, 0 assistant"),
           "Enter on the palette's row runs the command it describes");
     const fs::path home = scratch / "home-menu";
-    check(has(frame("CtrlP Type:ember Enter", "120x24", "", "", home), "theme     ember"), "the palette chooses a theme through the settings table");
+    check(has(frame("AltP Type:ember Enter", "120x24", "", "", home), "theme     ember"), "the palette chooses a theme through the settings table");
     check(has(frame("", "120x24", "", "", home), "theme     ember"), "…and it is kept: the next run draws in it");
     const std::string one = frame("F2 Enter Enter Escape", "120x24");
     const std::string two = frame("F2 Enter Enter Escape Escape", "120x24");
