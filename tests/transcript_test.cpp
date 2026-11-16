@@ -445,6 +445,13 @@ int main() {
     TranscriptHandle tr;
     layout(tr, doc, {0, 0, 30, 6}, opt);
     check(scroll(tr).follow && top_line(tr) == total_lines(tr) - 6, "a fresh transcript follows the bottom");
+    {
+      // A PAGE IS READ FROM ITS TOP: the top asked for before the first layout is where the first layout shows it.
+      TranscriptHandle page;
+      scroll_to_top(page);
+      layout(page, doc, {0, 0, 30, 6}, opt);
+      check(!scroll(page).follow && top_line(page) == 0, "the top asked for before anything is laid out is kept");
+    }
     scroll_to_top(tr);
     scroll_by(tr, 3);  // into entry 1: its block is 1 gap line + wrapped lines, so line 2 = its second content line
     check(scroll(tr).entry == 1 && scroll(tr).line == 2 && !scroll(tr).follow,

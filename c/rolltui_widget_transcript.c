@@ -435,10 +435,10 @@ static size_t top_line(const RolltuiTranscript* t) {
 
 static void set_top(RolltuiTranscript* t, size_t top) {
   size_t lo = 0, hi, e;
-  if (t->layouts_n == 0) {
+  if (t->layouts_n == 0) { /* nothing laid out yet: kept for when it is, the top held when the top was asked for */
     t->scroll_.entry = 0;
     t->scroll_.line = 0;
-    t->scroll_.follow = 1;
+    t->scroll_.follow = (unsigned char)(top > 0);
     return;
   }
   top = zmin(top, max_top(t));

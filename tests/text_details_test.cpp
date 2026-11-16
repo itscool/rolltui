@@ -63,11 +63,11 @@ void row_fn(void*, std::size_t i, RolltuiListRow* out) {
 }
 
 std::vector<std::string> paint(RolltuiWindows* w, const RolltuiLayout* l, int wd, int ht, RolltuiFrame** keep = nullptr,
-                               const char* focus = nullptr) {
+                               const char* focus = nullptr, RolltuiWindowStack* held = nullptr) {
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
-  RolltuiWindowStack* stack = rolltui_window_stack_new();
-  rolltui_window_stack_set_base(stack, rolltui_layout_base(l));
+  RolltuiWindowStack* stack = held ? held : rolltui_window_stack_new();
+  if (!held) rolltui_window_stack_set_base(stack, rolltui_layout_base(l));
   if (focus) rolltui_window_stack_focus(stack, focus, std::strlen(focus));
   const RolltuiRect area{0, 0, wd, ht};
   rolltui_windows_sync(w, stack);
@@ -101,7 +101,7 @@ std::vector<std::string> paint(RolltuiWindows* w, const RolltuiLayout* l, int wd
   rolltui_compose_scratch_free(cs);
   if (keep) *keep = f;
   else rolltui_frame_free(f);
-  rolltui_window_stack_free(stack);
+  if (!held) rolltui_window_stack_free(stack);
   rolltui_effect_map_free(fx);
   return rows;
 }
@@ -136,6 +136,21 @@ void test_footers() {
   rolltui_windows_handle(w, "rows", 4, &e);
   rows = paint(w, l, 60, 10);
   check(rows[9].find("3 of 100 \xC2\xB7 2 marked") != std::string::npos, "…and how many are marked [" + rows[9] + "]");
+  rolltui_windows_free(w);
+  rolltui_layout_free(l);
+  // A TAB'S FOOTER IS ITS OWN: shown in place of the list, a page with nothing to say leaves the border bare.
+  l = load(R"({ "name": "t", "root": { "id": "main", "focusable": true, "border": "single",
+      "tabs": [ { "title": "Rows", "content": "list:things" }, { "title": "Note", "content": "text:a note" } ] } })");
+  w = rolltui_windows_new(ctx());
+  rolltui_windows_bind_list(w, "things", 6, count_fn, row_fn, nullptr, nullptr);
+  RolltuiWindowStack* tabs = rolltui_window_stack_new();
+  rolltui_window_stack_set_base(tabs, rolltui_layout_base(l));
+  rows = paint(w, l, 40, 8, nullptr, nullptr, tabs);
+  const bool listed = rows[7].find("1 of 100") != std::string::npos;
+  rolltui_window_stack_set_tab(tabs, "main", 4, 1);
+  rows = paint(w, l, 40, 8, nullptr, nullptr, tabs);
+  check(listed && rows[7].find(" of ") == std::string::npos, "the list's footer goes with the list when another tab is shown [" + rows[7] + "]");
+  rolltui_window_stack_free(tabs);
   rolltui_windows_free(w);
   rolltui_layout_free(l);
 }
