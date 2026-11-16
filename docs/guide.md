@@ -212,6 +212,35 @@ shipped `stacked` layout.
 The studio's layout editor edits tabs (typed `Title = content | Title = content`), the shown tab,
 and a breakpoint (typed `width`, `width x height` or `x height`).
 
+## Key sequences and counts
+
+A bindings file binds a SEQUENCE as it binds a chord: up to `ROLLTUI_SEQUENCE_MAX` (4) chords
+apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x ctrl+s"]`.
+
+- The window table holds the keys on the way for the focused window. A key that begins a
+  sequence of its scope waits for the next; a key no sequence goes on with ends it and is what it
+  would have been alone. Escape lets go of what was on the way.
+- A sequence's first chord cannot also be bound alone in the same scope, and two actions cannot
+  share a sequence: the loader reports the conflict and keeps what came first.
+- A COUNT is digits typed before an action: `5` then Down moves five. Digits are a count only in a
+  window where a digit is not text or a jump: a list (unless its filter is being typed) and a
+  scrolling page count; the column browser, a menu and an input do not.
+- After 300 ms with keys on the way, `rolltui_windows_draw_toasts` draws a panel at the screen's
+  bottom left: the keys so far in its border, and a row for each key that can follow, with what
+  it does or that more follows. `rolltui_windows_pending_keys` gives the keys on the way as text,
+  for a status line.
+- A widget kind joins in by answering the plugin's `keys` slot with its scope and whether a digit
+  is a count; a completed sequence hands it a chord bound to the same action, or calls `perform`
+  with the action's name when only a sequence is bound to it.
+
+A chord is spelled without case, so a capital letter is `shift+g`. A terminal sends a typed capital
+as the letter itself, and every lookup matches it as shift and the letter. The help shows a bare
+letter as typed (`g`) and shift with a letter as the capital (`G`).
+
+The shipped `vim` bindings preset is the default table with j and k, h and l, `g g` and `G`,
+Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages. In the column browser
+those letters are keys rather than jumps to a name.
+
 ## Hover
 
 Set `RolltuiTerminalOptions.hover` and the terminal also reports the pointer as it moves with no

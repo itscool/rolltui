@@ -175,10 +175,15 @@ size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap) {
 static int is_alpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 
 size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap) {
-  /* Capitalise each part, join with '-': "Ctrl-Shift-Left", "Alt-Enter", "F1", "?". */
+  /* Capitalise each part, join with '-': "Ctrl-Shift-Left", "Alt-Enter", "F1", "?". A letter alone is shown as it is typed, `g`, and
+   * shift and a letter as the capital, `G`: a sequence reads as it is pressed. */
   char s[ROLLTUI_CHORD_STRING_MAX];
   size_t len, i, start = 0, n = 0;
   if (cap < ROLLTUI_CHORD_STRING_MAX) return 0;
+  if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && k->ch >= 'a' && k->ch <= 'z') {
+    out[0] = (char)(k->shift ? k->ch - 'a' + 'A' : k->ch);
+    return 1;
+  }
   len = rolltui_chord_to_string(k, s, sizeof s);
   for (i = 0; i <= len; ++i) {
     if (i != len && (s[i] != '+' || i == start)) continue;
@@ -241,10 +246,18 @@ static int str_is(const Str* s, const char* p, size_t len) {
   return s->len == len && (len == 0 || memcmp(s->p, p, len) == 0);
 }
 
+/* A SEQUENCE: chords pressed one after another, `g g` or `ctrl+x ctrl+s`, bound like a chord. */
+typedef struct {
+  RolltuiChord c[ROLLTUI_SEQUENCE_MAX];
+  unsigned char n;
+} Seq;
+
 typedef struct {
   Str action;
   RolltuiChord* chords;
   size_t chord_count, chords_cap;
+  Seq* seqs;
+  size_t seq_count, seqs_cap;
 } Row;
 
 struct RolltuiBindings {
@@ -276,6 +289,7 @@ void rolltui_bindings_free(RolltuiBindings* b) {
   for (i = 0; i < b->row_count; ++i) {
     str_free(&b->rows[i].action);
     rolltui_mem_free(b->rows[i].chords);
+    rolltui_mem_free(b->rows[i].seqs);
   }
   rolltui_mem_free(b->actions);
   rolltui_mem_free(b->descriptions);
@@ -399,6 +413,17 @@ static int chord_eq(const RolltuiChord* a, const RolltuiChord* b) {
   return a->key == b->key && a->ch == b->ch && a->ctrl == b->ctrl && a->alt == b->alt && a->shift == b->shift;
 }
 
+void rolltui_chord_bound_form(const RolltuiChord* k, RolltuiChord* out) {
+  *out = *k;
+  if (out->key == ROLLTUI_KEY_CHAR && out->ch >= 'A' && out->ch <= 'Z') out->ch = out->ch - 'A' + 'a', out->shift = 1;
+}
+
+static RolltuiChord as_bound(const RolltuiChord* k) {
+  RolltuiChord n;
+  rolltui_chord_bound_form(k, &n);
+  return n;
+}
+
 static int scope_eq(const char* a, size_t alen, const char* b, size_t blen) {
   size_t as = 0, bs = 0;
   const char* ap = rolltui_bindings_scope_of(a, alen, &as);
@@ -406,9 +431,11 @@ static int scope_eq(const char* a, size_t alen, const char* b, size_t blen) {
   return as == bs && (as == 0 || memcmp(ap, bp, as) == 0);
 }
 
-const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiChord* k, const char* scope,
+const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiChord* key, const char* scope,
                                         size_t scope_len, size_t* out_len) {
   const unsigned char p = rolltui_key_active_protocol();
+  const RolltuiChord bound = as_bound(key);
+  const RolltuiChord* k = &bound;
   size_t i, j;
   for (i = 0; i < b->row_count; ++i) {
     const Row* r = &b->rows[i];
@@ -443,6 +470,26 @@ int rolltui_bindings_breaks_enter_rule(const RolltuiBindings* b, const char* act
   if (b->enter_action.len == 0 || !is_bare_enter(chord)) return 0;
   if (str_is(&b->enter_action, action, len)) return 0;
   return scope_eq(b->enter_action.p, b->enter_action.len, action, len);
+}
+
+static int seq_eq(const Seq* a, const RolltuiChord* keys, size_t n) {
+  size_t i;
+  if (a->n != n) return 0;
+  for (i = 0; i < n; ++i)
+    if (!chord_eq(&a->c[i], &keys[i])) return 0;
+  return 1;
+}
+
+static void row_push_seq(Row* r, const RolltuiChord* keys, size_t n) {
+  size_t i;
+  if (n < 2 || n > ROLLTUI_SEQUENCE_MAX) return;
+  for (i = 0; i < r->seq_count; ++i)
+    if (seq_eq(&r->seqs[i], keys, n)) return;
+  r->seqs = (Seq*)rolltui_grow(r->seqs, &r->seqs_cap, r->seq_count + 1, sizeof *r->seqs);
+  memset(&r->seqs[r->seq_count], 0, sizeof *r->seqs);
+  memcpy(r->seqs[r->seq_count].c, keys, n * sizeof *keys);
+  r->seqs[r->seq_count].n = (unsigned char)n;
+  ++r->seq_count;
 }
 
 static void row_push(Row* r, const RolltuiChord* k) {
@@ -502,7 +549,117 @@ void rolltui_bindings_clear(RolltuiBindings* b, const char* action, size_t len) 
   Row* r;
   if (str_is(&b->enter_action, action, len)) return;
   r = find_row(b, action, len);
-  if (r) r->chord_count = 0; /* the storage is KEPT: this row is about to be refilled */
+  if (r) r->chord_count = 0, r->seq_count = 0; /* the storage is KEPT: this row is about to be refilled */
+}
+
+void rolltui_bindings_add_sequence(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* keys, size_t n) {
+  row_push_seq(make_row(b, action, len), keys, n);
+}
+
+size_t rolltui_bindings_sequence_count(const RolltuiBindings* b, const char* action, size_t len) {
+  const Row* r = find_row(b, action, len);
+  return r ? r->seq_count : 0;
+}
+
+size_t rolltui_bindings_sequence_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out,
+                                    size_t cap) {
+  const Row* r = find_row(b, action, len);
+  size_t k;
+  if (!r || i >= r->seq_count) return 0;
+  for (k = 0; k < r->seqs[i].n && k < cap; ++k) out[k] = r->seqs[i].c[k];
+  return r->seqs[i].n;
+}
+
+/* Whether a row of `scope` that something declares holds a sequence `keys` begins (or is). */
+static int scope_row(const RolltuiBindings* b, const Row* r, const char* scope, size_t slen) {
+  size_t rs = 0;
+  const char* rp = rolltui_bindings_scope_of(r->action.p, r->action.len, &rs);
+  return rs == slen && (rs == 0 || memcmp(rp, scope, rs) == 0) && rolltui_bindings_has(b, r->action.p, r->action.len);
+}
+
+static int seq_deliverable(const Seq* s, unsigned char p) {
+  size_t i;
+  for (i = 0; i < s->n; ++i)
+    if (!rolltui_key_deliverable(&s->c[i], p)) return 0;
+  return 1;
+}
+
+int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
+                                  const char** action, size_t* alen) {
+  const unsigned char p = rolltui_key_active_protocol();
+  size_t i, j, k;
+  int prefix = 0;
+  if (action) *action = NULL;
+  if (alen) *alen = 0;
+  if (n == 0) return ROLLTUI_SEQUENCE_NONE;
+  for (i = 0; i < b->row_count; ++i) {
+    const Row* r = &b->rows[i];
+    if (!scope_row(b, r, scope, slen)) continue;
+    for (j = 0; j < r->seq_count; ++j) {
+      const Seq* s = &r->seqs[j];
+      if (s->n < n || !seq_deliverable(s, p)) continue;
+      for (k = 0; k < n; ++k) {
+        const RolltuiChord bk = as_bound(&keys[k]);
+        if (!chord_eq(&s->c[k], &bk)) break;
+      }
+      if (k < n) continue;
+      if (s->n == n) {
+        if (action) *action = r->action.p;
+        if (alen) *alen = r->action.len;
+        return ROLLTUI_SEQUENCE_DONE;
+      }
+      prefix = 1;
+    }
+  }
+  return prefix ? ROLLTUI_SEQUENCE_PREFIX : ROLLTUI_SEQUENCE_NONE;
+}
+
+size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
+                                      RolltuiChord* next, const char** actions, size_t* alens, unsigned char* more, size_t cap) {
+  const unsigned char p = rolltui_key_active_protocol();
+  size_t i, j, k, out = 0, m;
+  for (i = 0; i < b->row_count && out < cap; ++i) {
+    const Row* r = &b->rows[i];
+    if (!scope_row(b, r, scope, slen)) continue;
+    for (j = 0; j < r->seq_count && out < cap; ++j) {
+      const Seq* s = &r->seqs[j];
+      int dup = 0;
+      if (s->n <= n || !seq_deliverable(s, p)) continue;
+      for (k = 0; k < n; ++k) {
+        const RolltuiChord bk = as_bound(&keys[k]);
+        if (!chord_eq(&s->c[k], &bk)) break;
+      }
+      if (k < n) continue;
+      for (m = 0; m < out; ++m) /* one row per next key: a longer sequence through it says there is more */
+        if (chord_eq(&next[m], &s->c[n])) {
+          if (s->n > n + 1) more[m] = 1;
+          else actions[m] = r->action.p, alens[m] = r->action.len;
+          dup = 1;
+          break;
+        }
+      if (dup) continue;
+      next[out] = s->c[n];
+      more[out] = (unsigned char)(s->n > n + 1);
+      actions[out] = s->n == n + 1 ? r->action.p : NULL;
+      alens[out] = s->n == n + 1 ? r->action.len : 0;
+      ++out;
+    }
+  }
+  return out;
+}
+
+/* Whether `k` begins a sequence some other row of `scope` holds, or (with `seq`) a sequence of `n` begins with a chord bound alone. */
+static const Row* sequence_starting(const RolltuiBindings* b, const RolltuiChord* k, const char* scope, size_t slen) {
+  size_t i, j;
+  for (i = 0; i < b->row_count; ++i) {
+    const Row* r = &b->rows[i];
+    size_t rs = 0;
+    const char* rp = rolltui_bindings_scope_of(r->action.p, r->action.len, &rs);
+    if (rs != slen || (rs && memcmp(rp, scope, rs) != 0)) continue;
+    for (j = 0; j < r->seq_count; ++j)
+      if (chord_eq(&r->seqs[j].c[0], k)) return r;
+  }
+  return NULL;
 }
 
 void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord) {
@@ -518,6 +675,7 @@ RolltuiBindings* rolltui_bindings_clone(const RolltuiBindings* b) {
   for (i = 0; i < b->row_count; ++i) {
     Row* r = make_row(out, b->rows[i].action.p, b->rows[i].action.len);
     for (j = 0; j < b->rows[i].chord_count; ++j) row_push(r, &b->rows[i].chords[j]);
+    for (j = 0; j < b->rows[i].seq_count; ++j) row_push_seq(r, b->rows[i].seqs[j].c, b->rows[i].seqs[j].n);
   }
   str_set(&out->enter_action, b->enter_action.p, b->enter_action.len);
   return out;
@@ -529,9 +687,11 @@ int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
   if (!a || !b || a->row_count != b->row_count) return 0;
   for (i = 0; i < a->row_count; ++i) {
     if (!str_is(&a->rows[i].action, b->rows[i].action.p, b->rows[i].action.len)) return 0;
-    if (a->rows[i].chord_count != b->rows[i].chord_count) return 0;
+    if (a->rows[i].chord_count != b->rows[i].chord_count || a->rows[i].seq_count != b->rows[i].seq_count) return 0;
     for (j = 0; j < a->rows[i].chord_count; ++j)
       if (!chord_eq(&a->rows[i].chords[j], &b->rows[i].chords[j])) return 0;
+    for (j = 0; j < a->rows[i].seq_count; ++j)
+      if (!seq_eq(&a->rows[i].seqs[j], b->rows[i].seqs[j].c, b->rows[i].seqs[j].n)) return 0;
   }
   return 1;
 }
@@ -662,6 +822,89 @@ static const Row* holder_row(const RolltuiBindings* b, const RolltuiChord* k, co
  * of the C++ loader's per-key loop exactly, including the two problems that are reported but
  * do NOT stop the row from loading (an undeliverable chord is kept; the file itself still
  * loads on any per-chord problem). */
+/* One sequence of a row: its chords parsed, each deliverable or named, and refused where it would be ambiguous. */
+static void load_sequence(RolltuiBindings* b, const char* action, size_t action_len, const char* text, size_t len,
+                          unsigned char deliver, RolltuiReasonFn reason, void* reason_ctx, RolltuiBindingsReport* report) {
+  RolltuiChord keys[ROLLTUI_SEQUENCE_MAX];
+  size_t n = 0, i = 0, slen = 0;
+  const char* scope = rolltui_bindings_scope_of(action, action_len, &slen);
+  int ok = 1;
+  while (i < len && ok) {
+    size_t e = i;
+    while (i < len && text[i] == ' ') ++i;
+    if (i >= len) break;
+    e = i;
+    while (e < len && text[e] != ' ') ++e;
+    if (n == ROLLTUI_SEQUENCE_MAX || !rolltui_chord_parse(text + i, e - i, &keys[n])) ok = 0;
+    else ++n;
+    i = e;
+  }
+  if (!ok || n < 2) {
+    RolltuiStr msg;
+    memset(&msg, 0, sizeof msg);
+    rolltui_str_set(&msg, action, action_len);
+    rolltui_str_append(&msg, K(": '"));
+    rolltui_str_append(&msg, text, len);
+    rolltui_str_append(&msg, K("' is not a sequence (two to four chords, apart by spaces)"));
+    rolltui_bindings_report_add_bad_chord(report, msg.p, msg.n);
+    rolltui_str_free(&msg);
+    return;
+  }
+  for (i = 0; i < n; ++i)
+    if (!rolltui_key_deliverable(&keys[i], deliver)) {
+      char rbuf[ROLLTUI_UNDELIVERABLE_REASON_MAX];
+      char cbuf[ROLLTUI_CHORD_STRING_MAX];
+      const size_t rlen = reason ? reason(reason_ctx, &keys[i], deliver, rbuf, sizeof rbuf) : 0;
+      const size_t clen2 = rolltui_chord_to_string(&keys[i], cbuf, sizeof cbuf);
+      RolltuiStr msg;
+      memset(&msg, 0, sizeof msg);
+      rolltui_str_set(&msg, action, action_len);
+      rolltui_str_append(&msg, K(": '"));
+      rolltui_str_append(&msg, cbuf, clen2);
+      rolltui_str_append(&msg, K("' cannot be delivered by this terminal; "));
+      rolltui_str_append(&msg, rbuf, rlen);
+      rolltui_bindings_report_add_undeliverable(report, msg.p, msg.n);
+      rolltui_str_free(&msg);
+      break; /* kept, and inert, as a chord is */
+    }
+  {
+    /* AMBIGUOUS: its first chord bound alone in the scope, or the same keys bound to another action */
+    const Row* alone = holder_row(b, &keys[0], scope, slen);
+    size_t r, j;
+    const Row* other = NULL;
+    for (r = 0; r < b->row_count && !other; ++r) {
+      size_t rs = 0;
+      const char* rp = rolltui_bindings_scope_of(b->rows[r].action.p, b->rows[r].action.len, &rs);
+      if (rs != slen || (rs && memcmp(rp, scope, rs) != 0) || str_is(&b->rows[r].action, action, action_len)) continue;
+      for (j = 0; j < b->rows[r].seq_count; ++j)
+        if (seq_eq(&b->rows[r].seqs[j], keys, n)) other = &b->rows[r];
+    }
+    if (alone || other) {
+      RolltuiStr msg;
+      memset(&msg, 0, sizeof msg);
+      rolltui_str_append(&msg, K("'"));
+      rolltui_str_append(&msg, text, len);
+      if (other) {
+        rolltui_str_append(&msg, K("' bound to both "));
+        rolltui_str_append(&msg, other->action.p, other->action.len);
+        rolltui_str_append(&msg, K(" and "));
+        rolltui_str_append(&msg, action, action_len);
+        rolltui_str_append(&msg, K(" ("));
+        rolltui_str_append(&msg, other->action.p, other->action.len);
+        rolltui_str_append(&msg, K(" kept)"));
+      } else {
+        rolltui_str_append(&msg, K("' begins with a chord bound alone to "));
+        rolltui_str_append(&msg, alone->action.p, alone->action.len);
+        rolltui_str_append(&msg, K(" (the chord kept)"));
+      }
+      rolltui_bindings_report_add_conflict(report, msg.p, msg.n);
+      rolltui_str_free(&msg);
+      return;
+    }
+  }
+  rolltui_bindings_add_sequence(b, action, action_len, keys, n);
+}
+
 static void load_one_row(RolltuiBindings* b, const char* action, size_t action_len, const RolltuiJsonValue* chords_v,
                          unsigned char deliver, RolltuiScopeFn is_library, void* library_ctx, RolltuiReasonFn reason,
                          void* reason_ctx, RolltuiBindingsReport* report) {
@@ -695,6 +938,10 @@ static void load_one_row(RolltuiBindings* b, const char* action, size_t action_l
       continue;
     }
     ctext = rolltui_json_as_string(cv, "", 0, &clen);
+    if (memchr(ctext, ' ', clen)) { /* A SEQUENCE: chords apart by spaces */
+      load_sequence(b, action, action_len, ctext, clen, deliver, reason, reason_ctx, report);
+      continue;
+    }
     if (!rolltui_chord_parse(ctext, clen, &k)) {
       RolltuiStr msg;
       memset(&msg, 0, sizeof msg);
@@ -744,6 +991,21 @@ static void load_one_row(RolltuiBindings* b, const char* action, size_t action_l
       size_t slen = 0;
       const char* scope = rolltui_bindings_scope_of(action, action_len, &slen);
       const Row* other = holder_row(b, &k, scope, slen);
+      const Row* begins = sequence_starting(b, &k, scope, slen);
+      if (!other && begins) { /* a chord alone and the first of a sequence cannot both be meant: the sequence was first */
+        RolltuiStr msg;
+        memset(&msg, 0, sizeof msg);
+        rolltui_str_append(&msg, K("'"));
+        rolltui_str_append(&msg, ctext, clen);
+        rolltui_str_append(&msg, K("' begins a sequence of "));
+        rolltui_str_append(&msg, begins->action.p, begins->action.len);
+        rolltui_str_append(&msg, K(" and cannot also be "));
+        rolltui_str_append(&msg, action, action_len);
+        rolltui_str_append(&msg, K(" alone (the sequence kept)"));
+        rolltui_bindings_report_add_conflict(report, msg.p, msg.n);
+        rolltui_str_free(&msg);
+        continue;
+      }
       if (other && !str_is(&other->action, action, action_len)) {
         RolltuiStr msg;
         memset(&msg, 0, sizeof msg);
@@ -843,6 +1105,19 @@ void rolltui_bindings_dump_json(const RolltuiBindings* b, const char* name, size
       char buf[ROLLTUI_CHORD_STRING_MAX];
       const size_t blen = rolltui_chord_to_string(&r->chords[j], buf, sizeof buf);
       rolltui_json_array_push(arr, rolltui_json_string(buf, blen));
+    }
+    for (j = 0; j < r->seq_count; ++j) { /* a sequence: its chords apart by spaces */
+      char buf[ROLLTUI_CHORD_STRING_MAX];
+      RolltuiStr seq;
+      size_t k;
+      memset(&seq, 0, sizeof seq);
+      for (k = 0; k < r->seqs[j].n; ++k) {
+        const size_t blen = rolltui_chord_to_string(&r->seqs[j].c[k], buf, sizeof buf);
+        if (k) rolltui_str_append(&seq, " ", 1);
+        rolltui_str_append(&seq, buf, blen);
+      }
+      rolltui_json_array_push(arr, rolltui_json_string(seq.p ? seq.p : "", seq.n));
+      rolltui_str_free(&seq);
     }
     rolltui_json_set(map, r->action.p, r->action.len, arr);
   }
@@ -1043,6 +1318,24 @@ void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, 
     len = rolltui_chord_display(&c, buf, sizeof buf);
     if (out->n > 0) rolltui_str_append(out, ", ", 2);
     rolltui_str_append(out, buf, len);
+  }
+  {
+    const size_t ns = rolltui_bindings_sequence_count(b, action, alen);
+    for (i = 0; i < ns; ++i) { /* a sequence as it is pressed: `g g` */
+      RolltuiChord keys[ROLLTUI_SEQUENCE_MAX];
+      const size_t k = rolltui_bindings_sequence_at(b, action, alen, i, keys, ROLLTUI_SEQUENCE_MAX);
+      size_t j;
+      int deliverable = 1;
+      for (j = 0; j < k; ++j) deliverable = deliverable && rolltui_key_deliverable(&keys[j], proto);
+      if (!deliverable) continue;
+      if (out->n > 0) rolltui_str_append(out, ", ", 2);
+      for (j = 0; j < k; ++j) {
+        char buf[ROLLTUI_CHORD_STRING_MAX];
+        const size_t len = rolltui_chord_display(&keys[j], buf, sizeof buf);
+        if (j) rolltui_str_append(out, " ", 1);
+        rolltui_str_append(out, buf, len);
+      }
+    }
   }
 }
 

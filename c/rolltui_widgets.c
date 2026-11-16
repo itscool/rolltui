@@ -274,6 +274,14 @@ struct RolltuiWindows {
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
+  /* A KEY SEQUENCE ON THE WAY in one window's scope: the keys pressed so far, a count typed before them, and since when. */
+  RolltuiChord seq_keys[ROLLTUI_SEQUENCE_MAX];
+  size_t seq_n;
+  int seq_count;
+  RolltuiStr seq_window;
+  char seq_scope[32];
+  size_t seq_scope_n;
+  unsigned long long seq_since;
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap changes;    /* name -> SubmitBinding*, OWNED: what an input's text changing calls */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
@@ -373,6 +381,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
   rolltui_mem_free(w->report);
   rolltui_str_free(&w->scratch);
+  rolltui_str_free(&w->seq_window);
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
   free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
@@ -870,11 +879,18 @@ const char* rolltui_windows_message_at(const RolltuiWindows* w, size_t i, size_t
   if (at_ms) *at_ms = m->at_ms;
   return m->text.p ? m->text.p : "";
 }
+static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles, unsigned long long now);
+
 int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
                                 unsigned long long now_ms) {
+  int toasts, which;
   if (!w || !f || !styles) return -1;
-  return rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
-                                         w->cfg->env.still);
+  toasts = rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
+                                           w->cfg->env.still);
+  which = draw_which_key(w, f, screen, styles, now_ms);
+  if (which < 0) return toasts;
+  if (toasts < 0) return which > 0 ? which : -1;
+  return which > 0 && which < toasts ? which : toasts;
 }
 int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e) {
   return w && e ? rolltui_message_log_toast_event(&w->messages, e) : 0;
@@ -1463,13 +1479,205 @@ static int handle_wheel(RolltuiWidget* wd, const RolltuiEvent* e) {
   return wd->vt->scroll_to(wd->ctx, ROLLTUI_AXIS_VERTICAL, (size_t)first);
 }
 
-int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
-  RolltuiWidget* wd = rolltui_windows_at(w, window, len);
-  if (!wd || !wd->vt) return 0;
-  if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
+static int deliver(RolltuiWindows* w, const char* window, size_t len, RolltuiWidget* wd, const RolltuiEvent* e) {
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
   if (wd->vt->handle && wd->vt->handle(wd->ctx, e)) return 1;
   return handle_wheel(wd, e);
+}
+
+static void seq_reset(RolltuiWindows* w) {
+  w->seq_n = 0;
+  w->seq_count = 0;
+}
+
+/* The widget does `action`, `times` over: through a single chord bound to it, as that key would, else by name. */
+static void do_action(RolltuiWindows* w, const char* window, size_t len, RolltuiWidget* wd, const char* action, size_t alen, int times) {
+  const RolltuiBindings* b = rolltui_windows_bindings(w);
+  const unsigned char proto = rolltui_key_active_protocol();
+  RolltuiChord k;
+  size_t i;
+  int t;
+  for (i = 0; rolltui_bindings_chord_at(b, action, alen, i, &k); ++i)
+    if (rolltui_key_deliverable(&k, proto)) {
+      RolltuiEvent e;
+      memset(&e, 0, sizeof e);
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key = k;
+      for (t = 0; t < times; ++t) deliver(w, window, len, wd, &e);
+      return;
+    }
+  if (wd->vt->perform)
+    for (t = 0; t < times; ++t) wd->vt->perform(wd->ctx, action, alen);
+}
+
+static int bare_digit(const RolltuiChord* k) {
+  return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && k->ch >= '0' && k->ch <= '9';
+}
+
+int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
+  RolltuiWidget* wd = rolltui_windows_at(w, window, len);
+  const char* scope = NULL;
+  size_t slen = 0, alen = 0;
+  const char* action = NULL;
+  int counts;
+  if (!wd || !wd->vt) return 0;
+  if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
+  if (e->kind != ROLLTUI_EVENT_KEY || !wd->vt->keys) {
+    if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0) seq_reset(w); /* a press is a new start */
+    return deliver(w, window, len, wd, e);
+  }
+  /* SEQUENCES AND COUNTS, in the widget's own scope: what is on the way belongs to one window */
+  counts = wd->vt->keys(wd->ctx, &scope, &slen);
+  if (!rolltui_str_eq(&w->seq_window, window, len) || slen != w->seq_scope_n || (slen && memcmp(scope, w->seq_scope, slen) != 0)) {
+    seq_reset(w);
+    rolltui_str_set(&w->seq_window, window, len);
+    w->seq_scope_n = slen < sizeof w->seq_scope ? slen : 0;
+    if (w->seq_scope_n) memcpy(w->seq_scope, scope, slen);
+  }
+  {
+    const RolltuiBindings* b = rolltui_windows_bindings(w);
+    const RolltuiChord* k = &e->key;
+    if (w->seq_n > 0) {
+      int r;
+      if (k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift) { /* Escape lets go of what was on the way */
+        seq_reset(w);
+        return 1;
+      }
+      w->seq_keys[w->seq_n] = *k;
+      r = rolltui_bindings_sequence_for(b, w->seq_keys, w->seq_n + 1, scope, slen, &action, &alen);
+      if (r == ROLLTUI_SEQUENCE_DONE) {
+        const int times = w->seq_count > 0 ? w->seq_count : 1;
+        seq_reset(w);
+        do_action(w, window, len, wd, action, alen, times);
+        return 1;
+      }
+      if (r == ROLLTUI_SEQUENCE_PREFIX && w->seq_n + 1 < ROLLTUI_SEQUENCE_MAX) {
+        ++w->seq_n;
+        return 1;
+      }
+      seq_reset(w); /* not a sequence after all: the key is what it would have been alone */
+      return deliver(w, window, len, wd, e);
+    }
+    if (counts && bare_digit(k) && (k->ch != '0' || w->seq_count > 0) && !rolltui_bindings_action_for(b, k, scope, slen, &alen) &&
+        rolltui_bindings_sequence_for(b, k, 1, scope, slen, NULL, NULL) == ROLLTUI_SEQUENCE_NONE) {
+      if (w->seq_count < 100000) w->seq_count = w->seq_count * 10 + (int)(k->ch - '0');
+      w->seq_since = rolltui_windows_env(w)->now_ms;
+      return 1;
+    }
+    if (rolltui_bindings_sequence_for(b, k, 1, scope, slen, NULL, NULL) == ROLLTUI_SEQUENCE_PREFIX) {
+      w->seq_keys[0] = *k;
+      w->seq_n = 1;
+      w->seq_since = rolltui_windows_env(w)->now_ms;
+      return 1;
+    }
+    if (w->seq_count > 0) { /* a count, then a key: the key that many times */
+      const int times = w->seq_count;
+      int t, any = 0;
+      seq_reset(w);
+      for (t = 0; t < times; ++t) any |= deliver(w, window, len, wd, e);
+      return any;
+    }
+  }
+  return deliver(w, window, len, wd, e);
+}
+
+/* ---- what can follow: the keys on the way, and the panel that lists what to press next ---------------------------------------- */
+
+size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text) {
+  size_t i;
+  if (text) {
+    rolltui_str_clear(text);
+    if (w->seq_count > 0) {
+      char buf[16];
+      const int n = snprintf(buf, sizeof buf, "%d", w->seq_count);
+      if (n > 0) rolltui_str_append(text, buf, (size_t)n);
+    }
+    for (i = 0; i < w->seq_n; ++i) {
+      char buf[ROLLTUI_CHORD_STRING_MAX];
+      const size_t n = rolltui_chord_display(&w->seq_keys[i], buf, sizeof buf);
+      if (text->n) rolltui_str_append(text, " ", 1);
+      rolltui_str_append(text, buf, n);
+    }
+  }
+  return w->seq_n + (w->seq_count > 0);
+}
+
+#define WHICH_KEY_MS 300 /* a sequence typed quickly is not interrupted by a panel */
+#define WHICH_KEY_ROWS 24
+
+/* The panel, at the screen's bottom left: the keys pressed so far in its border, and a row for each key that can follow, with what it
+ * does (or that more follows). Returns how long until it appears, 0 when it is up or nothing is on the way, -1 for nothing. */
+static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles, unsigned long long now) {
+  const RolltuiBindings* b = rolltui_windows_bindings(w);
+  const RolltuiBuiltinRoles* r = &w->cfg->builtin_roles;
+  const int aw = w->cfg->env.ambiguous_wide;
+  RolltuiChord next[WHICH_KEY_ROWS];
+  const char* actions[WHICH_KEY_ROWS];
+  size_t alens[WHICH_KEY_ROWS];
+  unsigned char more[WHICH_KEY_ROWS];
+  size_t n, i;
+  int width = 0, key_w = 0, h, x, y;
+  RolltuiStyle ground, line, key, text;
+  RolltuiRect box;
+  RolltuiDrawScratch* draw;
+  if (w->seq_n == 0) return -1;
+  if (now < w->seq_since + WHICH_KEY_MS) return (int)(w->seq_since + WHICH_KEY_MS - now);
+  n = rolltui_bindings_sequence_next(b, w->seq_keys, w->seq_n, w->seq_scope, w->seq_scope_n, next, actions, alens, more, WHICH_KEY_ROWS);
+  if (n == 0 || screen.w < 12 || screen.h < 4) return -1;
+  draw = rolltui_draw_scratch_new();
+  for (i = 0; i < n; ++i) {
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    size_t dl = 0;
+    const size_t kl = rolltui_chord_display(&next[i], buf, sizeof buf);
+    const char* d = actions[i] ? rolltui_bindings_description(b, actions[i], alens[i], &dl) : NULL;
+    const int kw = rolltui_frame_text_width(draw, buf, kl, aw);
+    const int dw = d ? rolltui_frame_text_width(draw, d, dl, aw) : 0;
+    if (kw > key_w) key_w = kw;
+    if (dw + (more[i] ? 2 : 0) > width) width = dw + (more[i] ? 2 : 0);
+  }
+  width += key_w + 6;
+  if (width > screen.w - 2) width = screen.w - 2;
+  h = (int)n + 2;
+  if (h > screen.h - 1) h = screen.h - 1;
+  box.x = screen.x + 1;
+  box.y = screen.y + screen.h - h - 1;
+  box.w = width;
+  box.h = h;
+  ground = styles[r->panel];
+  line = styles[r->border];
+  line.bg = ground.bg;
+  key = styles[r->info];
+  key.bg = ground.bg;
+  key.bold = 1; /* the key reads as one in every theme */
+  text = styles[r->text];
+  text.bg = ground.bg;
+  rolltui_frame_fill(f, draw, box, ground, NULL, 0);
+  {
+    RolltuiStr title;
+    memset(&title, 0, sizeof title);
+    rolltui_windows_pending_keys(w, &title);
+    unsigned char rounded = 1;
+    rolltui_border_from_name("rounded", 7, &rounded);
+    rolltui_draw_border(f, draw, box, rounded, line, title.p ? title.p : "", title.n, key, aw);
+    rolltui_str_free(&title);
+  }
+  for (i = 0, y = box.y + 1; i < n && y < box.y + box.h - 1; ++i, ++y) {
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    size_t dl = 0;
+    const size_t kl = rolltui_chord_display(&next[i], buf, sizeof buf);
+    const char* d = actions[i] ? rolltui_bindings_description(b, actions[i], alens[i], &dl) : "";
+    x = box.x + 2;
+    rolltui_frame_put_text(f, draw, x, y, buf, kl, key, key_w, aw, 0);
+    x += key_w + 2;
+    x += rolltui_frame_put_text(f, draw, x, y, d ? d : "", d ? dl : 0, text, box.x + box.w - 1 - x, aw, 0);
+    if (more[i]) {
+      RolltuiStyle m = styles[r->text_muted];
+      m.bg = ground.bg;
+      rolltui_frame_put_text(f, draw, x + (d && dl ? 1 : 0), y, aw ? "..." : "\xe2\x80\xa6", aw ? 3 : 3, m, box.x + box.w - 1 - x, aw, 0);
+    }
+  }
+  rolltui_draw_scratch_free(draw);
+  return 0;
 }
 
 /* ---- the report's one-line form ---------------------------------------------------------- */

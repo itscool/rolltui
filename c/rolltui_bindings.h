@@ -106,6 +106,27 @@ void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len
  * its undeliverable chords are all REPORTED with a message before anything lands, so the
  * loader has already decided and needs a put rather than a policy. */
 void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
+/* A KEY AS A BINDING NAMES IT: a capital letter a terminal sends as itself is the letter with shift, which is how a bindings file
+ * spells it (`shift+g`), since a chord is spelled without case. Every lookup compares a pressed key in this form. */
+void rolltui_chord_bound_form(const RolltuiChord* k, RolltuiChord* out);
+/* SEQUENCES: chords pressed one after another (`g g`), held per row beside its chords and written back as a bindings file spells them,
+ * their chords apart by spaces. */
+void rolltui_bindings_add_sequence(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* keys, size_t n);
+size_t rolltui_bindings_sequence_count(const RolltuiBindings* b, const char* action, size_t len);
+/* Sequence `i` of `action` into `out` (up to `cap`); returns its length, 0 when there is none. */
+size_t rolltui_bindings_sequence_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out,
+                                    size_t cap);
+/* The keys pressed so far, `keys[0..n)`, in `scope`: a sequence of a declared action they are (DONE, its name in `*action`), one they
+ * begin (PREFIX), or neither (NONE). A sequence with a chord the terminal cannot deliver is never matched. */
+#define ROLLTUI_SEQUENCE_NONE 0
+#define ROLLTUI_SEQUENCE_PREFIX 1
+#define ROLLTUI_SEQUENCE_DONE 2
+int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
+                                  const char** action, size_t* alen);
+/* WHAT CAN FOLLOW `keys[0..n)` in `scope`, one row per next chord, up to `cap`: the chord, the action it completes (NULL when it only
+ * leads on), and in `more` whether a longer sequence goes on through it. Returns how many. For a panel that says what to press. */
+size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
+                                      RolltuiChord* next, const char** actions, size_t* alens, unsigned char* more, size_t cap);
 /* ---- THE LIBRARY'S CLOSED ACTION TABLE ------------------------------------------------------
  * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
  * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the

@@ -413,6 +413,13 @@ ROLLTUI_API(rolltui_bindings_action_count, INTERNAL)
 ROLLTUI_API(rolltui_bindings_action_for, PUBLIC)
 ROLLTUI_API(rolltui_bindings_add_action, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_add_chord, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
+ROLLTUI_API(rolltui_bindings_add_sequence, INTERNAL)  /* a step of loading a table */
+ROLLTUI_API(rolltui_bindings_sequence_count, INTERNAL)  /* the help text and the writer read a row's sequences */
+ROLLTUI_API(rolltui_bindings_sequence_at, INTERNAL)
+ROLLTUI_API(rolltui_bindings_sequence_for, INTERNAL)  /* the window table's keys on the way */
+ROLLTUI_API(rolltui_bindings_sequence_next, INTERNAL)  /* the panel of what can follow */
+ROLLTUI_API(rolltui_chord_bound_form, INTERNAL)  /* every lookup's form of a pressed key */
+ROLLTUI_API(rolltui_list_typing, INTERNAL)  /* the list kind says a digit is the filter's */
 ROLLTUI_API(rolltui_bindings_add_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_bind, PUBLIC)
 ROLLTUI_API(rolltui_bindings_breaks_enter_rule, INTERNAL)  /* a step of bind */
@@ -749,6 +756,7 @@ ROLLTUI_API(rolltui_windows_draw, PUBLIC)
 ROLLTUI_API(rolltui_windows_env, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_free, PUBLIC)
 ROLLTUI_API(rolltui_windows_handle, PUBLIC)
+ROLLTUI_API(rolltui_windows_pending_keys, PUBLIC)  /* a status line shows the keys on the way, as vim does */
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */

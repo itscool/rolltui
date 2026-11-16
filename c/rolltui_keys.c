@@ -766,6 +766,12 @@ long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_
   /* Functional keys are identical in all three protocols. */
   n = legacy_functional(k, bits, out);
   if (n >= 0) return n;
+  /* SHIFT AND A LETTER is its capital as text in all three: kitty sends text for a printable key with no other modifier under the
+   * disambiguate flag alone, and modifyOtherKeys mode 1 leaves it as the terminal types it. */
+  if (k->key == ROLLTUI_KEY_CHAR && k->shift && !k->ctrl && !k->alt && k->ch >= 'a' && k->ch <= 'z') {
+    out[0] = (char)(k->ch - 'a' + 'A');
+    return 1;
+  }
 
   if (p == ROLLTUI_PROTOCOL_KITTY) {
     if (k->key == ROLLTUI_KEY_ESCAPE) {
@@ -806,6 +812,8 @@ int rolltui_key_deliverable(const RolltuiChord* k, unsigned char p) {
   if (k->key == ROLLTUI_KEY_UNKNOWN) return 0;
   if (is_functional(k->key)) return 1; /* legacy already parameterises these */
   if (legacy_ok(k)) return 1;          /* the floor all three protocols stand on */
+  /* SHIFT AND A LETTER is the capital every terminal sends for it, which a binding matches as shift and the letter */
+  if (k->key == ROLLTUI_KEY_CHAR && k->shift && !k->ctrl && !k->alt && k->ch >= 'a' && k->ch <= 'z') return 1;
   if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt) return 0;
   switch (p) {
     case ROLLTUI_PROTOCOL_KITTY: return 1;
@@ -845,7 +853,7 @@ const char* rolltui_key_protocol_name(unsigned char p, size_t* len) {
 static const char* const kUndeliverableText[] = {
     "",
     "it is not a key",
-    "shift on a character key is the shifted character itself, which no terminal reports as a chord",
+    "shift on a character key other than a letter is the shifted character itself, which no terminal reports as a chord",
     "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
     "it needs the kitty keyboard protocol",
     "no keyboard protocol this library speaks can report it",

@@ -964,6 +964,9 @@ RolltuiBindings* rolltui_bindings_clone(const RolltuiBindings* b);
 /* A BORROW, valid until the table next changes. */
 int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t len);
 
+/* A SEQUENCE in a bindings file is up to this many chords, apart by spaces: `"g g"`, `"ctrl+x ctrl+s"`. */
+#define ROLLTUI_SEQUENCE_MAX 4
+
 /* The action of `scope` this chord serves, or NULL: a row nothing declares never answers, nor does a chord the ACTIVE protocol cannot
  * deliver (both are kept in the table and written back, so neither may claim a key). A BORROW, as above. */
 const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiChord* k, const char* scope,
@@ -3132,6 +3135,13 @@ typedef struct RolltuiWidgetPlugin {
    * close key and a dismissing press outside a popup ask the focused widget this FIRST, so they close one level at a time and the popup
    * last. NULL: the widget has no levels. */
   int (*back)(void* ctx);
+  /* THE KEY SCOPE this widget reads its keys in, into `*scope`; answers 1 while a digit typed into it is a COUNT (`5` then Down moves
+   * five) and 0 while it is text or a jump. The window table holds a key sequence (`g g`) and a count for the widget with this, and
+   * hands it the action they made. NULL: no sequences, no counts. */
+  int (*keys)(void* ctx, const char** scope, size_t* len);
+  /* Does what a key bound to `action` does; 1 when it did something. Asked only for an action no single chord is bound to: the table
+   * hands the widget that chord otherwise. NULL: such an action does nothing here. */
+  int (*perform)(void* ctx, const char* action, size_t len);
 } RolltuiWidgetPlugin;
 
 /* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the
@@ -3875,6 +3885,10 @@ void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, Roll
 
 /* An event the stack routed to `window`; 1 when the widget (or its scrollbar) consumed it. */
 int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e);
+/* THE KEYS ON THE WAY: a count typed and the first keys of a sequence (`5`, `g`), as they are shown, into `*text` (may be NULL); how
+ * many there are, 0 when nothing is on the way. A status line shows it as vim does. `rolltui_windows_draw_toasts` draws, after a
+ * moment, a panel of what can follow. */
+size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text);
 
 /* ========================================================================================
  * filepicker — the column browser, and directory reading a host can use on its own

@@ -768,7 +768,7 @@ constexpr RolltuiWidgetPlugin kHostMenuPlugin = {
     /*scroll_extent=*/host_scroll_extent,
     /*scroll_to=*/nullptr,  // a menu's scroll follows its selection: an accurate bar, not a handle
     /*title=*/host_title,
-    /*back=*/host_back,
+    /*back=*/host_back, nullptr, nullptr
 };
 
 struct HostFactoryCtx {

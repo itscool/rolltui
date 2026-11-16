@@ -457,7 +457,7 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*desired_outer=*/nullptr,
     /*handle=*/canvas_handle,
     /*scroll_extent=*/nullptr,
-    /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
+    /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
 };
 
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One

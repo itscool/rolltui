@@ -174,7 +174,11 @@ bool arrives_as_itself(const RolltuiChord& k, KeyProtocol p) {
   const std::vector<DecodedEvent> ev = decode(*bytes);
   if (ev.size() != 1) return false;
   if (ev[0].kind != ROLLTUI_EVENT_KEY) return false;
-  return chord_eq(ev[0].key, k);
+  /* as a binding matches it: a capital arriving as itself is shift and the letter */
+  RolltuiChord got{}, want{};
+  rolltui_chord_bound_form(&ev[0].key, &got);
+  rolltui_chord_bound_form(&k, &want);
+  return chord_eq(got, want);
 }
 
 std::string show_bytes(const std::optional<std::string>& b) {
@@ -535,11 +539,14 @@ int main() {
               encode_key(ch(U'/', true), KeyProtocol::ModifyOtherKeys) == std::string("\x1b[27;5;47~"),
           "ctrl+/ has no control code at all — this is what modifyOtherKeys was FOR: \\e[27;5;47~ [xterm's own example]");
 
-    // Shift on a character is not a chord anywhere: the layout folded it in.
-    check(!deliverable(ch(U'p', false, false, true), KeyProtocol::Kitty) &&
-              undeliverable_reason(ch(U'p', false, false, true), KeyProtocol::Kitty).find("shifted character") !=
-                  std::string::npos,
-          "shift+p is the character 'P' in every protocol, kitty included — and the reason says so");
+    // Shift on a letter is its capital in every protocol, and a binding matches the capital as shift and the letter (`shift+g` is
+    // vim's G). Shift on any other character is the shifted character the layout made, which is not a chord anywhere.
+    check(deliverable(ch(U'p', false, false, true), KeyProtocol::Legacy) && deliverable(ch(U'p', false, false, true), KeyProtocol::Kitty) &&
+              encode_key(ch(U'p', false, false, true), KeyProtocol::Kitty) == std::string("P"),
+          "shift+p is the capital 'P' in every protocol, kitty included, and a binding for it is pressed by typing P");
+    check(!deliverable(ch(U'1', false, false, true), KeyProtocol::Kitty) &&
+              undeliverable_reason(ch(U'1', false, false, true), KeyProtocol::Kitty).find("shifted character") != std::string::npos,
+          "shift+1 is whatever the layout makes of it, never a chord — and the reason says so");
     // …with exactly one multi-modifier exception legacy really does carry.
     check(deliverable(ch(U'b', false, true, true), KeyProtocol::Legacy) &&
               encode_key(ch(U'b', false, true, true), KeyProtocol::Legacy) == std::string("\x1b" "B"),

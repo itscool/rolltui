@@ -2391,7 +2391,7 @@ constexpr RolltuiWidgetPlugin kEditorPlugin = {
     // stack while an editor has focus (`App::handle` gives it to the editor, which abandons an edit,
     // then ascends, and asks to close only from its top level), and a press outside does not
     // dismiss this pane. The theme editor is the library's `theme` kind, which has its own.
-    /*back=*/nullptr,
+    /*back=*/nullptr, nullptr, nullptr
 };
 RolltuiWidget editor_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
 
@@ -2409,7 +2409,7 @@ int confirm_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kConfirmPlugin = {
     /*destroy=*/confirm_destroy, /*layout=*/confirm_layout, /*draw=*/confirm_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
+    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
 };
 RolltuiWidget confirm_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
 
@@ -2430,7 +2430,7 @@ int report_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kReportPlugin = {
     /*destroy=*/report_destroy, /*layout=*/report_layout, /*draw=*/report_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
+    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
 };
 RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
@@ -2461,7 +2461,7 @@ void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f)
 constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
     /*destroy=*/placeholder_destroy, /*layout=*/placeholder_layout, /*draw=*/placeholder_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
+    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */, nullptr, nullptr
 };
 RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
   PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), RolltuiStr("[") + StrView(content, len) + "]"};

@@ -44,6 +44,8 @@ int rolltui_list_event(RolltuiList* l, RolltuiListEvent* out);
 int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t n);
 /* Closes one level of its own: the filter, then the marks; 0 when neither is there. */
 int rolltui_list_back(RolltuiList* l);
+/* 1 while the filter is being typed: a printable key is the filter's. */
+int rolltui_list_typing(const RolltuiList* l);
 void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int ambiguous_wide);
 /* Draws what the last layout placed. `hover_y` is the row under the pointer, -1 for none. */
 void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int focused,

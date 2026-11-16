@@ -578,6 +578,8 @@ static void sorted(RolltuiList* l) {
   push_event(l, ROLLTUI_LIST_EVENT_SORTED, NULL);
 }
 
+int rolltui_list_typing(const RolltuiList* l) { return l && l->filtering; }
+
 int rolltui_list_back(RolltuiList* l) {
   if (l->filtering || l->filter.n) { /* one level at a time: the filter, then the marks */
     l->filtering = 0;
