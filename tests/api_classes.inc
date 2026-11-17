@@ -918,6 +918,7 @@ ROLLTUI_API(rolltui_image_load, PUBLIC)  /* KEPT: a host shows a picture from a 
 ROLLTUI_API(rolltui_image_decode, PUBLIC)  /* paint opens a PNG */
 ROLLTUI_API(rolltui_image_from_rgba, PUBLIC)  /* KEPT: a host shows pixels it made (a chart rendered, a thumbnail scaled) */
 ROLLTUI_API(rolltui_image_free, PUBLIC)
+ROLLTUI_API(rolltui_image_set_filter, PUBLIC)  /* KEPT: pixel art or a screenshot of text kept hard-edged when it is scaled */
 ROLLTUI_API(rolltui_image_rgba, PUBLIC)  /* paint reads the pixels it turns into glyphs */
 ROLLTUI_API(rolltui_frame_image, PUBLIC)  /* KEPT: a host's own widget draws a picture (the preview and the `image:` kind draw it for a window) */
 ROLLTUI_API(rolltui_image_cells, PUBLIC)  /* KEPT: a host sizes or centres a picture before drawing it */
@@ -1638,6 +1639,7 @@ ROLLTUI_API(rolltui_os_child_wait_terminal, INTERNAL)  /* a host runs one throug
 ROLLTUI_API(rolltui_os_open_with_system, INTERNAL)
 ROLLTUI_API(rolltui_os_clipboard_native, INTERNAL)  /* a host copies through rolltui_clipboard_copy */
 ROLLTUI_API(rolltui_os_clipboard_read, INTERNAL)  /* a host reads through rolltui_clipboard_paste */
+ROLLTUI_API(rolltui_os_temp_file, INTERNAL)  /* a kitty on this machine is sent a picture's pixels in a temp file */
 ROLLTUI_API(rolltui_os_open_terminal, INTERNAL)
 ROLLTUI_API(rolltui_os_close_terminal, INTERNAL)
 ROLLTUI_API(rolltui_os_localtime, INTERNAL)

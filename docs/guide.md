@@ -1117,7 +1117,12 @@ this way.
 `rolltui_image_load(path)` and `rolltui_image_decode(bytes)` decode PNG, JPEG, GIF (its first
 frame), BMP, TGA and PNM to RGBA. A picture larger than `ROLLTUI_IMAGE_MAX_SIDE` (10,000) pixels
 on a side, or than `ROLLTUI_IMAGE_MAX_BYTES` (512 MB) decoded, is refused before it is decoded,
-with the reason. `rolltui_image_from_rgba` takes pixels a host made.
+with the reason. `rolltui_image_from_rgba` takes pixels a host made. A JPEG whose EXIF says the
+camera was held sideways is turned upright as it is decoded.
+
+A picture is scaled to its cells by averaging the pixels each one covers.
+`rolltui_image_set_filter(img, ROLLTUI_IMAGE_NEAREST)` takes the pixel under each one's centre
+instead, so pixel art and a screenshot of text stay hard-edged.
 
 `rolltui_frame_image(frame, area, img, ground, &used)` fits a picture into a rectangle of cells,
 its aspect kept and never enlarged past its own pixels, and draws it the way the terminal draws
@@ -1140,18 +1145,24 @@ terminal's window size (`cell_w`, `cell_h`); where it does not say, a cell is ta
 twice as tall as wide.
 
 - A kitty picture's pixels are sent once, before the frame that first shows it, and its
-  placement whenever its cells change size. Its cells are text to everything else: a popup over
+  placement whenever its cells change size. On this machine they go in a temp file kitty reads
+  and deletes; over ssh, in the escapes. What a terminal did not take is removed when the app
+  leaves. Its cells are text to everything else: a popup over
   it covers it, the diff sends only what changed, and leaving deletes what was sent.
 - A sixel or iTerm2 picture is drawn after the diff, the cursor kept, when every one of its
   cells is still its own blank and it was not already on the screen. While anything is drawn
   over part of it, it is not sent; once that is gone, it is sent whole again. When it goes, its
   cells are written again, which erases it.
 - A sixel is kept off the screen's last row, where the terminal would scroll the screen to move
-  the cursor below it.
+  the cursor below it. Its palette is fitted to the picture: up to 255 colours, each the mean of
+  the pixels it stands for.
+- iTerm2 is sent a PNG, JPEG or GIF file as it was read. A picture with none (a host's pixels, a
+  BMP, a TGA) is sent as a PNG made for it, its transparency kept.
 
 An `image:<path>` window shows a picture, centred: the one `rolltui_windows_bind_image` bound
 under that name, or the file the path names (relative to the preset directory, as `file:` is),
-read again when it changes. The column browser's preview shows a picture file the same way, with
+read again when it changes. With workers lent (`rolltui_windows_set_tasks`) the file is read and
+decoded on them, and the picture before it stays on screen until the new one is back. The column browser's preview shows a picture file the same way, with
 its size in pixels in the head.
 
 ## The column browser

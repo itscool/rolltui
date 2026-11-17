@@ -101,6 +101,10 @@ struct RolltuiTerminal {
   /* Sent to the terminal, the placement it last had, and the present that last drew it. At most KITTY_KEEP are kept: the oldest is
    * deleted from the terminal, so its store stays small and it never evicts a picture this list still counts as sent. */
   struct KittyImage { unsigned int id; int cols, rows; unsigned long long drawn; } * kitty;
+  /* THE TEMP FILES kitty was sent pixels in, the last eight (as many pictures as it keeps): kitty deletes each as it reads it;
+   * what is left (a terminal that took the name and not the protocol) goes when the ninth comes, and all of it on leaving */
+  RolltuiStr kitty_files[8];
+  size_t kitty_file_at;
   size_t kitty_n, kitty_cap;
   unsigned long long presents;
   struct ShownImage { unsigned int id; RolltuiRect r; } * pics;   /* drawn outside the grid, and still there */
@@ -264,6 +268,14 @@ static void term_leave(RolltuiTerminal* t) {
     t->dirty = 1;
   }
   rolltui_terminal_write(t, t->leave_seq, t->leave_len);
+  {
+    size_t f;
+    for (f = 0; f < 8; ++f) /* the temp files kitty did not take */
+      if (t->kitty_files[f].n) {
+        remove(t->kitty_files[f].p);
+        rolltui_str_clear(&t->kitty_files[f]);
+      }
+  }
   if (t->kitty_n) { /* the pictures sent go with this program: a terminal keeps them until told */
     RolltuiStr del;
     size_t i;
@@ -379,6 +391,10 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_os_tty_close(t->os); /* after leave: the restore bytes went down it */
   rolltui_key_decoder_free(t->decoder);
   rolltui_str_free(&t->cache_path);
+  {
+    size_t f;
+    for (f = 0; f < 8; ++f) rolltui_str_free(&t->kitty_files[f]);
+  }
   rolltui_str_free(&t->title);
   rolltui_str_free(&t->wname);
   rolltui_str_free(&t->wname_was);
@@ -704,6 +720,9 @@ static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts) {
    * across a slow link would miss — after which the keyboard is judged Legacy and the answers
    * remembered as "silent". Wait for the wire when there is one. */
   if (t->env.ssh_connection) t->timeout_ms = 400;
+  /* Inside tmux or screen every answer comes back through it, a hop more: the wait is longer, and the reply that ends it (DA1, which
+   * every terminal and multiplexer answers) still ends it as soon as it comes. */
+  else if (t->multiplexed) t->timeout_ms = 200;
   {
     /* WHICH BUILD IS ASKING, so a new release asks again without any host saying so: the
      * executable's own name, size and modification time, then whatever the host adds. */
@@ -1126,7 +1145,13 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
       t->kitty[k].id = id;
       t->kitty[k].cols = t->kitty[k].rows = -1;
       ++t->kitty_n;
-      rolltui_image_kitty_upload(p->img, t->multiplexed, out);
+      { /* by file where kitty is on this machine */
+        RolltuiStr* slot = &t->kitty_files[t->kitty_file_at % 8];
+        if (slot->n) remove(slot->p); /* the oldest: read long since, or never going to be */
+        rolltui_str_clear(slot);
+        rolltui_image_kitty_upload(p->img, t->multiplexed, !t->env.ssh_connection, out, slot);
+        if (slot->n) ++t->kitty_file_at;
+      }
     }
     t->kitty[k].drawn = t->presents;
     if (t->kitty[k].cols != p->cells.w || t->kitty[k].rows != p->cells.h) {

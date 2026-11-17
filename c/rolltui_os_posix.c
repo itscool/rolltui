@@ -450,6 +450,38 @@ void rolltui_os_tty_restore_now(void) {
 }
 
 /* SIGUSR1: the files read again. The handler only notes it and wakes the loop. */
+int rolltui_os_temp_file(const char* stem, const void* bytes, size_t n, RolltuiStr* out) {
+  const char* dir = getenv("TMPDIR");
+  RolltuiStr path;
+  int fd;
+  size_t at = 0;
+  memset(&path, 0, sizeof path);
+  if (!dir || !*dir) dir = "/tmp";
+  rolltui_str_set(&path, dir, strlen(dir));
+  if (path.n && path.p[path.n - 1] != '/') rolltui_str_append(&path, "/", 1);
+  rolltui_str_append(&path, stem, strlen(stem));
+  rolltui_str_append(&path, "-XXXXXX", 7);
+  fd = mkstemp(path.p);
+  if (fd < 0) {
+    rolltui_str_free(&path);
+    return 0;
+  }
+  while (at < n) {
+    const ssize_t k = write(fd, (const char*)bytes + at, n - at);
+    if (k <= 0) break;
+    at += (size_t)k;
+  }
+  close(fd);
+  if (at < n) {
+    unlink(path.p);
+    rolltui_str_free(&path);
+    return 0;
+  }
+  rolltui_str_set(out, path.p, path.n);
+  rolltui_str_free(&path);
+  return 1;
+}
+
 static volatile sig_atomic_t g_reload = 0;
 static void on_reload_signal(int sig) {
   const int fd = g_wake_fd;

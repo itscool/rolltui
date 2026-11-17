@@ -546,7 +546,8 @@ int main() {
     // stores (PUBLIC 631); a store's refresh and its files, SIGUSR1 heard and taken (INTERNAL 950).
     // Then the terminal: the window's name in tmux, the clipboard read (PUBLIC 633); the last copy kept and read back, the system
     // clipboard read (INTERNAL 953).
-    check(totals["PUBLIC"] == 633 && totals["INTERNAL"] == 953 && totals.size() == 2,
+    // Then pictures: a picture's filter (PUBLIC 634); a temp file written (INTERNAL 954).
+    check(totals["PUBLIC"] == 634 && totals["INTERNAL"] == 954 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -733,11 +734,11 @@ int main() {
     // a line's info, rows and drawing.
     // Settings 97, run 240, release 17: three stores read again; a watch made, added to, let go of, asked and described, a run
     // watching its stores; a watch freed.
-    // Run 242: the window's name in tmux, the clipboard read.
-    check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
+    // Run 242: the window's name in tmux, the clipboard read. Vocab 45: a picture's filter.
+    check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
               rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 242 && rt["HOST_RELEASE"] == 17 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 84,
-          "the roles are the recorded shape — vocab 44, host load 33 / settings 97 / bind 116 / run 242 / "
+          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 242 / "
           "release 17, tool interop 0, widget 84 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

@@ -4,6 +4,7 @@
 // not while something covers them, and erased when they go. How a terminal draws them is found from its name and its DA reply.
 //
 #include <poll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <util.h>
@@ -17,8 +18,10 @@
 #include <mutex>
 #include <thread>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -274,17 +277,45 @@ struct Pty {
   }
 };
 
+std::string b64_decode(const std::string& in) {
+  static const std::string kAlpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  int val = 0, bits = -8;
+  for (char c : in) {
+    const std::size_t k = kAlpha.find(c);
+    if (k == std::string::npos) break;
+    val = (val << 6) + static_cast<int>(k);
+    bits += 6;
+    if (bits >= 0) {
+      out.push_back(static_cast<char>((val >> bits) & 0xFF));
+      bits -= 8;
+    }
+  }
+  return out;
+}
+
 bool has(const std::string& s, std::string_view n) { return s.find(n) != std::string::npos; }
 
 void test_present() {
   const std::vector<unsigned char> px(20 * 20 * 3, 90);
   RolltuiImage* img = decode(ppm(20, 20, px));
   const std::string id = std::to_string(rolltui_image_id(img));
+  const char* ssh_was = getenv("SSH_CONNECTION"); /* (a test run over ssh, as a VM's shell is, says where kitty is) */
+  const std::string ssh_saved = ssh_was ? ssh_was : "";
+  unsetenv("SSH_CONNECTION");
   {
     Pty k("kitty");
     const std::string first = k.present(img, 1, 1);
-    check(has(first, "\x1b_Ga=t,f=32,s=20,v=20,i=" + id + ",q=2,m=0;") && has(first, "\x1b_Ga=p,U=1,i=" + id + ",c=2,r=1,q=2\x1b\\"),
+    check(has(first, "\x1b_Ga=t,t=t,f=32,s=20,v=20,i=" + id + ",q=2;") && has(first, "\x1b_Ga=p,U=1,i=" + id + ",c=2,r=1,q=2\x1b\\"),
           "kitty: the pixels go once, then the placement the cells name");
+    std::string sent_file;
+    {
+      const std::size_t a = first.find(",q=2;", first.find("t=t")) + 5, b = first.find("\x1b\\", a);
+      sent_file = b64_decode(first.substr(a, b - a));
+      struct stat sb {};
+      check(stat(sent_file.c_str(), &sb) == 0 && sb.st_size == 20 * 20 * 4 && sent_file.find("tty-graphics-protocol") != std::string::npos,
+            "…by a temp file on this machine, which kitty reads and deletes [" + sent_file + "]");
+    }
     check(first.find("\x1b_Ga=t") < first.find("\xF4\x8E\xBB\xAE"), "…before the placeholder cells");
     const std::string again = k.present(img, 1, 1);
     check(!has(again, "\x1b_G"), "the same picture again sends nothing more");
@@ -299,11 +330,22 @@ void test_present() {
               !has(sent, "\x1b_Ga=d,d=I,i=" + std::to_string(rolltui_image_id(more.back())) + ","),
           "past eight pictures sent, the least recently drawn is deleted from the terminal, and the one on screen is not");
     const std::string back = k.present(img, 1, 1);
-    check(has(back, "\x1b_Ga=t,f=32,s=20,v=20,i=" + id + ","), "…and drawn again it is sent again");
+    check(has(back, "\x1b_Ga=t,t=t,f=32,s=20,v=20,i=" + id + ","), "…and drawn again it is sent again");
     rolltui_terminal_free(k.t);
     k.t = nullptr;
     check(has(k.read(), "\x1b_Ga=d,d=I,i=" + id + ",q=2\x1b\\"), "leaving deletes what was sent");
+    struct stat gone {};
+    check(stat(sent_file.c_str(), &gone) != 0, "…and the temp files a terminal did not take are removed");
     for (RolltuiImage* m : more) rolltui_image_free(m);
+  }
+  {
+    // OVER SSH the pixels go in the escapes: a temp file here is no use to a kitty on another machine
+    setenv("SSH_CONNECTION", "10.0.0.1 5000 10.0.0.2 22", 1);
+    Pty k("kitty");
+    if (ssh_was) setenv("SSH_CONNECTION", ssh_saved.c_str(), 1);
+    else unsetenv("SSH_CONNECTION");
+    const std::string first = k.present(img, 1, 1);
+    check(has(first, "\x1b_Ga=t,f=32,s=20,v=20,i=" + id + ",q=2,m=0;") && !has(first, "t=t"), "over ssh, kitty's pixels go in the escapes");
   }
   {
     Pty k("kitty", /*tmux=*/true);
@@ -396,6 +438,24 @@ void test_preview_and_window() {
         "…and a picture the host bound under that name instead");
   rolltui_windows_bind_image(w, "four.ppm", 8, nullptr);
   rolltui_image_free(bound);
+  {
+    // WITH WORKERS LENT, the file is read and decoded on them: the frame draws what it has meanwhile, and the picture once it is back
+    RolltuiWindows* w2 = rolltui_windows_new(ctx);
+    RolltuiTasks* tasks = rolltui_tasks_new(1, nullptr, nullptr);
+    rolltui_windows_set_tasks(w2, tasks);
+    std::swap(w, w2);
+    Frame first(10, 4);
+    paint(first);
+    rolltui_tasks_wait_idle(tasks, static_cast<int>(5000 * rolltui_test::kClockScale));
+    Frame later(10, 4);
+    paint(later);
+    check(first.glyph(4, 1) != "\xE2\x96\x80" && later.glyph(4, 1) == "\xE2\x96\x80" && rgb_is(later.cell(4, 1).style.fg, 255, 0, 0),
+          "with workers lent, an image: window decodes off the drawing thread and shows the picture once it is back");
+    std::swap(w, w2);
+    rolltui_windows_set_tasks(w2, nullptr);
+    rolltui_windows_free(w2);
+    rolltui_tasks_free(tasks);
+  }
   rolltui_window_stack_free(stack);
   rolltui_windows_free(w);
   rolltui_layout_free(l);
@@ -407,7 +467,82 @@ void test_preview_and_window() {
 
 }  // namespace
 
+// A PHOTO TURNED AS ITS CAMERA WAS HELD; A PNG FOR ITERM2 THAT DECODES BACK; A PALETTE FITTED; A FILTER CHOSEN
+
+void test_orientation_png_palette_filter() {
+  std::ifstream in(ROLLTUI_FIXTURE_DIR "/halves.jpg", std::ios::binary);
+  const std::string jpeg((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  RolltuiStr err{};
+  RolltuiImage* plain = rolltui_image_decode(reinterpret_cast<const unsigned char*>(jpeg.data()), jpeg.size(), &err);
+  int w = 0, h = 0;
+  const unsigned char* px = plain ? rolltui_image_rgba(plain, &w, &h) : nullptr;
+  check(px && w == 16 && h == 8 && px[(4 * 16 + 2) * 4] < 60 && px[(4 * 16 + 13) * 4] > 200, "(a JPEG, dark on its left, light on its right)");
+  // orientation 6, said in an EXIF block put first: "turn it a quarter clockwise to show it"
+  std::string exif;
+  exif += "\xFF\xE1";
+  exif += std::string("\x00\x22", 2);                         /* 34 bytes: the length, then what follows */
+  exif += std::string("Exif\0\0", 6);
+  exif += std::string("II*\0\x08\0\0\0", 8);                  /* little-endian TIFF, its first IFD at 8 */
+  exif += std::string("\x01\0", 2);                            /* one entry */
+  exif += std::string("\x12\x01\x03\0\x01\0\0\0\x06\0\0\0", 12); /* 0x0112 orientation, a SHORT: 6 */
+  exif += std::string("\0\0\0\0", 4);                         /* no next IFD */
+  const std::string turned_bytes = jpeg.substr(0, 2) + exif + jpeg.substr(2);
+  RolltuiImage* turned = rolltui_image_decode(reinterpret_cast<const unsigned char*>(turned_bytes.data()), turned_bytes.size(), &err);
+  px = turned ? rolltui_image_rgba(turned, &w, &h) : nullptr;
+  check(px && w == 8 && h == 16 && px[(2 * 8 + 4) * 4] < 60 && px[(13 * 8 + 4) * 4] > 200,
+        "a JPEG whose EXIF says it was taken sideways is shown upright: a quarter turn, its dark side now on top [" + std::to_string(w) + "x" +
+            std::to_string(h) + "]");
+  rolltui_image_free(turned);
+  rolltui_image_free(plain);
+  rolltui_str_free(&err);
+  // A HOST'S PIXELS TO ITERM2: a PNG, alpha kept, that decodes back to them
+  const unsigned char rgba[16] = {255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 10, 20, 30, 255};
+  RolltuiImage* own = rolltui_image_from_rgba(rgba, 2, 2);
+  RolltuiStr seq{};
+  rolltui_image_iterm2(own, 2, 1, 0, &seq);
+  const std::string osc(seq.p ? seq.p : "", seq.n);
+  const std::size_t colon = osc.find(':'), bel = osc.rfind('\x07');
+  const std::string file = colon != std::string::npos && bel != std::string::npos ? b64_decode(osc.substr(colon + 1, bel - colon - 1)) : "";
+  RolltuiImage* back = rolltui_image_decode(reinterpret_cast<const unsigned char*>(file.data()), file.size(), nullptr);
+  const unsigned char* bp = back ? rolltui_image_rgba(back, &w, &h) : nullptr;
+  check(file.compare(0, 4, "\x89PNG") == 0 && bp && w == 2 && h == 2 && std::memcmp(bp, rgba, sizeof rgba) == 0,
+        "a host's own pixels go to iTerm2 as a PNG that decodes back to them, alpha and all");
+  rolltui_image_free(back);
+  rolltui_str_free(&seq);
+  rolltui_image_free(own);
+  // A PALETTE FITTED: a picture of two colours has those two registers, exactly
+  std::vector<unsigned char> two(12 * 12 * 4);
+  for (int i = 0; i < 12 * 12; ++i) {
+    const bool left = (i % 12) < 6;
+    two[i * 4 + 0] = left ? 10 : 250;
+    two[i * 4 + 1] = left ? 200 : 250;
+    two[i * 4 + 2] = left ? 30 : 250;
+    two[i * 4 + 3] = 255;
+  }
+  RolltuiImage* pair = rolltui_image_from_rgba(two.data(), 12, 12);
+  RolltuiStr six{};
+  rolltui_image_sixel(pair, 12, 12, &six);
+  const std::string sx(six.p ? six.p : "", six.n);
+  std::size_t regs = 0;
+  for (std::size_t at = sx.find(";2;"); at != std::string::npos; at = sx.find(";2;", at + 1)) ++regs;
+  check(regs == 2 && sx.find(";2;4;78;12") != std::string::npos && sx.find(";2;98;98;98") != std::string::npos,
+        "a sixel's palette is fitted to its picture: two colours, two registers, each the colour itself [" + std::to_string(regs) + "]");
+  rolltui_str_free(&six);
+  rolltui_image_free(pair);
+  // A FILTER CHOSEN: four stripes made two pixels, averaged or each the pixel at its centre
+  const unsigned char stripes[16] = {0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 255, 255};
+  RolltuiImage* st = rolltui_image_from_rgba(stripes, 4, 1);
+  unsigned char out[8];
+  rolltui_image_scale(st, 2, 1, out);
+  check(out[0] > 100 && out[0] < 160, "shrunk smoothly, the stripes average to grey");
+  rolltui_image_set_filter(st, ROLLTUI_IMAGE_NEAREST);
+  rolltui_image_scale(st, 2, 1, out);
+  check(out[0] == 255 && out[4] == 255, "…and with NEAREST each pixel is the one at its centre, hard-edged");
+  rolltui_image_free(st);
+}
+
 int main() {
+  test_orientation_png_palette_filter();
   test_decode();
   test_fit();
   test_blocks();

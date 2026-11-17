@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_termfacts.h"
@@ -72,6 +73,7 @@ struct RolltuiImage {
   int w, h;
   unsigned int id;     /* 1 .. 2^24 - 1: kitty's id, carried in a 24-bit foreground */
   RolltuiStr encoded;  /* the PNG, JPEG or GIF it was decoded from: what iTerm2 is sent as it is */
+  unsigned char filter; /* ROLLTUI_IMAGE_SMOOTH or _NEAREST: how it is scaled */
 };
 
 static _Atomic unsigned int g_next_id = 0;
@@ -94,6 +96,72 @@ static void say(RolltuiStr* err, const char* a, const char* b) {
   if (!err) return;
   rolltui_str_set(err, a, strlen(a));
   if (b) rolltui_str_append(err, b, strlen(b));
+}
+
+/* A JPEG'S EXIF ORIENTATION (1 to 8; 1 as it is stored): how a camera held sideways says to show what it stored. */
+static unsigned rd16(const unsigned char* p, int le) { return le ? (unsigned)(p[0] | p[1] << 8) : (unsigned)(p[0] << 8 | p[1]); }
+static unsigned long rd32(const unsigned char* p, int le) {
+  return le ? (unsigned long)p[0] | (unsigned long)p[1] << 8 | (unsigned long)p[2] << 16 | (unsigned long)p[3] << 24
+            : (unsigned long)p[0] << 24 | (unsigned long)p[1] << 16 | (unsigned long)p[2] << 8 | (unsigned long)p[3];
+}
+static int jpeg_orientation(const unsigned char* b, size_t n) {
+  size_t at = 2;
+  if (n < 4 || b[0] != 0xFF || b[1] != 0xD8) return 1;
+  while (at + 4 <= n && b[at] == 0xFF) {
+    const unsigned marker = b[at + 1];
+    const size_t seg = (size_t)rd16(b + at + 2, 0);
+    if (marker == 0xDA || seg < 2) break; /* the picture's data: no EXIF past here */
+    if (marker == 0xE1 && at + 2 + seg <= n && seg >= 16 && memcmp(b + at + 4, "Exif\0\0", 6) == 0) {
+      const unsigned char* t = b + at + 10; /* the TIFF header */
+      const size_t tn = seg - 8;
+      int le;
+      unsigned long ifd;
+      unsigned count, i;
+      if (tn < 8 || !(memcmp(t, "II", 2) == 0 || memcmp(t, "MM", 2) == 0)) return 1;
+      le = t[0] == 'I';
+      ifd = rd32(t + 4, le);
+      if (ifd + 2 > tn) return 1;
+      count = rd16(t + ifd, le);
+      for (i = 0; i < count && ifd + 2 + (i + 1) * 12 <= tn; ++i) {
+        const unsigned char* e = t + ifd + 2 + i * 12;
+        if (rd16(e, le) == 0x0112) {
+          const unsigned v = rd16(e + 8, le);
+          return v >= 1 && v <= 8 ? (int)v : 1;
+        }
+      }
+      return 1;
+    }
+    at += 2 + seg;
+  }
+  return 1;
+}
+/* THE PIXELS TURNED as orientation `o` says, into a new buffer (the old one freed); `*w`, `*h` the shown size. */
+static unsigned char* orient(unsigned char* px, int* w, int* h, int o) {
+  const int sw = *w, sh = *h, swap = o >= 5;
+  const int dw = swap ? sh : sw, dh = swap ? sw : sh;
+  unsigned char* out;
+  int dx, dy;
+  if (o <= 1 || o > 8) return px;
+  out = (unsigned char*)rolltui_mem_alloc((size_t)dw * (size_t)dh * 4);
+  for (dy = 0; dy < dh; ++dy)
+    for (dx = 0; dx < dw; ++dx) {
+      int sx = dx, sy = dy;
+      switch (o) {
+        case 2: sx = sw - 1 - dx; break;
+        case 3: sx = sw - 1 - dx, sy = sh - 1 - dy; break;
+        case 4: sy = sh - 1 - dy; break;
+        case 5: sx = dy, sy = dx; break;
+        case 6: sx = dy, sy = sh - 1 - dx; break;
+        case 7: sx = sw - 1 - dy, sy = sh - 1 - dx; break;
+        case 8: sx = sw - 1 - dy, sy = dx; break;
+        default: break;
+      }
+      memcpy(out + ((size_t)dy * dw + dx) * 4, px + ((size_t)sy * sw + sx) * 4, 4);
+    }
+  stbi_image_free(px);
+  *w = dw;
+  *h = dh;
+  return out;
 }
 
 RolltuiImage* rolltui_image_decode(const unsigned char* bytes, size_t len, RolltuiStr* err) {
@@ -121,6 +189,7 @@ RolltuiImage* rolltui_image_decode(const unsigned char* bytes, size_t len, Rollt
     say(err, "cannot decode: ", stbi_failure_reason());
     return NULL;
   }
+  px = orient(px, &w, &h, jpeg_orientation(bytes, len)); /* a photo shown the way its camera was held */
   img = make(px, w, h);
   /* the formats iTerm2 takes as they are */
   if ((len > 8 && memcmp(bytes, "\x89PNG", 4) == 0) || (len > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8) ||
@@ -203,8 +272,22 @@ void rolltui_image_fit(const RolltuiImage* img, int cols, int rows, int cell_w, 
 /* The picture scaled to `dw` x `dh` into `out` (dw * dh * 4): each output pixel the average of the source pixels it covers, so a
  * large picture shrinks without the shimmer of sampling every n-th pixel. Alpha weights the colour, so a transparent edge does not
  * darken what is next to it. */
+void rolltui_image_set_filter(RolltuiImage* img, int filter) {
+  if (img) img->filter = (unsigned char)(filter == ROLLTUI_IMAGE_NEAREST ? ROLLTUI_IMAGE_NEAREST : ROLLTUI_IMAGE_SMOOTH);
+}
+
 void rolltui_image_scale(const RolltuiImage* img, int dw, int dh, unsigned char* out) {
   int x, y;
+  if (img->filter == ROLLTUI_IMAGE_NEAREST) { /* each pixel the one under its centre: pixel art kept hard-edged */
+    for (y = 0; y < dh; ++y)
+      for (x = 0; x < dw; ++x) {
+        int sx = (int)(((long long)x * 2 + 1) * img->w / (2LL * dw)), sy = (int)(((long long)y * 2 + 1) * img->h / (2LL * dh));
+        if (sx >= img->w) sx = img->w - 1;
+        if (sy >= img->h) sy = img->h - 1;
+        memcpy(out + ((size_t)y * dw + x) * 4, img->rgba + ((size_t)sy * img->w + sx) * 4, 4);
+      }
+    return;
+  }
   for (y = 0; y < dh; ++y) {
     const int y0 = (int)((long long)y * img->h / dh);
     int y1 = (int)((long long)(y + 1) * img->h / dh);
@@ -282,7 +365,7 @@ static void emit(const char* seq, size_t n, int tmux, RolltuiStr* out) {
 #define KITTY_MAX_SIDE 2048
 #define KITTY_CHUNK 4096
 
-void rolltui_image_kitty_upload(const RolltuiImage* img, int tmux, RolltuiStr* out) {
+void rolltui_image_kitty_upload(const RolltuiImage* img, int tmux, int by_file, RolltuiStr* out, RolltuiStr* file) {
   RolltuiStr data, seq;
   unsigned char* px = img->rgba;
   int w = img->w, h = img->h;
@@ -297,6 +380,25 @@ void rolltui_image_kitty_upload(const RolltuiImage* img, int tmux, RolltuiStr* o
   }
   memset(&data, 0, sizeof data);
   memset(&seq, 0, sizeof seq);
+  if (by_file) { /* A KITTY ON THIS MACHINE reads the pixels from a temp file and deletes it: no megabytes through the escapes */
+    RolltuiStr path;
+    memset(&path, 0, sizeof path);
+    if (rolltui_os_temp_file("rolltui-tty-graphics-protocol", px, (size_t)w * h * 4, &path)) {
+      if (px != img->rgba) rolltui_mem_free(px);
+      b64((const unsigned char*)path.p, path.n, &data);
+      snprintf(head, sizeof head, "\x1b_Ga=t,t=t,f=32,s=%d,v=%d,i=%u,q=2;", w, h, img->id);
+      rolltui_str_append(&seq, head, strlen(head));
+      rolltui_str_append(&seq, data.p, data.n);
+      rolltui_str_append(&seq, "\x1b\\", 2);
+      emit(seq.p, seq.n, tmux, out);
+      if (file) rolltui_str_set(file, path.p, path.n);
+      rolltui_str_free(&path);
+      rolltui_str_free(&data);
+      rolltui_str_free(&seq);
+      return;
+    }
+    rolltui_str_free(&path); /* no temp file to be had: in the escapes */
+  }
   b64(px, (size_t)w * h * 4, &data);
   if (px != img->rgba) rolltui_mem_free(px);
   /* TRANSMITTED, NOT DISPLAYED (a=t): the virtual placement and the cells show it. q=2: no replies to read back. */
@@ -377,42 +479,131 @@ static size_t utf8(unsigned int cp, char* out) {
 
 /* ---- sixel --------------------------------------------------------------------------------------- */
 
-/* The palette: a 6 x 7 x 6 cube (252 colours, green the finest step, which the eye resolves best) and four greys. Fixed, so the
- * same picture is the same bytes, and no colour search: a pixel's register is arithmetic. */
-static int cube_r(int v) { return (v * 5 + 127) / 255; }
-static int cube_g(int v) { return (v * 6 + 127) / 255; }
-static int cube_b(int v) { return (v * 5 + 127) / 255; }
-static int reg_of(const unsigned char* p) { return cube_r(p[0]) * 42 + cube_g(p[1]) * 6 + cube_b(p[2]); }
+/* THE PALETTE FITTED TO THE PICTURE: median cut over its opaque pixels, at most SIXEL_REGS colours, each the mean of the pixels in
+ * its box. The same picture is the same bytes (nothing in it is random), and a pixel finds its register through a cache of 15-bit
+ * colours, so the search is paid once per colour, not once per pixel. */
+#define SIXEL_REGS 255
+typedef struct Rgb3 {
+  unsigned char c[3];
+} Rgb3;
+static int by_r(const void* a, const void* b) { return (int)((const Rgb3*)a)->c[0] - (int)((const Rgb3*)b)->c[0]; }
+static int by_g(const void* a, const void* b) { return (int)((const Rgb3*)a)->c[1] - (int)((const Rgb3*)b)->c[1]; }
+static int by_b(const void* a, const void* b) { return (int)((const Rgb3*)a)->c[2] - (int)((const Rgb3*)b)->c[2]; }
+typedef struct CutBox {
+  size_t lo, hi;
+} CutBox;
+static int box_spread(const Rgb3* v, CutBox b, int* channel) {
+  int lo[3] = {255, 255, 255}, hi[3] = {0, 0, 0}, k, best = -1;
+  size_t i;
+  for (i = b.lo; i < b.hi; ++i)
+    for (k = 0; k < 3; ++k) {
+      if (v[i].c[k] < lo[k]) lo[k] = v[i].c[k];
+      if (v[i].c[k] > hi[k]) hi[k] = v[i].c[k];
+    }
+  for (k = 0; k < 3; ++k)
+    if (hi[k] - lo[k] > best) best = hi[k] - lo[k], *channel = k;
+  return best;
+}
+/* `pal` filled (`*n` colours) from the opaque pixels of `px` (`count` of them, RGBA). */
+static void fit_palette(const unsigned char* px, size_t count, unsigned char pal[SIXEL_REGS][3], int* n) {
+  Rgb3* v;
+  CutBox boxes[SIXEL_REGS];
+  size_t m = 0, i, step;
+  int nb = 1, k;
+  v = (Rgb3*)rolltui_mem_alloc((count ? count : 1) * sizeof *v);
+  step = count > 262144 ? count / 262144 : 1; /* a sample of a very large picture is enough to cut boxes from */
+  for (i = 0; i < count; i += step)
+    if (px[i * 4 + 3] >= 128) memcpy(v[m++].c, px + i * 4, 3);
+  if (m == 0) {
+    pal[0][0] = pal[0][1] = pal[0][2] = 0;
+    *n = 1;
+    rolltui_mem_free(v);
+    return;
+  }
+  boxes[0].lo = 0;
+  boxes[0].hi = m;
+  while (nb < SIXEL_REGS) { /* the widest box cut at its median, until there are enough or none can be cut */
+    int pick = -1, ch = 0, spread = 0;
+    for (k = 0; k < nb; ++k) {
+      int c = 0;
+      const int s = boxes[k].hi - boxes[k].lo > 1 ? box_spread(v, boxes[k], &c) : 0;
+      if (s > spread) spread = s, pick = k, ch = c;
+    }
+    if (pick < 0) break;
+    qsort(v + boxes[pick].lo, boxes[pick].hi - boxes[pick].lo, sizeof *v, ch == 0 ? by_r : ch == 1 ? by_g : by_b);
+    {
+      const size_t mid = boxes[pick].lo + (boxes[pick].hi - boxes[pick].lo) / 2;
+      boxes[nb].lo = mid;
+      boxes[nb].hi = boxes[pick].hi;
+      boxes[pick].hi = mid;
+      ++nb;
+    }
+  }
+  for (k = 0; k < nb; ++k) {
+    unsigned long sum[3] = {0, 0, 0};
+    const size_t cnt = boxes[k].hi - boxes[k].lo;
+    int c;
+    for (i = boxes[k].lo; i < boxes[k].hi; ++i)
+      for (c = 0; c < 3; ++c) sum[c] += v[i].c[c];
+    for (c = 0; c < 3; ++c) pal[k][c] = (unsigned char)((sum[c] + cnt / 2) / (cnt ? cnt : 1));
+  }
+  *n = nb;
+  rolltui_mem_free(v);
+}
+/* The register nearest `p`, through `cache` (32768 entries, -1 not yet asked). */
+static int reg_of(const unsigned char* p, unsigned char pal[SIXEL_REGS][3], int n, short* cache) {
+  const int key = (p[0] >> 3) << 10 | (p[1] >> 3) << 5 | (p[2] >> 3);
+  int k, best = 0;
+  long bd = -1;
+  if (cache[key] >= 0) return cache[key];
+  for (k = 0; k < n; ++k) {
+    const long dr = (long)p[0] - pal[k][0], dg = (long)p[1] - pal[k][1], db = (long)p[2] - pal[k][2];
+    const long d = dr * dr * 3 + dg * dg * 4 + db * db * 2; /* green weighs most, as the eye resolves it best */
+    if (bd < 0 || d < bd) bd = d, best = k;
+  }
+  cache[key] = (short)best;
+  return best;
+}
 
 void rolltui_image_sixel(const RolltuiImage* img, int px_w, int px_h, RolltuiStr* out) {
   unsigned char* px;
   unsigned char* used;
+  unsigned char* reg;
+  unsigned char (*pal)[3];
+  short* cache;
+  int npal = 0;
   char buf[64];
   int band, x, r;
   if (!img || px_w <= 0 || px_h <= 0) return;
   px = (unsigned char*)rolltui_mem_alloc((size_t)px_w * px_h * 4);
   rolltui_image_scale(img, px_w, px_h, px);
-  used = (unsigned char*)rolltui_mem_alloc(252);
+  pal = (unsigned char(*)[3])rolltui_mem_alloc(SIXEL_REGS * 3);
+  fit_palette(px, (size_t)px_w * px_h, pal, &npal);
+  cache = (short*)rolltui_mem_alloc(32768 * sizeof *cache);
+  for (r = 0; r < 32768; ++r) cache[r] = -1;
+  reg = (unsigned char*)rolltui_mem_alloc((size_t)px_w * px_h); /* each pixel's register, found once */
+  for (r = 0; r < px_w * px_h; ++r)
+    reg[r] = (unsigned char)(px[(size_t)r * 4 + 3] >= 128 ? reg_of(px + (size_t)r * 4, pal, npal, cache) : 0);
+  used = (unsigned char*)rolltui_mem_alloc(SIXEL_REGS);
   /* P2 = 1: a pixel no colour is set for stays the cell's own background, so a transparent picture is transparent */
   rolltui_str_append(out, "\x1bP0;1;0q", sizeof "\x1bP0;1;0q" - 1);
   snprintf(buf, sizeof buf, "\"1;1;%d;%d", px_w, px_h);
   rolltui_str_append(out, buf, strlen(buf));
-  for (r = 0; r < 252; ++r) {
-    const int ri = r / 42, gi = (r / 6) % 7, bi = r % 6;
-    snprintf(buf, sizeof buf, "#%d;2;%d;%d;%d", r, ri * 100 / 5, gi * 100 / 6, bi * 100 / 5);
+  for (r = 0; r < npal; ++r) { /* the registers, in percent */
+    snprintf(buf, sizeof buf, "#%d;2;%d;%d;%d", r, (pal[r][0] * 100 + 127) / 255, (pal[r][1] * 100 + 127) / 255, (pal[r][2] * 100 + 127) / 255);
     rolltui_str_append(out, buf, strlen(buf));
   }
   for (band = 0; band < px_h; band += 6) {
     int first = 1;
-    memset(used, 0, 252);
+    memset(used, 0, SIXEL_REGS);
     for (x = 0; x < px_w; ++x) { /* the registers this band uses */
       int k;
       for (k = 0; k < 6 && band + k < px_h; ++k) {
-        const unsigned char* p = px + ((size_t)(band + k) * px_w + x) * 4;
-        if (p[3] >= 128) used[reg_of(p)] = 1;
+        const size_t at = (size_t)(band + k) * px_w + x;
+        if (px[at * 4 + 3] >= 128) used[reg[at]] = 1;
       }
     }
-    for (r = 0; r < 252; ++r) {
+    for (r = 0; r < npal; ++r) {
       int run = 0;
       char prev = 0;
       if (!used[r]) continue;
@@ -425,8 +616,8 @@ void rolltui_image_sixel(const RolltuiImage* img, int px_w, int px_h, RolltuiStr
         if (x < px_w) {
           int k, bits = 0;
           for (k = 0; k < 6 && band + k < px_h; ++k) {
-            const unsigned char* p = px + ((size_t)(band + k) * px_w + x) * 4;
-            if (p[3] >= 128 && reg_of(p) == r) bits |= 1 << k;
+            const size_t at = (size_t)(band + k) * px_w + x;
+            if (px[at * 4 + 3] >= 128 && reg[at] == r) bits |= 1 << k;
           }
           c = (char)('?' + bits);
         }
@@ -449,33 +640,79 @@ void rolltui_image_sixel(const RolltuiImage* img, int px_w, int px_h, RolltuiStr
   }
   rolltui_str_append(out, "\x1b\\", 2);
   rolltui_mem_free(used);
+  rolltui_mem_free(reg);
+  rolltui_mem_free(cache);
+  rolltui_mem_free(pal);
   rolltui_mem_free(px);
 }
 
 /* ---- iTerm2 -------------------------------------------------------------------------------------- */
 
-/* A 32-bit BMP of the picture: what iTerm2 is sent for one that was not decoded from a file it reads itself. */
-static void bmp(const RolltuiImage* img, RolltuiStr* out) {
-  const size_t row = (size_t)img->w * 4, data = row * img->h, total = 54 + data;
-  unsigned char h[54];
-  int y, x;
-  memset(h, 0, sizeof h);
-  h[0] = 'B';
-  h[1] = 'M';
-  h[2] = (unsigned char)total, h[3] = (unsigned char)(total >> 8), h[4] = (unsigned char)(total >> 16), h[5] = (unsigned char)(total >> 24);
-  h[10] = 54;
-  h[14] = 40;
-  h[18] = (unsigned char)img->w, h[19] = (unsigned char)(img->w >> 8), h[20] = (unsigned char)(img->w >> 16);
-  h[22] = (unsigned char)img->h, h[23] = (unsigned char)(img->h >> 8), h[24] = (unsigned char)(img->h >> 16);
-  h[26] = 1;
-  h[28] = 32;
-  rolltui_str_append(out, (const char*)h, sizeof h);
-  for (y = img->h - 1; y >= 0; --y) /* bottom-up, BGRA */
-    for (x = 0; x < img->w; ++x) {
-      const unsigned char* p = img->rgba + ((size_t)y * img->w + x) * 4;
-      const char q[4] = {(char)p[2], (char)p[1], (char)p[0], (char)p[3]};
-      rolltui_str_append(out, q, 4);
+/* A PNG OF THE PICTURE, its alpha kept: what iTerm2 is sent for one that was not decoded from a file it reads itself (a host's
+ * pixels, a BMP, a TGA). Stored, not compressed: a valid PNG every reader takes, made without a compressor. */
+static void put32(RolltuiStr* out, unsigned long v) {
+  const char b[4] = {(char)(v >> 24), (char)(v >> 16), (char)(v >> 8), (char)v};
+  rolltui_str_append(out, b, 4);
+}
+static unsigned long crc_of(const unsigned long* table, const unsigned char* p, size_t n, unsigned long c) {
+  size_t i;
+  for (i = 0; i < n; ++i) c = table[(c ^ p[i]) & 0xFF] ^ (c >> 8);
+  return c;
+}
+static void png_chunk(RolltuiStr* out, const unsigned long* table, const char* type, const unsigned char* data, size_t n) {
+  unsigned long c = 0xFFFFFFFFul;
+  put32(out, (unsigned long)n);
+  rolltui_str_append(out, type, 4);
+  if (n) rolltui_str_append(out, (const char*)data, n);
+  c = crc_of(table, (const unsigned char*)type, 4, c);
+  if (n) c = crc_of(table, data, n, c);
+  put32(out, c ^ 0xFFFFFFFFul);
+}
+static void png(const RolltuiImage* img, RolltuiStr* out) {
+  unsigned long table[256], a = 1, b = 0;
+  const size_t row = (size_t)img->w * 4 + 1, raw_n = row * (size_t)img->h;
+  RolltuiStr z;
+  unsigned char ihdr[13];
+  size_t i, at = 0;
+  int y;
+  for (i = 0; i < 256; ++i) { /* the CRC's table, made here: no state outlives the call */
+    unsigned long c = (unsigned long)i;
+    int k;
+    for (k = 0; k < 8; ++k) c = c & 1 ? 0xEDB88320ul ^ (c >> 1) : c >> 1;
+    table[i] = c;
+  }
+  memset(&z, 0, sizeof z);
+  rolltui_str_append(&z, "\x78\x01", 2); /* zlib: deflate, no dictionary */
+  for (y = 0; y < img->h; ++y) { /* each row: filter 0, then its pixels; written in stored blocks as it goes */
+    const unsigned char* src = img->rgba + (size_t)y * img->w * 4;
+    size_t k;
+    for (k = 0; k < row; ++k) {
+      const unsigned char byte = k == 0 ? 0 : src[k - 1];
+      if (at % 65535 == 0) { /* a stored block's head: final or not, its length and that length's complement */
+        const size_t left = raw_n - at, len = left < 65535 ? left : 65535;
+        const char head[5] = {(char)(left <= 65535 ? 1 : 0), (char)(len & 0xFF), (char)(len >> 8), (char)(~len & 0xFF),
+                              (char)((~len >> 8) & 0xFF)};
+        rolltui_str_append(&z, head, 5);
+      }
+      rolltui_str_append(&z, (const char*)&byte, 1);
+      a = (a + byte) % 65521;
+      b = (b + a) % 65521;
+      ++at;
     }
+  }
+  put32(&z, b << 16 | a); /* the zlib check */
+  rolltui_str_append(out, "\x89PNG\r\n\x1a\n", 8);
+  ihdr[0] = (unsigned char)(img->w >> 24), ihdr[1] = (unsigned char)(img->w >> 16), ihdr[2] = (unsigned char)(img->w >> 8),
+  ihdr[3] = (unsigned char)img->w;
+  ihdr[4] = (unsigned char)(img->h >> 24), ihdr[5] = (unsigned char)(img->h >> 16), ihdr[6] = (unsigned char)(img->h >> 8),
+  ihdr[7] = (unsigned char)img->h;
+  ihdr[8] = 8; /* bits a channel */
+  ihdr[9] = 6; /* RGBA */
+  ihdr[10] = ihdr[11] = ihdr[12] = 0;
+  png_chunk(out, table, "IHDR", ihdr, sizeof ihdr);
+  png_chunk(out, table, "IDAT", (const unsigned char*)z.p, z.n);
+  png_chunk(out, table, "IEND", NULL, 0);
+  rolltui_str_free(&z);
 }
 
 void rolltui_image_iterm2(const RolltuiImage* img, int cols, int rows, int tmux, RolltuiStr* out) {
@@ -486,7 +723,7 @@ void rolltui_image_iterm2(const RolltuiImage* img, int cols, int rows, int tmux,
   memset(&data, 0, sizeof data);
   memset(&seq, 0, sizeof seq);
   if (img->encoded.n) rolltui_str_set(&file, img->encoded.p, img->encoded.n);
-  else bmp(img, &file);
+  else png(img, &file);
   b64((const unsigned char*)file.p, file.n, &data);
   snprintf(head, sizeof head, "\x1b]1337;File=inline=1;size=%zu;width=%d;height=%d;preserveAspectRatio=1:", file.n, cols, rows);
   rolltui_str_append(&seq, head, strlen(head));

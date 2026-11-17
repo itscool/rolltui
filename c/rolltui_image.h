@@ -20,7 +20,10 @@ void rolltui_image_fit(const RolltuiImage* img, int cols, int rows, int cell_w, 
 void rolltui_image_scale(const RolltuiImage* img, int dw, int dh, unsigned char* out);
 
 /* ---- what each protocol sends, APPENDED to `out`; `tmux` wraps each sequence to pass through ---- */
-void rolltui_image_kitty_upload(const RolltuiImage* img, int tmux, RolltuiStr* out);
+/* `by_file`: the pixels written to a temp file kitty reads and deletes (`t=t`), for a kitty on this machine; else sent in the
+ * escapes, base64 in chunks. */
+void rolltui_image_kitty_upload(const RolltuiImage* img, int tmux, int by_file, RolltuiStr* out, RolltuiStr* file);
+/* (`file`, may be NULL: the temp file's path when one was written, for whoever removes what kitty did not) */
 void rolltui_image_kitty_place(unsigned int id, int cols, int rows, int tmux, RolltuiStr* out);
 void rolltui_image_kitty_delete(unsigned int id, int tmux, RolltuiStr* out);
 void rolltui_image_sixel(const RolltuiImage* img, int px_w, int px_h, RolltuiStr* out);

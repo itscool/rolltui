@@ -1248,6 +1248,7 @@ static const RolltuiWidgetPlugin kOutputPlugin = {
  * image:<path> — a picture: the one the host bound under that name, or the file, read again when it changes.
  * ============================================================================================ */
 
+struct ImageRead;
 typedef struct RolltuiImageCtx {
   RolltuiWindows* w; /* BORROWED */
   RolltuiStr source;
@@ -1256,7 +1257,38 @@ typedef struct RolltuiImageCtx {
   long long stamp;
   int read;
   RolltuiDrawScratch* draw;
+  struct ImageRead* pending; /* a read on the workers (its job's): the picture before it stays on screen until it is back */
 } RolltuiImageCtx;
+
+/* A PICTURE FILE READ AND DECODED ON A WORKER. OWNED by its job; `ic` NULL once the window went. */
+typedef struct ImageRead {
+  RolltuiImageCtx* ic;
+  RolltuiTasks* tasks;
+  unsigned int job;
+  RolltuiStr path, why;
+  RolltuiImage* img;
+} ImageRead;
+
+static void image_read_work(void* ctx, const RolltuiJob* job) {
+  ImageRead* r = (ImageRead*)ctx;
+  if (!rolltui_job_cancelled(job)) r->img = rolltui_image_load(r->path.p ? r->path.p : "", r->path.n, &r->why);
+}
+static void image_read_done(void* ctx, int cancelled) {
+  ImageRead* r = (ImageRead*)ctx;
+  if (r->ic && r->ic->pending == r) {
+    r->ic->pending = NULL;
+    if (!cancelled) { /* the new picture, in the old one's place */
+      rolltui_image_free(r->ic->file);
+      r->ic->file = r->img;
+      r->img = NULL;
+      rolltui_str_set(&r->ic->why, r->why.p ? r->why.p : "", r->why.n);
+    }
+  }
+  rolltui_image_free(r->img);
+  rolltui_str_free(&r->path);
+  rolltui_str_free(&r->why);
+  rolltui_mem_free(r);
+}
 
 static void image_ctx_refresh(RolltuiImageCtx* ic) {
   RolltuiStr p;
@@ -1280,6 +1312,24 @@ static void image_ctx_refresh(RolltuiImageCtx* ic) {
   ic->read = 1;
   ic->stamp = m;
   rolltui_str_move(&ic->read_path, &p);
+  {
+    RolltuiTasks* tasks = rolltui_windows_tasks(ic->w);
+    if (ic->pending) { /* a read of what the file was: dropped */
+      ic->pending->ic = NULL;
+      rolltui_tasks_cancel(ic->pending->tasks, ic->pending->job);
+      ic->pending = NULL;
+    }
+    if (tasks && rolltui_tasks_workers(tasks) > 0) { /* decoded off the drawing thread: a large photo never holds a frame */
+      ImageRead* r = (ImageRead*)rolltui_mem_alloc(sizeof *r);
+      memset(r, 0, sizeof *r);
+      r->ic = ic;
+      r->tasks = tasks;
+      rolltui_str_set(&r->path, ic->read_path.p ? ic->read_path.p : "", ic->read_path.n);
+      ic->pending = r;
+      r->job = rolltui_tasks_start(tasks, image_read_work, image_read_done, r);
+      return;
+    }
+  }
   rolltui_image_free(ic->file);
   ic->file = rolltui_image_load(ic->read_path.p ? ic->read_path.p : "", ic->read_path.n, &ic->why);
 }
@@ -1293,7 +1343,7 @@ static const RolltuiImage* image_ctx_picture(RolltuiImageCtx* ic) {
 
 static int image_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiImageCtx* ic = (RolltuiImageCtx*)ctx;
-  if (image_ctx_picture(ic)) return 0;
+  if (image_ctx_picture(ic) || ic->pending) return 0; /* (one being read is not a problem: it is on its way) */
   rolltui_str_set(out, ic->why.p ? ic->why.p : "", ic->why.n);
   return 1;
 }
@@ -1318,6 +1368,10 @@ static void image_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
 }
 static void image_ctx_destroy(void* ctx) {
   RolltuiImageCtx* ic = (RolltuiImageCtx*)ctx;
+  if (ic->pending) { /* its read finishes unseen */
+    ic->pending->ic = NULL;
+    rolltui_tasks_cancel(ic->pending->tasks, ic->pending->job);
+  }
   rolltui_str_free(&ic->source);
   rolltui_str_free(&ic->read_path);
   rolltui_str_free(&ic->why);

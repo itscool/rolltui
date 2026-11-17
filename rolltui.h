@@ -4055,7 +4055,12 @@ RolltuiImage* rolltui_image_load(const char* path, size_t len, RolltuiStr* err);
 RolltuiImage* rolltui_image_decode(const unsigned char* bytes, size_t len, RolltuiStr* err);
 /* `w` x `h` RGBA pixels, copied. NULL when the size is not one a picture may be. */
 RolltuiImage* rolltui_image_from_rgba(const unsigned char* rgba, int w, int h);
-void rolltui_image_free(RolltuiImage* img); /* a no-op on NULL */
+void rolltui_image_free(RolltuiImage* img);
+/* HOW A PICTURE IS SCALED to its cells: SMOOTH (the default) averages the pixels each one covers; NEAREST takes the pixel under each
+ * one's centre, so pixel art and a screenshot of text stay hard-edged. */
+#define ROLLTUI_IMAGE_SMOOTH 0
+#define ROLLTUI_IMAGE_NEAREST 1
+void rolltui_image_set_filter(RolltuiImage* img, int filter); /* a no-op on NULL */
 /* The pixels, RGBA, row by row: a BORROW valid until the picture is freed. */
 const unsigned char* rolltui_image_rgba(const RolltuiImage* img, int* w, int* h);
 /* DRAWS `img` into `area`, its aspect kept and never enlarged past its own pixels, at the area's top left, by the terminal's way
