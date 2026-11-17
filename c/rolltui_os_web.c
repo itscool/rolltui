@@ -134,6 +134,8 @@ void rolltui_cond_destroy(RolltuiCond* c) { (void)c; }
 void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) { (void)c, (void)m; }
 void rolltui_cond_signal(RolltuiCond* c) { (void)c; }
 void rolltui_cond_broadcast(RolltuiCond* c) { (void)c; }
+void rolltui_os_listen_reload(int on) { (void)on; } /* no SIGUSR1: the files' own changes are what is watched */
+int rolltui_os_take_reload(void) { return 0; }
 unsigned long long rolltui_os_thread_self(void) { return 1; } /* one thread */
 RolltuiThread* rolltui_thread_start(void (*fn)(void* arg), void* arg) {
   (void)fn, (void)arg;

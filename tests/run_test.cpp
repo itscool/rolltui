@@ -450,6 +450,36 @@ int main() {
       rolltui_run_step(run);
       check(st.typed == "abzf", "keys typed after a typeahead flush in the same batch are dropped [" + st.typed + "]");
     }
+    {
+      // THE STORES' FILES WATCHED: a theme file another program changes is read again while the run lasts
+      char tmpl[] = "/tmp/rolltui_run_stores_XXXXXX";
+      const std::string sdir = ::mkdtemp(tmpl);
+      RolltuiContext* sctx = rolltui_context_new(); /* its own: the presets it caches go with it */
+      rolltui_context_set_library_defaults(sctx);
+      RolltuiThemeStore* ts = rolltui_theme_store_new(sctx, sdir.data(), sdir.size(), 0, "", 0);
+      RolltuiThemePresetReport rep{};
+      rolltui_theme_store_start(ts, &rep);
+      rolltui_theme_preset_report_release(&rep);
+      rolltui_theme_store_load(ts, "contrast", 8, &rep, 1);
+      rolltui_theme_preset_report_release(&rep);
+      rolltui_run_watch_stores(run, ts, nullptr, nullptr);
+      rolltui_run_step(run);
+      const unsigned long long v0 = rolltui_theme_store_version(ts);
+      {
+        std::ofstream f(sdir + "/theme.working.json", std::ios::binary | std::ios::trunc);
+        f << "{\n  \"preset\": \"mono\",\n  \"follows_origin\": true\n}\n";
+      }
+      step_until(run, [&] { return rolltui_theme_store_version(ts) != v0; });
+      std::size_t on = 0;
+      const char* origin = rolltui_theme_store_origin(ts, &on);
+      check(rolltui_theme_store_version(ts) != v0 && std::string(origin ? origin : "", on) == "mono",
+            "a run watching a store reads its file again when another program changes it");
+      rolltui_run_watch_stores(run, nullptr, nullptr, nullptr); /* let go of before the store goes */
+      rolltui_theme_store_free(ts);
+      rolltui_context_free(sctx);
+      std::remove((sdir + "/theme.working.json").c_str());
+      ::rmdir(sdir.c_str());
+    }
     type("q");
     ms = step_until(run, [&] { return false; });
     check(ms == ROLLTUI_RUN_STEP_STOPPED && st.typed == "abzfq", "the app stopping makes the step answer ROLLTUI_RUN_STEP_STOPPED");

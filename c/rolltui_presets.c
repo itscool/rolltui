@@ -7,6 +7,7 @@
  * Everything allocates through the closed set in `rolltui_alloc.h`. The one process-wide
  * retainer is a domain's parsed shipped cache, which lives in the caller's own descriptor
  * and is handed back by `rolltui_preset_domain_release`. */
+#include "rolltui/c/rolltui_preview.h" /* a file's signature, to tell another program's write from this one's */
 #include "rolltui/c/rolltui_presets.h"
 
 /* THE WORD, ONCE. A working copy that differs from its origin says so in two places — the note
@@ -444,6 +445,10 @@ struct RolltuiPresetStore {
   Buf last_error;
   unsigned long long version;
   int modified; /* working != origin_content, computed at every change (touch_locked, start) */
+  /* THE FILES AS THEY WERE at the last read or write of this store's own: the working copy, the origin preset in the person's
+   * folder and in the shipped one. Another program's write is a signature that moved (`rolltui_preset_store_refresh`). */
+  RolltuiFileSig sig_working, sig_own, sig_shipped;
+  int sig_known;
 };
 
 static void store_working_path(const RolltuiPresetStore* s, Buf* out) {
@@ -451,6 +456,46 @@ static void store_working_path(const RolltuiPresetStore* s, Buf* out) {
   buf_add(out, s->dir.p, s->dir.len);
   buf_add(out, "/", 1);
   buf_add(out, s->d->working_file, s->d->working_file_len);
+}
+
+static void store_shipped_path(const RolltuiPresetStore* s, const char* name, size_t len, Buf* out) {
+  out->len = 0;
+  if (!s->shipped_dir.len) return;
+  buf_add(out, s->shipped_dir.p, s->shipped_dir.len);
+  buf_add(out, "/", 1);
+  buf_add(out, s->d->subdir, s->d->subdir_len);
+  buf_add(out, "/", 1);
+  buf_add(out, name, len);
+  buf_add(out, ".json", 5);
+}
+
+static void store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, Buf* out);
+/* THE THREE FILES' SIGNATURES now: the working copy and the origin preset, the person's and the shipped one. */
+static void file_sigs_locked(const RolltuiPresetStore* s, RolltuiFileSig* w, RolltuiFileSig* own, RolltuiFileSig* shipped) {
+  Buf p = {NULL, 0, 0};
+  const char* o = s->origin.len ? s->origin.p : "default";
+  const size_t on = s->origin.len ? s->origin.len : 7;
+  p.len = 0;
+  buf_add(&p, s->dir.p, s->dir.len);
+  buf_add(&p, "/", 1);
+  buf_add(&p, s->d->working_file, s->d->working_file_len);
+  buf_add(&p, "", 1);
+  rolltui_filesig_read(p.p, w);
+  store_preset_path(s, o, on, &p);
+  buf_add(&p, "", 1);
+  rolltui_filesig_read(p.p, own);
+  store_shipped_path(s, o, on, &p);
+  if (p.len) {
+    buf_add(&p, "", 1);
+    rolltui_filesig_read(p.p, shipped);
+  } else {
+    memset(shipped, 0, sizeof *shipped);
+  }
+  buf_free(&p);
+}
+static void note_sigs_locked(RolltuiPresetStore* s) {
+  file_sigs_locked(s, &s->sig_working, &s->sig_own, &s->sig_shipped);
+  s->sig_known = 1;
 }
 
 static void store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, Buf* out) {
@@ -516,6 +561,7 @@ static int autosave_locked(RolltuiPresetStore* s) {
   ok = write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
   if (ok) s->last_error.len = 0;
   else buf_set(&s->last_error, err.p, err.len);
+  note_sigs_locked(s); /* this store's own write: not another program's */
   buf_free(&path);
   buf_free(&bytes);
   buf_free(&err);
@@ -570,6 +616,7 @@ static int autosave_pointer_locked(RolltuiPresetStore* s) {
   ok = write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
   if (ok) s->last_error.len = 0;
   else buf_set(&s->last_error, err.p, err.len);
+  note_sigs_locked(s); /* this store's own write: not another program's */
   buf_free(&path);
   buf_free(&bytes);
   buf_free(&err);
@@ -703,7 +750,67 @@ void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v) {
   if (s && v) s->d->destroy(v);
 }
 
+static void store_start(RolltuiPresetStore* s, void* report);
 void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
+  store_start(s, report);
+  rolltui_mutex_lock(&s->mu);
+  note_sigs_locked(s); /* the files as this read found them */
+  rolltui_mutex_unlock(&s->mu);
+}
+
+int rolltui_preset_store_refresh(RolltuiPresetStore* s, void* report) {
+  RolltuiFileSig w, own, shipped;
+  int moved_working, moved_origin, follows;
+  Buf origin = {NULL, 0, 0};
+  if (!s) return 0;
+  rolltui_mutex_lock(&s->mu);
+  file_sigs_locked(s, &w, &own, &shipped);
+  if (!s->sig_known) { /* never read: what is there now is where changes count from */
+    note_sigs_locked(s);
+    rolltui_mutex_unlock(&s->mu);
+    return 0;
+  }
+  moved_working = !rolltui_filesig_same(&s->sig_working, &w);
+  moved_origin = !rolltui_filesig_same(&s->sig_own, &own) || !rolltui_filesig_same(&s->sig_shipped, &shipped);
+  follows = !s->modified; /* the person's edits come before the preset's */
+  buf_set(&origin, s->origin.len ? s->origin.p : "default", s->origin.len ? s->origin.len : 7);
+  if (!moved_working && !(moved_origin && follows)) {
+    if (moved_origin) note_sigs_locked(s);
+    rolltui_mutex_unlock(&s->mu);
+    buf_free(&origin);
+    return 0;
+  }
+  rolltui_mutex_unlock(&s->mu);
+  if (moved_working) rolltui_preset_store_start(s, report); /* the working copy, as another program left it */
+  else {
+    rolltui_preset_store_load(s, origin.p, origin.len, report, 0); /* the preset it follows, as it now is; nothing written */
+    rolltui_mutex_lock(&s->mu);
+    note_sigs_locked(s);
+    rolltui_mutex_unlock(&s->mu);
+  }
+  buf_free(&origin);
+  return 1;
+}
+
+void rolltui_preset_store_watch_paths(const RolltuiPresetStore* s, RolltuiStr* working, RolltuiStr* own, RolltuiStr* shipped) {
+  Buf p = {NULL, 0, 0};
+  const char* o;
+  size_t on;
+  RolltuiPresetStore* m = (RolltuiPresetStore*)s;
+  rolltui_mutex_lock(&m->mu);
+  o = s->origin.len ? s->origin.p : "default";
+  on = s->origin.len ? s->origin.len : 7;
+  store_working_path(s, &p);
+  rolltui_str_set(working, p.p ? p.p : "", p.len);
+  store_preset_path(s, o, on, &p);
+  rolltui_str_set(own, p.p ? p.p : "", p.len);
+  store_shipped_path(s, o, on, &p);
+  rolltui_str_set(shipped, p.p ? p.p : "", p.len);
+  rolltui_mutex_unlock(&m->mu);
+  buf_free(&p);
+}
+
+static void store_start(RolltuiPresetStore* s, void* report) {
   Buf path = {NULL, 0, 0}, text = {NULL, 0, 0}, msg = {NULL, 0, 0};
   void* parsed;
   rolltui_mutex_lock(&s->mu);
@@ -1726,6 +1833,7 @@ RolltuiThemeStore* rolltui_theme_store_new(RolltuiContext* c, const char* dir, s
                                                        shipped_dir, shipped_dir_len);
 }
 void rolltui_theme_store_free(RolltuiThemeStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+int rolltui_theme_store_refresh(RolltuiThemeStore* s, RolltuiThemePresetReport* report) { return rolltui_preset_store_refresh((RolltuiPresetStore*)s, report); }
 void rolltui_theme_store_start(RolltuiThemeStore* s, RolltuiThemePresetReport* report) {
   rolltui_preset_store_start((RolltuiPresetStore*)s, report);
 }
@@ -2044,6 +2152,7 @@ RolltuiLayoutStore* rolltui_layout_store_new(RolltuiContext* c, const char* dir,
                                                         may_write_shipped, shipped_dir, shipped_dir_len);
 }
 void rolltui_layout_store_free(RolltuiLayoutStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+int rolltui_layout_store_refresh(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report) { return rolltui_preset_store_refresh((RolltuiPresetStore*)s, report); }
 void rolltui_layout_store_start(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report) {
   rolltui_preset_store_start((RolltuiPresetStore*)s, report);
 }
@@ -2327,6 +2436,7 @@ RolltuiBindingsStore* rolltui_bindings_store_new(RolltuiContext* c, const char* 
                                                           shipped_dir, shipped_dir_len);
 }
 void rolltui_bindings_store_free(RolltuiBindingsStore* s) { rolltui_preset_store_free((RolltuiPresetStore*)s); }
+int rolltui_bindings_store_refresh(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report) { return rolltui_preset_store_refresh((RolltuiPresetStore*)s, report); }
 void rolltui_bindings_store_start(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report) {
   rolltui_preset_store_start((RolltuiPresetStore*)s, report);
 }

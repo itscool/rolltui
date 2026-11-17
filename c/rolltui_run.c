@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "rolltui/c/rolltui_presets.h" /* the stores a run watches, read again through their own calls */
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_os.h"
 
@@ -47,8 +48,19 @@ struct RolltuiRun {
   size_t inj_n, inj_cap;
   RolltuiStr inj_text;
   int flush;         /* `rolltui_run_flush_input`: the rest of this wake's events go */
+  /* THE STORES WATCHED (`rolltui_run_watch_stores`, BORROWED): each store, the watch ids of its three files, and the origin they were
+   * watched for (another origin: other files) */
+  RolltuiWatch* watch;
+  struct RunStore {
+    RolltuiPresetStore* s;
+    int kind; /* 0 theme, 1 layout, 2 bindings */
+    unsigned int ids[3];
+    RolltuiStr origin;
+  } stores[3];
+  size_t store_n;
 };
 
+static void refresh_stores(RolltuiRun* r);
 static unsigned long long steady_ms(void) { return rolltui_os_monotonic_ms(); }
 
 /* ---- timers ------------------------------------------------------------------------------- */
@@ -255,11 +267,101 @@ static void run_wake(RolltuiRun* r, int timeout) {
     rolltui_swap_invalidate(r->swap);
   }
   if (r->tasks && !r->stop) rolltui_tasks_drain(r->tasks); /* what workers finished and threads posted, on this thread */
+  if (!r->stop) refresh_stores(r);
   if (!r->stop) fire_timers(r);
   if (app->settle) app->settle(app->ctx, r);
 }
 
+static void drop_store_watches(RolltuiRun* r) {
+  size_t i, k;
+  for (i = 0; i < r->store_n; ++i) {
+    for (k = 0; k < 3; ++k) rolltui_watch_remove(r->watch, r->stores[i].ids[k]);
+    rolltui_str_free(&r->stores[i].origin);
+  }
+  r->store_n = 0;
+}
+
+/* EACH STORE'S FILES WATCHED for its origin now: watched again when the origin moved. */
+static void watch_store_files(RolltuiRun* r) {
+  size_t i, k;
+  for (i = 0; i < r->store_n; ++i) {
+    struct RunStore* st = &r->stores[i];
+    size_t on = 0;
+    const char* o = rolltui_preset_store_origin(st->s, &on);
+    RolltuiStr paths[3];
+    if (st->ids[0] && rolltui_str_eq(&st->origin, o ? o : "", on)) continue;
+    for (k = 0; k < 3; ++k) {
+      rolltui_watch_remove(r->watch, st->ids[k]);
+      st->ids[k] = 0;
+    }
+    memset(paths, 0, sizeof paths);
+    rolltui_preset_store_watch_paths(st->s, &paths[0], &paths[1], &paths[2]);
+    for (k = 0; k < 3; ++k) {
+      if (paths[k].n) st->ids[k] = rolltui_watch_add(r->watch, paths[k].p, paths[k].n);
+      rolltui_str_free(&paths[k]);
+    }
+    rolltui_str_set(&st->origin, o ? o : "", on);
+  }
+}
+
+/* THE STORES READ AGAIN when their files changed or SIGUSR1 came; the screen drawn again when one was. */
+static void refresh_stores(RolltuiRun* r) {
+  size_t i;
+  int any = 0;
+  const int asked = rolltui_os_take_reload();
+  if (!r->watch || (!rolltui_watch_changed(r->watch, NULL, 0) && !asked)) return;
+  for (i = 0; i < r->store_n; ++i) {
+    struct RunStore* st = &r->stores[i];
+    if (st->kind == 0) {
+      RolltuiThemePresetReport rep;
+      memset(&rep, 0, sizeof rep);
+      any |= rolltui_theme_store_refresh((RolltuiThemeStore*)st->s, &rep);
+      rolltui_theme_preset_report_release(&rep);
+    } else if (st->kind == 1) {
+      RolltuiLayoutPresetReport rep;
+      memset(&rep, 0, sizeof rep);
+      any |= rolltui_layout_store_refresh((RolltuiLayoutStore*)st->s, &rep);
+      rolltui_layout_preset_report_release(&rep);
+    } else {
+      RolltuiBindingsPresetReport rep;
+      memset(&rep, 0, sizeof rep);
+      any |= rolltui_bindings_store_refresh((RolltuiBindingsStore*)st->s, &rep);
+      rolltui_bindings_preset_report_release(&rep);
+    }
+  }
+  if (any) {
+    watch_store_files(r);
+    if (r->swap) rolltui_swap_invalidate(r->swap);
+  }
+}
+
+void rolltui_run_watch_stores(RolltuiRun* run, RolltuiThemeStore* theme, RolltuiLayoutStore* layout, RolltuiBindingsStore* keys) {
+  RolltuiPresetStore* s[3];
+  size_t k;
+  if (!run) return;
+  s[0] = (RolltuiPresetStore*)theme;
+  s[1] = (RolltuiPresetStore*)layout;
+  s[2] = (RolltuiPresetStore*)keys;
+  if (!run->watch) run->watch = rolltui_watch_new(wake_terminal, run->term);
+  drop_store_watches(run);
+  for (k = 0; k < 3; ++k) {
+    if (!s[k]) continue;
+    memset(&run->stores[run->store_n], 0, sizeof run->stores[run->store_n]);
+    run->stores[run->store_n].s = s[k];
+    run->stores[run->store_n].kind = (int)k;
+    ++run->store_n;
+  }
+  watch_store_files(run);
+  rolltui_os_listen_reload(run->store_n > 0);
+}
+
 static void run_leave(RolltuiRun* r) {
+  if (r->watch) {
+    drop_store_watches(r);
+    rolltui_watch_free(r->watch);
+    r->watch = NULL;
+    rolltui_os_listen_reload(0);
+  }
   rolltui_tasks_free(r->tasks); /* the workers stopped and every job's `done` called, before the terminal goes */
   rolltui_mem_free(r->timers);
   rolltui_mem_free(r->ev);

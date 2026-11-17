@@ -90,6 +90,10 @@ void rolltui_thread_join(RolltuiThread* t);
 void rolltui_os_sleep_ms(int ms);
 /* The calling thread, as a number no other running thread has. */
 unsigned long long rolltui_os_thread_self(void);
+/* SIGUSR1 heard (`on` 1) or no longer (0): it wakes the loop and `rolltui_os_take_reload` says it came. Nothing on Windows. */
+void rolltui_os_listen_reload(int on);
+/* 1 once per SIGUSR1 since the last call. */
+int rolltui_os_take_reload(void);
 
 /* ---- files --------------------------------------------------------------------------------- */
 

@@ -1536,6 +1536,66 @@ int main() {
                                   " of " + std::to_string(frames) + " frames");
   }
 
+  // ---- A FILE ANOTHER PROGRAM CHANGED IS READ AGAIN; THE STORE'S OWN WRITES ARE NOT ----------------------------------------
+  {
+    const std::string rdir = (world / "refresh").string();
+    fs::create_directories(rdir);
+    RolltuiThemeStore* ts = rolltui_theme_store_new(rolltui_test::test_context(), rdir.data(), rdir.size(), 0, "", 0);
+    RolltuiThemePresetReport rep{};
+    rolltui_theme_store_start(ts, &rep);
+    rolltui_theme_preset_report_release(&rep);
+    rolltui_theme_store_load(ts, "contrast", 8, &rep, /*persist=*/1);
+    rolltui_theme_preset_report_release(&rep);
+    check(rolltui_theme_store_refresh(ts, &rep) == 0, "a store's own write is not another program's: nothing to read again");
+    rolltui_theme_preset_report_release(&rep);
+    const unsigned long long v0 = rolltui_theme_store_version(ts);
+    {
+      std::ofstream out(rdir + "/theme.working.json", std::ios::binary | std::ios::trunc);
+      out << "{\n  \"preset\": \"mono\",\n  \"follows_origin\": true\n}\n";
+    }
+    check(rolltui_theme_store_refresh(ts, &rep) == 1, "the working file another program changed is read again");
+    rolltui_theme_preset_report_release(&rep);
+    std::size_t on = 0;
+    const char* origin = rolltui_theme_store_origin(ts, &on);
+    check(std::string(origin ? origin : "", on) == "mono" && rolltui_theme_store_version(ts) > v0,
+          "…the store follows what it now says, and its version moved as an edit's would");
+    check(rolltui_theme_store_refresh(ts, &rep) == 0, "…and once read, it is not read again");
+    rolltui_theme_preset_report_release(&rep);
+    // THE PRESET IT FOLLOWS, the person's own, changed in another program: read again while the store has no edits
+    RolltuiStr err{};
+    check(rolltui_theme_store_save_as(ts, "mine", 4, 1, &err) == ROLLTUI_SAVE_SAVED, "(a preset of the person's own, followed)");
+    rolltui_str_free(&err);
+    const std::string mine = rdir + "/themes/mine.json";
+    std::string text;
+    {
+      std::ifstream in(mine, std::ios::binary);
+      text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const unsigned long long v1 = rolltui_theme_store_version(ts);
+    {
+      std::ofstream out(mine, std::ios::binary | std::ios::trunc);
+      out << text << "\n";
+    }
+    check(rolltui_theme_store_refresh(ts, &rep) == 1 && rolltui_theme_store_version(ts) > v1 && !rolltui_theme_store_modified(ts),
+          "a preset the store follows, changed in another program, is read again");
+    rolltui_theme_preset_report_release(&rep);
+    // WITH EDITS OF ITS OWN, the preset's change waits: the person's edits come first
+    rolltui_theme_store_edit(ts, [](RolltuiThemePresetValue* v, void*) {
+      static const char kColours[] = R"({ "background": "#123456" })";
+      RolltuiStr perr{};
+      rolltui_json_free(v->colours);
+      v->colours = rolltui_json_parse(kColours, sizeof kColours - 1, &perr);
+      rolltui_str_free(&perr);
+    }, nullptr, /*persist=*/0);
+    {
+      std::ofstream out(mine, std::ios::binary | std::ios::trunc);
+      out << text << "\n\n";
+    }
+    check(rolltui_theme_store_modified(ts) && rolltui_theme_store_refresh(ts, &rep) == 0, "with edits of its own, a store does not take its preset's change");
+    rolltui_theme_preset_report_release(&rep);
+    rolltui_theme_store_free(ts);
+  }
+
   // The sections after the reset above write into the world again, so it is removed here too, last: a run leaves nothing.
   fs::remove_all(world, ec);
   // ---- A TABLE OLDER THAN A LIBRARY ACTION still has a key for it ----

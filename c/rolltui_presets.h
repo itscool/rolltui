@@ -193,6 +193,10 @@ void rolltui_preset_store_free(RolltuiPresetStore* s);
 /* Startup: the autosaved working copy when present and loadable, else "default". `report` says what happened to the working file; the
  * origin preset it names is re-read into a report the domain makes for itself, not a second one the caller must supply. */
 void rolltui_preset_store_start(RolltuiPresetStore* s, void* report);
+/* Read again when another program changed its files: 1 when it was. */
+int rolltui_preset_store_refresh(RolltuiPresetStore* s, void* report);
+/* The files a refresh looks at: the working copy, and the origin preset in the person's folder and the shipped one ("" none). */
+void rolltui_preset_store_watch_paths(const RolltuiPresetStore* s, RolltuiStr* working, RolltuiStr* own, RolltuiStr* shipped);
 
 /* A CLONE the caller owns and frees with `rolltui_preset_store_value_free`. */
 void* rolltui_preset_store_working(const RolltuiPresetStore* s);

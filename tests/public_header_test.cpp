@@ -542,7 +542,9 @@ int main() {
     // thread's own number, the languages shared with a reader (INTERNAL 940).
     // Then programs in windows: output options, a program run into a window, whether it runs, a rule; a line's stamp and rule, its
     // info, rows and drawing (PUBLIC 621); the output kind's pump, options, sources, gutter and footer, a pty refused (INTERNAL 946).
-    check(totals["PUBLIC"] == 621 && totals["INTERNAL"] == 946 && totals.size() == 2,
+    // Then watching: a watch made, freed, added to, let go of, asked and described; three stores read again; a run watching its
+    // stores (PUBLIC 631); a store's refresh and its files, SIGUSR1 heard and taken (INTERNAL 950).
+    check(totals["PUBLIC"] == 631 && totals["INTERNAL"] == 950 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -727,11 +729,13 @@ int main() {
     // Run 229: a call, a question and its answer, a job running, a hold, its release and whether one holds.
     // Bind 116, run 234, widget 84: output options; a program run into a window, whether it runs, a rule, a line's stamp and rule;
     // a line's info, rows and drawing.
-    check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 234 && rt["HOST_RELEASE"] == 16 &&
+    // Settings 97, run 240, release 17: three stores read again; a watch made, added to, let go of, asked and described, a run
+    // watching its stores; a watch freed.
+    check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 240 && rt["HOST_RELEASE"] == 17 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 84,
-          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 116 / run 234 / "
-          "release 16, tool interop 0, widget 84 (got " +
+          "the roles are the recorded shape — vocab 44, host load 33 / settings 97 / bind 116 / run 240 / "
+          "release 17, tool interop 0, widget 84 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

@@ -894,6 +894,7 @@ struct App {
   RolltuiThemeStore* theme_store = nullptr;
   RolltuiBindingsStore* keys_store = nullptr;
   unsigned long long theme_seen = 0;
+  unsigned long long keys_seen = 0; /* the key store's version last built from: a file changed in the studio moves it */
   Options opt;
   RolltuiStr root;
   RolltuiStr note;   // the library's own report for this frame
@@ -1865,6 +1866,14 @@ struct App {
     if (theme_store) {
       const unsigned long long v = rolltui_theme_store_version(theme_store);
       if (v != theme_seen) { theme_seen = v; sync_theme(); }
+    }
+    if (keys_store) {  // the key file read again while dirk runs (changed in the studio, an editor): the keys built again
+      const unsigned long long kv = rolltui_bindings_store_version(keys_store);
+      if (kv != keys_seen) {
+        const bool first = keys_seen == 0;
+        keys_seen = kv;
+        if (!first) rebuild_bindings();
+      }
     }
     const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms, static_cast<unsigned char>(!opt.motion || now_ms == 0)};
     rolltui_context_set_env(ctx, &env);
@@ -3506,6 +3515,7 @@ int main(int argc, char** argv) {
     a.w = rolltui_terminal_width(a.term);
     a.h = rolltui_terminal_height(a.term);
     rolltui_windows_set_tasks(a.windows, rolltui_run_tasks(run));  // the preview reads a file off the drawing thread
+    rolltui_run_watch_stores(run, a.theme_store, nullptr, a.keys_store);  // a theme or key file changed elsewhere is taken
     a.terminal_ready();  // the key protocol is negotiated: judge the chords against it
     a.apply_facts();     // and so is everything else about the terminal: its glyph width, its light or dark
   };

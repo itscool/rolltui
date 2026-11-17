@@ -449,6 +449,28 @@ void rolltui_os_tty_restore_now(void) {
   g_out_fd = -1;
 }
 
+/* SIGUSR1: the files read again. The handler only notes it and wakes the loop. */
+static volatile sig_atomic_t g_reload = 0;
+static void on_reload_signal(int sig) {
+  const int fd = g_wake_fd;
+  const char b = 1;
+  (void)sig;
+  g_reload = 1;
+  if (fd >= 0) (void)!write(fd, &b, 1);
+}
+void rolltui_os_listen_reload(int on) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = on ? on_reload_signal : SIG_DFL;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGUSR1, &sa, NULL);
+}
+int rolltui_os_take_reload(void) {
+  if (!g_reload) return 0;
+  g_reload = 0;
+  return 1;
+}
+
 static void on_fatal_signal(int sig) {
   rolltui_os_tty_restore_now();
   signal(sig, SIG_DFL);

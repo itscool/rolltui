@@ -1048,6 +1048,10 @@ RolltuiBindingsStore* rolltui_bindings_store_new(RolltuiContext* c, const char* 
                                                  const char* shipped_dir, size_t shipped_dir_len);
 void rolltui_bindings_store_free(RolltuiBindingsStore* s);
 void rolltui_bindings_store_start(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report);
+/* THE FILES READ AGAIN when another program changed them (the studio, an editor): the working copy as it now is, or, while it has no
+ * edits of its own, the preset it follows. 1 when it was read again, its version moved as an edit's would; `report` RESET says how
+ * it went. This store's own writes never count. `rolltui_run_watch_stores` calls it when the files change. */
+int rolltui_bindings_store_refresh(RolltuiBindingsStore* s, RolltuiBindingsPresetReport* report);
 /* A BORROW of the working table, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`), for a host
  * whose every change happens on the reading thread; across threads, `_copy_working`, as the theme store's. */
 const RolltuiBindings* rolltui_bindings_store_working(const RolltuiBindingsStore* s);
@@ -1323,6 +1327,10 @@ void rolltui_theme_store_free(RolltuiThemeStore* s);
 /* Loads the autosaved working copy, or "default" when there is none or it does not parse — `report` says which and is RESET by
  * this call. Call once, right after `_new`. */
 void rolltui_theme_store_start(RolltuiThemeStore* s, RolltuiThemePresetReport* report);
+/* THE FILES READ AGAIN when another program changed them (the studio, an editor): the working copy as it now is, or, while it has no
+ * edits of its own, the preset it follows. 1 when it was read again, its version moved as an edit's would; `report` RESET says how
+ * it went. This store's own writes never count. `rolltui_run_watch_stores` calls it when the files change. */
+int rolltui_theme_store_refresh(RolltuiThemeStore* s, RolltuiThemePresetReport* report);
 
 /* A BORROW of the store's own working value, valid until the next call that changes it (`_load`, `_set_mode`, `_set_depth`, or —
  * `rolltui_studio.h` — `_edit`). Never yours to free. NULL only when `s` is NULL. For a host whose every change to this store happens
@@ -1811,6 +1819,10 @@ RolltuiLayoutStore* rolltui_layout_store_new(RolltuiContext* c, const char* dir,
                                              const char* shipped_dir, size_t shipped_dir_len);
 void rolltui_layout_store_free(RolltuiLayoutStore* s);
 void rolltui_layout_store_start(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report);
+/* THE FILES READ AGAIN when another program changed them (the studio, an editor): the working copy as it now is, or, while it has no
+ * edits of its own, the preset it follows. 1 when it was read again, its version moved as an edit's would; `report` RESET says how
+ * it went. This store's own writes never count. `rolltui_run_watch_stores` calls it when the files change. */
+int rolltui_layout_store_refresh(RolltuiLayoutStore* s, RolltuiLayoutPresetReport* report);
 /* A BORROW of the working value, valid until the next call that changes it (`_load`, or — `rolltui_studio.h` — `_edit`), for a host
  * whose every change happens on the reading thread; across threads, `_copy_working`, as the theme store's. */
 const RolltuiLayout* rolltui_layout_store_working(const RolltuiLayoutStore* s);
@@ -4375,6 +4387,24 @@ typedef struct RolltuiDirList {
 
 void rolltui_dir_list_release(RolltuiDirList* l);
 
+/* FILES AND FOLDERS WATCHED. What decides a change is each path's signature (its device, inode, size and times) against the last
+ * look, so a save that writes a new file and renames it over the old one, a path that does not exist yet and arrives, a file
+ * removed, and a folder's entries arriving or leaving are all told. The system says when to look (kqueue on macOS and the BSDs,
+ * inotify on Linux, change notifications on Windows); where it cannot, a thread looks twice a second, and with no thread at all
+ * (a browser) `rolltui_watch_changed` looks. `wake` (may be NULL) is called from the watcher's thread when something changed, so a
+ * loop asleep in its input wait looks at once (`rolltui_terminal_wake`). OWNED. */
+typedef struct RolltuiWatch RolltuiWatch;
+RolltuiWatch* rolltui_watch_new(void (*wake)(void* ctx), void* wake_ctx);
+void rolltui_watch_free(RolltuiWatch* w); /* a no-op on NULL */
+/* An id for `path`, never 0; 0 for a path that is empty or holds a NUL. */
+unsigned int rolltui_watch_add(RolltuiWatch* w, const char* path, size_t len);
+void rolltui_watch_remove(RolltuiWatch* w, unsigned int id);
+/* The ids that changed since the last call, into `out` (`out` NULL: how many, and they are told no more); how many were put there.
+ * Each change is told once; past `cap`, the rest wait for the next call. */
+size_t rolltui_watch_changed(RolltuiWatch* w, unsigned int* out, size_t cap);
+/* How it is told: "kqueue", "inotify", "change notifications", or "a look on the clock". */
+const char* rolltui_watch_how(const RolltuiWatch* w);
+
 /* Fills `out` with `path`'s entries, sorted by `sort`, `.`-prefixed names included only when `hidden` is non-zero. Directories sort
  * before files at every sort. Returns 1 on success. On failure `out` is left EMPTY and `err` (may be NULL) gets the reason: a directory
  * that cannot be read and one that is empty are different answers. */
@@ -5121,6 +5151,11 @@ void rolltui_close_terminal(int in_fd, int out_fd);
  * waits while it runs (ignoring the Ctrl-C it delivers to the program), and the terminal is taken back and the screen repainted.
  * 1 when it started; `*status` (may be NULL) its exit status; 0 with the reason in `*err` (may be NULL). */
 int rolltui_run_program(RolltuiRun* run, const char* const* argv, const char* cwd, int* status, RolltuiStr* err);
+/* THE STORES' FILES WATCHED while the run lasts: a theme, layout or key file another program changes (the studio, an editor) is read
+ * again (`rolltui_theme_store_refresh` and the others) and the screen drawn again, and SIGUSR1 reads them all again. Each store's
+ * version moves as an edit's would, so an app that follows its stores' versions takes the change. NULL for a store not watched;
+ * BORROWED, kept by the host for the run. Calling it again replaces what is watched. */
+void rolltui_run_watch_stores(RolltuiRun* run, RolltuiThemeStore* theme, RolltuiLayoutStore* layout, RolltuiBindingsStore* keys);
 
 /* ========================================================================================
  * RELEASE — and the number that proves you did

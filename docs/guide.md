@@ -1207,6 +1207,39 @@ Each check is one `stat` per folder and per visible row; no file descriptors are
 unchanged folder of 20,000 entries costs about 0.1 ms. A folder that keeps changing is checked
 less often. `RolltuiPickerOptions.no_watch` turns watching off.
 
+### Watching files of your own
+
+A `RolltuiWatch` tells a program when files or folders it names have changed:
+
+```c
+static void wake(void* term) { rolltui_terminal_wake((RolltuiTerminal*)term); }
+
+RolltuiWatch* w = rolltui_watch_new(wake, term);   /* or NULL, NULL: asked, not told */
+unsigned int log = rolltui_watch_add(w, path, strlen(path));
+...
+unsigned int ids[8];
+size_t n = rolltui_watch_changed(w, ids, 8);       /* each change told once */
+```
+
+A change is a path's signature moving: its device, inode, size or times. A save that writes a new
+file and renames it over the old one, a path that arrives after it was watched, a file removed,
+and a folder's entries arriving or leaving are all told. The system says when to look (kqueue on
+macOS and the BSDs, inotify on Linux, change notifications on Windows), so a change is seen within
+milliseconds; where it cannot, a thread looks twice a second, and in a browser the call itself
+looks. `rolltui_watch_how` names which. `wake` is called from the watcher's thread, so a loop
+asleep in its input wait looks at once.
+
+### Settings changed elsewhere
+
+`rolltui_run_watch_stores(run, theme, layout, keys)` watches the stores' files while the run lasts:
+the working copy, and the preset it follows in the person's folder and the shipped one. A file
+another program changes (the studio, an editor) is read again and the screen drawn again, and
+SIGUSR1 reads them all again. A store with edits of its own keeps them: only a change to its
+working file replaces them. Each store's version moves as an edit's would, so an app that follows
+its stores' versions takes the change; dirktui does, for its theme and its keys.
+`rolltui_theme_store_refresh` and the layout and bindings stores' own do the same for a host that
+reads its files on its own schedule. A store's own writes never count as a change.
+
 ## Previews
 
 `RolltuiPickerOptions.preview` shows the file under the cursor in the right half of the browser

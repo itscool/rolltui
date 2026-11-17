@@ -91,6 +91,8 @@ void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) {
 }
 void rolltui_cond_signal(RolltuiCond* c) { WakeConditionVariable((PCONDITION_VARIABLE)&c->cv); }
 void rolltui_cond_broadcast(RolltuiCond* c) { WakeAllConditionVariable((PCONDITION_VARIABLE)&c->cv); }
+void rolltui_os_listen_reload(int on) { (void)on; } /* no SIGUSR1: the files' own changes are what is watched */
+int rolltui_os_take_reload(void) { return 0; }
 unsigned long long rolltui_os_thread_self(void) { return (unsigned long long)GetCurrentThreadId(); }
 
 struct RolltuiThread {

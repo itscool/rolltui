@@ -176,6 +176,7 @@ ROLLTUI_API(rolltui_run_invalidate, PUBLIC)  /* a keypress that asks for a repai
 ROLLTUI_API(rolltui_run_suspend, PUBLIC)  /* dirktui hands the terminal to an editor... */
 ROLLTUI_API(rolltui_run_resume, PUBLIC)  /* ...and takes it back, repainted whole: the half an app used to forget */
 ROLLTUI_API(rolltui_run_program, PUBLIC)  /* dirktui hands the terminal to an editor and to brew, and takes it back */
+ROLLTUI_API(rolltui_run_watch_stores, PUBLIC)  /* dirktui takes a theme or key file changed in the studio while it runs */
 ROLLTUI_API(rolltui_run_tasks, PUBLIC)  /* dirktui's preview reads files on the run's workers */
 ROLLTUI_API(rolltui_run_after, PUBLIC)  /* KEPT: a host acts once after a while (a note that clears, a retry) */
 ROLLTUI_API(rolltui_run_every, PUBLIC)  /* KEPT: a host's clock, a dashboard's refresh */
@@ -600,6 +601,12 @@ ROLLTUI_API(rolltui_load_layout_text, PUBLIC)
 ROLLTUI_API(rolltui_app_file, PUBLIC)
 ROLLTUI_API(rolltui_dir_read, PUBLIC)  /* the aligned probe needs it: a host writing a rich browser needs the same four things the picker does, and must not re-implement them */
 ROLLTUI_API(rolltui_dir_list_release, PUBLIC)  /* release half of the pair */  /* an app that keeps its screen in files cannot start until it knows where its own files are; every host built that way needs this and three of them were building the path themselves */
+ROLLTUI_API(rolltui_watch_new, PUBLIC)  /* KEPT: a host watching files of its own (a project's sources, a log it tails) */
+ROLLTUI_API(rolltui_watch_free, PUBLIC)  /* KEPT: release half of the pair */
+ROLLTUI_API(rolltui_watch_add, PUBLIC)  /* KEPT: a path a host watches */
+ROLLTUI_API(rolltui_watch_remove, PUBLIC)  /* KEPT: a path a host lets go of */
+ROLLTUI_API(rolltui_watch_changed, PUBLIC)  /* KEPT: what changed since a host last asked */
+ROLLTUI_API(rolltui_watch_how, PUBLIC)  /* KEPT: how a host's files are watched, for a status line or a bug report */
 ROLLTUI_API(rolltui_loaded_layout_init, INTERNAL)
 ROLLTUI_API(rolltui_loaded_layout_release, INTERNAL)
 ROLLTUI_API(rolltui_loaded_layout_to_layout, INTERNAL)
@@ -1459,6 +1466,8 @@ ROLLTUI_API(rolltui_preset_store_save_as, INTERNAL)  /* each concrete store has 
 ROLLTUI_API(rolltui_preset_store_add, INTERNAL)  /* each concrete store has its own `_add` now */
 ROLLTUI_API(rolltui_preset_store_set_working, INTERNAL)
 ROLLTUI_API(rolltui_preset_store_start, INTERNAL)  /* each concrete store has its own `_start` now */
+ROLLTUI_API(rolltui_preset_store_refresh, INTERNAL)  /* each concrete store has its own `_refresh` */
+ROLLTUI_API(rolltui_preset_store_watch_paths, INTERNAL)  /* the run watches the files a refresh looks at */
 ROLLTUI_API(rolltui_preset_store_value_free, INTERNAL)  /* `_working` is a BORROW on each concrete store now; `_get`'s own OWNED return frees through its domain's own `_free` */
 ROLLTUI_API(rolltui_preset_store_version, INTERNAL)  /* each concrete store has its own `_version` now */
 ROLLTUI_API(rolltui_preset_store_working, INTERNAL)  /* each concrete store has its own `_working` now, as a BORROW */
@@ -1476,6 +1485,7 @@ ROLLTUI_API(rolltui_preset_write_file_atomic, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_new, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_free, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_start, PUBLIC)
+ROLLTUI_API(rolltui_theme_store_refresh, PUBLIC)  /* KEPT: a host reading its theme file again on its own signal or schedule */
 ROLLTUI_API(rolltui_theme_store_working, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_theme_store_modified, PUBLIC)
@@ -1496,6 +1506,7 @@ ROLLTUI_API(rolltui_theme_shipped, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_new, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_free, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_start, PUBLIC)
+ROLLTUI_API(rolltui_layout_store_refresh, PUBLIC)  /* KEPT: a host reading its layout file again on its own signal or schedule */
 ROLLTUI_API(rolltui_layout_store_working, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_layout_store_modified, PUBLIC)
@@ -1514,6 +1525,7 @@ ROLLTUI_API(rolltui_layout_shipped, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_new, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_free, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_start, PUBLIC)
+ROLLTUI_API(rolltui_bindings_store_refresh, PUBLIC)  /* KEPT: a host reading its key file again on its own signal or schedule */
 ROLLTUI_API(rolltui_bindings_store_working, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_copy_working, PUBLIC)
 ROLLTUI_API(rolltui_bindings_store_modified, PUBLIC)
@@ -1609,6 +1621,8 @@ ROLLTUI_API(rolltui_thread_start, INTERNAL)  /* a host starts work through rollt
 ROLLTUI_API(rolltui_thread_join, INTERNAL)
 ROLLTUI_API(rolltui_os_sleep_ms, INTERNAL)
 ROLLTUI_API(rolltui_os_thread_self, INTERNAL)
+ROLLTUI_API(rolltui_os_listen_reload, INTERNAL)  /* the run hears SIGUSR1 while it watches stores */
+ROLLTUI_API(rolltui_os_take_reload, INTERNAL)  /* the run reads the stores again when SIGUSR1 came */
 ROLLTUI_API(rolltui_os_child_spawn, INTERNAL)  /* a host starts a program through rolltui_child_spawn */
 ROLLTUI_API(rolltui_os_child_refuse_pty, INTERNAL)  /* a test reaches the pipes a program falls back to without a pseudo-terminal */
 ROLLTUI_API(rolltui_os_child_read, INTERNAL)
