@@ -540,7 +540,9 @@ int main() {
     // workers counted (INTERNAL 938).
     // Then work: a call waited for, a job's question and its answer, whether a job runs, input held and released (PUBLIC 612); the
     // thread's own number, the languages shared with a reader (INTERNAL 940).
-    check(totals["PUBLIC"] == 612 && totals["INTERNAL"] == 940 && totals.size() == 2,
+    // Then programs in windows: output options, a program run into a window, whether it runs, a rule; a line's stamp and rule, its
+    // info, rows and drawing (PUBLIC 621); the output kind's pump, options, sources, gutter and footer, a pty refused (INTERNAL 946).
+    check(totals["PUBLIC"] == 621 && totals["INTERNAL"] == 946 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -723,11 +725,13 @@ int main() {
     // Load 33, run 218: whether a layout fits; half the screen, an anchor, views, ranked hints.
     // Run 222: the column browser's previewer, preview command, marks and entry marks.
     // Run 229: a call, a question and its answer, a job running, a hold, its release and whether one holds.
+    // Bind 116, run 234, widget 84: output options; a program run into a window, whether it runs, a rule, a line's stamp and rule;
+    // a line's info, rows and drawing.
     check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 229 && rt["HOST_RELEASE"] == 16 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 81,
-          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 115 / run 229 / "
-          "release 16, tool interop 0, widget 81 (got " +
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 234 && rt["HOST_RELEASE"] == 16 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 84,
+          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 116 / run 234 / "
+          "release 16, tool interop 0, widget 84 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

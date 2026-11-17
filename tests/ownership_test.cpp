@@ -293,7 +293,8 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 174}, /* +2: `RolltuiPickerActions::preview_left` and `::preview_right`, names the table BORROWS.
+        {"rolltui.h", 176}, /* +2: `RolltuiAnsiLineDraw::lit`, the lit ranges BORROWED for the call, and `RolltuiOutputOptions::filter`,
+                               COPIED by the call it is passed to. +2: `RolltuiPickerActions::preview_left` and `::preview_right`, names the table BORROWS.
                                +4: `RolltuiPickerActions::mark`, `::mark_up`, `::mark_down` and `::unmark_all`, names the table BORROWS.
                                +5: `RolltuiPickerActions::half_up`, `::half_down`, `::back`, `::forward` and `::previous`, names the
                                table BORROWS. +1: `RolltuiStackActions::half`, a name the table BORROWS as its other fields do. +4: `RolltuiCutOptions::marker`, `RolltuiTextSpan::text`, `RolltuiTitlePart::text` and `::action`, each
@@ -462,8 +463,8 @@ int main() {
     // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
     // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options. 210 -> 215:
     // the four environment strings pictures are chosen by, and a frame's picture. 216: a condition variable. 219: the stack's three
-    // new action names. 221: ZELLIJ and NVIM, two more environment strings pictures are chosen by. 226: the stack's five focus names. 227: VTE_VERSION. 232: a cut's marker, a span's text, a title part's text and action, ROLLTUI_CONSOLE. 233: the stack's half action. 238: the picker's five new actions. 242: its four mark actions. 244: its two sideways preview actions.
-    check(total == 244, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // new action names. 221: ZELLIJ and NVIM, two more environment strings pictures are chosen by. 226: the stack's five focus names. 227: VTE_VERSION. 232: a cut's marker, a span's text, a title part's text and action, ROLLTUI_CONSOLE. 233: the stack's half action. 238: the picker's five new actions. 242: its four mark actions. 244: its two sideways preview actions. 246: a line's lit ranges and an output window's filter.
+    check(total == 246, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
@@ -638,9 +639,9 @@ int main() {
     // 40: whether the entered terminal erases in the background colour, which the renderer's short forms stand on. 41: whether a stop
     // from outside has been continued. 42: whether the entered terminal's window has the person's focus. 43: a web page's side of
     // its terminal (rolltui_os_web.c, compiled for wasm32-wasi in place of the POSIX and Windows sets).
-    // 45: the program a SIGTERM is passed on to while it has the terminal, and the signal that came.
-    check(ctx == 0 && proc == 45,
-          "the boundary is 0 CONTEXT + 45 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // 45: the program a SIGTERM is passed on to while it has the terminal, and the signal that came. 46: a pseudo-terminal refused.
+    check(ctx == 0 && proc == 46,
+          "the boundary is 0 CONTEXT + 46 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

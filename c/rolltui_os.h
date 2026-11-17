@@ -30,6 +30,8 @@ typedef struct RolltuiOsChild RolltuiOsChild;
 #define ROLLTUI_OS_CHILD_PTY 1
 #define ROLLTUI_OS_CHILD_QUIET 2
 #define ROLLTUI_OS_CHILD_TERMINAL 3
+/* A pseudo-terminal treated as unavailable, so a PTY program gets pipes: a test's way to the fallback. */
+void rolltui_os_child_refuse_pty(int refuse);
 RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd, const char* const* env, int mode, int cols,
                                        int rows, int tty_in, int tty_out, RolltuiStr* err);
 /* Bytes now (> 0), nothing yet (0), or the end (-1). */

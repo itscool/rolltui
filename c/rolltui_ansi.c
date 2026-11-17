@@ -34,6 +34,9 @@ typedef struct AnsiLine {
   unsigned char rows_aw;
   unsigned char non_ascii; /* a byte at or above 0x80 was written: its rows need the grapheme walk */
   size_t rows;
+  unsigned long long at_ms; /* when its first character came (`rolltui_ansi_set_stamp`) */
+  unsigned char tag;        /* where from: the host's number for the source */
+  unsigned char rule;       /* `rolltui_ansi_mark`'s rule; `text` is its label */
 } AnsiLine;
 
 enum { ST_GROUND = 0, ST_ESC, ST_ESC_SKIP, ST_CSI, ST_STRING, ST_STRING_ESC };
@@ -59,6 +62,9 @@ struct RolltuiAnsiText {
   RolltuiUnicodeScratch* u;
   RolltuiUnicodeGrapheme* g; /* the draw's grapheme walk */
   size_t g_cap;
+  unsigned long long stamp_ms; /* what lines begun now are stamped with */
+  unsigned char stamp_tag;
+  unsigned long long dropped; /* lines the ring (or a clear) let go of: line i is number `dropped + i` */
 };
 
 static int imax(int a, int b) { return a > b ? a : b; }
@@ -74,6 +80,9 @@ static void line_reset(AnsiLine* l) {
   l->cols = 0;
   l->rows_w = 0;
   l->non_ascii = 0;
+  l->at_ms = 0;
+  l->tag = 0;
+  l->rule = 0;
 }
 
 /* The slots the ring may have: `limit` finished lines and the one being written. 0: no cap. */
@@ -85,6 +94,7 @@ static void push_line(RolltuiAnsiText* t) {
   if (max && t->n >= max) { /* full: the oldest leaves the window and the slot after the newest is the new line */
     line_reset(&t->lines[(t->head + t->n) % t->cap]);
     t->head = (t->head + 1) % t->cap;
+    ++t->dropped;
     return;
   }
   if (t->n == t->cap) { /* grow, keeping the ring's order */
@@ -150,6 +160,7 @@ void rolltui_ansi_free(RolltuiAnsiText* t) {
 
 void rolltui_ansi_clear(RolltuiAnsiText* t) {
   if (!t) return;
+  t->dropped += t->n; /* numbers are never given twice */
   t->n = 0;
   t->head = 0;
   t->state = ST_GROUND;
@@ -172,6 +183,7 @@ void rolltui_ansi_set_limit(RolltuiAnsiText* t, size_t max_lines) {
     line_reset(&t->lines[t->head]);
     t->head = (t->head + 1) % t->cap;
     --t->n;
+    ++t->dropped;
   }
 }
 
@@ -198,6 +210,10 @@ static int style_eq(const RolltuiStyle* a, const RolltuiStyle* b) { return memcm
 
 static void append(RolltuiAnsiText* t, const char* bytes, size_t n, const RolltuiStyle* st, int cols) {
   AnsiLine* l = last_line(t);
+  if (l->text.n == 0) { /* its first character: when and from where the line came */
+    l->at_ms = t->stamp_ms;
+    l->tag = t->stamp_tag;
+  }
   if (l->run_n == 0 || !style_eq(&l->runs[l->run_n - 1].style, st)) {
     if (l->run_n && l->runs[l->run_n - 1].begin == l->text.n) { /* a style that never got a byte is replaced */
       l->runs[l->run_n - 1].style = *st;
@@ -564,6 +580,41 @@ int rolltui_ansi_width(const RolltuiAnsiText* t) {
   return w;
 }
 
+/* A RULE ACROSS `w` cells at (x, y): ── label ──────, in `base` dimmed. */
+static void draw_rule(RolltuiAnsiText* t, const AnsiLine* l, RolltuiFrame* f, int x, int y, int w, RolltuiStyle base, int aw) {
+  static const char kRule[] = "\xe2\x94\x80";
+  const char* rule = aw ? "-" : kRule;
+  const size_t rule_n = aw ? 1 : sizeof kRule - 1;
+  int col = 0, took = 0;
+  base.dim = 1;
+  if (l->text.n && w > 6) { /* two of the rule, the label, then the rest */
+    size_t fit;
+    for (; col < 2; ++col) rolltui_frame_put(f, x + col, y, rule, rule_n, 1, base, 0);
+    rolltui_frame_put(f, x + col++, y, " ", 1, 1, base, 0);
+    fit = rolltui_u_fit(t->u, l->text.p, l->text.n, w - col - 2, aw, &took);
+    base.dim = 0;
+    base.italic = 1;
+    {
+      size_t gi = 0;
+      int cx = 0;
+      while (gi < fit) { /* the label, a character at a time */
+        RolltuiDecodedChar d;
+        int cw;
+        rolltui_u_decode_one(l->text.p, fit, gi, &d);
+        cw = imax(rolltui_u_codepoint_width(d.valid ? d.cp : 0xFFFD, aw), 1);
+        rolltui_frame_put(f, x + col + cx, y, l->text.p + gi, d.length ? d.length : 1, cw, base, 0);
+        cx += cw;
+        gi += d.length ? d.length : 1;
+      }
+    }
+    col += took;
+    base.italic = 0;
+    base.dim = 1;
+    rolltui_frame_put(f, x + col++, y, " ", 1, 1, base, 0);
+  }
+  for (; col < w; ++col) rolltui_frame_put(f, x + col, y, rule, rule_n, 1, base, 0);
+}
+
 int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect area, size_t first, int left, int wrap,
                       RolltuiStyle base, int ambiguous_wide) {
   RolltuiAnsiText* m = (RolltuiAnsiText*)t;
@@ -589,7 +640,14 @@ int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect are
   }
   for (; li < n && y < area.y + area.h; ++li) {
     const AnsiLine* l = line_at(t, li);
-    const size_t gn = graphemes(m, l, ambiguous_wide);
+    size_t gn;
+    if (l->rule) {
+      draw_rule(m, l, f, area.x, y, area.w, base, ambiguous_wide);
+      ++y;
+      skip_rows = 0;
+      continue;
+    }
+    gn = graphemes(m, l, ambiguous_wide);
     size_t gi, ri = 0;
     int col = 0, row = 0;
     for (gi = 0; gi < gn; ++gi) {
@@ -618,4 +676,86 @@ int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect are
     skip_rows = 0;
   }
   return y - area.y;
+}
+
+void rolltui_ansi_set_stamp(RolltuiAnsiText* t, unsigned long long at_ms, unsigned char tag) {
+  if (!t) return;
+  t->stamp_ms = at_ms;
+  t->stamp_tag = tag;
+}
+
+void rolltui_ansi_mark(RolltuiAnsiText* t, const char* label, size_t len) {
+  AnsiLine* l;
+  if (!t) return;
+  if (last_line(t)->text.n) newline(t); /* the line being written ends first */
+  l = last_line(t);
+  line_reset(l);
+  l->rule = 1;
+  l->at_ms = t->stamp_ms;
+  l->tag = t->stamp_tag;
+  if (label && len) rolltui_str_set(&l->text, label, len);
+  t->pending_cr = 0;
+  t->over_pending = 0;
+  push_line(t); /* what comes next starts after the rule */
+}
+
+int rolltui_ansi_line_info(const RolltuiAnsiText* t, size_t i, RolltuiAnsiLineInfo* out) {
+  const AnsiLine* l;
+  if (!t || !out || i >= t->n) return 0;
+  l = line_at(t, i);
+  out->at_ms = l->at_ms;
+  out->seq = t->dropped + i;
+  out->tag = l->tag;
+  out->rule = l->rule;
+  return 1;
+}
+
+size_t rolltui_ansi_line_rows(const RolltuiAnsiText* t, size_t i, int width, int ambiguous_wide) {
+  AnsiLine* l;
+  if (!t || i >= t->n || width <= 0) return 1;
+  l = line_at(t, i);
+  return l->rule ? 1 : line_rows((RolltuiAnsiText*)t, l, width, ambiguous_wide);
+}
+
+int rolltui_ansi_draw_line(const RolltuiAnsiText* t, size_t i, RolltuiFrame* f, RolltuiRect area, const RolltuiAnsiLineDraw* o) {
+  RolltuiAnsiText* m = (RolltuiAnsiText*)t;
+  const AnsiLine* l;
+  size_t gn, gi, ri = 0, k = 0;
+  int col = 0, row = 0, drawn = 0;
+  const int aw = o ? o->ambiguous_wide : 0;
+  const int wrap = o ? o->wrap : 1;
+  const int skip = o ? o->skip : 0;
+  if (!t || !f || !o || i >= t->n || area.w <= 0 || area.h <= 0) return 0;
+  l = line_at(t, i);
+  if (l->rule) {
+    draw_rule(m, l, f, area.x, area.y, area.w, o->base, aw);
+    return 1;
+  }
+  gn = graphemes(m, l, aw);
+  for (gi = 0; gi < gn; ++gi) {
+    const RolltuiUnicodeGrapheme* g = &m->g[gi];
+    RolltuiStyle st;
+    if (g->width <= 0) continue;
+    while (ri + 1 < l->run_n && l->runs[ri + 1].begin <= g->offset) ++ri;
+    st = l->run_n ? over_base(&l->runs[ri].style, &o->base) : o->base;
+    while (k < o->lit_n && o->lit[2 * k + 1] <= g->offset) ++k; /* the lit ranges are in order */
+    if (k < o->lit_n && o->lit[2 * k] <= g->offset && g->offset < o->lit[2 * k + 1]) rolltui_style_patch(&st, &o->lit_style);
+    if (wrap) {
+      if (col + g->width > area.w && col > 0) {
+        ++row;
+        col = 0;
+      }
+      if (row >= skip && row - skip < area.h) {
+        rolltui_frame_put(f, area.x + col, area.y + row - skip, l->text.p + g->offset, g->length, g->width, st, 0);
+        drawn = row - skip + 1;
+      }
+      col += g->width;
+    } else {
+      const int x = col - o->left;
+      if (x >= 0 && x + g->width <= area.w) rolltui_frame_put(f, area.x + x, area.y, l->text.p + g->offset, g->length, g->width, st, 0);
+      col += g->width;
+      if (x >= area.w) break;
+    }
+  }
+  return wrap ? (drawn ? drawn : (skip == 0 ? 1 : 0)) : 1;
 }

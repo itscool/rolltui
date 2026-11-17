@@ -263,6 +263,7 @@ static void say_last_error(RolltuiStr* err, const char* what) {
   rolltui_str_set(err, buf, strlen(buf));
 }
 
+void rolltui_os_child_refuse_pty(int refuse) { (void)refuse; } /* a PTY program has pipes here already */
 RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd, const char* const* env, int mode, int cols,
                                        int rows, int tty_in, int tty_out, RolltuiStr* err) {
   RolltuiStr app, line;

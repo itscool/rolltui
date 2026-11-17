@@ -772,6 +772,15 @@ ROLLTUI_API(rolltui_windows_bind_gauge, PUBLIC)  /* KEPT: a host with work that 
 ROLLTUI_API(rolltui_windows_bind_output, PUBLIC)  /* KEPT: a host shows a program's output in an `output:` window (a build log, a previewer's pane) */
 ROLLTUI_API(rolltui_windows_set_output_wrap, PUBLIC)  /* KEPT: a log that scrolls sideways rather than wrapping */
 ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is bound */
+ROLLTUI_API(rolltui_windows_set_output_options, PUBLIC)  /* KEPT: a log window's timestamps, footer and filter */
+ROLLTUI_API(rolltui_windows_run_output, PUBLIC)  /* KEPT: a program run into an output window, pumped, sized and stopped with it */
+ROLLTUI_API(rolltui_windows_output_running, PUBLIC)  /* KEPT: whether a program run into a window still runs, and how it ended */
+ROLLTUI_API(rolltui_windows_output_mark, PUBLIC)  /* KEPT: a rule across a program's output at a boundary (a build started) */
+ROLLTUI_API(rolltui_windows_output_pump, INTERNAL)  /* the output kind reads and sizes its programs each frame */
+ROLLTUI_API(rolltui_windows_output_options, INTERNAL)  /* the output kind reads its options and filter */
+ROLLTUI_API(rolltui_windows_output_source, INTERNAL)  /* the output kind labels a merged line */
+ROLLTUI_API(rolltui_windows_output_label_width, INTERNAL)  /* the output kind sizes its gutter */
+ROLLTUI_API(rolltui_windows_output_ran, INTERNAL)  /* the output kind's footer says how a program ended */
 ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture it made in an `image:` window */
 ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
 ROLLTUI_API(rolltui_windows_set_tasks, PUBLIC)  /* dirktui lends the run's workers to its preview */
@@ -937,6 +946,11 @@ ROLLTUI_API(rolltui_ansi_line, PUBLIC)
 ROLLTUI_API(rolltui_ansi_rows, PUBLIC)  /* KEPT: a host's own widget scrolling over output */
 ROLLTUI_API(rolltui_ansi_width, PUBLIC)  /* KEPT: a host's own widget scrolling sideways */
 ROLLTUI_API(rolltui_ansi_draw, PUBLIC)  /* KEPT: a host's own widget drawing output (the output kind draws it for a window) */
+ROLLTUI_API(rolltui_ansi_set_stamp, PUBLIC)  /* KEPT: a host's own log stamped with when and from where each line came */
+ROLLTUI_API(rolltui_ansi_mark, PUBLIC)  /* KEPT: a rule in a host's own log */
+ROLLTUI_API(rolltui_ansi_line_info, PUBLIC)  /* KEPT: a line's time, source and number, for a host's own log view */
+ROLLTUI_API(rolltui_ansi_line_rows, PUBLIC)  /* KEPT: the rows one line wraps to, for a host's own view */
+ROLLTUI_API(rolltui_ansi_draw_line, PUBLIC)  /* KEPT: one line drawn with matches lit, for a host's own view */
 
 /* ---- the list, the table and the tree; ordering and finding text --- */
 ROLLTUI_API(rolltui_natural_compare, PUBLIC)  /* a host orders its own names as a person reads them: file2 before file10 */
@@ -1596,6 +1610,7 @@ ROLLTUI_API(rolltui_thread_join, INTERNAL)
 ROLLTUI_API(rolltui_os_sleep_ms, INTERNAL)
 ROLLTUI_API(rolltui_os_thread_self, INTERNAL)
 ROLLTUI_API(rolltui_os_child_spawn, INTERNAL)  /* a host starts a program through rolltui_child_spawn */
+ROLLTUI_API(rolltui_os_child_refuse_pty, INTERNAL)  /* a test reaches the pipes a program falls back to without a pseudo-terminal */
 ROLLTUI_API(rolltui_os_child_read, INTERNAL)
 ROLLTUI_API(rolltui_os_child_write, INTERNAL)
 ROLLTUI_API(rolltui_os_child_close_input, INTERNAL)

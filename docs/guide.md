@@ -1050,6 +1050,35 @@ clips them instead, and the wheel's left and right scroll sideways. A cell with 
 own takes the window's text colour and ground, so the program's defaults are the theme's.
 `rolltui_ansi_draw` draws the same text inside a host's own widget.
 
+`rolltui_windows_set_output_options` sets an output window's ways:
+
+- `timestamps`: each line's time (HH:MM:SS) in a gutter before it.
+- `status`: the footer says "following", or "paused · 12 below" once the window is scrolled back,
+  and whether a program run into it is running or how it exited.
+- `filter`: only the lines that match are shown, with the lists' filter language, and the matches
+  are bold and underlined. Rules always show.
+
+A line's time and source come from `rolltui_ansi_set_stamp(text, ms, tag)`, which stamps the lines
+begun after it. `rolltui_ansi_mark(text, label, len)` puts a rule across the text after what is
+there. `rolltui_ansi_line_info`, `rolltui_ansi_line_rows` and `rolltui_ansi_draw_line` give a host's
+own view the same pieces: a line's time, source and number, the rows it wraps to, and one line
+drawn with ranges lit.
+
+### Programs in a window
+
+`rolltui_windows_run_output(w, name, len, &opts, label, role, &err)` runs a program into an
+`output:<name>` window, as `opts` says (`ROLLTUI_CHILD_PTY` for its colours). The window reads what
+the program writes as it draws, and a pseudo-terminal is told the window's content size, then
+each new size. When the window leaves the layout, or the name is bound to something else, the
+program is stopped. Where no pseudo-terminal can be opened, the program gets pipes, with the size
+in `COLUMNS` and `LINES`.
+
+Several programs run into one name are merged a line at a time, each line led by its program's
+`label` in `role` (`web GET /`, `db  SELECT 1`). The footer shows how they are doing unless the
+host set the window's options. `rolltui_windows_output_running` says whether one is still running
+and how the last one ended; `rolltui_windows_output_mark` puts a rule across the window at a
+boundary, such as the start of a build.
+
 `rolltui-chat` runs a `!command` once it is approved: the output streams into the conversation
 as a code block and the exit status follows; Esc stops it. A frame dump runs nothing.
 

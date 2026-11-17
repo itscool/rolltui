@@ -155,6 +155,17 @@ int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t 
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
 /* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
+/* An output window's programs read and sized at a frame; the ms until the next frame they want, -1 none. */
+int rolltui_windows_output_pump(RolltuiWindows* w, const char* name, size_t len, int cols, int rows);
+/* Its options, its filter (and a number that changes with it). NULL when nothing is bound to the name. */
+const RolltuiOutputOptions* rolltui_windows_output_options(const RolltuiWindows* w, const char* name, size_t len, const RolltuiFilter** filter,
+                                                           unsigned long long* version);
+/* Source `tag`'s label and role, 0 when it has none to show; and the widest label, in bytes. */
+int rolltui_windows_output_source(const RolltuiWindows* w, const char* name, size_t len, unsigned char tag, const char** label,
+                                  size_t* label_len, unsigned char* role);
+size_t rolltui_windows_output_label_width(const RolltuiWindows* w, const char* name, size_t len);
+/* A program was run into `name`. */
+int rolltui_windows_output_ran(const RolltuiWindows* w, const char* name, size_t len);
 /* The chart a `chart:<name>` window shows, filled by its binding just now; NULL when nothing is bound to `name`. */
 RolltuiChart* rolltui_windows_fill_chart(RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_has_chart(const RolltuiWindows* w, const char* name, size_t len);

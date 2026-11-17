@@ -17,7 +17,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -433,6 +435,200 @@ void test_output_window() {
   rolltui_layout_free(l);
 }
 
+// PROGRAMS RUN INTO OUTPUT WINDOWS: sized to the window, merged a line at a time, stopped with their window; a view's ways
+struct OutScreen {
+  RolltuiLayout* l = nullptr;
+  RolltuiWindows* w = nullptr;
+  RolltuiWindowStack* stack = nullptr;
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* fx = nullptr;
+  RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
+  int width, height;
+  OutScreen(const char* layout, int wd, int ht) : width(wd), height(ht) {
+    w = rolltui_windows_new(ctx());
+    stack = rolltui_window_stack_new();
+    fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
+    load(layout);
+  }
+  void load(const char* layout) {
+    RolltuiLayoutReport rep{};
+    std::size_t nd = 0;
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx(), &nd);
+    RolltuiLayout* next = rolltui_load_layout_text(layout, std::strlen(layout), defaults, nd, rolltui_layout_default_hooks(), &rep);
+    rolltui_layout_report_release(&rep);
+    rolltui_window_stack_set_base(stack, rolltui_layout_base(next));
+    if (l) rolltui_layout_free(l);
+    l = next;
+  }
+  OutScreen(const OutScreen&) = delete;
+  ~OutScreen() {
+    rolltui_compose_scratch_free(cs);
+    rolltui_effect_map_free(fx);
+    rolltui_window_stack_free(stack);
+    rolltui_windows_free(w);
+    rolltui_layout_free(l);
+  }
+  std::vector<std::string> paint(Frame** keep = nullptr) {
+    const RolltuiRect area{0, 0, width, height};
+    RolltuiWidgetEnv env{};
+    rolltui_context_set_env(ctx(), &env);
+    rolltui_windows_sync(w, stack);
+    rolltui_windows_autosize(w, stack, area);
+    rolltui_windows_layout(w, stack, area);
+    Frame* f = new Frame(width, height);
+    struct Slot {
+      RolltuiWindows* w;
+      RolltuiStyle* s;
+    } slot{w, styles};
+    rolltui_window_stack_compose(
+        stack, f->f, area, styles, rolltui_layout_default_roles(),
+        [](void* c, const RolltuiResolvedNode* rn, RolltuiFrame* fr) {
+          Slot* sl = static_cast<Slot*>(c);
+          rolltui_windows_draw(sl->w, rn, fr, sl->s, rolltui_windows_default_roles());
+        },
+        &slot, 0, cs);
+    std::vector<std::string> rows;
+    for (int y = 0; y < height; ++y) rows.push_back(f->row(y, width));
+    if (keep) *keep = f;
+    else delete f;
+    return rows;
+  }
+  /* painted until `done` says so, or the time runs out */
+  std::vector<std::string> paint_until(const std::function<bool(const std::vector<std::string>&)>& done) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(5000 * rolltui_test::kClockScale));
+    std::vector<std::string> rows = paint();
+    while (!done(rows) && std::chrono::steady_clock::now() < until) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      rows = paint();
+    }
+    return rows;
+  }
+};
+
+static std::string joined(const std::vector<std::string>& rows) {
+  std::string all;
+  for (const std::string& r : rows) all += r + "\n";
+  return all;
+}
+
+void test_output_programs() {
+  // A PROGRAM ON A PTY THAT WROTE AND NO ONE READ: stopping it never waits for ever (macOS holds its exit until the pty drains)
+  {
+    const char* argv[] = {"/bin/sh", "-c", "i=0; while [ $i -lt 200 ]; do echo unread line $i; i=$((i+1)); done; exit 0", nullptr};
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    o.mode = ROLLTUI_CHILD_PTY;
+    RolltuiChild* c = rolltui_child_spawn(&o, nullptr);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const auto t0 = std::chrono::steady_clock::now();
+    rolltui_child_free(c);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    check(c != nullptr && ms < static_cast<long long>(3000 * rolltui_test::kClockScale),
+          "a program on a pseudo-terminal whose output no one read is let go at once [" + std::to_string(ms) + " ms]");
+  }
+  // ONE PROGRAM, on a pty the window's size; the footer says how it ended
+  {
+    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:run", "border": "rounded" } ] } })", 40, 8);
+    s.paint();
+    const char* argv[] = {"/bin/sh", "-c", "echo \"size $(stty size)\"; echo [ -t 1 ] > /dev/null; [ -t 1 ] && echo tty; echo done", nullptr};
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    o.mode = ROLLTUI_CHILD_PTY;
+    RolltuiStr err{};
+    check(rolltui_windows_run_output(s.w, "run", 3, &o, nullptr, 0, &err) == 1, "a program runs into an output window [" + std::string(err.p ? err.p : "", err.n) + "]");
+    rolltui_str_free(&err);
+    std::vector<std::string> rows = s.paint_until([&](const std::vector<std::string>&) { return !rolltui_windows_output_running(s.w, "run", 3, nullptr); });
+    rows = s.paint();
+    const std::string all = joined(rows);
+    check(all.find("size 6 36") != std::string::npos && all.find("tty") != std::string::npos,
+          "…on a pseudo-terminal the size of the window's content, inside its border and padding [" + all + "]");
+    int status = -9;
+    check(!rolltui_windows_output_running(s.w, "run", 3, &status) && status == 0, "…and it ended, 0 [" + std::to_string(status) + "]");
+    check(rows.back().find("exited 0") != std::string::npos && rows.back().find("following") != std::string::npos,
+          "its footer says it is following, and how the program ended [" + rows.back() + "]");
+    rolltui_windows_output_mark(s.w, "run", 3, "again", 5);
+    rows = s.paint();
+    bool rule = false;
+    for (const std::string& r : rows) rule = rule || (r.find("again") != std::string::npos && r.find("\xe2\x94\x80\xe2\x94\x80") != std::string::npos);
+    check(rule, "a mark is a rule across the window with its label");
+  }
+  // TWO PROGRAMS MERGED: each line whole, led by its program's label
+  {
+    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:both" } ] } })", 40, 10);
+    s.paint();
+    const char* web[] = {"/bin/sh", "-c", "printf 'GET /\\n'; sleep 0.05; printf 'GET /a'; sleep 0.1; printf 'bout\\n'", nullptr};
+    const char* db[] = {"/bin/sh", "-c", "sleep 0.02; printf 'SELECT 1\\n'; sleep 0.05; printf 'SELECT 2\\n'", nullptr};
+    RolltuiChildOptions a{}, b{};
+    a.argv = web;
+    b.argv = db;
+    rolltui_windows_run_output(s.w, "both", 4, &a, "web", ROLLTUI_ROLE_ACCENT_1, nullptr);
+    rolltui_windows_run_output(s.w, "both", 4, &b, "db", ROLLTUI_ROLE_ACCENT_2, nullptr);
+    s.paint_until([&](const std::vector<std::string>&) { return !rolltui_windows_output_running(s.w, "both", 4, nullptr); });
+    const std::vector<std::string> rows = s.paint();
+    const std::string all = joined(rows);
+    check(all.find("web GET /about") != std::string::npos && all.find("db  SELECT 1") != std::string::npos &&
+              all.find("db  SELECT 2") != std::string::npos,
+          "two programs merged into one window: each line whole, led by its program's label [" + all + "]");
+  }
+  // A HOST'S TEXT: each line's time in a gutter, a filter that keeps the lines it matches and lights the matches
+  {
+    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:log" } ] } })", 40, 6);
+    Ansi text;
+    rolltui_windows_bind_output(s.w, "log", 3, text.t);
+    const unsigned long long at = 1700000000000ULL;
+    rolltui_ansi_set_stamp(text.t, at, 0);
+    text.feed("alpha one\nbeta two\nalpha three\n");
+    RolltuiOutputOptions oo{};
+    oo.timestamps = 1;
+    oo.filter = "alpha";
+    rolltui_windows_set_output_options(s.w, "log", 3, &oo);
+    Frame* f = nullptr;
+    const std::vector<std::string> rows = s.paint(&f);
+    struct tm tm {};
+    const time_t secs = static_cast<time_t>(at / 1000ULL);
+    localtime_r(&secs, &tm);
+    char hms[16];
+    std::strftime(hms, sizeof hms, "%H:%M:%S", &tm);
+    const std::string all = joined(rows);
+    check(rows[0] == std::string(hms) + " alpha one" && rows[1] == std::string(hms) + " alpha three" && all.find("beta") == std::string::npos,
+          "timestamps lead each line, and a filter keeps only the lines it matches [" + all + "]");
+    const RolltuiCell lit = f->cell(9, 0), plain = f->cell(15, 0);
+    check(lit.style.bold && lit.style.underline && !plain.style.underline, "…its matches bold and underlined, the rest as it was");
+    delete f;
+  }
+  // THE WINDOW GONE: the program it showed is stopped
+  {
+    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:long" } ] } })", 40, 6);
+    s.paint();
+    const char* argv[] = {"/bin/sh", "-c", "echo started; exec sleep 30", nullptr};
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    rolltui_windows_run_output(s.w, "long", 4, &o, nullptr, 0, nullptr);
+    s.paint_until([&](const std::vector<std::string>& rows) { return joined(rows).find("started") != std::string::npos; });
+    check(rolltui_windows_output_running(s.w, "long", 4, nullptr) == 1, "a program runs while its window shows it");
+    s.load(R"({ "name": "o", "root": { "column": [ { "id": "other", "content": "text:nothing here" } ] } })");
+    s.paint();
+    int status = 0;
+    check(rolltui_windows_output_running(s.w, "long", 4, &status) == 0 && status == -1, "…and is stopped when that window leaves the layout");
+  }
+  // NO PSEUDO-TERMINAL: pipes, the size in COLUMNS and LINES
+  {
+    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:pipe" } ] } })", 40, 6);
+    s.paint();
+    rolltui_os_child_refuse_pty(1);
+    const char* argv[] = {"/bin/sh", "-c", "echo \"$COLUMNS x $LINES\"; [ -t 1 ] && echo tty || echo pipe", nullptr};
+    RolltuiChildOptions o{};
+    o.argv = argv;
+    o.mode = ROLLTUI_CHILD_PTY;
+    check(rolltui_windows_run_output(s.w, "pipe", 4, &o, nullptr, 0, nullptr) == 1, "a program asking for a pseudo-terminal there is none of still starts");
+    rolltui_os_child_refuse_pty(0);
+    s.paint_until([&](const std::vector<std::string>&) { return !rolltui_windows_output_running(s.w, "pipe", 4, nullptr); });
+    const std::string all = joined(s.paint());
+    check(all.find("40 x 6") != std::string::npos && all.find("pipe") != std::string::npos,
+          "…on pipes, told the window's size in COLUMNS and LINES [" + all + "]");
+  }
+}
+
 }  // namespace
 
 // A SIGTERM TO THIS PROGRAM WHILE IT HAS HANDED A PROGRAM THE TERMINAL reaches that program, and then ends this one
@@ -479,5 +675,6 @@ int main() {
   test_children();
   test_clipboard_title_cwd();
   test_output_window();
+  test_output_programs();
   return testkit::report("process_test");
 }

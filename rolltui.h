@@ -3483,6 +3483,18 @@ void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len,
  * while it is bound; binding again replaces it. Lines wrap at the window's edge unless `set_output_wrap` says 0, when the window
  * scrolls sideways (the wheel's left and right). */
 void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text);
+/* AN OUTPUT WINDOW'S WAYS. `timestamps`: each line's time (HH:MM:SS, from `rolltui_ansi_set_stamp`) in a gutter before it. `status`:
+ * the footer says "following", or "paused · N below" once scrolled back, and whether a program run into it is running or how it
+ * exited. `filter` (COPIED; NULL or "" none): only the lines it matches, the lists' filter, are shown, their matches bold and
+ * underlined; rules always show. */
+typedef struct RolltuiOutputOptions {
+  unsigned char wrap ROLLTUI_DEFAULT(1);
+  unsigned char timestamps ROLLTUI_DEFAULT(0);
+  unsigned char status ROLLTUI_DEFAULT(0);
+  const char* filter ROLLTUI_DEFAULT(ROLLTUI_NULL);
+} RolltuiOutputOptions;
+void rolltui_windows_set_output_options(RolltuiWindows* w, const char* name, size_t len, const RolltuiOutputOptions* o);
+
 /* THE WORKERS the built-in kinds read files on, BORROWED (the host keeps them for the table's life): the column browser's preview
  * reads a file and decodes a picture there while the cursor moves on, says "loading…" once a read has taken 100 ms, and drops a
  * read the cursor left. NULL (the default) reads on the drawing thread, which is what a frame dump does. */
@@ -3686,6 +3698,35 @@ int rolltui_ansi_width(const RolltuiAnsiText* t);
  * default colours are the theme's; the frame's depth maps the rest down at present. Returns the rows drawn. */
 int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect area, size_t first, int left, int wrap,
                       RolltuiStyle base, int ambiguous_wide);
+/* WHEN AND FROM WHERE each line came: lines begun after this carry `at_ms` (milliseconds since the epoch) and `tag` (a host's number for
+ * the source, 0 none), as `rolltui_ansi_line_info` reads them back. */
+void rolltui_ansi_set_stamp(RolltuiAnsiText* t, unsigned long long at_ms, unsigned char tag);
+/* A RULE after what was written so far, `label` (may be NULL) on it: a line of its own, drawn as a rule across the width. */
+void rolltui_ansi_mark(RolltuiAnsiText* t, const char* label, size_t len);
+typedef struct RolltuiAnsiLineInfo {
+  unsigned long long at_ms ROLLTUI_DEFAULT(0); /* when its first character came, by `set_stamp`; 0 unstamped */
+  unsigned long long seq ROLLTUI_DEFAULT(0);   /* its number since the text was made: dropping old lines never renumbers one */
+  unsigned char tag ROLLTUI_DEFAULT(0);
+  unsigned char rule ROLLTUI_DEFAULT(0); /* a rule `rolltui_ansi_mark` made; its text is the label */
+} RolltuiAnsiLineInfo;
+/* Line `i`'s stamp, number and kind: 0 past the end. */
+int rolltui_ansi_line_info(const RolltuiAnsiText* t, size_t i, RolltuiAnsiLineInfo* out);
+/* The rows line `i` takes wrapped at `width`. */
+size_t rolltui_ansi_line_rows(const RolltuiAnsiText* t, size_t i, int width, int ambiguous_wide);
+/* ONE LINE DRAWN into `area`, from its row `skip` when wrapped or its column `left` when not; the bytes in `lit` (`lit_n` pairs of
+ * [begin, end), BORROWED for the call) patched with `lit_style` over their own, as a filter lights its matches. A rule is drawn across
+ * the width. Returns the rows drawn. */
+typedef struct RolltuiAnsiLineDraw {
+  int skip ROLLTUI_DEFAULT(0);
+  int left ROLLTUI_DEFAULT(0);
+  unsigned char wrap ROLLTUI_DEFAULT(1);
+  unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
+  RolltuiStyle base;
+  const size_t* lit ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  size_t lit_n ROLLTUI_DEFAULT(0);
+  RolltuiStyle lit_style;
+} RolltuiAnsiLineDraw;
+int rolltui_ansi_draw_line(const RolltuiAnsiText* t, size_t i, RolltuiFrame* f, RolltuiRect area, const RolltuiAnsiLineDraw* o);
 
 /* ========================================================================================
  * list — a list, a table or a tree the host feeds by index
@@ -5048,6 +5089,17 @@ void rolltui_child_stop(RolltuiChild* c);
 /* How long a render should wait while a program is running and its output is wanted: a short interval, so what it writes is drawn
  * as it arrives. -1 once it is done and drained. */
 int rolltui_child_wait_ms(const RolltuiChild* c);
+/* A PROGRAM RUN INTO AN `output:<name>` WINDOW: started now as `o` says (ROLLTUI_CHILD_PTY for a program's colours), its output the
+ * window's text, read as the window draws, and with a pseudo-terminal told the window's size as it changes. It is stopped when a
+ * window that showed it leaves the layout, when the name is bound to something else, or with the table. Several run into one name
+ * are merged line by line, each line led by `label` (may be NULL) in `role`. The window's footer says how it is doing unless options
+ * were set. 1 when it started; 0 with the reason in `*err` (may be NULL). */
+int rolltui_windows_run_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiChildOptions* o, const char* label,
+                               unsigned char role, RolltuiStr* err);
+/* 1 while a program run into `name` is running; `*status` (may be NULL) the exit status of the last to end, -1 for one stopped. */
+int rolltui_windows_output_running(RolltuiWindows* w, const char* name, size_t len, int* status);
+/* A rule across an output window's text after what is there, `label` on it (a build started, a test run's boundary). */
+void rolltui_windows_output_mark(RolltuiWindows* w, const char* name, size_t len, const char* label, size_t label_len);
 
 /* A FILE OR A URL opened with what the system opens it with (`open`, `xdg-open`, the shell's ShellExecuteW), which returns at once.
  * 1 when it was handed over; 0 with the reason in `*err` (may be NULL). */

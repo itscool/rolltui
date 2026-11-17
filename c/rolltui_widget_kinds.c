@@ -917,18 +917,31 @@ static const RolltuiWidgetPlugin kMessagesPlugin = {
 typedef struct RolltuiOutputCtx {
   RolltuiWindows* w; /* BORROWED */
   RolltuiStr source;
-  RolltuiRect area;
-  size_t top;   /* the first row (wrapped) or line (not) in view */
-  size_t total; /* rows or lines there are */
+  RolltuiRect area;      /* the content rect */
+  RolltuiRect text_area; /* the content rect past the gutter */
+  int gutter;            /* the cells before the text: each line's time, its source's label */
+  size_t top;   /* the first row (wrapped) or line (not) of the view */
+  size_t total; /* rows or lines the view has */
   int left;     /* columns scrolled off the left, not wrapped */
   int width;    /* the widest line, not wrapped */
   int follow;   /* the view is at the end, and stays there as the text grows */
   int wrap;
+  size_t below; /* lines past the view's last, for the footer */
   RolltuiScrollTextActions actions;
+  /* THE FILTERED VIEW: the numbers (`RolltuiAnsiLineInfo.seq`) of the finished lines the filter matched, in order (OWNED); the number
+   * of the first line not yet looked at; the filter's version they were matched with. The line being written is matched afresh. */
+  unsigned long long* hits;
+  size_t hit_n, hit_cap;
+  unsigned long long scanned, filter_version;
+  int tail_hit;
+  RolltuiDrawScratch* ds; /* OWNED, made at the first gutter drawn */
 } RolltuiOutputCtx;
 
 static const RolltuiAnsiText* output_text(RolltuiOutputCtx* o) {
   return rolltui_windows_output(o->w, o->source.p ? o->source.p : "", o->source.n, &o->wrap);
+}
+static const RolltuiOutputOptions* output_opt(RolltuiOutputCtx* o, const RolltuiFilter** f, unsigned long long* version) {
+  return rolltui_windows_output_options(o->w, o->source.p ? o->source.p : "", o->source.n, f, version);
 }
 
 static int output_ctx_problem(void* ctx, RolltuiStr* out) {
@@ -946,17 +959,97 @@ static size_t output_max_top(const RolltuiOutputCtx* o) {
   return o->total > h ? o->total - h : 0;
 }
 
+/* THE FILTER'S HITS brought up to date: lines the ring let go of dropped, the finished lines since the last look matched, the line
+ * being written matched afresh. Rules are always hits. */
+static void output_scan(RolltuiOutputCtx* o, const RolltuiAnsiText* t, const RolltuiFilter* f, unsigned long long version) {
+  const size_t n = rolltui_ansi_line_count(t);
+  RolltuiAnsiLineInfo first;
+  size_t i, drop = 0;
+  memset(&first, 0, sizeof first);
+  rolltui_ansi_line_info(t, 0, &first);
+  if (version != o->filter_version) { /* another filter: matched again from the start */
+    o->hit_n = 0;
+    o->scanned = 0;
+    o->filter_version = version;
+  }
+  while (drop < o->hit_n && o->hits[drop] < first.seq) ++drop;
+  if (drop) {
+    memmove(o->hits, o->hits + drop, (o->hit_n - drop) * sizeof *o->hits);
+    o->hit_n -= drop;
+  }
+  if (o->scanned < first.seq) o->scanned = first.seq;
+  for (i = (size_t)(o->scanned - first.seq); i + 1 < n; ++i) { /* the finished lines: every one but the last */
+    RolltuiAnsiLineInfo info;
+    size_t len = 0;
+    const char* line = rolltui_ansi_line(t, i, &len);
+    int score = 0;
+    memset(&info, 0, sizeof info);
+    rolltui_ansi_line_info(t, i, &info);
+    if (info.rule || rolltui_filter_match(f, line, len, &score)) {
+      o->hits = (unsigned long long*)rolltui_grow(o->hits, &o->hit_cap, o->hit_n + 1, sizeof *o->hits);
+      o->hits[o->hit_n++] = info.seq;
+    }
+  }
+  o->scanned = first.seq + (n ? n - 1 : 0);
+  o->tail_hit = 0;
+  if (n) {
+    RolltuiAnsiLineInfo info;
+    size_t len = 0;
+    const char* line = rolltui_ansi_line(t, n - 1, &len);
+    int score = 0;
+    memset(&info, 0, sizeof info);
+    rolltui_ansi_line_info(t, n - 1, &info);
+    o->tail_hit = info.rule || rolltui_filter_match(f, line, len, &score);
+  }
+}
+
+/* THE VIEW'S LINES: every line, or the filter's hits. How many, and the line index of the `k`th. */
+static size_t view_count(const RolltuiOutputCtx* o, const RolltuiAnsiText* t, const RolltuiFilter* f) {
+  return f ? o->hit_n + (size_t)(o->tail_hit != 0) : rolltui_ansi_line_count(t);
+}
+static size_t view_line(const RolltuiOutputCtx* o, const RolltuiAnsiText* t, const RolltuiFilter* f, size_t k) {
+  RolltuiAnsiLineInfo first;
+  if (!f) return k;
+  if (k == o->hit_n) return rolltui_ansi_line_count(t) - 1; /* the line being written */
+  memset(&first, 0, sizeof first);
+  rolltui_ansi_line_info(t, 0, &first);
+  return (size_t)(o->hits[k] - first.seq);
+}
+
 static void output_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
-  const RolltuiAnsiText* t = output_text(o);
+  const RolltuiAnsiText* t;
   const RolltuiWidgetEnv* env = rolltui_windows_env(o->w);
+  const RolltuiFilter* f = NULL;
+  unsigned long long version = 0;
+  const RolltuiOutputOptions* opt = output_opt(o, &f, &version);
   const int was_end = o->follow || o->top >= output_max_top(o);
+  const size_t label_w = rolltui_windows_output_label_width(o->w, o->source.p ? o->source.p : "", o->source.n);
+  int want;
   rolltui_content_rect(rn, &o->area);
+  o->gutter = (opt && opt->timestamps ? 9 : 0) + (label_w ? (int)label_w + 1 : 0);
+  if (o->gutter > o->area.w / 2) o->gutter = 0; /* the text keeps most of the window */
+  o->text_area = o->area;
+  o->text_area.x += o->gutter;
+  o->text_area.w -= o->gutter;
+  want = rolltui_windows_output_pump(o->w, o->source.p ? o->source.p : "", o->source.n, o->text_area.w, o->area.h);
+  if (want >= 0) rolltui_windows_want_frame(o->w, want); /* what a running program writes is drawn as it comes */
+  t = output_text(o);
   if (!t) {
     o->total = 0;
     return;
   }
-  o->total = o->wrap ? rolltui_ansi_rows(t, o->area.w, env->ambiguous_wide) : rolltui_ansi_line_count(t);
+  if (f) output_scan(o, t, f, version);
+  if (!f && !o->gutter) { /* every line, no gutter: the text's own counts */
+    o->total = o->wrap ? rolltui_ansi_rows(t, o->area.w, env->ambiguous_wide) : rolltui_ansi_line_count(t);
+  } else {
+    const size_t n = view_count(o, t, f);
+    size_t k;
+    o->total = 0;
+    if (!o->wrap) o->total = n;
+    else
+      for (k = 0; k < n; ++k) o->total += rolltui_ansi_line_rows(t, view_line(o, t, f, k), o->text_area.w, env->ambiguous_wide);
+  }
   o->width = o->wrap ? 0 : rolltui_ansi_width(t);
   if (was_end) o->top = output_max_top(o); /* at the end, it stays there as the program writes more */
   if (o->top > output_max_top(o)) o->top = output_max_top(o);
@@ -964,24 +1057,118 @@ static void output_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   if (o->wrap) o->left = 0;
 }
 
+/* A LINE'S GUTTER at (x, y): its time, then its source's label in that source's role. */
+static void output_gutter(RolltuiOutputCtx* o, const RolltuiAnsiText* t, size_t li, RolltuiFrame* f, int y, const RolltuiStyle* styles,
+                          RolltuiStyle muted, int aw) {
+  const RolltuiOutputOptions* opt = output_opt(o, NULL, NULL);
+  RolltuiAnsiLineInfo info;
+  int x = o->area.x;
+  if (!o->ds) o->ds = rolltui_draw_scratch_new();
+  memset(&info, 0, sizeof info);
+  rolltui_ansi_line_info(t, li, &info);
+  if (opt && opt->timestamps) {
+    struct tm tm;
+    char hms[16];
+    if (info.at_ms && rolltui_os_localtime((long long)(info.at_ms / 1000ULL), &tm) && strftime(hms, sizeof hms, "%H:%M:%S", &tm) == 8)
+      rolltui_frame_put_text(f, o->ds, x, y, hms, 8, muted, 8, aw, 0);
+    x += 9;
+  }
+  {
+    const char* label = NULL;
+    size_t ll = 0;
+    unsigned char role = 0;
+    if (rolltui_windows_output_source(o->w, o->source.p ? o->source.p : "", o->source.n, info.tag, &label, &ll, &role)) {
+      RolltuiStyle ls = styles[role < ROLLTUI_ROLE_COUNT ? role : ROLLTUI_ROLE_TEXT];
+      ls.bg = muted.bg;
+      ls.bold = 1;
+      rolltui_frame_put_text(f, o->ds, x, y, label, ll, ls, o->area.x + o->gutter - 1 - x, aw, 0);
+    }
+  }
+}
+
 static void output_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
   const RolltuiAnsiText* t;
   const RolltuiWidgetEnv* env = rolltui_windows_env(o->w);
   const RolltuiStyle* styles = rolltui_windows_styles(o->w);
-  RolltuiStyle base;
+  const RolltuiFilter* filt = NULL;
+  RolltuiStyle base, muted;
   output_ctx_layout(ctx, rn);
+  output_opt(o, &filt, NULL);
   t = output_text(o);
   if (!t || o->area.w <= 0 || o->area.h <= 0) return;
   base = styles[rolltui_windows_builtin_roles(o->w)->text];
   base.bg = scroll_text_ground(f, o->area.x, o->area.y); /* the program's default colours are the window's own */
-  rolltui_ansi_draw(t, f, o->area, o->top, o->left, o->wrap, base, env->ambiguous_wide);
+  muted = styles[ROLLTUI_ROLE_TEXT_MUTED];
+  muted.bg = base.bg;
+  if (!filt && !o->gutter) { /* every line, no gutter */
+    const size_t n = rolltui_ansi_line_count(t);
+    rolltui_ansi_draw(t, f, o->area, o->top, o->left, o->wrap, base, env->ambiguous_wide);
+    if (o->wrap) {
+      const size_t end = o->top + (size_t)o->area.h;
+      o->below = 0;
+      if (end < o->total) { /* the lines past the view: counted from the end, row by row */
+        size_t rows = o->total, k = n;
+        while (k > 0 && rows > end) rows -= rolltui_ansi_line_rows(t, --k, o->area.w, env->ambiguous_wide), ++o->below;
+      }
+    } else {
+      o->below = o->top + (size_t)o->area.h < n ? n - (o->top + (size_t)o->area.h) : 0;
+    }
+    return;
+  }
+  {
+    const size_t n = view_count(o, t, filt);
+    size_t k = 0, rows = 0, lit_b[24], lit_e[24], lit[48];
+    int skip = 0, y = o->area.y;
+    RolltuiAnsiLineDraw ld;
+    memset(&ld, 0, sizeof ld);
+    ld.left = o->left;
+    ld.wrap = (unsigned char)(o->wrap != 0);
+    ld.ambiguous_wide = (unsigned char)(env->ambiguous_wide != 0);
+    ld.base = base;
+    ld.lit_style.bold = 1;
+    ld.lit_style.underline = 1;
+    if (o->wrap) { /* the line the view's first row is in, and its rows above the view */
+      while (k < n) {
+        const size_t r = rolltui_ansi_line_rows(t, view_line(o, t, filt, k), o->text_area.w, env->ambiguous_wide);
+        if (rows + r > o->top) {
+          skip = (int)(o->top - rows);
+          break;
+        }
+        rows += r;
+        ++k;
+      }
+    } else {
+      k = o->top;
+    }
+    for (; k < n && y < o->area.y + o->area.h; ++k) {
+      const size_t li = view_line(o, t, filt, k);
+      RolltuiRect r = o->text_area;
+      size_t len = 0, m = 0, j;
+      const char* line = rolltui_ansi_line(t, li, &len);
+      int drawn;
+      r.y = y;
+      r.h = o->area.y + o->area.h - y;
+      if (filt) { /* the matches, lit */
+        m = rolltui_filter_spans(filt, line, len, lit_b, lit_e, 24);
+        for (j = 0; j < m; ++j) lit[2 * j] = lit_b[j], lit[2 * j + 1] = lit_e[j];
+      }
+      ld.lit = m ? lit : NULL;
+      ld.lit_n = m;
+      ld.skip = skip;
+      drawn = rolltui_ansi_draw_line(t, li, f, r, &ld);
+      if (skip == 0 && o->gutter) output_gutter(o, t, li, f, y, styles, muted, env->ambiguous_wide);
+      y += drawn > 0 ? drawn : 1;
+      skip = 0;
+    }
+    o->below = n > k ? n - k : 0;
+  }
 }
 
 static int output_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
   if (e->kind == ROLLTUI_EVENT_MOUSE && !o->wrap && (e->mouse.kind == 6 || e->mouse.kind == 7)) { /* wheel left and right */
-    const int max_left = o->width > o->area.w ? o->width - o->area.w : 0;
+    const int max_left = o->width > o->text_area.w ? o->width - o->text_area.w : 0;
     o->left += e->mouse.kind == 6 ? -4 : 4;
     if (o->left < 0) o->left = 0;
     if (o->left > max_left) o->left = max_left;
@@ -1015,9 +1202,35 @@ static int output_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
   return 1;
 }
 
+/* THE FOOTER, with `status`: following, or paused with what is below; and a program running into it, or how it ended. */
+static int output_ctx_footer(void* ctx, RolltuiStr* out) {
+  RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
+  const RolltuiOutputOptions* opt = output_opt(o, NULL, NULL);
+  const char* name = o->source.p ? o->source.p : "";
+  int status = 0;
+  char buf[64];
+  if (!opt || !opt->status) return 0;
+  rolltui_str_clear(out);
+  if (o->follow) rolltui_str_append(out, "following", sizeof "following" - 1);
+  else {
+    snprintf(buf, sizeof buf, "paused \xc2\xb7 %zu below", o->below);
+    rolltui_str_append(out, buf, strlen(buf));
+  }
+  if (rolltui_windows_output_running(o->w, name, o->source.n, &status)) {
+    rolltui_str_append(out, " \xc2\xb7 running", sizeof " \xc2\xb7 running" - 1);
+  } else if (rolltui_windows_output_ran(o->w, name, o->source.n)) {
+    if (status < 0) snprintf(buf, sizeof buf, " \xc2\xb7 stopped");
+    else snprintf(buf, sizeof buf, " \xc2\xb7 exited %d", status);
+    rolltui_str_append(out, buf, strlen(buf));
+  }
+  return 1;
+}
+
 static void output_ctx_destroy(void* ctx) {
   RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
   rolltui_str_free(&o->source);
+  rolltui_mem_free(o->hits);
+  rolltui_draw_scratch_free(o->ds);
   rolltui_mem_free(o);
 }
 
@@ -1026,7 +1239,7 @@ static const RolltuiWidgetPlugin kOutputPlugin = {
     output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
-    NULL,
+    output_ctx_footer,
     NULL /* takes: the keys scope's */
 };
 

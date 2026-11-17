@@ -128,6 +128,28 @@ static void dup_to(int from, int to, int report) {
   if (dup2(from, to) < 0) child_fail(report);
 }
 
+/* A PROGRAM'S PIPES, every end close-on-exec: the program gets only the copies made on 0, 1 and 2, so it sees its input end. 0, or
+ * why they could not be made. */
+static int open_pipes(int out_pipe[2], int in_pipe[2]) {
+  if (pipe(out_pipe) < 0) return errno;
+  if (pipe(in_pipe) < 0) {
+    const int e = errno;
+    close(out_pipe[0]);
+    close(out_pipe[1]);
+    out_pipe[0] = out_pipe[1] = -1;
+    return e;
+  }
+  fcntl(out_pipe[0], F_SETFD, FD_CLOEXEC);
+  fcntl(out_pipe[1], F_SETFD, FD_CLOEXEC);
+  fcntl(in_pipe[0], F_SETFD, FD_CLOEXEC);
+  fcntl(in_pipe[1], F_SETFD, FD_CLOEXEC);
+  return 0;
+}
+
+/* A PSEUDO-TERMINAL TREATED AS UNAVAILABLE (`rolltui_os_child_refuse_pty`): how a test reaches the pipes a program falls back to. */
+static int g_refuse_pty = 0;
+void rolltui_os_child_refuse_pty(int refuse) { g_refuse_pty = refuse != 0; }
+
 RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd, const char* const* env, int mode, int cols,
                                        int rows, int tty_in, int tty_out, RolltuiStr* err) {
   RolltuiStr path;
@@ -139,8 +161,10 @@ RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd,
   struct winsize ws;
   pid_t pid;
   RolltuiOsChild* c;
-  int e = 0;
+  int e = 0, fell_back = 0;
   ssize_t got;
+  const char** env_sized = NULL;
+  char cols_env[32], rows_env[32];
   if (err) rolltui_str_clear(err);
   if (!argv || !argv[0]) {
     say(err, "nothing to run", NULL);
@@ -159,19 +183,20 @@ RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd,
   }
   fcntl(report[0], F_SETFD, FD_CLOEXEC);
   fcntl(report[1], F_SETFD, FD_CLOEXEC);
+  if (mode == ROLLTUI_OS_CHILD_PTY && g_refuse_pty) {
+    mode = ROLLTUI_OS_CHILD_PIPES; /* as if none could be opened */
+    fell_back = 1;
+  }
   if (mode == ROLLTUI_OS_CHILD_PIPES) {
-    if (pipe(out_pipe) < 0 || pipe(in_pipe) < 0) {
-      e = errno;
-    } else { /* every end close-on-exec: the program gets only the copies made on 0, 1 and 2, so it sees its input end */
-      fcntl(out_pipe[0], F_SETFD, FD_CLOEXEC);
-      fcntl(out_pipe[1], F_SETFD, FD_CLOEXEC);
-      fcntl(in_pipe[0], F_SETFD, FD_CLOEXEC);
-      fcntl(in_pipe[1], F_SETFD, FD_CLOEXEC);
-    }
+    e = open_pipes(out_pipe, in_pipe);
   } else if (mode == ROLLTUI_OS_CHILD_PTY) {
     master = posix_openpt(O_RDWR | O_NOCTTY);
-    if (master < 0 || grantpt(master) < 0 || unlockpt(master) < 0) {
-      e = errno;
+    if (master < 0 || grantpt(master) < 0 || unlockpt(master) < 0) { /* NO PSEUDO-TERMINAL TO BE HAD: pipes, the size in COLUMNS, LINES */
+      if (master >= 0) close(master);
+      master = -1;
+      mode = ROLLTUI_OS_CHILD_PIPES;
+      fell_back = 1;
+      e = open_pipes(out_pipe, in_pipe);
     } else {
       const char* n = ptsname(master);
       if (!n || strlen(n) >= sizeof slave_buf) {
@@ -199,6 +224,18 @@ RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd,
     close(report[1]);
     rolltui_str_free(&path);
     return NULL;
+  }
+  if (fell_back) { /* the size a pseudo-terminal would have told, in the environment */
+    size_t k = 0, j;
+    while (env && env[k]) ++k;
+    env_sized = (const char**)rolltui_mem_alloc((k + 3) * sizeof *env_sized);
+    for (j = 0; j < k; ++j) env_sized[j] = env[j];
+    snprintf(cols_env, sizeof cols_env, "COLUMNS=%d", cols > 0 ? cols : 80);
+    snprintf(rows_env, sizeof rows_env, "LINES=%d", rows > 0 ? rows : 24);
+    env_sized[k] = cols_env;
+    env_sized[k + 1] = rows_env;
+    env_sized[k + 2] = NULL;
+    env = env_sized;
   }
   envp = build_env(env);
   pid = fork();
@@ -253,6 +290,7 @@ RolltuiOsChild* rolltui_os_child_spawn(const char* const* argv, const char* cwd,
   e = pid < 0 ? errno : 0;
   close(report[1]);
   if (envp != environ) rolltui_mem_free(envp);
+  rolltui_mem_free((void*)env_sized);
   if (pid > 0) {
     do {
       got = read(report[0], &e, sizeof e);
@@ -388,18 +426,36 @@ int rolltui_os_child_done(RolltuiOsChild* c, int wait, int* status) {
   return c->exited;
 }
 
+/* WHAT IT WROTE AND NO ONE READ, let go of: a program on a pseudo-terminal cannot finish ending while its output waits there (macOS
+ * holds its exit until the terminal drains), and a signal does not cut that short. */
+static void drain_unread(RolltuiOsChild* c) {
+  char buf[4096];
+  if (c->out_fd < 0 || c->mode == ROLLTUI_OS_CHILD_TERMINAL) return;
+  while (read(c->out_fd, buf, sizeof buf) > 0) {
+  }
+}
+
 void rolltui_os_child_stop(RolltuiOsChild* c) {
   int i, st;
   if (!c || c->exited) return;
-  /* ASKED, then TOLD: SIGTERM to its group, and SIGKILL if it is still there 200 ms later */
+  /* ASKED, then TOLD: SIGTERM to its group, and SIGKILL if it is still there 200 ms later; never waited on without end */
   kill(c->mode == ROLLTUI_OS_CHILD_TERMINAL ? c->pid : -c->pid, SIGTERM);
   for (i = 0; i < 20; ++i) {
     struct timespec ts = {0, 10 * 1000 * 1000};
+    drain_unread(c);
     if (rolltui_os_child_done(c, 0, &st)) return;
     nanosleep(&ts, NULL);
   }
   kill(c->mode == ROLLTUI_OS_CHILD_TERMINAL ? c->pid : -c->pid, SIGKILL);
-  rolltui_os_child_done(c, 1, &st);
+  for (i = 0; i < 200; ++i) {
+    struct timespec ts = {0, 10 * 1000 * 1000};
+    drain_unread(c);
+    if (rolltui_os_child_done(c, 0, &st)) return;
+    nanosleep(&ts, NULL);
+  }
+  /* two seconds past a SIGKILL and still there: it is let go rather than waited on for ever */
+  c->exited = 1;
+  c->status = -1;
 }
 
 void rolltui_os_child_free(RolltuiOsChild* c) {

@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_context.h"
@@ -129,10 +130,60 @@ typedef struct ChartBinding {
   RolltuiChart* chart; /* OWNED: refilled before each frame */
 } ChartBinding;
 
+/* A PROGRAM RUN INTO AN OUTPUT WINDOW: its handle (OWNED; NULL once it ended), its label and role, what it wrote since its last
+ * newline (merged with others, a line goes in whole), and how it ended. */
+typedef struct OutputSource {
+  RolltuiChild* child;
+  RolltuiStr label;
+  unsigned char role;
+  RolltuiStr partial;
+} OutputSource;
+
 typedef struct OutputBinding {
-  const RolltuiAnsiText* text; /* BORROWED: the host keeps it alive while it is bound */
+  const RolltuiAnsiText* text; /* BORROWED: the host's, or `owned` */
+  RolltuiAnsiText* owned;      /* OWNED: what the programs run into it wrote */
+  OutputSource* src;           /* OWNED */
+  size_t src_n, src_cap;
+  int cols, rows;              /* the size the programs were last told */
+  int status;                  /* the last to end: its exit status, -1 stopped */
+  int shown;                   /* a window showed it at a sync: one that no longer does stops its programs */
+  int opt_set;                 /* the host set its options */
+  RolltuiOutputOptions opt;    /* `filter` points at `filter_text` */
+  RolltuiStr filter_text;
+  RolltuiFilter* filter;       /* OWNED, made from `filter_text` */
+  unsigned long long filter_version;
   unsigned char wrap;
 } OutputBinding;
+
+/* `content` is `output:<name>`, the name `name`. */
+static int content_is_output(const char* content, size_t cl, const char* name, size_t len) {
+  return cl == 7 + len && memcmp(content, "output:", 7) == 0 && memcmp(content + 7, name, len) == 0;
+}
+static void output_stop(OutputBinding* b, int status) {
+  size_t i;
+  for (i = 0; i < b->src_n; ++i) {
+    if (b->src[i].child) {
+      rolltui_child_free(b->src[i].child); /* stops it */
+      b->src[i].child = NULL;
+      b->status = status;
+    }
+  }
+}
+
+static void output_binding_free(OutputBinding* b) {
+  size_t i;
+  if (!b) return;
+  output_stop(b, -1);
+  for (i = 0; i < b->src_n; ++i) {
+    rolltui_str_free(&b->src[i].label);
+    rolltui_str_free(&b->src[i].partial);
+  }
+  rolltui_mem_free(b->src);
+  rolltui_ansi_free(b->owned);
+  rolltui_str_free(&b->filter_text);
+  rolltui_filter_free(b->filter);
+  rolltui_mem_free(b);
+}
 
 typedef struct SubmitBinding {
   RolltuiSubmitFn fn;
@@ -194,6 +245,7 @@ static int slot_view(const WindowSlot* s, size_t i, const char** content, size_t
   *tl = strlen(p);
   return 1;
 }
+
 
 /* ---- WHAT A SESSION CONFIGURES, ONCE --------------------------------------------------------
  * The half of `RolltuiWindows` that was never about what is on screen: a program's widget-kind
@@ -466,7 +518,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->charts);
-  for (i = 0; i < rolltui_map_count(&w->outputs); ++i) rolltui_mem_free(rolltui_map_value_at(&w->outputs, i));
+  for (i = 0; i < rolltui_map_count(&w->outputs); ++i) output_binding_free((OutputBinding*)rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
   rolltui_map_release(&w->images);
   for (i = 0; i < rolltui_map_count(&w->lists); ++i) rolltui_list_free((RolltuiList*)rolltui_map_value_at(&w->lists, i));
@@ -893,24 +945,201 @@ int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, 
   return 1;
 }
 
-void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text) {
+static OutputBinding* output_binding(RolltuiWindows* w, const char* name, size_t len) {
   OutputBinding* b = (OutputBinding*)rolltui_map_get(&w->outputs, name, len);
   if (!b) {
     b = (OutputBinding*)rolltui_mem_alloc(sizeof *b);
+    memset(b, 0, sizeof *b);
     b->wrap = 1;
+    b->opt.wrap = 1;
     rolltui_map_put(&w->outputs, name, len, b);
+  }
+  return b;
+}
+
+void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiAnsiText* text) {
+  OutputBinding* b = output_binding(w, name, len);
+  if (text != b->owned) { /* the host's text: what ran into the name goes */
+    output_stop(b, -1);
+    b->src_n = 0;
   }
   b->text = text;
 }
 
 void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t len, int wrap) {
-  OutputBinding* b = (OutputBinding*)rolltui_map_get(&w->outputs, name, len);
-  if (!b) {
-    b = (OutputBinding*)rolltui_mem_alloc(sizeof *b);
-    b->text = NULL;
-    rolltui_map_put(&w->outputs, name, len, b);
-  }
+  OutputBinding* b = output_binding(w, name, len);
   b->wrap = wrap != 0;
+  b->opt.wrap = b->wrap;
+}
+
+void rolltui_windows_set_output_options(RolltuiWindows* w, const char* name, size_t len, const RolltuiOutputOptions* o) {
+  OutputBinding* b;
+  const char* q;
+  if (!w || !o) return;
+  b = output_binding(w, name, len);
+  q = o->filter ? o->filter : "";
+  b->opt = *o;
+  b->wrap = o->wrap != 0;
+  b->opt_set = 1;
+  if (!rolltui_str_eq(&b->filter_text, q, strlen(q))) {
+    rolltui_str_set(&b->filter_text, q, strlen(q));
+    rolltui_filter_free(b->filter);
+    b->filter = b->filter_text.n ? rolltui_filter_new(b->filter_text.p, b->filter_text.n) : NULL;
+    ++b->filter_version;
+  }
+  b->opt.filter = b->filter_text.p;
+}
+
+/* THE SIZE OF THE WINDOW SHOWING `output:<name>`, its content's, as the layout last placed it: 0 when none does. */
+static int output_window_size(const RolltuiWindows* w, const char* name, size_t len, int* cols, int* rows) {
+  size_t i;
+  for (i = 0; i < w->node_n; ++i) {
+    const RolltuiLayoutNode* n = w->nodes[i].node;
+    RolltuiRect r;
+    if (!n || !n->content.p || !content_is_output(n->content.p, n->content.n, name, len)) continue;
+    rolltui_content_rect(&w->nodes[i], &r);
+    if (r.w <= 0 || r.h <= 0) continue;
+    *cols = r.w;
+    *rows = r.h;
+    return 1;
+  }
+  return 0;
+}
+
+int rolltui_windows_run_output(RolltuiWindows* w, const char* name, size_t len, const RolltuiChildOptions* o, const char* label,
+                               unsigned char role, RolltuiStr* err) {
+  OutputBinding* b;
+  RolltuiChildOptions co;
+  RolltuiChild* c;
+  OutputSource* s;
+  if (err) rolltui_str_clear(err);
+  if (!w || !o) return 0;
+  b = output_binding(w, name, len);
+  co = *o;
+  if (b->cols > 0 && b->rows > 0) co.cols = b->cols, co.rows = b->rows; /* the size the programs were told */
+  else if (output_window_size(w, name, len, &co.cols, &co.rows)) b->cols = co.cols, b->rows = co.rows; /* the window's, as placed */
+  c = rolltui_child_spawn(&co, err);
+  if (!c) return 0;
+  if (!b->owned) b->owned = rolltui_ansi_new();
+  if (b->text != b->owned) b->src_n = 0; /* a host's text was bound: replaced */
+  b->text = b->owned;
+  b->src = (OutputSource*)rolltui_grow_zeroed(b->src, &b->src_cap, b->src_n + 1, sizeof *b->src);
+  s = &b->src[b->src_n++];
+  memset(s, 0, sizeof *s);
+  s->child = c;
+  s->role = role;
+  if (label) rolltui_str_set(&s->label, label, strlen(label));
+  b->status = 0;
+  if (!b->opt_set) b->opt.status = 1;
+  return 1;
+}
+
+int rolltui_windows_output_ran(const RolltuiWindows* w, const char* name, size_t len) {
+  const OutputBinding* b = w ? (const OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  return b && b->src_n > 0;
+}
+
+int rolltui_windows_output_running(RolltuiWindows* w, const char* name, size_t len, int* status) {
+  const OutputBinding* b = w ? (const OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  size_t i;
+  int running = 0;
+  if (status) *status = b ? b->status : 0;
+  if (!b) return 0;
+  for (i = 0; i < b->src_n; ++i) running = running || b->src[i].child != NULL;
+  return running;
+}
+
+void rolltui_windows_output_mark(RolltuiWindows* w, const char* name, size_t len, const char* label, size_t label_len) {
+  OutputBinding* b = w ? (OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  if (!b || !b->owned || b->text != b->owned) return; /* a host's own text: its own to mark (`rolltui_ansi_mark`) */
+  rolltui_ansi_set_stamp(b->owned, (unsigned long long)time(NULL) * 1000ULL, 0);
+  rolltui_ansi_mark(b->owned, label, label_len);
+}
+
+/* THE PROGRAMS' TURN at a frame of a window `cols` x `rows`: told a new size, what they wrote read in (one program's as it comes;
+ * several, a line at a time, each line stamped with its source), and the ones that ended noted. The ms until the next frame they
+ * want, or -1. */
+int rolltui_windows_output_pump(RolltuiWindows* w, const char* name, size_t len, int cols, int rows) {
+  OutputBinding* b = w ? (OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  const unsigned long long now = (unsigned long long)time(NULL) * 1000ULL;
+  size_t i;
+  int want = -1;
+  if (!b || !b->owned) return -1;
+  if (cols > 0 && rows > 0 && (cols != b->cols || rows != b->rows)) {
+    b->cols = cols;
+    b->rows = rows;
+    for (i = 0; i < b->src_n; ++i)
+      if (b->src[i].child) rolltui_child_resize(b->src[i].child, cols, rows);
+  }
+  for (i = 0; i < b->src_n; ++i) {
+    OutputSource* s = &b->src[i];
+    int st = 0;
+    if (!s->child) continue;
+    rolltui_ansi_set_stamp(b->owned, now, (unsigned char)(i + 1 > 255 ? 255 : i + 1));
+    if (b->src_n == 1) {
+      rolltui_child_pump(s->child, b->owned, 0);
+    } else {
+      char buf[4096];
+      size_t got;
+      while ((got = rolltui_child_read(s->child, buf, sizeof buf)) > 0) {
+        const char* nl;
+        rolltui_str_append(&s->partial, buf, got);
+        nl = s->partial.p ? (const char*)memchr(s->partial.p, '\n', s->partial.n) : NULL;
+        if (nl) { /* the whole lines go in; the rest waits for its newline */
+          size_t last = s->partial.n;
+          while (last > 0 && s->partial.p[last - 1] != '\n') --last;
+          rolltui_ansi_feed(b->owned, s->partial.p, last);
+          memmove(s->partial.p, s->partial.p + last, s->partial.n - last);
+          s->partial.n -= last;
+        }
+      }
+    }
+    if (rolltui_child_drained(s->child) && rolltui_child_done(s->child, &st)) {
+      if (s->partial.n) { /* the last line, unended */
+        rolltui_ansi_feed(b->owned, s->partial.p, s->partial.n);
+        rolltui_ansi_feed(b->owned, "\n", 1);
+        rolltui_str_clear(&s->partial);
+      }
+      rolltui_child_free(s->child);
+      s->child = NULL;
+      b->status = st;
+      continue;
+    }
+    {
+      const int ms = rolltui_child_wait_ms(s->child);
+      if (ms >= 0 && (want < 0 || ms < want)) want = ms;
+    }
+  }
+  return want;
+}
+
+const RolltuiOutputOptions* rolltui_windows_output_options(const RolltuiWindows* w, const char* name, size_t len, const RolltuiFilter** filter,
+                                                           unsigned long long* version) {
+  const OutputBinding* b = w ? (const OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  if (filter) *filter = b ? b->filter : NULL;
+  if (version) *version = b ? b->filter_version : 0;
+  return b ? &b->opt : NULL;
+}
+
+/* The label and role of source `tag` (1-based) of `name`; 0 when it has none to show. */
+int rolltui_windows_output_source(const RolltuiWindows* w, const char* name, size_t len, unsigned char tag, const char** label,
+                                  size_t* label_len, unsigned char* role) {
+  const OutputBinding* b = w ? (const OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  if (!b || tag == 0 || tag > b->src_n || !b->src[tag - 1].label.n) return 0;
+  *label = b->src[tag - 1].label.p;
+  *label_len = b->src[tag - 1].label.n;
+  *role = b->src[tag - 1].role;
+  return 1;
+}
+
+/* The widest label of `name`'s sources, in bytes (labels are a few letters). */
+size_t rolltui_windows_output_label_width(const RolltuiWindows* w, const char* name, size_t len) {
+  const OutputBinding* b = w ? (const OutputBinding*)rolltui_map_get(&w->outputs, name, len) : NULL;
+  size_t i, most = 0;
+  if (!b) return 0;
+  for (i = 0; i < b->src_n; ++i)
+    if (b->src[i].label.n > most) most = b->src[i].label.n;
+  return most;
 }
 
 RolltuiList* rolltui_windows_list(RolltuiWindows* w, const char* name, size_t len) {
@@ -1477,6 +1706,20 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
     for (i = 0; wd->vt->note_at(wd->ctx, i, &w->scratch); ++i) note_problem(w, n, &w->scratch);
 }
 
+/* A window in the layout shows `output:<name>`, as its content or a view pushed into it. */
+static int output_shown(const RolltuiWindows* w, const char* name, size_t len) {
+  size_t i, v;
+  for (i = 0; i < rolltui_map_count(&w->by_window); ++i) {
+    const WindowSlot* s = (const WindowSlot*)rolltui_map_value_at(&w->by_window, i);
+    const char *c, *t;
+    size_t cl, tl;
+    if (s->content.p && content_is_output(s->content.p, s->content.n, name, len)) return 1;
+    for (v = 0; v < s->view_n; ++v)
+      if (slot_view(s, v, &c, &cl, &t, &tl) && content_is_output(c, cl, name, len)) return 1;
+  }
+  return 0;
+}
+
 void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
   const size_t depth = rolltui_window_stack_depth(stack);
   size_t i;
@@ -1492,6 +1735,14 @@ void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
     if (s->live) continue;
     rolltui_map_remove_at(&w->by_window, i);
     slot_free(s);
+  }
+  for (i = 0; i < rolltui_map_count(&w->outputs); ++i) { /* A PROGRAM'S WINDOW GONE: the program goes with it */
+    size_t kl = 0;
+    const char* k = rolltui_map_key_at(&w->outputs, i, &kl);
+    OutputBinding* b = (OutputBinding*)rolltui_map_value_at(&w->outputs, i);
+    const int now = output_shown(w, k, kl);
+    if (b->shown && !now) output_stop(b, -1);
+    b->shown = now;
   }
 }
 
