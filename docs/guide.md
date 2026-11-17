@@ -1136,13 +1136,22 @@ would take, for centring.
 | `ROLLTUI_IMAGES_ITERM2` | iTerm2, WezTerm | OSC 1337, drawn by the terminal at a cell |
 | `ROLLTUI_IMAGES_SIXEL` | foot, mlterm, Konsole, Windows Terminal, xterm with sixel | sixel, drawn by the terminal at a cell |
 
-The terminal is chosen by its name (`TERM`, `TERM_PROGRAM` and the like), then by its Primary DA
-reply naming sixel. Inside tmux, pictures are drawn in blocks unless the window is kitty's, when
+The way is chosen by the terminal's name (`TERM`, `TERM_PROGRAM`, then its XTVERSION answer). A
+terminal no name tells of is asked: kitty's protocol where it answers kitty's picture query, then
+sixel where its Primary DA names it, then blocks. What it said is remembered with the rest of its
+answers. Inside tmux, pictures are drawn in blocks unless the window is kitty's, when
 the placeholders and their pixels are passed through. `ROLLTUI_IMAGES` (`blocks`, `kitty`,
 `iterm2`, `sixel`) or `RolltuiTerminalOptions.images` chooses outright, and
-`RolltuiTermFacts.images` says what was chosen. A cell's size in pixels comes from the
-terminal's window size (`cell_w`, `cell_h`); where it does not say, a cell is taken to be about
-twice as tall as wide.
+`RolltuiTermFacts.images` says what was chosen, and `dirktui check-terminal` prints it. A cell's
+size in pixels (`cell_w`, `cell_h`) is the terminal's own report (`CSI 16 t`) where its window
+size says nothing or disagrees with it, else its window size divided by its cells, read again at
+every resize; `rolltui_terminal_set_cell_pixels` sets it outright. Where nothing says, a cell is
+taken to be about twice as tall as wide.
+
+A new picture is held until it has stayed in the same cells for 60 ms
+(`RolltuiTerminalOptions.picture_delay_ms`; -1 sends at once), so a cursor moving over files sends
+none of the pictures it passes. `rolltui_terminal_pending_ms` says when a held one is due;
+`rolltui_run` waits on it.
 
 - A kitty picture's pixels are sent once, before the frame that first shows it, and its
   placement whenever its cells change size. On this machine they go in a temp file kitty reads

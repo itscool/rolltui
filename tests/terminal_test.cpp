@@ -141,6 +141,8 @@ struct Script {
   int cpr_col = 2;                           // where the cursor is after the glyph; 0: no answer
   int mark_col = 2;                          // ...after `e` and a combining accent (3: the accent took a cell of its own)
   std::string decrpm;                        // the reply to DECRQM for mode 2026 (synchronized output); "": none
+  std::string cell_px;                       // the reply to CSI 16 t (a cell's pixels); "": none
+  std::string kgraphics;                     // the reply to kitty's picture query; "": none
   std::vector<int> anchor_rows;              // where the cursor is, for each position question in turn (1-based rows)
   int anchor_col = 1;
   std::string da1 = "\x1b[?1;2c";
@@ -210,9 +212,10 @@ void fake_serve(int master, int report_fd, const Script& sc) {
       // Every question found in what just arrived, in the order it was asked.
       struct Q { std::size_t at; const char* tok; std::size_t len; };
       static const Q qs[] = {{0, "\x1b[?u", 4}, {0, "\x1b[?4m", 5}, {0, "\x1b]11;?\x1b\\", 8}, {0, "\x1bP$qm\x1b\\", 6},
-                             {0, "\x1b[>0q", 5}, {0, "\x1b[6n", 4}, {0, "\x1b[c", 3}, {0, "\x1b[?2026$p", 9}};
+                             {0, "\x1b[>0q", 5}, {0, "\x1b[6n", 4}, {0, "\x1b[c", 3}, {0, "\x1b[?2026$p", 9},
+                             {0, "\x1b[16t", 5}, {0, "\x1b_Gi=31,", 8}};
       std::vector<std::pair<std::size_t, int>> found;
-      for (int qi = 0; qi < 8; ++qi) {
+      for (int qi = 0; qi < 10; ++qi) {
         std::size_t at = processed;
         while ((at = seen.find(qs[qi].tok, at)) != std::string::npos) {
           found.emplace_back(at, qi);
@@ -242,6 +245,8 @@ void fake_serve(int master, int report_fd, const Script& sc) {
             break;
           }
           case 7: out += sc.decrpm; break;
+          case 8: out += sc.cell_px; break;
+          case 9: out += sc.kgraphics; break;
           case 6:
             out += sc.da1;
             if (!first_da_answered) {
@@ -817,6 +822,37 @@ int main() {
     check(!file_exists(dir + "/terminal-facts.json"), "…but not remembered: the terminal it is attached to can change without the environment changing");
     h = with_terminal(kGhostty, tmux_env, o3, [](RolltuiTerminal*) {});
     check(h.asked_da(), "…so it asks again next time");
+  }
+
+  // ---- PICTURES AND PIXELS FOR A TERMINAL NO NAME TELLS OF: kitty's query, a cell's report, remembered; a host's own cell size ----
+  {
+    const std::string dir = make_dir("graphics");
+    RolltuiTerminalOptions o;
+    o.cache_dir = dir.c_str();
+    Script sc;
+    sc.kgraphics = "\x1b_Gi=31;OK\x1b\\";
+    sc.cell_px = "\x1b[6;20;10t";
+    const std::vector<std::pair<const char*, const char*>> plain_env = {{"TERM", "xterm-256color"}};
+    RolltuiTermFacts f{};
+    int set_w = 0, set_h = 0, back_w = 0;
+    Heard h = with_terminal(sc, plain_env, o, [&](RolltuiTerminal* t) {
+      f = facts_of(t);
+      rolltui_terminal_set_cell_pixels(t, 7, 14);
+      const RolltuiTermFacts g = facts_of(t);
+      set_w = g.cell_w, set_h = g.cell_h;
+      rolltui_terminal_set_cell_pixels(t, 0, 0);
+      back_w = facts_of(t).cell_w;
+    });
+    check(h.asked("\x1b_Gi=31,") && h.asked("\x1b[16t"), "a terminal no name tells of is asked whether it speaks kitty's pictures, and its cell's pixels");
+    check(f.images == ROLLTUI_IMAGES_KITTY && f.images_source == ROLLTUI_FACT_PROBE, "…and one that says OK draws pictures that way");
+    check(f.cell_w == 10 && f.cell_h == 20, "where the window gives no pixels, the cell's own report is its size [" + std::to_string(f.cell_w) + "x" +
+                                                std::to_string(f.cell_h) + "]");
+    check(set_w == 7 && set_h == 14 && back_w == 10, "a host's own cell size is taken, and 0, 0 gives the terminal's back");
+    RolltuiTermFacts again{};
+    h = with_terminal(sc, plain_env, o, [&](RolltuiTerminal* t) { again = facts_of(t); });
+    check(!h.asked("\x1b_G") && !h.asked("\x1b[16t") && again.images == ROLLTUI_IMAGES_KITTY && again.images_source == ROLLTUI_FACT_CACHE &&
+              again.cell_w == 10,
+          "the next start asks nothing and remembers both: kitty's pictures, and the cell");
   }
 
   // ---- Nothing to wire: the width and the mode are applied by the library too

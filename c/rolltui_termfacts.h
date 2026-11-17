@@ -161,6 +161,11 @@ void rolltui_termfacts_active_cell_pixels(int* cell_w, int* cell_h);
  * than on row 1, which an inline region does not own. */
 #define ROLLTUI_TERMQ_ANCHOR 64
 #define ROLLTUI_TERMQ_RELATIVE 128
+/* Asked in the full exchange, with the rest: PIXELS the cell's size in pixels (CSI 16 t); GRAPHICS whether kitty's picture
+ * protocol is spoken (its query, a=q), for a terminal whose name did not say how it draws pictures. Never in ALL: their answers are
+ * remembered on terms of their own (`RolltuiTermCacheEntry`). */
+#define ROLLTUI_TERMQ_PIXELS 256
+#define ROLLTUI_TERMQ_GRAPHICS 512
 
 /* The bytes that ask the questions in `want`, in ONE write, ending in Primary DA — the question
  * every terminal answers, and the reason an answer that never comes is a definite "no" rather than
@@ -191,6 +196,8 @@ typedef struct RolltuiTermReplies {
   int scheme;       /* …ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT */
   char version[64]; /* XTVERSION: "ghostty 1.1.3" */
   int da1_sixel;    /* Primary DA named attribute 4: the terminal draws sixel */
+  int cell_px_w, cell_px_h; /* `CSI 6 ; height ; width t`: a cell's pixels */
+  int kitty_graphics;       /* kitty's picture query answered: 1 OK, -1 refused, 0 not answered */
 } RolltuiTermReplies;
 
 /* Removes every RECOGNISED terminal reply from `buf[0..len)` in place, folds what they said into
@@ -221,6 +228,10 @@ typedef struct RolltuiTermCacheEntry {
   unsigned char has_background;
   RolltuiStyleColorRaw background;  /* the last one seen; a starting point, re-checked */
   char name[64];
+  unsigned char has_images;         /* how it draws pictures was learned from it (its name, Primary DA, kitty's query) */
+  unsigned char images;             /* …ROLLTUI_IMAGES_* */
+  unsigned char cell_fake;          /* its window size disagreed with its cell report: the report is taken */
+  unsigned short cell_w, cell_h;    /* its cell report (CSI 16 t), a starting point where the window says nothing */
 } RolltuiTermCacheEntry;
 
 /* `<dir>/terminal-facts.json`, `dir` being the caller's or, when NULL, the person's rolltui

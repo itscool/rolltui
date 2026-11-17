@@ -4718,6 +4718,9 @@ typedef struct RolltuiTerminalOptions {
   const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
   /* HOW PICTURES ARE DRAWN, said outright (ROLLTUI_IMAGES_*): a host's setting the person chose. 0: found out (`RolltuiTermFacts`). */
   unsigned char images ROLLTUI_DEFAULT(0);
+  /* A PICTURE HELD before its bytes are sent, until it has stayed in the same cells this long: a cursor moving over files sends none
+   * of the pictures it passes. 0: 60 ms; -1: sent at once. `rolltui_terminal_pending_ms` says when one is due. */
+  int picture_delay_ms ROLLTUI_DEFAULT(0);
 } RolltuiTerminalOptions;
 
 /* ---- events ----------------------------------------------------------------------------- */
@@ -4842,6 +4845,12 @@ void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len
  * `automatic-rename` (screen keeps no name to put back); coming back from a program that had the terminal sets this one again. 1 by
  * the escape, 2 by the command, 0 outside tmux and screen or before the terminal is entered (it is set then). */
 int rolltui_terminal_set_window_name(RolltuiTerminal* t, const char* name, size_t len);
+/* A CELL'S SIZE IN PIXELS as the host knows it (a terminal whose window size is not the truth, a font the host measured): pictures
+ * are fitted to it; 0, 0 gives the terminal's own back (its report, CSI 16 t, or its window size divided by its cells). */
+void rolltui_terminal_set_cell_pixels(RolltuiTerminal* t, int w, int h);
+/* The milliseconds until a picture held back (`picture_delay_ms`) is due to be sent, so the frame after that sends it; -1 none.
+ * `rolltui_run` waits on it itself. */
+int rolltui_terminal_pending_ms(const RolltuiTerminal* t);
 /* MOUSE REPORTING ON OR OFF while the program runs (`mouse` and `hover` as in the options): off, the terminal selects text with the
  * pointer the way it does for a program that asks for nothing. Kept across a suspend and resume. */
 void rolltui_terminal_set_mouse(RolltuiTerminal* t, int mouse, int hover);

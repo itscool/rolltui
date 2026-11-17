@@ -322,6 +322,10 @@ size_t rolltui_termprobe_queries(unsigned want, char* out, size_t cap) {
       n += k_;                                                  \
     }                                                           \
   } while (0)
+  /* (asked first: what follows is the exchange as it always was) */
+  if (want & ROLLTUI_TERMQ_PIXELS) ROLLTUI_TERMQ_ADD("\x1b[16t"); /* a cell's size in pixels */
+  if (want & ROLLTUI_TERMQ_GRAPHICS) /* kitty's protocol asked about a 1x1 picture it is not to keep or show: OK, or why not */
+    ROLLTUI_TERMQ_ADD("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
   if (want & ROLLTUI_TERMQ_KEYBOARD) ROLLTUI_TERMQ_ADD("\x1b[?u"  /* kitty: which enhancement flags are set? */
                                                        "\x1b[?4m"); /* xterm: what is modifyOtherKeys? */
   if (want & ROLLTUI_TERMQ_BACKGROUND)
@@ -415,6 +419,19 @@ static size_t take_csi(const char* p, size_t n, int expect_cpr, RolltuiTermRepli
     return total;
   }
   if (lead == '>' && fin == 'c') return total; /* Secondary DA: swallowed, never a key */
+  if (lead == 0 && fin == 't' && params_end > 4 && p[2] == '6' && p[3] == ';') { /* CSI 6 ; height ; width t: a cell's pixels */
+    size_t semi = 0, k;
+    for (k = 4; k < params_end; ++k)
+      if (p[k] == ';') {
+        semi = k;
+        break;
+      }
+    if (semi) {
+      const int ch = digits_at(p, 4, semi), cw = digits_at(p, semi + 1, params_end);
+      if (ch > 0 && cw > 0 && ch < 1000 && cw < 1000) r->cell_px_w = cw, r->cell_px_h = ch;
+    }
+    return total;
+  }
   if (lead == '?' && fin == 'n' && params_end - 3 == 5 && memcmp(p + 3, "997;", 4) == 0 && (p[7] == '1' || p[7] == '2')) {
     r->has_scheme = 1; /* the colour scheme: 1 dark, 2 light */
     r->scheme = p[7] == '1' ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT;
@@ -544,6 +561,19 @@ static size_t take_string(const char* p, size_t n, int osc, RolltuiTermReplies* 
   return end;
 }
 
+/* AN APC, `ESC _ … ESC \`: kitty's answer to its picture query (`Gi=31;OK`, or `Gi=31;` and why not). Any other is swallowed: an
+ * application string is never somebody typing. */
+static size_t take_apc(const char* p, size_t n, RolltuiTermReplies* r, int* incomplete) {
+  size_t i;
+  for (i = 2; i + 1 < n; ++i)
+    if (p[i] == '\x1b' && p[i + 1] == '\\') {
+      if (i >= 7 && memcmp(p + 2, "Gi=31;", 6) == 0) r->kitty_graphics = (i == 10 && memcmp(p + 8, "OK", 2) == 0) ? 1 : -1;
+      return i + 2;
+    }
+  *incomplete = 1;
+  return 0;
+}
+
 size_t rolltui_termreplies_take(char* buf, size_t len, int expect_cpr, RolltuiTermReplies* out) {
   size_t in = 0, kept = 0;
   while (in < len) {
@@ -554,6 +584,7 @@ size_t rolltui_termreplies_take(char* buf, size_t len, int expect_cpr, RolltuiTe
       if (c1 == '[') n = take_csi(buf + in, len - in, expect_cpr, out, &incomplete);
       else if (c1 == ']') n = take_string(buf + in, len - in, 1, out, &incomplete);
       else if (c1 == 'P') n = take_string(buf + in, len - in, 0, out, &incomplete);
+      else if (c1 == '_') n = take_apc(buf + in, len - in, out, &incomplete);
     }
     if (n) {
       in += n;
@@ -570,6 +601,12 @@ size_t rolltui_termreplies_take(char* buf, size_t len, int expect_cpr, RolltuiTe
 
 void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermReplies* r, unsigned asked) {
   if (r->da1) f->responsive = 1;
+  /* PICTURES, FOR A TERMINAL NO NAME TOLD OF, in the order they are best: kitty's protocol where it says OK to its query, then sixel
+   * where its Primary DA names it, then blocks */
+  if ((asked & ROLLTUI_TERMQ_GRAPHICS) && r->kitty_graphics == 1 && f->images_source == ROLLTUI_FACT_DEFAULT) {
+    f->images = ROLLTUI_IMAGES_KITTY;
+    f->images_source = ROLLTUI_FACT_PROBE;
+  }
   if (r->da1_sixel && f->images_source == ROLLTUI_FACT_DEFAULT) { /* a terminal no name told of, that says it draws sixel */
     f->images = ROLLTUI_IMAGES_SIXEL;
     f->images_source = ROLLTUI_FACT_PROBE;
@@ -731,6 +768,16 @@ int rolltui_termcache_load(const char* path, const char* key, RolltuiTermCacheEn
       memcpy(out->name, s, n);
       out->name[n] = '\0';
     }
+    v = rolltui_json_get(e, "images", 6);
+    if (rolltui_json_is_number(v)) {
+      const int im = (int)rolltui_json_as_number(v, 0);
+      if (im >= ROLLTUI_IMAGES_BLOCKS && im <= ROLLTUI_IMAGES_SIXEL) out->has_images = 1, out->images = (unsigned char)im;
+    }
+    out->cell_fake = (unsigned char)rolltui_json_as_bool(rolltui_json_get(e, "cell_fake", 9), 0);
+    v = rolltui_json_get(e, "cell_w", 6);
+    if (rolltui_json_is_number(v)) out->cell_w = (unsigned short)rolltui_json_as_number(v, 0);
+    v = rolltui_json_get(e, "cell_h", 6);
+    if (rolltui_json_is_number(v)) out->cell_h = (unsigned short)rolltui_json_as_number(v, 0);
     found = out->probed > 0;
   }
   rolltui_json_free(root);
@@ -754,6 +801,12 @@ static RolltuiJsonValue* entry_to_json(const RolltuiTermCacheEntry* e) {
     rolltui_json_set(o, "background", 10, rolltui_json_string(buf, n));
   }
   if (e->name[0]) rolltui_json_set(o, "name", 4, rolltui_json_string(e->name, strlen(e->name)));
+  if (e->has_images) rolltui_json_set(o, "images", 6, rolltui_json_number(e->images));
+  if (e->cell_fake) rolltui_json_set(o, "cell_fake", 9, rolltui_json_bool(1));
+  if (e->cell_w && e->cell_h) {
+    rolltui_json_set(o, "cell_w", 6, rolltui_json_number(e->cell_w));
+    rolltui_json_set(o, "cell_h", 6, rolltui_json_number(e->cell_h));
+  }
   return o;
 }
 

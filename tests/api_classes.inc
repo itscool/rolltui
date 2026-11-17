@@ -1687,6 +1687,8 @@ ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)
 ROLLTUI_API(rolltui_terminal_set_title, PUBLIC)  /* chat names what the conversation is doing */
 ROLLTUI_API(rolltui_terminal_set_window_name, PUBLIC)  /* KEPT: a program named in tmux's window list, the old name put back on leaving */
+ROLLTUI_API(rolltui_terminal_set_cell_pixels, PUBLIC)  /* KEPT: a host that measured the font itself, where the terminal's size is wrong */
+ROLLTUI_API(rolltui_terminal_pending_ms, PUBLIC)  /* KEPT: a host's own loop waking when a held picture is due (rolltui_run does it itself) */
 ROLLTUI_API(rolltui_terminal_report_cwd, PUBLIC)  /* dirktui reports the folder it is in */
 ROLLTUI_API(rolltui_child_spawn, PUBLIC)  /* chat runs an approved command; dirktui checks for an update, hands a file to an app */
 ROLLTUI_API(rolltui_child_free, PUBLIC)

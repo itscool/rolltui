@@ -215,7 +215,7 @@ struct Pty {
   std::string got;
   std::atomic<bool> stop{false};
   std::thread reader;
-  explicit Pty(const char* how, bool tmux = false) {
+  explicit Pty(const char* how, bool tmux = false, int delay_ms = -1) { /* -1: sent at once, as most checks here want */
     winsize ws{};
     ws.ws_row = 12;
     ws.ws_col = 40;
@@ -242,6 +242,7 @@ struct Pty {
     o.bracketed_paste = 0;
     o.no_probe = 1;
     o.no_cache = 1;
+    o.picture_delay_ms = delay_ms;
     t = rolltui_terminal_new(slave, slave, o);
     unsetenv("ROLLTUI_IMAGES");
     unsetenv("TMUX");
@@ -337,6 +338,23 @@ void test_present() {
     struct stat gone {};
     check(stat(sent_file.c_str(), &gone) != 0, "…and the temp files a terminal did not take are removed");
     for (RolltuiImage* m : more) rolltui_image_free(m);
+  }
+  {
+    // A PICTURE HELD: nothing is sent until it has stayed in its cells, and one that goes first is never sent
+    Pty k("sixel", false, 80);
+    const std::string first = k.present(img, 1, 1, false);
+    check(!has(first, "\x1bP0;1;0q") && rolltui_terminal_pending_ms(k.t) > 0, "a new picture is held, and the terminal says when it is due");
+    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(120 * rolltui_test::kClockScale)));
+    const std::string second = k.present(img, 1, 1, false);
+    check(has(second, "\x1bP0;1;0q") && rolltui_terminal_pending_ms(k.t) < 0, "…and sent once it has stayed that long");
+    RolltuiImage* passing = decode(ppm(20, 20, std::vector<unsigned char>(20 * 20 * 3, 200)));
+    k.present(passing, 12, 1, false);
+    const std::string gone = k.present(nullptr, 0, 0, false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(120 * rolltui_test::kClockScale)));
+    const std::string later = k.present(nullptr, 0, 0, false);
+    check(!has(gone, "\x1bP0;1;0q") && !has(later, "\x1bP0;1;0q") && rolltui_terminal_pending_ms(k.t) < 0,
+          "a picture the cursor passed, gone before it was due, is never sent");
+    rolltui_image_free(passing);
   }
   {
     // OVER SSH the pixels go in the escapes: a temp file here is no use to a kitty on another machine

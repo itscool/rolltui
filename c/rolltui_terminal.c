@@ -109,6 +109,19 @@ struct RolltuiTerminal {
   unsigned long long presents;
   struct ShownImage { unsigned int id; RolltuiRect r; } * pics;   /* drawn outside the grid, and still there */
   size_t pics_n, pics_cap;
+  /* A CELL'S PIXELS: as the host set them (0 not set), and as the terminal reported them at the start (CSI 16 t), which is trusted
+   * over the window's size for the session when the two disagreed */
+  /* PICTURES HELD before they are sent (`picture_delay_ms`): each one's id and cells, since when, and the present that last saw it */
+  struct HeldPicture {
+    unsigned int id;
+    RolltuiRect r;
+    unsigned long long since, seen;
+  } * held;
+  size_t held_n, held_cap;
+  int hold_ms;
+  int cell_set_w, cell_set_h;
+  int cell_report_w, cell_report_h;
+  unsigned char cell_report_trusted;
   /* ---- the window's title (rolltui_terminal_set_title) ---- */
   RolltuiStr title;            /* what the app set; empty: the terminal's own */
   unsigned char title_pushed;  /* the terminal's own title is on its stack, to be put back on leaving */
@@ -395,6 +408,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
     size_t f;
     for (f = 0; f < 8; ++f) rolltui_str_free(&t->kitty_files[f]);
   }
+  rolltui_mem_free(t->held);
   rolltui_str_free(&t->title);
   rolltui_str_free(&t->wname);
   rolltui_str_free(&t->wname_was);
@@ -688,12 +702,50 @@ static void publish_depth(RolltuiTerminal* t) {
 }
 
 /* A cell's size in pixels, from the window's, where the terminal gives it. */
+/* A CELL'S PIXELS: the host's word (`rolltui_terminal_set_cell_pixels`); else the window's size divided by its cells, read again at
+ * every resize, unless the terminal's own report (CSI 16 t) disagreed with it at the start, when the report is taken for the session. */
 static void refresh_cell_pixels(RolltuiTerminal* t) {
   int xp = 0, yp = 0;
+  if (t->cell_set_w > 0 && t->cell_set_h > 0) {
+    t->facts.cell_w = (unsigned short)t->cell_set_w;
+    t->facts.cell_h = (unsigned short)t->cell_set_h;
+    return;
+  }
+  if (t->cell_report_trusted) {
+    t->facts.cell_w = (unsigned short)t->cell_report_w;
+    t->facts.cell_h = (unsigned short)t->cell_report_h;
+    return;
+  }
   if (t->w > 0 && t->h > 0 && rolltui_os_tty_pixels(t->os, &xp, &yp)) {
     t->facts.cell_w = (unsigned short)(xp / t->w);
     t->facts.cell_h = (unsigned short)(yp / t->h);
+  } else if (t->cell_report_w > 0) { /* the window says nothing: the report */
+    t->facts.cell_w = (unsigned short)t->cell_report_w;
+    t->facts.cell_h = (unsigned short)t->cell_report_h;
   }
+}
+
+/* THE CELL'S REPORT, from the first exchange: taken where the window's size gave none, and for the session where it disagreed with
+ * the window's (a window size that is not the truth). */
+static void take_cell_report(RolltuiTerminal* t, const RolltuiTermReplies* rep) {
+  int xp = 0, yp = 0;
+  if (rep->cell_px_w <= 0 || rep->cell_px_h <= 0) return;
+  t->cell_report_w = rep->cell_px_w;
+  t->cell_report_h = rep->cell_px_h;
+  if (t->w > 0 && t->h > 0 && rolltui_os_tty_pixels(t->os, &xp, &yp) && xp > 0 && yp > 0) {
+    const int iw = xp / t->w, ih = yp / t->h;
+    t->cell_report_trusted = iw != rep->cell_px_w || ih != rep->cell_px_h;
+  }
+  refresh_cell_pixels(t);
+  if (t->publishing) rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
+}
+
+void rolltui_terminal_set_cell_pixels(RolltuiTerminal* t, int w, int h) {
+  if (!t) return;
+  t->cell_set_w = w > 0 && h > 0 ? w : 0;
+  t->cell_set_h = w > 0 && h > 0 ? h : 0;
+  refresh_cell_pixels(t);
+  if (t->publishing) rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
 }
 
 /* Everything the environment says, the remembered answers for THIS fingerprint if there are any
@@ -703,6 +755,7 @@ static void refresh_cell_pixels(RolltuiTerminal* t) {
 static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts) {
   t->depth_override = -1;
   t->facts_events = opts->facts_events;
+  t->hold_ms = opts->picture_delay_ms < 0 ? 0 : opts->picture_delay_ms == 0 ? 60 : opts->picture_delay_ms;
   t->plan = PLAN_KEYBOARD;
   t->timeout_ms = 80;
   rolltui_termenv_read(&t->env);
@@ -769,6 +822,16 @@ static void adopt_cache(RolltuiTerminal* t) {
     f->mode_source = ROLLTUI_FACT_CACHE;
   }
   if (e->name[0]) snprintf(f->name, sizeof f->name, "%s", e->name);
+  if (e->has_images && f->images_source == ROLLTUI_FACT_DEFAULT) { /* how it draws pictures, as it said the first time */
+    f->images = e->images;
+    f->images_source = ROLLTUI_FACT_CACHE;
+  }
+  if (e->cell_w && e->cell_h) { /* its cell report: taken where the window says nothing, and over it where the window was wrong */
+    t->cell_report_w = e->cell_w;
+    t->cell_report_h = e->cell_h;
+    t->cell_report_trusted = e->cell_fake;
+    refresh_cell_pixels(t);
+  }
   t->revalidate = e->answers_background;
 }
 
@@ -802,6 +865,13 @@ static void remember(RolltuiTerminal* t, const RolltuiTermReplies* rep) {
     e.background = rep->bg;
   }
   snprintf(e.name, sizeof e.name, "%s", t->facts.name);
+  if (t->facts.images_source == ROLLTUI_FACT_PROBE) { /* learned from it: its name, its Primary DA, kitty's query */
+    e.has_images = 1;
+    e.images = t->facts.images;
+  }
+  e.cell_fake = t->cell_report_trusted;
+  e.cell_w = (unsigned short)t->cell_report_w;
+  e.cell_h = (unsigned short)t->cell_report_h;
   t->entry = e;
   rolltui_termcache_store(t->cache_path.p, t->fingerprint, &e);
 }
@@ -939,19 +1009,28 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
  * deferred to the first poll), and the keyboard alone on a resume or when a host opted out. */
 static void inline_anchor(RolltuiTerminal* t);
 
+/* THE QUESTIONS THE FULL EXCHANGE ADDS: a cell's pixels; and, for a terminal whose name did not say how it draws pictures (and that no
+ * multiplexer stands in front of), whether it speaks kitty's protocol. Their answers are remembered with the rest. */
+static unsigned fresh_questions(const RolltuiTerminal* t) {
+  unsigned q = ROLLTUI_TERMQ_PIXELS;
+  if (t->facts.images_source == ROLLTUI_FACT_DEFAULT && !t->multiplexed) q |= ROLLTUI_TERMQ_GRAPHICS;
+  return q;
+}
+
 static void run_negotiation(RolltuiTerminal* t) {
   RolltuiTermReplies rep;
   memset(&rep, 0, sizeof rep);
   if (t->inl && t->tty) inline_anchor(t); /* before anything is drawn: where the region starts */
   if (t->plan == PLAN_FULL) {
-    unsigned want = ROLLTUI_TERMQ_ALL;
+    unsigned want = ROLLTUI_TERMQ_ALL | fresh_questions(t);
     /* Where the depth is already decided by what the terminal is KNOWN not to do, its colour-depth and
      * version questions have nothing to add and only a chance to be mishandled. */
     if (rolltui_termenv_no_24bit_known(&t->env)) want &= ~(unsigned)(ROLLTUI_TERMQ_SGR | ROLLTUI_TERMQ_VERSION);
     negotiate_batch(t, t->timeout_ms, -1, want, &rep);
+    take_cell_report(t, &rep);
     remember(t, &rep);
   } else if (t->plan == PLAN_CACHED) {
-    negotiate_batch(t, t->timeout_ms, t->entry.keyboard, 0, &rep);
+    negotiate_batch(t, t->timeout_ms, t->entry.keyboard, 0, &rep); /* a terminal remembered is asked nothing */
     adopt_cache(t);
   } else {
     negotiate_batch(t, t->timeout_ms, -1, 0, &rep);
@@ -1130,6 +1209,49 @@ static int rect_same(RolltuiRect a, RolltuiRect b) { return a.x == b.x && a.y ==
  * forgotten, so the diff writes what they hold now over it. */
 #define KITTY_KEEP 8
 
+/* A PICTURE DUE: it has stayed in the same cells for the hold (or there is none). The first sight of it starts the clock. */
+static int picture_due(RolltuiTerminal* t, unsigned int id, RolltuiRect r) {
+  const unsigned long long now = rolltui_os_monotonic_ms();
+  size_t k;
+  if (t->hold_ms <= 0) return 1;
+  for (k = 0; k < t->held_n; ++k)
+    if (t->held[k].id == id && rect_same(t->held[k].r, r)) {
+      if (now < t->held[k].since + (unsigned long long)t->hold_ms) {
+        t->held[k].seen = t->presents;
+        return 0;
+      }
+      t->held[k] = t->held[--t->held_n]; /* due, and sent now: held no longer */
+      return 1;
+    }
+  t->held = (struct HeldPicture*)rolltui_grow(t->held, &t->held_cap, t->held_n + 1, sizeof *t->held);
+  t->held[t->held_n].id = id;
+  t->held[t->held_n].r = r;
+  t->held[t->held_n].since = now;
+  t->held[t->held_n].seen = t->presents;
+  ++t->held_n;
+  return 0;
+}
+/* The held pictures this present did not draw: gone before they were due, and never sent. */
+static void drop_unseen_held(RolltuiTerminal* t) {
+  size_t k = 0;
+  while (k < t->held_n) {
+    if (t->held[k].seen != t->presents) t->held[k] = t->held[--t->held_n];
+    else ++k;
+  }
+}
+int rolltui_terminal_pending_ms(const RolltuiTerminal* t) {
+  const unsigned long long now = rolltui_os_monotonic_ms();
+  size_t k;
+  int soonest = -1;
+  if (!t) return -1;
+  for (k = 0; k < t->held_n; ++k) {
+    const unsigned long long due = t->held[k].since + (unsigned long long)t->hold_ms;
+    const int ms = due > now ? (int)(due - now) : 1;
+    if (soonest < 0 || ms < soonest) soonest = ms;
+  }
+  return soonest;
+}
+
 static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame* next, RolltuiStr* out) {
   const size_t n = rolltui_frame_image_count(next);
   size_t i, k;
@@ -1140,6 +1262,7 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
     if (p->protocol != ROLLTUI_IMAGES_KITTY) continue;
     for (k = 0; k < t->kitty_n && t->kitty[k].id != id; ++k) {
     }
+    if (k == t->kitty_n && !picture_due(t, id, p->cells)) continue; /* held: its cells say nothing until its pixels go */
     if (k == t->kitty_n) {
       t->kitty = (struct KittyImage*)rolltui_grow(t->kitty, &t->kitty_cap, t->kitty_n + 1, sizeof *t->kitty);
       t->kitty[k].id = id;
@@ -1202,6 +1325,7 @@ static void images_after(RolltuiTerminal* t, const RolltuiFrame* drawn, int orig
     for (k = 0; k < t->pics_n && !(t->pics[k].id == id && rect_same(t->pics[k].r, p->cells)); ++k) {
     }
     if (k < t->pics_n) continue;
+    if (!picture_due(t, id, p->cells)) continue; /* held: sent once it has stayed */
     len = snprintf(at, sizeof at, "\x1b" "7\x1b[%d;%dH", origin + p->cells.y + 1, p->cells.x + 1);
     if (len > 0) rolltui_str_append(out, at, (size_t)len);
     if (p->protocol == ROLLTUI_IMAGES_ITERM2) rolltui_image_iterm2(p->img, p->cells.w, p->cells.h, t->multiplexed, out);
@@ -1237,6 +1361,7 @@ void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* sc
   lead = scratch->n;
   rolltui_swap_present_at(s, (unsigned char)(depth | sgr_extras(t)), inl ? t->top : 0, inl, scratch);
   if (t->tty) images_after(t, next, inl ? t->top : 0, scratch); /* `next` is the frame just drawn, now the baseline */
+  if (t->tty) drop_unseen_held(t);
   if (inl && scratch->n > lead) inline_park(t, s, scratch);
   if (sync && !opened && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */
   else if (sync) rolltui_str_append(scratch, SYNC_END, sizeof SYNC_END - 1);
@@ -1252,11 +1377,14 @@ int rolltui_terminal_reprobe(RolltuiTerminal* t, int timeout_ms) {
   /* The keyboard is not asked again: it was settled at entry and enabling it twice would push a
    * flag nothing pops. Everything else is. */
   {
-    unsigned want = ROLLTUI_TERMQ_ALL & ~(unsigned)ROLLTUI_TERMQ_KEYBOARD;
+    unsigned want;
+    if (t->facts.images_source == ROLLTUI_FACT_CACHE) t->facts.images_source = ROLLTUI_FACT_DEFAULT; /* asked again, not remembered */
+    want = (ROLLTUI_TERMQ_ALL & ~(unsigned)ROLLTUI_TERMQ_KEYBOARD) | fresh_questions(t);
     if (rolltui_termenv_no_24bit_known(&t->env)) want &= ~(unsigned)(ROLLTUI_TERMQ_SGR | ROLLTUI_TERMQ_VERSION);
     negotiate_batch(t, timeout_ms, t->protocol, want, &rep);
   }
   t->facts.remembered = 0;
+  take_cell_report(t, &rep);
   remember(t, &rep);
   publish_depth(t);
   return t->facts.responsive;

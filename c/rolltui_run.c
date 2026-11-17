@@ -219,6 +219,10 @@ static int run_frame(RolltuiRun* r) {
   timeout = timer_wait(r, timeout); /* a timer due sooner than the frame asked to wait wakes it */
   /* AT THE DEPTH THE TERMINAL HAS: a terminal sent 24-bit colour it cannot draw reads it as stray attributes. */
   rolltui_terminal_present(r->term, r->swap, &r->out);
+  { /* a picture held back is due: the frame then sends it */
+    const int held = rolltui_terminal_pending_ms(r->term);
+    if (held >= 0 && (timeout < 0 || held < timeout)) timeout = held;
+  }
   return timeout;
 }
 

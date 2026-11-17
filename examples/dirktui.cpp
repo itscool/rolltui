@@ -2957,8 +2957,16 @@ int check_terminal_command() {
                                                      : "joined: an accent shares its letter's cell");
   std::printf("  frames       %s\n", f.sync_output ? "drawn whole (synchronized output)" : "drawn as they arrive (no synchronized output)");
   std::printf("  keyboard     %s\n", f.keyboard == ROLLTUI_PROTOCOL_KITTY ? "kitty" : f.keyboard == ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS ? "modifyOtherKeys" : "legacy");
+  {
+    static const char* const kWays[] = {"blocks (half blocks, two pixels a cell)", "blocks (half blocks, two pixels a cell)", "kitty's protocol",
+                                        "iTerm2's protocol", "sixel"}; /* by ROLLTUI_IMAGES_*, 0 not yet decided */
+    const char* way = f.images <= ROLLTUI_IMAGES_SIXEL ? kWays[f.images] : kWays[0];
+    std::printf("  pictures     %s   (%s)\n", way, fact_source(f.images_source));
+    if (f.cell_w && f.cell_h) std::printf("  cell         %d x %d pixels\n", f.cell_w, f.cell_h);
+    else std::printf("  cell         (its size in pixels was not given: taken as about twice as tall as wide)\n");
+  }
   std::printf("  remembered   %s\n", cache.empty() ? "nowhere (no configuration directory)" : cache.c_str());
-  std::printf("\nOverride any of it:  ROLL_COLOR_DEPTH=truecolor|256|16|mono   ROLL_AMBIGUOUS_WIDE=1\n");
+  std::printf("\nOverride any of it:  ROLL_COLOR_DEPTH=truecolor|256|16|mono   ROLL_AMBIGUOUS_WIDE=1   ROLLTUI_IMAGES=blocks|kitty|iterm2|sixel\n");
   return 0;
 }
 
