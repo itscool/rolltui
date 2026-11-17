@@ -41,16 +41,36 @@
 
 namespace rolltui_test {
 
+// A WALL-CLOCK BOUND IS SET FOR THE RELEASE BUILD. Under AddressSanitizer every memory access is checked, and the same run takes
+// seven to twelve times as long, the most when the suite runs in parallel — so a bound set for one build is noise in the other,
+// and the instrumented build failed checks the code passed. Every upper bound on elapsed time in a suite is written
+// `bound * kClockScale`: tight in Release, ten times looser under the sanitizer, where it still catches a runaway, which is what
+// it is for there. A LOWER bound (it waited at least this long) needs nothing: instrumentation only makes it easier to meet.
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define ROLLTUI_TEST_INSTRUMENTED 1
+#endif
+#endif
+#if defined(__SANITIZE_ADDRESS__) && !defined(ROLLTUI_TEST_INSTRUMENTED)
+#define ROLLTUI_TEST_INSTRUMENTED 1
+#endif
+#ifdef ROLLTUI_TEST_INSTRUMENTED
+inline constexpr double kClockScale = 10.0;
+#else
+inline constexpr double kClockScale = 1.0;
+#endif
+
 #if !defined(_WIN32)
 // ENDING A PROGRAM RUN ON A PTY. A process that exits with output still unread on its terminal waits inside its own exit for the
 // output to drain, until the master side reads it or is closed, and no signal ends that wait: the process is already exiting. A
 // suite that waits for the child before closing the master hangs whenever the child drew a frame at the last moment. This reads
 // the master while the child has `grace_ms` to leave by itself (what it writes is appended to `out`, when given), kills it after
-// that, closes the master, and only then waits. Returns true when the child left by itself.
+// that, closes the master, and only then waits. Returns true when the child left by itself. The grace is an upper bound on elapsed
+// time, so it is scaled here (`kClockScale`): a sanitizer's crash report, symbolized on a loaded machine, takes seconds.
 inline bool end_pty_child(int master, pid_t pid, int grace_ms, int* status_out = nullptr, std::string* out = nullptr) {
   int status = 0;
   bool exited = false;
-  const std::uint64_t end = testkit::mono_ms() + static_cast<std::uint64_t>(grace_ms > 0 ? grace_ms : 0);
+  const std::uint64_t end = testkit::mono_ms() + static_cast<std::uint64_t>(grace_ms > 0 ? grace_ms * kClockScale : 0);
   for (;;) {
     if (::waitpid(pid, &status, WNOHANG) == pid) {
       exited = true;
@@ -75,24 +95,6 @@ inline bool end_pty_child(int master, pid_t pid, int grace_ms, int* status_out =
 }
 #endif
 
-// A WALL-CLOCK BOUND IS SET FOR THE RELEASE BUILD. Under AddressSanitizer every memory access is checked, and the same run takes
-// seven to twelve times as long, the most when the suite runs in parallel — so a bound set for one build is noise in the other,
-// and the instrumented build failed checks the code passed. Every upper bound on elapsed time in a suite is written
-// `bound * kClockScale`: tight in Release, ten times looser under the sanitizer, where it still catches a runaway, which is what
-// it is for there. A LOWER bound (it waited at least this long) needs nothing: instrumentation only makes it easier to meet.
-#if defined(__has_feature)
-#if __has_feature(address_sanitizer)
-#define ROLLTUI_TEST_INSTRUMENTED 1
-#endif
-#endif
-#if defined(__SANITIZE_ADDRESS__) && !defined(ROLLTUI_TEST_INSTRUMENTED)
-#define ROLLTUI_TEST_INSTRUMENTED 1
-#endif
-#ifdef ROLLTUI_TEST_INSTRUMENTED
-inline constexpr double kClockScale = 10.0;
-#else
-inline constexpr double kClockScale = 1.0;
-#endif
 
 // ONE SESSION FOR A SUITE. A registry is a CONTEXT's now, so a suite that
 // registers a widget or effect kind needs a session to register it INTO. Two suites had

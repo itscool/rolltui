@@ -283,6 +283,8 @@ left out.
   focusable windows of the focus layer in order. `rolltui_window_stack_set_numbered(stack, 1)`
   puts each one's number before its title. `stack.focus_left`, `_right`, `_up` and `_down`
   (Alt-Shift-H, L, K, J) focus the nearest window that way.
+- `rolltui_window_stack_set_busy(stack, id, len, 1, since_ms)` puts a spinner before a window's
+  title while it works, turning from `since_ms`; 0 takes it away.
 
 Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
 over to a new base while its window is in it.
@@ -515,6 +517,13 @@ many rows there are, and `row(ctx, i, out)` fills row `i`: its `key`, its cells
 (`rolltui_list_row_cell`), a `role` for the whole row, a tree's `depth`, and `busy` with
 `busy_since_ms` for a spinner at the row's end.
 
+- `rolltui_list_row_span(out, cell, begin, end, role)` draws bytes `begin` to `end` of a cell in a
+  role of its own, over the row's style: a permissions string a letter at a time, a branch head in
+  a log line. A row holds up to `ROLLTUI_LIST_SPAN_MAX` spans. Colours come from the theme, so a
+  span reads in every theme and in mono; a script's ANSI colours are mapped to roles by the host.
+- `gutter` is one glyph of the row's own in the mark column, in `gutter_role`: copied, cut, tagged.
+  It stands in place of the marks' ▌.
+
 - A plain list asks only for the rows it draws, so a hundred thousand rows cost a screenful.
   Sorting, a filter and a tree ask for every row once, when the data or the question changes:
   `rolltui_windows_list_refresh` says the data changed, and a count that moves says so too.
@@ -522,6 +531,15 @@ many rows there are, and `row(ctx, i, out)` fills row `i`: its `key`, its cells
   a sort or a filter, and the cursor's row keeps its place on screen when rows arrive above it. A
   row with no key is keyed by its index.
 - A list with nothing to show says "no rows", or "no rows match “…”" under a filter.
+- `rolltui_windows_list_set_loading(windows, name, len, 1)` says the rows are still coming. An
+  empty list then shows a spinner and "loading…", after 100 ms so rows that come at once never
+  flash it, and the footer says "loading…" while rows arrive. 0 when they have all come.
+- `rolltui_windows_list_freeze(windows, name, len, 1)` pauses one list: it keeps the rows it has
+  while the host's change, and its footer says "paused". The other windows keep updating. 0 takes
+  the host's rows again.
+- `rolltui_windows_draw_toasts` returns the soonest a window wants its next frame along with the
+  toasts': a drag held past a list's edge, a "loading" about to show, a changed row settling. A
+  render that returns it as its wait keeps these moving.
 
 `rolltui_windows_set_list_columns` makes it a table. The first column takes the width the others
 leave. The rest are `width` cells, or as wide as the widest cell they have shown; that width only
@@ -530,7 +548,9 @@ edge, and `min_screen` shows a column only while the list is at least that wide.
 column would be narrower than 8 cells, columns go from the right, except a column marked `keep`:
 the first is cut instead. `max_share` holds a measured column to that percentage of the width.
 `role` draws a column's cells in a role of their own on a plain row, as the keys sheet draws its
-keys in the shortcut role. A row with fewer cells than the table has columns draws its last cell
+keys in the shortcut role. `rolltui_sparkline_text(values, n, lo, hi, ascii, &out)` writes a
+sparkline as text, one cell a value from ▁ to █, for a cell or a status line; with `ascii`, where
+block elements are wide, `_.-~^`. The values' history is the host's. A row with fewer cells than the table has columns draws its last cell
 across the columns it has none for. A cell that does not fit ends in an ellipsis. The header row
 names the columns in bold, the sorted one marked ▲ or ▼.
 
@@ -542,6 +562,19 @@ names the columns in bold, the sorted one marked ▲ or ▼.
   activation like any other row's.
 - `marks`: several rows chosen at once. A marked row is bold in the `accent_1` colour with ▌ in
   the mark column, so it reads without colour.
+- `gutter`: the mark column for rows' own glyphs, with `marks` off.
+- `close_over`: a node with more children than this starts closed, whatever `open_depth` says.
+- `column_cursor`: in a table, Left and Right move a column cursor. Its title is drawn reversed
+  and its cell on the cursor's row underlined, and `list.sort` sorts by its column, then the
+  other way, then the host's order. `rolltui_windows_list_cursor_column` says which column it is
+  on, for copying or editing that cell.
+- `reorder`: the person moves rows, and the list asks the host (see below).
+- `changes_ms`: a row that appeared or changed at a refresh is drawn bold, italic and in the
+  `info` role for this many milliseconds. Without a frame clock, until the next refresh. A row
+  that vanished is gone from the host's data; a host that wants it seen going keeps it for a
+  moment in a muted role.
+- `fade`: each row this many percent fainter for every row it is from the cursor, to at most 70.
+  Only RGB colours fade, so a 16- or 256-colour theme draws every row alike.
 - `line_numbers`: 1 numbers each row; 2 counts from the cursor's row, which shows its own number.
 - `scrolloff`: rows kept between the cursor and the window's edge. Past half the window, the
   cursor stays in the middle.
@@ -566,19 +599,37 @@ arrows and the mark are ASCII.
 | `list.scroll_up`, `list.scroll_down` | Alt-Up, Alt-Down | the view a row, the cursor staying on its row while it can |
 | `list.percent` | % | after a count, that percent of the way down |
 | `list.activate` | Enter | acts on the row; a tree's node opens or closes |
-| `list.back` | Escape | clears the filter, then the marks |
+| `list.back` | Escape | ends a visual range, then clears the filter, then the marks |
 | `list.mark` | Space | marks or unmarks the row, and moves to the next |
 | `list.mark_up`, `list.mark_down` | Shift-Up, Shift-Down | marks from where the range began |
 | `list.mark_all`, `list.unmark_all`, `list.invert_marks` | Alt-A, Alt-U, Alt-I | every row shown, none, the others |
-| `list.open`, `list.close` | Right, Left | opens a node or goes into it; closes a node or goes up to its parent |
+| `list.visual` | Alt-V | marks from here to wherever the cursor goes; again, keeps the range |
+| `list.visual_swap` | Alt-; | goes to the range's other end |
+| `list.open`, `list.close` | Right, Left | opens a node or goes into it; closes a node or goes up to its parent; in a table with `column_cursor`, the next and previous column |
+| `list.open_deep` | Shift-Right | opens the node and every node under it |
 | `list.open_all`, `list.close_all` | Alt-Right, Alt-Left | every node |
+| `list.move_up`, `list.move_down` | Alt-Shift-Up, Alt-Shift-Down | with `reorder`, moves the row |
 | `list.sort` | Alt-S | sorts by the next column, then by the host's order |
 | `list.reverse` | Alt-R | the sort the other way |
 | `list.filter` | / | types a filter in the list's last row |
 
 A press moves the cursor and a double click activates the row. A press in the mark column marks
-the row, and a drag marks the rows it passes over. A press on ▸ or ▾ opens or closes the node. A
-press on a column's title sorts by it, and a second press sorts the other way. The wheel scrolls.
+the row, and a drag marks the rows it passes over. A drag held past the top or bottom of the view
+goes on, a row every 50 ms. A press on ▸ or ▾ opens or closes the node. A press on a column's
+title sorts by it, and a second press sorts the other way. The wheel scrolls.
+
+A visual range marks every row from where it began to the cursor, over the marks there were
+before it. The visual key again keeps what it marked, and Escape ends it with the marks as they
+were. Shift-Up and Shift-Down add to the marks and the marks stay: they are what the host acts
+on, and a plain arrow does not drop them.
+
+With `reorder`, Alt-Shift-Up and Alt-Shift-Down move the cursor's row, and a drag that starts on
+a row moves it, drawn where it would land as the pointer goes. With `marks`, a drag that starts
+on a marked row moves, and one that starts on an unmarked row marks a range. The list does not
+reorder the host's data: it reports `ROLLTUI_LIST_EVENT_REORDER` with the row's `key` and
+`before`, the key of the row it now goes before ("" for the end), and the host moves its rows and
+refreshes. A moved row that is marked means every marked row. The cursor follows the key. A
+sorted list and a tree do not move rows, and their keys stay the program's.
 
 A filter is space-separated terms, and a row is shown when every term matches within one of its
 cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, `^term` at the start,
@@ -593,12 +644,19 @@ palette lists its rows best match first.
 A `ROLLTUI_LIST_SORT_TEXT` column sorts in natural order. A `ROLLTUI_LIST_SORT_NUMBER` column
 sorts by the number a cell starts with, reading K, M, G and T as powers of 1024 and s, m, h and d
 as an age; a cell with no number goes last in either direction. Equal cells keep the host's
-order. A tree keeps the host's order and does not sort.
+order. A sorted tree sorts the rows of each level and keeps every row under its parent; with
+`headings`, the headings keep the host's order and their rows sort. A tree whose chains of single
+children should read as one row (`src/main/java`) gets that row from the host, which knows what
+joins the names.
 
 `rolltui_windows_list_event` pops what happened, oldest first: `MOVED`, `ACTIVATE`, `MARKED`,
-`SORTED`, `OPENED`, `CLOSED` and `FILTERED`, each with the row's key (the filter's text for
-`FILTERED`). `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` give the keys to act
-on, and `_set_cursor` and `_set_filter` set them. `rolltui_windows_list_perform` runs an action
+`SORTED`, `OPENED`, `CLOSED`, `FILTERED` and `REORDER`, each with the row's key (the filter's text
+for `FILTERED`). `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` give the keys to
+act on, and `_set_cursor` and `_set_filter` set them. `rolltui_windows_list_sort` and
+`_sort_state` set and read the sort. `rolltui_windows_list_mark_matching(windows, name, len,
+query, qlen, on)` marks or unmarks every row a filter query matches, shown or not: `/\.log$/`,
+`^tmp`. `rolltui_windows_list_reveal` goes to a row by its key, opening its parents, and
+`_set_open` opens or closes a node. `rolltui_windows_list_perform` runs an action
 by name, for a host's own menu entry. In a popup, Escape clears the filter, then the marks, then
 closes the popup.
 

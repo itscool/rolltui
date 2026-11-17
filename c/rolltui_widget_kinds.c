@@ -78,7 +78,7 @@ static int takes_list(const RolltuiBindings* b, RolltuiList* l, const RolltuiCho
   const char* a = takes_action(b, k, "list", &n);
   if (!a || !l) return 0;
   if (rolltui_list_typing(l) && (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE)) return 1;
-  return takes_is(a, n, "list.back") ? rolltui_list_has_back(l) : 1;
+  return rolltui_list_can(l, rolltui_list_default_actions(), a, n);
 }
 
 
@@ -1161,6 +1161,8 @@ static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(lc->w);
   RolltuiListRoles roles;
   if (!l) return;
+  memset(&roles, 0, sizeof roles);
+  roles.changed = br->info;
   roles.text = br->text;
   roles.text_muted = br->text_muted;
   roles.header = br->label;
@@ -1171,6 +1173,7 @@ static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   roles.prompt = br->prompt;
   roles.heading = rolltui_windows_menu_roles(lc->w)->breadcrumb;
   list_ctx_layout(ctx, rn);
+  rolltui_windows_want_frame(lc->w, rolltui_list_tick(l, rolltui_windows_env(lc->w)->now_ms));
   rolltui_list_draw(l, f, rolltui_windows_styles(lc->w), &roles, rn->focused, rn->hover ? rn->hover_y : -1,
                     rolltui_windows_env(lc->w)->ambiguous_wide);
 }
@@ -4280,6 +4283,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   if (r.w <= 0 || r.h <= 0) return;
   keys_ctx_layout(ctx, rn);
   keys_sheet_rects(kc, rn, &lr, &dy, &hy);
+  memset(&roles, 0, sizeof roles);
   roles.text = br->text;
   roles.text_muted = br->text_muted;
   roles.header = br->label;

@@ -627,16 +627,25 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     } else {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
       size_t k;
+      int spin_x = -1;
+      rolltui_str_clear(&scratch->title);
       for (k = 0; k < scratch->numbered_n; ++k) /* THE WINDOW'S NUMBER, which Alt and that digit focuses */
         if (scratch->numbered[k] == n) {
           char d[4];
           d[0] = (char)('1' + k), d[1] = ' ';
-          rolltui_str_set(&scratch->title, d, t->n ? 2 : 1);
-          rolltui_str_append_str(&scratch->title, t);
-          t = &scratch->title;
+          rolltui_str_set(&scratch->title, d, t->n || n->busy ? 2 : 1);
           break;
         }
+      if (n->busy && n->border != ROLLTUI_BORDER_NONE && rn->outer.w >= 7) { /* the spinner's cell, then the title */
+        spin_x = rn->outer.x + 2 + (int)scratch->title.n;
+        rolltui_str_append(&scratch->title, t->n ? "  " : " ", t->n ? 2 : 1);
+      }
+      if (scratch->title.n) {
+        rolltui_str_append_str(&scratch->title, t);
+        t = &scratch->title;
+      }
       draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
+      if (spin_x >= 0) rolltui_spinner_draw(f, spin_x, rn->outer.y, title, n->busy_since_ms);
     }
     if (n->border != ROLLTUI_BORDER_NONE) { /* the widget's footer this frame, else the file's, in the border's colour */
       const RolltuiStr* ft = n->live_footer.n ? &n->live_footer : &n->footer;
@@ -2198,6 +2207,13 @@ struct RolltuiWindowStack {
   int screen_w, screen_h;
   int numbered; /* each focusable window's title starts with its number (`rolltui_window_stack_set_numbered`) */
 };
+
+void rolltui_window_stack_set_busy(RolltuiWindowStack* s, const char* id, size_t len, int on, unsigned long long since_ms) {
+  RolltuiLayoutNode* n = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
+  if (!n) return;
+  n->busy = on ? 1 : 0;
+  n->busy_since_ms = on ? since_ms : 0;
+}
 
 void rolltui_window_stack_set_numbered(RolltuiWindowStack* s, int on) {
   if (s) s->numbered = on ? 1 : 0;

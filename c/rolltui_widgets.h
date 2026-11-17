@@ -187,6 +187,9 @@ const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len);
  * `help` included, edits into it. BORROWED; NULL when none was. */
 /* A count the window table hands the key it is delivering as a row (`5` then `list.last`); 0 when the key is not given one. */
 int rolltui_windows_count_arg(const RolltuiWindows* w);
+/* A WINDOW WANTS ITS NEXT FRAME within `ms` (a drag past a list's edge, a "loading" about to show): the soonest of a frame's asks
+ * comes back from `rolltui_windows_draw_toasts`. */
+void rolltui_windows_want_frame(RolltuiWindows* w, int ms);
 struct RolltuiPresetStore;
 void rolltui_windows_remember_keys_store(RolltuiWindows* w, struct RolltuiPresetStore* s, int persist);
 struct RolltuiPresetStore* rolltui_windows_keys_store(const RolltuiWindows* w, int* persist);

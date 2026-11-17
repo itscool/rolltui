@@ -300,6 +300,25 @@
     "list.open_all": [
       "alt+right"
     ],
+    "list.open_deep": [
+      "shift+right"
+    ],
+    "list.visual": [
+      "alt+v",
+      "v"
+    ],
+    "list.visual_swap": [
+      "alt+;",
+      "o"
+    ],
+    "list.move_up": [
+      "alt+shift+up",
+      "alt+k"
+    ],
+    "list.move_down": [
+      "alt+shift+down",
+      "alt+j"
+    ],
     "list.close_all": [
       "alt+left"
     ],

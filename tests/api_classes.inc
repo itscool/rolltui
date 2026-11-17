@@ -796,9 +796,21 @@ ROLLTUI_API(rolltui_terminal_flush_input, PUBLIC)
 ROLLTUI_API(rolltui_terminal_set_mouse, PUBLIC)  /* mouse reporting on or off while the program runs */
 ROLLTUI_API(rolltui_terminal_mouse, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_set_numbered, PUBLIC)  /* each window's number before its title, for Alt and that digit */
+ROLLTUI_API(rolltui_window_stack_set_busy, PUBLIC)  /* a spinner in a window's title while it works */
 ROLLTUI_API(rolltui_bindings_sequence_ends_any, INTERNAL)
 ROLLTUI_API(rolltui_key_decoder_reset, INTERNAL)
 ROLLTUI_API(rolltui_list_set_count, INTERNAL)
+ROLLTUI_API(rolltui_list_can, INTERNAL)
+ROLLTUI_API(rolltui_list_cursor_column, INTERNAL)
+ROLLTUI_API(rolltui_list_freeze, INTERNAL)
+ROLLTUI_API(rolltui_list_mark_matching, INTERNAL)
+ROLLTUI_API(rolltui_list_reveal, INTERNAL)
+ROLLTUI_API(rolltui_list_set_loading, INTERNAL)
+ROLLTUI_API(rolltui_list_set_open, INTERNAL)
+ROLLTUI_API(rolltui_list_sort, INTERNAL)
+ROLLTUI_API(rolltui_list_sort_state, INTERNAL)
+ROLLTUI_API(rolltui_list_tick, INTERNAL)
+ROLLTUI_API(rolltui_windows_want_frame, INTERNAL)  /* a window asks for its next frame; draw_toasts hands the soonest back */
 ROLLTUI_API(rolltui_os_tty_flush_input, INTERNAL)
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
@@ -898,6 +910,7 @@ ROLLTUI_API(rolltui_filter_term, PUBLIC)
 ROLLTUI_API(rolltui_filter_term_negated, PUBLIC)
 ROLLTUI_API(rolltui_filter_spans, PUBLIC)  /* what matched, to light it */
 ROLLTUI_API(rolltui_list_row_cell, PUBLIC)  /* a host's row function fills a row's cells */
+ROLLTUI_API(rolltui_list_row_span, PUBLIC)  /* a host's row function colours part of a cell */
 ROLLTUI_API(rolltui_list_event_release, PUBLIC)  /* KEPT: the release half of the event a host holds */
 ROLLTUI_API(rolltui_windows_bind_list, PUBLIC)  /* a host's data in a `list:` window */
 ROLLTUI_API(rolltui_windows_set_list_options, PUBLIC)  /* a table, a tree, marks: the host's to choose */
@@ -909,6 +922,14 @@ ROLLTUI_API(rolltui_windows_list_cursor, PUBLIC)  /* what the host acts on */
 ROLLTUI_API(rolltui_windows_list_marked, PUBLIC)  /* what the host acts on, several at once */
 ROLLTUI_API(rolltui_windows_list_event, PUBLIC)  /* what the person did */
 ROLLTUI_API(rolltui_windows_list_perform, PUBLIC)  /* a host's own menu entry or command does what a key would */
+ROLLTUI_API(rolltui_windows_list_cursor_column, PUBLIC)  /* the cell a host copies or edits */
+ROLLTUI_API(rolltui_windows_list_freeze, PUBLIC)  /* one list paused while the rest update */
+ROLLTUI_API(rolltui_windows_list_mark_matching, PUBLIC)  /* marks by pattern */
+ROLLTUI_API(rolltui_windows_list_reveal, PUBLIC)  /* a row shown and chosen, its parents opened */
+ROLLTUI_API(rolltui_windows_list_set_loading, PUBLIC)  /* "loading" instead of "no rows" */
+ROLLTUI_API(rolltui_windows_list_set_open, PUBLIC)  /* a tree node opened or closed by the host */
+ROLLTUI_API(rolltui_windows_list_sort, PUBLIC)  /* the sort, set */
+ROLLTUI_API(rolltui_windows_list_sort_state, PUBLIC)  /* the sort, read */
 ROLLTUI_API(rolltui_windows_list, INTERNAL)  /* the kind reaches the table's list by name */
 ROLLTUI_API(rolltui_windows_has_list, INTERNAL)
 ROLLTUI_API(rolltui_list_default_actions, INTERNAL)  /* the list scope's names; the kind drives the widget */
@@ -940,6 +961,7 @@ ROLLTUI_API(rolltui_chart_set_kind, PUBLIC)
 ROLLTUI_API(rolltui_chart_set_series, PUBLIC)
 ROLLTUI_API(rolltui_chart_set_range, PUBLIC)
 ROLLTUI_API(rolltui_chart_draw, PUBLIC)
+ROLLTUI_API(rolltui_sparkline_text, PUBLIC)  /* a sparkline a list cell or a status line shows as text */
 ROLLTUI_API(rolltui_windows_bind_chart, PUBLIC)  /* a host's numbers in a `chart:` window */
 ROLLTUI_API(rolltui_chart_draw_roles, INTERNAL)  /* the chart kind's body, in roles handed in */
 ROLLTUI_API(rolltui_windows_fill_chart, INTERNAL)  /* the kind asks the table for its chart, filled */

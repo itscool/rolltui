@@ -17,6 +17,7 @@ extern "C" {
 typedef struct RolltuiListActions {
   const char *up, *down, *page_up, *page_down, *first, *last, *activate, *back;
   const char *half_up, *half_down, *view_top, *view_middle, *view_bottom, *scroll_up, *scroll_down, *percent;
+  const char *open_deep, *visual, *visual_swap, *move_up, *move_down;
   const char *mark, *mark_up, *mark_down, *mark_all, *unmark_all, *invert_marks;
   const char *open, *close, *open_all, *close_all, *sort, *reverse, *filter;
 } RolltuiListActions;
@@ -26,6 +27,7 @@ const RolltuiListActions* rolltui_list_default_actions(void);
 typedef struct RolltuiListRoles {
   unsigned char text, text_muted, header, cursor, cursor_away, mark, hover, prompt;
   unsigned char heading; /* a section heading's name (`headings`), as a menu names its sections; 0: `header` */
+  unsigned char changed; /* a row that appeared or changed (`changes_ms`) */
 } RolltuiListRoles;
 
 typedef struct RolltuiList RolltuiList;
@@ -46,6 +48,22 @@ int rolltui_list_event(RolltuiList* l, RolltuiListEvent* out);
 int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t n);
 /* Closes one level of its own: the filter, then the marks; 0 when neither is there. */
 int rolltui_list_back(RolltuiList* l);
+/* THE SORT, set and read: by column `col` (-1: the host's own order), `reverse` the other way. 1 from `_sort_state` while sorted. */
+void rolltui_list_sort(RolltuiList* l, int col, int reverse);
+int rolltui_list_sort_state(const RolltuiList* l, int* col, int* reverse);
+/* The column the column cursor is on (`column_cursor`), 0 without one. */
+size_t rolltui_list_cursor_column(const RolltuiList* l);
+size_t rolltui_list_mark_matching(RolltuiList* l, const char* query, size_t len, int on);
+int rolltui_list_reveal(RolltuiList* l, const char* key, size_t len);
+int rolltui_list_set_open(RolltuiList* l, const char* key, size_t len, int open);
+void rolltui_list_set_loading(RolltuiList* l, int loading);
+void rolltui_list_freeze(RolltuiList* l, int frozen);
+/* THE CLOCK, before a draw: a drag at the view's edge scrolls on it, "loading" waits for it, changed rows settle by it. Returns
+ * how soon the list wants its next frame: milliseconds, or -1. */
+int rolltui_list_tick(RolltuiList* l, unsigned long long now_ms);
+/* Whether `action` means something to the list as it is now: back with nothing to back out of, a visual swap outside a visual
+ * range and a row move in a list that does not move rows do not, so their keys stay the program's. */
+int rolltui_list_can(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t len);
 /* A COUNT typed before the next key, for the actions that read one as a row (`5` then `list.last` goes to row 5) rather than as
  * a number of times; 0 when there is none. The window table sets it for one key and clears it after. */
 void rolltui_list_set_count(RolltuiList* l, int count);

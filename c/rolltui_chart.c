@@ -370,3 +370,41 @@ void rolltui_chart_draw(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* dr
   r.series[3] = ROLLTUI_ROLE_ACCENT_4;
   rolltui_chart_draw_roles(c, f, draw, area, styles, &r, ambiguous_wide);
 }
+
+/* ---- a sparkline as text ------------------------------------------------------------------------ */
+
+void rolltui_sparkline_text(const double* values, size_t n, double lo, double hi, int ascii, RolltuiStr* out) {
+  static const char kAscii[] = "_.-~^";
+  size_t i;
+  if (!out || !values) return;
+  if (!(lo < hi)) { /* the values' own range */
+    int any = 0;
+    for (i = 0; i < n; ++i) {
+      if (values[i] != values[i]) continue;
+      if (!any || values[i] < lo) lo = values[i];
+      if (!any || values[i] > hi) hi = values[i];
+      any = 1;
+    }
+  }
+  for (i = 0; i < n; ++i) {
+    const double v = values[i];
+    double t;
+    int level;
+    if (v != v) { /* NaN: a gap */
+      rolltui_str_append(out, " ", 1);
+      continue;
+    }
+    t = hi > lo ? (v - lo) / (hi - lo) : 0.0;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    if (ascii) {
+      level = (int)(t * (double)(sizeof kAscii - 2) + 0.5);
+      rolltui_str_append(out, kAscii + level, 1);
+    } else {
+      char g[3];
+      level = (int)(t * 7.0 + 0.5); /* U+2581 LOWER ONE EIGHTH BLOCK to U+2588 FULL BLOCK */
+      g[0] = (char)0xE2, g[1] = (char)0x96, g[2] = (char)(0x81 + level);
+      rolltui_str_append(out, g, 3);
+    }
+  }
+}

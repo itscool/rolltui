@@ -248,6 +248,7 @@ void rolltui_window_config_free(RolltuiWindowConfig* c) {
 
 struct RolltuiWindows {
   const RolltuiWindowStack* stack; /* BORROWED: the stack last synced, which says which window has focus */
+  int want_ms; /* the soonest a window drawn this frame wants the next (`rolltui_windows_want_frame`); -1 none */
   struct RolltuiPresetStore* keys_store; /* BORROWED: the bindings store a host handed over for its keys, which every keys sheet edits into */
   int keys_persist;
   /* BORROWED, and it must outlive this: the session whose widget-kind registry
@@ -352,6 +353,7 @@ static void default_highlight_free(void* ctx) {
 RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   RolltuiWindows* w = (RolltuiWindows*)rolltui_mem_alloc(sizeof *w);
   memset(w, 0, sizeof *w);
+  w->want_ms = -1;
   w->ctx = ctx;
   w->highlight_fn = default_highlight;
   w->highlight_ctx = rolltui_mem_alloc(sizeof(DefaultHighlight));
@@ -885,12 +887,48 @@ size_t rolltui_windows_list_marked(RolltuiWindows* w, const char* name, size_t l
 int rolltui_windows_list_event(RolltuiWindows* w, const char* name, size_t len, RolltuiListEvent* out) {
   return rolltui_list_event(rolltui_windows_list(w, name, len), out);
 }
+int rolltui_windows_list_set_open(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen, int open) {
+  return rolltui_list_set_open(rolltui_windows_list(w, name, len), key, klen, open);
+}
+void rolltui_windows_list_set_loading(RolltuiWindows* w, const char* name, size_t len, int loading) {
+  rolltui_list_set_loading(rolltui_windows_list(w, name, len), loading);
+}
+void rolltui_windows_list_freeze(RolltuiWindows* w, const char* name, size_t len, int frozen) {
+  rolltui_list_freeze(rolltui_windows_list(w, name, len), frozen);
+}
+void rolltui_windows_list_sort(RolltuiWindows* w, const char* name, size_t len, int column, int reverse) {
+  rolltui_list_sort(rolltui_windows_list(w, name, len), column, reverse);
+}
+int rolltui_windows_list_sort_state(RolltuiWindows* w, const char* name, size_t len, int* column, int* reverse) {
+  return rolltui_list_sort_state(rolltui_windows_list(w, name, len), column, reverse);
+}
+size_t rolltui_windows_list_cursor_column(RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_list_cursor_column(rolltui_windows_list(w, name, len));
+}
+size_t rolltui_windows_list_mark_matching(RolltuiWindows* w, const char* name, size_t len, const char* query, size_t qlen, int on) {
+  return rolltui_list_mark_matching(rolltui_windows_list(w, name, len), query, qlen, on);
+}
+int rolltui_windows_list_reveal(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen) {
+  return rolltui_list_reveal(rolltui_windows_list(w, name, len), key, klen);
+}
 int rolltui_windows_list_perform(RolltuiWindows* w, const char* name, size_t len, const char* action, size_t alen) {
   return action ? rolltui_list_perform(rolltui_windows_list(w, name, len), rolltui_list_default_actions(), action, alen) : 0;
 }
 void rolltui_list_event_release(RolltuiListEvent* e) {
-  if (e) rolltui_str_free(&e->key);
+  if (!e) return;
+  rolltui_str_free(&e->key);
+  rolltui_str_free(&e->before);
 }
+void rolltui_list_row_span(RolltuiListRow* r, size_t cell, size_t begin, size_t end, unsigned char role) {
+  RolltuiListSpan* sp;
+  if (!r || r->span_n >= ROLLTUI_LIST_SPAN_MAX || end <= begin) return;
+  sp = &r->spans[r->span_n++];
+  sp->cell = (unsigned char)cell;
+  sp->role = role;
+  sp->begin = (unsigned short)(begin > 0xFFFF ? 0xFFFF : begin);
+  sp->end = (unsigned short)(end > 0xFFFF ? 0xFFFF : end);
+}
+
 void rolltui_list_row_cell(RolltuiListRow* r, const char* text, size_t len) {
   if (r) rolltui_str_list_add(&r->cells, text ? text : "", text ? len : 0);
 }
@@ -941,9 +979,10 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
   toasts = rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
                                            w->cfg->env.still);
   which = draw_which_key(w, f, screen, styles, now_ms);
-  if (which < 0) return toasts;
-  if (toasts < 0) return which > 0 ? which : -1;
-  return which > 0 && which < toasts ? which : toasts;
+  if (which > 0 && (toasts < 0 || which < toasts)) toasts = which;
+  if (w->want_ms >= 0 && (toasts < 0 || w->want_ms < toasts)) toasts = w->want_ms; /* a window's own: the next frame it wants */
+  w->want_ms = -1;
+  return toasts;
 }
 int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e) {
   return w && e ? rolltui_message_log_toast_event(&w->messages, e) : 0;
@@ -1664,6 +1703,9 @@ static int focused_takes(const RolltuiWindows* w, const RolltuiChord* k) {
 }
 
 int rolltui_windows_count_arg(const RolltuiWindows* w) { return w ? w->count_arg : 0; }
+void rolltui_windows_want_frame(RolltuiWindows* w, int ms) {
+  if (w && ms >= 0 && (w->want_ms < 0 || ms < w->want_ms)) w->want_ms = ms;
+}
 
 int rolltui_windows_any_key(const RolltuiWindows* w, RolltuiChord* out) {
   if (!w || !w->has_any) return 0;

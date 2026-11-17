@@ -5,6 +5,7 @@
 // Every widget case composes a real screen from a layout file and reads the frame back as text, so what is asserted is what a
 // person sees.
 //
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -77,13 +78,16 @@ struct Screen {
   RolltuiLayout* layout = nullptr;
   RolltuiWindows* w = nullptr;
   int width, height;
+  unsigned long long now = 1000;  // the frame clock each paint hands the windows
+  int wait = -1;                  // what the frame said it wants next (`rolltui_windows_draw_toasts`)
+  bool busy = false;              // the window's title carries a spinner
   std::vector<RolltuiCell> cells;  // the last frame painted, a cell at a time
   const RolltuiCell& cell(int x, int y) const { return cells[static_cast<std::size_t>(y * width + x)]; }
-  Screen(int wd, int ht) : width(wd), height(ht) {
+  Screen(int wd, int ht, std::string_view screen = kScreen) : width(wd), height(ht) {
     RolltuiLayoutReport rep{};
     std::size_t nd = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx(), &nd);
-    layout = rolltui_load_layout_text(kScreen.data(), kScreen.size(), defaults, nd, rolltui_layout_default_hooks(), &rep);
+    layout = rolltui_load_layout_text(screen.data(), screen.size(), defaults, nd, rolltui_layout_default_hooks(), &rep);
     rolltui_layout_report_release(&rep);
     w = rolltui_windows_new(ctx());
   }
@@ -98,9 +102,10 @@ struct Screen {
     RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
     RolltuiWindowStack* stack = rolltui_window_stack_new();
     rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
+    if (busy) rolltui_window_stack_set_busy(stack, "rows", 4, 1, now);
     const RolltuiRect area{0, 0, width, height};
     RolltuiWidgetEnv env{};
-    env.now_ms = 1000;
+    env.now_ms = now;
     rolltui_context_set_env(ctx(), &env);
     rolltui_windows_sync(w, stack);
     rolltui_windows_autosize(w, stack, area);
@@ -118,6 +123,7 @@ struct Screen {
           rolltui_windows_draw(s->w, rn, fr, s->styles, rolltui_windows_default_roles());
         },
         &slot, 0, cs);
+    wait = rolltui_windows_draw_toasts(w, f, area, styles, now);
     cells.assign(static_cast<std::size_t>(width * height), RolltuiCell{});
     for (int y = 0; y < height; ++y)
       for (int x = 0; x < width; ++x) rolltui_frame_cell(f, x, y, &cells[static_cast<std::size_t>(y * width + x)]);
@@ -156,6 +162,13 @@ struct Screen {
     RolltuiChord c{};
     c.key = ROLLTUI_KEY_CHAR;
     c.ch = ch;
+    c.alt = alt ? 1 : 0;
+    send(c);
+  }
+  void chord(unsigned char k, bool shift, bool alt) {
+    RolltuiChord c{};
+    c.key = k;
+    c.shift = shift ? 1 : 0;
     c.alt = alt ? 1 : 0;
     send(c);
   }
@@ -640,6 +653,353 @@ void test_lit_matches() {
   check(has(rows, "readme.md") && has(rows, "makefile"), "…and the next Escape clears it: every row again");
 }
 
+
+// ---- lists and tables, the third batch ----------------------------------------------------------
+
+// A ROW'S OWN PARTS: a span of a cell in a role of its own, a mark of the row's own in the gutter, and rows fading with distance.
+struct Spanned {
+  std::vector<std::string> keys;
+};
+std::size_t spanned_count(void* c) { return static_cast<Spanned*>(c)->keys.size(); }
+void spanned_row(void* c, std::size_t i, RolltuiListRow* out) {
+  const std::string& k = static_cast<Spanned*>(c)->keys[i];
+  rolltui_str_set(&out->key, k.data(), k.size());
+  rolltui_list_row_cell(out, "rwxr-x", 6);
+  rolltui_list_row_span(out, 0, 0, 1, ROLLTUI_ROLE_ACCENT_1); // the r
+  rolltui_list_row_span(out, 0, 2, 3, ROLLTUI_ROLE_ACCENT_2); // the x
+  if (i == 1) {
+    std::memcpy(out->gutter, "C", 2);
+    out->gutter_role = ROLLTUI_ROLE_ACCENT_3;
+  }
+}
+
+bool same_fg(const RolltuiCell& a, const RolltuiCell& b) {
+  return a.style.fg.kind == b.style.fg.kind && a.style.fg.r == b.style.fg.r && a.style.fg.g == b.style.fg.g &&
+         a.style.fg.b == b.style.fg.b && a.style.fg.index == b.style.fg.index;
+}
+
+void test_spans_gutter_fade() {
+  Spanned d{{"a", "b", "c", "d", "e", "f"}};
+  Screen s(20, 6);
+  rolltui_windows_bind_list(s.w, "things", 6, spanned_count, spanned_row, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.gutter = 1;
+  o.fade = 15;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  auto rows = s.paint();
+  check(starts(rows[1], "C rwxr-x") && starts(rows[2], "  rwxr-x"), "a row's own mark stands in the gutter, a row without one blank [" +
+                                                                         rows[1] + "]");
+  check(!same_fg(s.cell(2, 2), s.cell(3, 2)) && !same_fg(s.cell(4, 2), s.cell(3, 2)) && !same_fg(s.cell(2, 2), s.cell(4, 2)),
+        "a cell's spans draw in their roles: the r, the w between and the x each their own colour");
+  check(!same_fg(s.cell(3, 1), s.cell(3, 4)), "rows further from the cursor are fainter");
+  o.fade = 0;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  check(same_fg(s.cell(3, 1), s.cell(3, 4)), "…and with no fade, every row alike");
+}
+
+// A COLUMN CURSOR in a table: Left and Right move it, the sort key sorts by its column, then the other way, then the host's order;
+// and a host sets and reads the sort.
+void test_column_cursor() {
+  Data d;
+  const char* names[] = {"b", "a", "c"};
+  const char* sizes[] = {"20", "30", "10"};
+  for (int i = 0; i < 3; ++i) {
+    d.keys.push_back(names[i]);
+    d.a.push_back(names[i]);
+    d.b.push_back(sizes[i]);
+  }
+  Screen s(24, 6);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListColumn cols[2]{};
+  rolltui_str_set(&cols[0].title, "Name", 4);
+  rolltui_str_set(&cols[1].title, "Size", 4);
+  cols[1].sort = ROLLTUI_LIST_SORT_NUMBER;
+  rolltui_windows_set_list_columns(s.w, "things", 6, cols, 2);
+  rolltui_str_free(&cols[0].title);
+  rolltui_str_free(&cols[1].title);
+  RolltuiListOptions o{};
+  o.column_cursor = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  auto rows = s.paint();
+  check(s.cell(0, 0).style.reverse, "the column cursor's title is drawn reversed: Name");
+  s.key(ROLLTUI_KEY_RIGHT);
+  rows = s.paint();
+  const int size_x = static_cast<int>(rows[0].find("Size"));
+  check(rolltui_windows_list_cursor_column(s.w, "things", 6) == 1 && s.cell(size_x, 0).style.reverse && !s.cell(0, 0).style.reverse,
+        "Right moves it to Size");
+  check(s.cell(size_x, 1).style.underline, "…and the cursor row's cell under it is underlined");
+  s.chr('s', true);
+  rows = s.paint();
+  int col = -1, rev = -1;
+  check(rolltui_windows_list_sort_state(s.w, "things", 6, &col, &rev) == 1 && col == 1 && rev == 0 && starts(rows[1], "c") &&
+            starts(rows[3], "a"),
+        "the sort key sorts by the cursor's column: 10, 20, 30");
+  check(s.cell(size_x, 0).style.underline, "…and the sorted column's title is underlined");
+  s.chr('s', true);
+  rows = s.paint();
+  check(rolltui_windows_list_sort_state(s.w, "things", 6, &col, &rev) == 1 && rev == 1 && starts(rows[1], "a"), "again: the other way");
+  s.chr('s', true);
+  rows = s.paint();
+  check(rolltui_windows_list_sort_state(s.w, "things", 6, &col, &rev) == 0 && col == -1 && starts(rows[1], "b"),
+        "again: the host's own order");
+  rolltui_windows_list_sort(s.w, "things", 6, 0, 0);
+  rows = s.paint();
+  check(starts(rows[1], "a") && starts(rows[3], "c") && s.events(ROLLTUI_LIST_EVENT_SORTED) >= 1,
+        "a host sets the sort by name, and the list says it changed");
+}
+
+// MARKS BY PATTERN, and A VISUAL RANGE that follows the cursor, swaps ends, and on Escape puts the marks back as they were.
+void test_pattern_and_visual() {
+  Data d;
+  for (int i = 0; i < 8; ++i) {
+    d.keys.push_back("m" + std::to_string(i));
+    d.a.push_back("item " + std::to_string(i));
+  }
+  Screen s(30, 10);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.marks = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  check(rolltui_windows_list_mark_matching(s.w, "things", 6, "/[13]$/", 7, 1) == 2 && rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 2,
+        "rows a pattern matches are marked: item 1 and item 3");
+  check(rolltui_windows_list_mark_matching(s.w, "things", 6, "3$", 2, 0) == 1 && rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 1,
+        "…and unmarked the same way");
+  s.chr('v', true);  // a range from m0
+  s.key(ROLLTUI_KEY_DOWN);
+  s.key(ROLLTUI_KEY_DOWN);
+  check(rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 3 && s.cursor() == "m2", "a visual range marks from where it began to the cursor");
+  s.chr(';', true);  // to the other end
+  check(s.cursor() == "m0", "the swap goes to the range's other end");
+  s.key(ROLLTUI_KEY_DOWN);
+  check(rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 2, "…and the range now runs from m2 back to the cursor: m1 (marked before) and m2");
+  check(rolltui_windows_back(s.w, "rows", 4) == 1 && rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 1,
+        "Escape ends the range and puts the marks back as they were before it");
+  s.chr('v', true);
+  s.key(ROLLTUI_KEY_DOWN);
+  s.chr('v', true);  // kept
+  s.key(ROLLTUI_KEY_DOWN);
+  check(rolltui_windows_list_marked(s.w, "things", 6, nullptr) == 2 && s.cursor() == "m3",
+        "the visual key again keeps what the range marked (m1, m2), and the cursor then moves freely");
+}
+
+// A TREE: sorted within each level, a node opened with everything under it, a big node closed at the start, a row revealed.
+void test_tree_levels() {
+  Data d;
+  const char* names[] = {"src", "zeta.c", "util", "two.c", "one.c", "alpha.c", "docs", "x.md"};
+  const int depth[] = {0, 1, 1, 2, 2, 1, 0, 1};
+  for (int i = 0; i < 8; ++i) {
+    d.keys.push_back(names[i]);
+    d.a.push_back(names[i]);
+    d.depth.push_back(depth[i]);
+  }
+  Screen s(30, 12);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListColumn col{};
+  rolltui_str_set(&col.title, "Name", 4);
+  rolltui_windows_set_list_columns(s.w, "things", 6, &col, 1);
+  rolltui_str_free(&col.title);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.tree = 1;
+  o.open_depth = 3;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  rolltui_windows_list_sort(s.w, "things", 6, 0, 0);
+  auto rows = s.paint();
+  check(row_of(rows, "docs") == 0 && row_of(rows, "x.md") == 1 && row_of(rows, "src") == 2 && row_of(rows, "alpha.c") == 3 &&
+            row_of(rows, "util") == 4 && row_of(rows, "one.c") == 5 && row_of(rows, "two.c") == 6 && row_of(rows, "zeta.c") == 7,
+        "a sorted tree sorts each level and keeps every row under its parent [" + rows[3] + "|" + rows[7] + "]");
+  check(rows[7].find("\xE2\x94\x94\xE2\x94\x80") != std::string::npos && rows[3].find("\xE2\x94\x9C\xE2\x94\x80") != std::string::npos,
+        "…and draws its guides by the sorted order: zeta.c is the last child └─, alpha.c ├─");
+  rolltui_windows_list_sort(s.w, "things", 6, -1, 0);
+  s.chord(ROLLTUI_KEY_LEFT, false, true);  // close every node
+  rows = s.paint();
+  check(!has(rows, "one.c") && !has(rows, "zeta.c"), "every node closed");
+  rolltui_windows_list_set_cursor(s.w, "things", 6, "src", 3);
+  s.chord(ROLLTUI_KEY_RIGHT, true, false);  // src and all under it
+  rows = s.paint();
+  check(has(rows, "one.c") && has(rows, "zeta.c") && !has(rows, "x.md"), "Shift-Right opens the node and everything under it, and no other");
+  s.chord(ROLLTUI_KEY_LEFT, false, true);
+  check(rolltui_windows_list_reveal(s.w, "things", 6, "two.c", 5) == 1 && s.cursor() == "two.c", "reveal goes to a row inside closed nodes");
+  rows = s.paint();
+  check(has(rows, "two.c") && has(rows, "util"), "…opening its parents");
+  check(rolltui_windows_list_set_open(s.w, "things", 6, "docs", 4, 1) == 1, "a host opens a node by its key");
+  rows = s.paint();
+  check(has(rows, "x.md"), "…and its rows show");
+  check(rolltui_windows_list_reveal(s.w, "things", 6, "nothing", 7) == 0, "a key no row has is not revealed");
+  // A NODE WITH MORE CHILDREN THAN `close_over` starts closed
+  o.close_over = 2;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  Data big;
+  big.keys = {"many", "1", "2", "3", "few", "4"};
+  big.a = big.keys;
+  big.depth = {0, 1, 1, 1, 0, 1};
+  Screen t(30, 10);
+  rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &big, nullptr);
+  rolltui_windows_set_list_options(t.w, "things", 6, &o);
+  rows = t.paint();
+  check(has(rows, "many") && !has(rows, "\xE2\x94\x80  1") && has(rows, "4"), "three children over a limit of two: closed; one child: open");
+}
+
+// LOADING, CHANGED ROWS AND A PAUSED LIST, each on the frame clock.
+void test_states() {
+  Data d;
+  constexpr std::string_view kBordered =
+      R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "jobs" } ] } })";
+  Screen s(30, 8, kBordered);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.changes_ms = 500;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  rolltui_windows_list_set_loading(s.w, "things", 6, 1);
+  auto rows = s.paint();
+  check(!has(rows, "loading") && !has(rows, "no rows") && s.wait > 0 && s.wait <= 100,
+        "rows still coming say nothing for the first 100 ms, and the frame asks to come back then");
+  s.now += 150;
+  rows = s.paint();
+  check(has(rows, "loading\xE2\x80\xA6") && !has(rows, "no rows"), "…then \"loading\", not \"no rows\"");
+  rolltui_windows_list_set_loading(s.w, "things", 6, 0);
+  rows = s.paint();
+  check(has(rows, "no rows"), "once they have all come, an empty list says so");
+  for (int i = 0; i < 4; ++i) {
+    d.keys.push_back("j" + std::to_string(i));
+    d.a.push_back("job " + std::to_string(i) + " waiting");
+  }
+  rolltui_windows_list_refresh(s.w, "things", 6);
+  rows = s.paint();
+  check(s.cell(2, row_of(rows, "job 1")).style.italic, "rows that appeared are drawn as changed");
+  s.now += 600;
+  s.paint();
+  d.a[2] = "job 2 running";
+  rolltui_windows_list_refresh(s.w, "things", 6);
+  rows = s.paint();
+  const int r2 = row_of(rows, "job 2"), r1 = row_of(rows, "job 1");
+  check(r2 > 0 && s.cell(2, r2).style.italic && s.cell(2, r2).style.bold && !s.cell(2, r1).style.italic,
+        "a row that changed at a refresh is drawn bold and italic; one that did not, plain");
+  check(s.wait > 0 && s.wait <= 500, "…and the frame asks to come back when it settles");
+  s.now += 600;
+  rows = s.paint();
+  check(!s.cell(2, r2).style.italic, "…and after the time, it reads as any row again");
+  rolltui_windows_list_freeze(s.w, "things", 6, 1);
+  d.a[0] = "job 0 gone";
+  rolltui_windows_list_refresh(s.w, "things", 6);
+  rows = s.paint();
+  check(has(rows, "job 0 waiting") && !has(rows, "gone") && has(rows, "paused"), "a paused list keeps its rows and its footer says paused");
+  rolltui_windows_list_freeze(s.w, "things", 6, 0);
+  rows = s.paint();
+  check(has(rows, "job 0 gone") && !has(rows, "paused"), "…and taking the pause off shows the host's rows again");
+  s.busy = true;
+  rows = s.paint();
+  check(rows[0].find("\xE2\xA0\x8B jobs") != std::string::npos, "a busy window's title starts with a spinner [" + rows[0] + "]");
+  s.busy = false;
+  rows = s.paint();
+  check(rows[0].find(" jobs ") != std::string::npos && rows[0].find("\xE2\xA0\x8B") == std::string::npos, "…and without it, the title alone");
+}
+
+// ROWS THE PERSON MOVES: by key and by a drag, the list asking the host; and a drag held past the view's edge going on scrolling.
+void test_reorder_and_edge() {
+  Data d;
+  for (int i = 0; i < 5; ++i) {
+    d.keys.push_back("r" + std::to_string(i));
+    d.a.push_back("row " + std::to_string(i));
+  }
+  Screen s(20, 8);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  o.reorder = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  s.events(0);
+  auto take = [&](std::string* key, std::string* before) {
+    RolltuiListEvent ev{};
+    bool got = false;
+    while (rolltui_windows_list_event(s.w, "things", 6, &ev))
+      if (ev.kind == ROLLTUI_LIST_EVENT_REORDER) {
+        *key = str_of(ev.key);
+        *before = str_of(ev.before);
+        got = true;
+      }
+    rolltui_list_event_release(&ev);
+    return got;
+  };
+  std::string key, before;
+  s.chord(ROLLTUI_KEY_DOWN, true, true);
+  check(take(&key, &before) && key == "r0" && before == "r2", "Alt-Shift-Down asks the host to move r0 to before r2");
+  // the host moves it, and the cursor follows the key
+  std::swap(d.keys[0], d.keys[1]);
+  std::swap(d.a[0], d.a[1]);
+  rolltui_windows_list_refresh(s.w, "things", 6);
+  auto rows = s.paint();
+  check(s.cursor() == "r0" && starts(rows[1], "row 0"), "…and once the host has, the cursor is still on r0, one row down");
+  s.chord(ROLLTUI_KEY_UP, true, true);
+  check(take(&key, &before) && key == "r0" && before == "r1", "Alt-Shift-Up: before the row above");
+  s.click(2, 0);
+  s.click(2, 3, 2);
+  rows = s.paint();
+  check(starts(rows[3], "row 1") && starts(rows[0], "row 0") && starts(rows[2], "row 3"),
+        "a drag from a row shows it where it would land, the others closing up behind it [" + rows[0] + "|" + rows[3] + "]");
+  s.click(2, 3, 1);
+  check(take(&key, &before) && key == "r1" && before == "r4", "…and letting go asks the host to move it there");
+  // EDGE SCROLL: a range drag held below the view goes on, a row every 50 ms
+  Data many;
+  for (int i = 0; i < 30; ++i) {
+    many.keys.push_back("m" + std::to_string(i));
+    many.a.push_back("item " + std::to_string(i));
+  }
+  Screen t(20, 6);
+  rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &many, nullptr);
+  RolltuiListOptions m{};
+  m.hide_header = 1;
+  m.marks = 1;
+  rolltui_windows_set_list_options(t.w, "things", 6, &m);
+  t.paint();
+  t.click(4, 0);
+  t.click(4, 9, 2);  // below the view
+  t.paint();
+  check(t.cursor() == "m5" && t.wait > 0 && t.wait <= 50, "a drag below the view reaches its last row and asks for the next frame");
+  t.now += 200;
+  t.paint();
+  check(t.cursor() == "m9" && rolltui_windows_list_marked(t.w, "things", 6, nullptr) == 10,
+        "…and held there, it goes on: four rows in 200 ms, every one marked");
+  t.click(4, 2, 2);  // back inside
+  const std::string inside = t.cursor();
+  t.now += 200;
+  t.paint();
+  check(t.cursor() == inside && t.wait < 0, "inside the view again, it stops, and asks for no frame [" + inside + "]");
+  t.click(4, 2, 1);
+  // A SORTED LIST DOES NOT MOVE ROWS: the sort says where each one goes
+  RolltuiListColumn c{};
+  rolltui_str_set(&c.title, "Name", 4);
+  rolltui_windows_set_list_columns(s.w, "things", 6, &c, 1);
+  rolltui_str_free(&c.title);
+  rolltui_windows_list_sort(s.w, "things", 6, 0, 0);
+  s.paint();
+  s.events(0);
+  s.chord(ROLLTUI_KEY_DOWN, true, true);
+  check(!take(&key, &before), "a sorted list does not move rows");
+}
+
+void test_sparkline() {
+  const double up[] = {0, 1, 2, 3, 4, 5, 6, 7};
+  RolltuiStr out{};
+  rolltui_sparkline_text(up, 8, 0, 0, 0, &out);
+  check(str_of(out) == "\xE2\x96\x81\xE2\x96\x82\xE2\x96\x83\xE2\x96\x84\xE2\x96\x85\xE2\x96\x86\xE2\x96\x87\xE2\x96\x88",
+        "a sparkline as text, over the values' own range: ▁ to █");
+  rolltui_str_clear(&out);
+  const double gap[] = {1, NAN, 1};
+  rolltui_sparkline_text(gap, 3, 0, 2, 0, &out);
+  check(str_of(out) == "\xE2\x96\x85 \xE2\x96\x85", "a NaN is a gap; a set range places the values in it [" + str_of(out) + "]");
+  rolltui_str_clear(&out);
+  rolltui_sparkline_text(up, 8, 0, 0, 1, &out);
+  check(str_of(out).size() == 8 && str_of(out)[0] == '_' && str_of(out)[7] == '^', "where block elements are wide, ASCII");
+  rolltui_str_free(&out);
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -656,5 +1016,12 @@ int main() {
   test_motions();
   test_filter();
   test_lit_matches();
+  test_spans_gutter_fade();
+  test_column_cursor();
+  test_pattern_and_visual();
+  test_tree_levels();
+  test_states();
+  test_reorder_and_edge();
+  test_sparkline();
   return testkit::report("list_test");
 }

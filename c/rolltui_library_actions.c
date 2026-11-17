@@ -135,6 +135,11 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(list,      open,              "list.open",                   "open the node, or into it") \
   X(list,      close,             "list.close",                  "close the node, or up to its parent") \
   X(list,      open_all,          "list.open_all",               "open every node") \
+  X(list,      open_deep,         "list.open_deep",              "open the node and everything under it") \
+  X(list,      visual,            "list.visual",                 "mark from here to wherever the cursor goes") \
+  X(list,      visual_swap,       "list.visual_swap",            "go to the other end of the range") \
+  X(list,      move_up,           "list.move_up",                "move the row up") \
+  X(list,      move_down,         "list.move_down",              "move the row down") \
   X(list,      close_all,         "list.close_all",              "close every node") \
   X(list,      sort,              "list.sort",                   "sort by the next column, then the list's own order") \
   X(list,      reverse,           "list.reverse",                "the sort the other way") \
