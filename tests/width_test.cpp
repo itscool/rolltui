@@ -140,11 +140,16 @@ int main() {
   check(wcwidth(L'\x4E2D') == 2 && wcwidth(L'\x0301') == 0,
         "libc wcwidth is live under C.UTF-8 (中 = 2, U+0301 = 0)");
 
+  // WHERE A LIBC'S TABLE IS OLDER than the Unicode the library follows, asked of the libc itself rather than assumed of a brand:
+  // Apple's libc and glibc 2.39 (Ubuntu 24.04) do not know Unicode 16's letters or the Yijing widths; a newer glibc does.
+  const unsigned before16 = wcwidth(0x088F) <= 0 ? kBoth : 0u;
+  const unsigned before16_ideographic = wcwidth(0x2FFC) <= 0 || wcwidth(0x31E4) <= 0 ? kBoth : 0u; /* glibc 2.39 knows 15.1's, not 16's */
+  const unsigned narrow_yijing = wcwidth(0x2630) == 1 || wcwidth(0x4DC0) == 1 ? kBoth : 0u; /* glibc 2.39: the trigrams, not the hexagrams */
   const std::vector<Known> all_known = {
       {kBoth, "unassigned code points: we follow East_Asian_Width (1, or 2 inside the CJK "
        "blocks); libc returns 0 for anything its table does not know",
        [](char32_t cp, int, int libc) { return rolltui_u_general_category(cp) == ROLLTUI_GENERALCATEGORY_Cn && libc == 0; }},
-      {kApple, "assigned after libc's table was built (libc returns 0, its answer for "
+      {before16, "assigned after libc's table was built (libc returns 0, its answer for "
        "unassigned): U+088F, 0C5C, 0CDC, 1B4E-1B4F, 1B7F, 1C89-1C8A, 20C1, 2427-2429, "
        "2B96, A7CB-A7CF, A7D2, A7D4, A7DA-A7DC, A7F1, FBC3-FBD2, FD90-FD91, FDC8-FDCE",
        [](char32_t cp, int ours, int libc) {
@@ -158,13 +163,13 @@ int main() {
          for (auto& x : r) if (cp >= x[0] && cp <= x[1]) return true;
          return false;
        }},
-      {kApple, "ideographic description characters added in Unicode 15.1/16 (W): U+2FFC-2FFF, "
-       "31E4-31E5, 31EF — libc returns 0 (unknown to its table)",
+      {before16_ideographic, "ideographic description characters added in Unicode 15.1 (U+2FFC-2FFF, 31EF) and 16 "
+       "(U+31E4-31E5), all W — libc returns 0 for those its table does not know",
        [](char32_t cp, int ours, int libc) {
          return ours == 2 && libc == 0 &&
                 ((cp >= 0x2FFC && cp <= 0x2FFF) || cp == 0x31E4 || cp == 0x31E5 || cp == 0x31EF);
        }},
-      {kApple, "East_Asian_Width became W for the Yijing trigrams, mono/digrams and hexagrams "
+      {narrow_yijing, "East_Asian_Width became W for the Yijing trigrams, mono/digrams and hexagrams "
        "(U+2630-2637, 268A-268F, 4DC0-4DFF); libc's older table has them narrow",
        [](char32_t cp, int ours, int libc) {
          return ours == 2 && libc == 1 &&

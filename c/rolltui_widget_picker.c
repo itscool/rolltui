@@ -429,7 +429,7 @@ static int column_x(RolltuiPicker* p, size_t ci) {
  * from the left; otherwise the column to the RIGHT of the focus ends at the right edge, with
  * the last slot reserved at the maximum width while a folder could be selected, so the focused
  * column never shuffles under the eye as the cursor moves. Entering a leaf keeps the columns
- * where they are, and the focused column always starts on screen. */
+ * where they are while it is on screen whole, and the focused column always starts on screen. */
 static void retarget(RolltuiPicker* p) {
   int total = 0, target = 0, slot;
   const int slot_w = slot_width(p);
@@ -442,7 +442,8 @@ static void retarget(RolltuiPicker* p) {
   if (p->anchored_once && p->n != 0 && p->focus_col + 1 == p->n && !slot) {
     int focus_x = p->scroll_target;
     for (j = 0; j < p->focus_col; ++j) focus_x += shown_width(p, j) + 1;
-    if (focus_x >= 0 && focus_x < p->inner.w) return;
+    /* kept where it is only while the focused column is on screen WHOLE: one that starts two cells from the edge is not seen */
+    if (focus_x >= 0 && focus_x + shown_width(p, p->focus_col) <= p->inner.w) return;
   }
   p->anchored_once = 1;
   if (total > p->inner.w && p->n != 0) {

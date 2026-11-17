@@ -752,10 +752,17 @@ int main() {
               std::to_string(col_of_word(in_beta, "a-quite-long-name")) + " > " + std::to_string(col_of_word(on_one_classic, "one.txt")) + "]");
     // …AND A LEAF PREVIEW IS LAID OUT AT ITS FINAL WIDTH BEFORE THE CURSOR ENTERS IT: beta, files
     // only, sits where it will sit once entered, so Right into it shifts nothing.
+    // Where the frame cannot hold the preview beside the column the cursor is in, the cursor's column keeps its place and the preview
+    // is clipped; entering it then brings it on screen whole, which moves it.
     const std::string on_beta_classic = run(classic_base + " --frame 60x10 --keys \"Down\" 2>&1", rc);
-    check(col_of_word(on_beta_classic, "a-quite-long-name") == col_of_word(in_beta, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
-          "a preview with no folders is already at its final place: entering it does not move it [" +
-              std::to_string(col_of_word(on_beta_classic, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
+    const std::string on_beta_wide = run(classic_base + " --frame 100x10 --keys \"Down\" 2>&1", rc);
+    const std::string in_beta_wide = run(classic_base + " --frame 100x10 --keys \"Down Right\" 2>&1", rc);
+    check(col_of_word(on_beta_wide, "a-quite-long-name") == col_of_word(in_beta_wide, "a-quite-long-name") && col_of_word(in_beta_wide, "a-quite-long-name") > 0,
+          "a preview with no folders that fits is already at its final place: entering it does not move it [" +
+              std::to_string(col_of_word(on_beta_wide, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta_wide, "a-quite-long-name")) + "]");
+    check(col_of_word(in_beta, "a-quite-long-name") < col_of_word(on_beta_classic, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
+          "…and one clipped beside its parent is brought on screen whole when entered [" + std::to_string(col_of_word(on_beta_classic, "a-quite-long-name")) +
+              " then " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
     // THE FADE at the left edge is the library kind's and is asserted in `picker_test`, which can
     // read the cell count a text frame cannot show; this app only names `filepicker`.
     // A START INSIDE A LEAF — a folder with no folders — is anchored like any other start: the leaf

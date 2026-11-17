@@ -1315,6 +1315,37 @@ int main() {
       rolltui_picker_free(r);
     }
 #endif
+    // A FOLDER ENTERED IS SEEN WHOLE: where its parent's column is wide and the frame narrow, entering a folder of files brings it on
+    // screen, rather than keeping the columns where they were with the folder two cells from the edge
+    {
+      fs::create_directories(root / "narrow" / "aa-leaf");
+      write_file(root / "narrow" / "aa-leaf" / "a-file-in-the-leaf.txt", "x");
+      write_file(root / "narrow" / "zz-a-very-long-sibling-name-that-is-wide.txt", "x");
+      RolltuiPicker* r = rolltui_picker_new();
+      RolltuiPickerOptions ro;
+      rolltui_picker_options_init(&ro);
+      ro.motion = 0;
+      ro.no_watch = 1;
+      rolltui_picker_set_options(r, &ro);
+      const std::string narrow = (root / "narrow").string();
+      rolltui_picker_go_to(r, narrow.data(), narrow.size());
+      auto draw_n = [&]() {
+        RolltuiFrame* f = rolltui_frame_new(40, 6, styles[ROLLTUI_ROLE_BACKGROUND]);
+        rolltui_picker_layout(r, RolltuiRect{0, 0, 40, 6});
+        rolltui_picker_draw(r, f, styles, &glyphs, 0, 1);
+        const std::string t2 = text_of(f);
+        rolltui_frame_free(f);
+        return t2;
+      };
+      draw_n();
+      RolltuiEvent right{};
+      right.kind = ROLLTUI_EVENT_KEY;
+      right.key.key = ROLLTUI_KEY_RIGHT;
+      rolltui_picker_handle(r, &right, b, A);
+      const std::string in_leaf = draw_n();
+      check(has(in_leaf, "a-file-in-the-leaf.txt"), "a folder of files entered in a narrow frame is on screen whole, its names readable [" + in_leaf + "]");
+      rolltui_picker_free(r);
+    }
     // A LINE WRAPPED, at the tab stop set
     const std::string longp = (root / "prev" / "long.txt").string();
     o.preview_wrap = 1;

@@ -924,7 +924,8 @@ int main() {
     check(round_trips, "every role's name resolves back to its own ordinal, all 49 of them");
     check(rolltui_role_from_name("no_such_role", 12) == -1, "an unknown role name is -1, not 0");
     std::size_t oob = 99;
-    check(std::string_view(rolltui_role_name(200, &oob), oob).empty(),
+    const char* oob_name = rolltui_role_name(200, &oob); /* called first: a call's arguments are read in no set order */
+    check(std::string_view(oob_name, oob).empty(),
           "an out-of-range role is \"\", never a read past the table");
   }
 
