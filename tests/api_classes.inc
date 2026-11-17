@@ -638,6 +638,10 @@ ROLLTUI_API(rolltui_windows_picker_taken, PUBLIC)  /* the answer half: a chosen 
 ROLLTUI_API(rolltui_windows_picker_event, PUBLIC)  /* the fuller answer: a cancel and a copy are things the picker's keys say and only a host can do */
 ROLLTUI_API(rolltui_picker_event_release, PUBLIC)  /* KEPT: the release half of the event a consumer holds */
 ROLLTUI_API(rolltui_windows_set_picker_options, PUBLIC)  /* dotfiles, sort, motion, dividers, take_folders: the host's settings for the picker it shows */
+ROLLTUI_API(rolltui_windows_set_picker_previewer, PUBLIC)  /* KEPT: a host's own previewer in the column browser (a document's pages, a command's output), asked before the built-in one */
+ROLLTUI_API(rolltui_windows_set_picker_preview_command, PUBLIC)  /* KEPT: a command as the column browser's previewer, started where the cursor rests and stopped when it moves */
+ROLLTUI_API(rolltui_windows_picker_marked, PUBLIC)  /* KEPT: the paths marked in the column browser, for a host to copy, move or open together */
+ROLLTUI_API(rolltui_windows_set_picker_decor, PUBLIC)  /* KEPT: a host's own marks on the column browser's entries (a git status, a copied or cut tag) */
 ROLLTUI_API(rolltui_picker_options_init, PUBLIC)  /* KEPT: the defaults, so a host sets only what it means to */
 ROLLTUI_API(rolltui_windows_picker_selected, PUBLIC)  /* what is under the cursor: a status line, a copy */
 ROLLTUI_API(rolltui_windows_picker_dir, PUBLIC)  /* where the cursor is: what a save dialog joins a name onto */
@@ -655,6 +659,10 @@ ROLLTUI_API(rolltui_picker_focus_column, INTERNAL)
 ROLLTUI_API(rolltui_picker_reload, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_tasks, INTERNAL)  /* the picker kind lends it the table's workers */
+ROLLTUI_API(rolltui_picker_set_previewer, INTERNAL)  /* the picker kind passes on the host's previewer */
+ROLLTUI_API(rolltui_picker_set_preview_command, INTERNAL)  /* the picker kind passes on the host's command */
+ROLLTUI_API(rolltui_picker_set_decor, INTERNAL)  /* the picker kind passes on the host's entry marks */
+ROLLTUI_API(rolltui_picker_marked, INTERNAL)  /* the picker kind answers the marked paths */
 ROLLTUI_API(rolltui_picker_layout, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_hover, INTERNAL)
 ROLLTUI_API(rolltui_picker_draw, INTERNAL)
@@ -768,6 +776,7 @@ ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture
 ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
 ROLLTUI_API(rolltui_windows_set_tasks, PUBLIC)  /* dirktui lends the run's workers to its preview */
 ROLLTUI_API(rolltui_windows_tasks, INTERNAL)  /* the built-in kinds read files on them */
+ROLLTUI_API(rolltui_tasks_workers, INTERNAL)  /* the column browser waits for a folder only when there is a worker reading it */
 ROLLTUI_API(rolltui_windows_bind_changed, PUBLIC)  /* KEPT: a host filters as a person types */
 ROLLTUI_API(rolltui_windows_call_changed, INTERNAL)  /* the input kind calls it when the text changes */
 ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
@@ -1748,12 +1757,15 @@ ROLLTUI_API(rolltui_preview_message, INTERNAL)
 ROLLTUI_API(rolltui_preview_new, INTERNAL)
 ROLLTUI_API(rolltui_preview_refresh, INTERNAL)
 ROLLTUI_API(rolltui_preview_scroll_by, INTERNAL)
+ROLLTUI_API(rolltui_preview_scroll_sideways, INTERNAL)
 ROLLTUI_API(rolltui_preview_scroll_edge, INTERNAL)
 ROLLTUI_API(rolltui_preview_scroll_extent, INTERNAL)
 ROLLTUI_API(rolltui_preview_scroll_page, INTERNAL)
 ROLLTUI_API(rolltui_preview_scroll_to, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_info, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_path, INTERNAL)
+ROLLTUI_API(rolltui_preview_path_is, INTERNAL)
+ROLLTUI_API(rolltui_preview_set_layout, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_syntax, INTERNAL)
 ROLLTUI_API(rolltui_preview_set_tasks, INTERNAL)  /* the picker lends its preview the workers */
 ROLLTUI_API(rolltui_preview_set_now, INTERNAL)

@@ -110,6 +110,17 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(picker,    cancel,            "picker.cancel",               "choose nothing") \
   X(picker,    copy,              "picker.copy",                 "copy the selection's path") \
   X(picker,    copy_inverse,      "picker.copy_inverse",         "copy the path the other way round (absolute / relative)") \
+  X(picker,    half_up,           "picker.half_up",              "half a page up") \
+  X(picker,    half_down,         "picker.half_down",            "half a page down") \
+  X(picker,    back,              "picker.back",                 "the folder visited before") \
+  X(picker,    forward,           "picker.forward",              "the folder visited after") \
+  X(picker,    previous,          "picker.previous",             "the folder last left") \
+  X(picker,    mark,              "picker.mark",                 "mark or unmark the entry, and move to the next") \
+  X(picker,    mark_up,           "picker.mark_up",              "mark the entry and the one above") \
+  X(picker,    mark_down,         "picker.mark_down",            "mark the entry and the one below") \
+  X(picker,    unmark_all,        "picker.unmark_all",           "clear every mark") \
+  X(picker,    preview_left,      "picker.preview_left",         "scroll the preview's lines left") \
+  X(picker,    preview_right,     "picker.preview_right",        "scroll the preview's lines right") \
   X(list,      up,                "list.up",                     "the row above") \
   X(list,      down,              "list.down",                   "the row below") \
   X(list,      page_up,           "list.page_up",                "a page up") \

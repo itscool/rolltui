@@ -19,8 +19,12 @@
 #include "rolltui/c/rolltui_widgets.h"
 
 /* ---- one column: a directory, its entries, and where the eye is ------------------------- */
+struct FolderRead;
 typedef struct Column {
   RolltuiStr dir;
+  /* BEING READ on a worker (the job's, BORROWED), since `load_since_ms`: drawn "loading…" from 100 ms, filled when the read is back */
+  struct FolderRead* load;
+  unsigned long long load_since_ms;
   RolltuiDirList entries; /* OWNED; released with the column */
   size_t sel;
   size_t top;      /* the first visible row: this column's own vertical scroll */
@@ -67,11 +71,46 @@ struct RolltuiPicker {
   /* the outcome, until a host takes it */
   unsigned char event_kind, event_inverse;
   RolltuiStr event_path;
+  /* WHAT CHANGED, told once each, in order: the cursor's entry and the focused folder, as they last were */
+  struct {
+    unsigned char kind;
+    RolltuiStr path;
+  } changes[8];
+  size_t change_head, change_n;
+  RolltuiStr seen_entry, seen_folder;
+  /* THE FOLDERS VISITED, oldest first, and where in them the picker is; `previous` the one last left */
+  RolltuiStr* visited;
+  size_t visited_n, visited_cap, visited_at;
+  RolltuiStr previous;
+  int walking; /* going back or forward: what is visited is not recorded again */
   /* THE FILE PREVIEW: the module that draws what a file holds, the path it was last pointed at (so a frame that
    * moved nothing reads nothing), whether the keys are in it, and where it was drawn (for the pointer). */
-  RolltuiPreview* pv; /* OWNED, made when the first file is previewed */
+  RolltuiPreview* pv; /* BORROWED from `cache`: the preview shown */
+  /* PREVIEWS KEPT: the one shown and the files beside it, read ahead while workers are lent, so moving back or on draws at once. OWNED,
+   * each made when first needed; `used` is when each was last wanted. */
+  RolltuiPreview* cache[4];
+  unsigned long long cache_used[4], cache_tick;
   RolltuiSyntax* syn; /* OWNED, made when a file is first previewed with colour on; the preview BORROWS it, so it is freed after the preview */
   RolltuiStr pv_path;
+  /* A HOST'S PREVIEWER, asked before the built-in one: what it filled (OWNED), whether it took this path, where it is scrolled
+   * to (a line of `host_text`, or with a `host_bound`, a place of the previewer's own) */
+  RolltuiMap marked; /* full path -> non-NULL: the entries marked (`marks`) */
+  RolltuiPickerDecorFn decor_fn;
+  void* decor_ctx;
+  int aw;   /* ambiguous-width glyphs two cells wide, as the last draw was told: the preview's sideways reach is measured with it */
+  int lazy; /* the person's keys moved the cursor: a folder beside it is read on the workers (a host's call reads at once) */
+  /* A COMMAND AS THE PREVIEWER: its own arguments (OWNED), the run for the file previewed (OWNED), and whether one is due to start
+   * (from `cmd_asked_ms` + PREVIEW_COMMAND_MS: where the cursor rests). Its output is `host_text`, with `host_on` set. */
+  char** cmd;
+  size_t cmd_n;
+  RolltuiChild* child;
+  int cmd_due;
+  unsigned long long cmd_asked_ms;
+  RolltuiPreviewerFn host_fn;
+  void* host_ctx;
+  RolltuiAnsiText* host_text;
+  int host_on;
+  size_t host_offset, host_bound;
   int pv_focus;
   int pv_zoom;         /* the preview has the whole picker: the columns are not drawn */
   RolltuiRect pv_rect; /* w == 0: not on screen */
@@ -122,8 +161,12 @@ static void column_release(Column* c) {
   rolltui_str_free(&c->error);
   memset(c, 0, sizeof *c);
 }
+static void drop_load(Column* c);
 static void cols_resize(RolltuiPicker* p, size_t n) {
-  while (p->n > n) column_release(&p->cols[--p->n]);
+  while (p->n > n) {
+    drop_load(&p->cols[p->n - 1]);
+    column_release(&p->cols[--p->n]);
+  }
 }
 static Column* cols_push(RolltuiPicker* p) {
   p->cols = (Column*)rolltui_grow_zeroed(p->cols, &p->cap, p->n + 1, sizeof *p->cols);
@@ -294,6 +337,11 @@ static void remember(RolltuiPicker* p, const Column* c) {
   }
   rolltui_str_set(kept, c->entries.v[c->sel].name.p, c->entries.v[c->sel].name.n);
 }
+/* Entry `e` of `c` is the one the memory holds for its folder: the one last used there. */
+static int last_used(const RolltuiPicker* p, const Column* c, const RolltuiDirEntry* e) {
+  const RolltuiStr* kept = c->dir.n ? (const RolltuiStr*)rolltui_map_get(&p->remembered, c->dir.p, c->dir.n) : NULL;
+  return kept && e && rolltui_str_eq(&e->name, kept->p, kept->n);
+}
 static void recall(RolltuiPicker* p, Column* c) {
   const RolltuiStr* kept = (const RolltuiStr*)rolltui_map_get(&p->remembered, c->dir.p, c->dir.n);
   size_t i;
@@ -314,9 +362,12 @@ static void clamp_top(const RolltuiPicker* p, Column* c) {
 }
 static void clamp_scroll(const RolltuiPicker* p, Column* c) {
   const int vis = rows_visible(p);
+  size_t off = (size_t)(p->opt.scrolloff > 0 ? p->opt.scrolloff : 0);
   if (vis <= 0) { c->top = 0; return; }
-  if (c->sel < c->top) c->top = c->sel;
-  if (c->sel >= c->top + (size_t)vis) c->top = c->sel - (size_t)vis + 1;
+  if (off > (size_t)(vis - 1) / 2) off = (size_t)(vis - 1) / 2; /* a margin past half the view centres the cursor */
+  if (c->sel < c->top + off) c->top = c->sel > off ? c->sel - off : 0;
+  if (c->sel + off >= c->top + (size_t)vis) c->top = c->sel + off + 1 - (size_t)vis;
+  if (c->entries.n > (size_t)vis && c->top > c->entries.n - (size_t)vis) c->top = c->entries.n - (size_t)vis;
   if (c->entries.n <= (size_t)vis) c->top = 0;
 }
 static void scroll_column(RolltuiPicker* p, size_t ci, size_t first) {
@@ -336,7 +387,19 @@ static int column_has_folder(RolltuiPicker* p, const Column* c) {
 /* WHAT THE SLOT AFTER THE FOCUS IS RESERVED AT. A column is never wider than `MAX_COLUMN_WIDTH`, and the slot
  * is that wide — unless a file preview is on, when it is half the picker: the columns anchor to the left of it,
  * a folder under the cursor takes the first cells of it as always, and a file takes all of it. */
-static int slot_width(const RolltuiPicker* p) { return p->opt.preview ? imax(MAX_COLUMN_WIDTH, p->inner.w / 2) : MAX_COLUMN_WIDTH; }
+/* A PANE'S SHARE of the width when the options give it one (`ratio_*`): its part of the width less the dividers between the three; 0
+ * when it has none. */
+static int ratio_width(const RolltuiPicker* p, int share) {
+  const int sum = p->opt.ratio_parent + p->opt.ratio_current + p->opt.ratio_next;
+  const int room = p->inner.w - 2;
+  if (share <= 0 || sum <= 0 || room <= 0) return 0;
+  return imax(4, room * share / sum);
+}
+static int slot_width(const RolltuiPicker* p) {
+  const int by_ratio = ratio_width(p, p->opt.ratio_next);
+  if (by_ratio) return by_ratio;
+  return p->opt.preview ? imax(MAX_COLUMN_WIDTH, p->inner.w / 2) : MAX_COLUMN_WIDTH;
+}
 
 /* ONE WIDTH PER COLUMN, read by the anchor, the draw, the hit test and the scroll alike. The
  * LAST SLOT is `MAX_COLUMN_WIDTH` wide and whoever occupies it is drawn that wide — the
@@ -346,6 +409,10 @@ static int slot_width(const RolltuiPicker* p) { return p->opt.preview ? imax(MAX
 static int shown_width(RolltuiPicker* p, size_t ci) {
   const int last = ci + 1 == p->n;
   const int preview = ci == p->focus_col + 1;
+  { /* the panes given shares: each ancestor a parent's, the cursor's column its own, the one beside it the next's */
+    const int by_ratio = ratio_width(p, ci < p->focus_col ? p->opt.ratio_parent : ci == p->focus_col ? p->opt.ratio_current : p->opt.ratio_next);
+    if (by_ratio) return by_ratio;
+  }
   /* (With a file preview on, the slot after the focus is the preview's whether or not there are folders here, so
    * no column is ever the last thing on screen.) */
   const int focused_leaf = ci == p->focus_col && !p->opt.preview && !p->opt.info && !column_has_folder(p, &p->cols[ci]);
@@ -407,16 +474,139 @@ static void advance(RolltuiPicker* p) {
   p->scroll_x = p->scroll_from + (int)lround((p->scroll_target - p->scroll_from) * eased);
 }
 
+/* ---- a folder read on a worker ------------------------------------------------------------- */
+#define FOLDER_WAIT_MS 30 /* how long a move waits for the read, so a folder read quickly is there in the same frame */
+#define FOLDER_LOADING_MS 100
+/* A FOLDER BEING READ for the column beside the cursor. OWNED by its job, freed in its `done`. `p` is NULL once nothing wants it (the
+ * column went, the picker was freed); `taken` once a move waited for it and the column has what it read. */
+typedef struct FolderRead {
+  RolltuiPicker* p;
+  RolltuiTasks* tasks;
+  unsigned int job;
+  RolltuiStr dir;
+  int sort, flags, ok;
+  RolltuiDirList list;
+  RolltuiStr err;
+  RolltuiMutex m;
+  int finished; /* under `m`: the worker is done with it */
+  int taken;
+} FolderRead;
+
+static void folder_work(void* ctx, const RolltuiJob* job) {
+  FolderRead* r = (FolderRead*)ctx;
+  if (!rolltui_job_cancelled(job)) r->ok = rolltui_dir_read(r->dir.p ? r->dir.p : "/", r->dir.n, r->sort, r->flags, &r->list, &r->err);
+  rolltui_mutex_lock(&r->m);
+  r->finished = 1;
+  rolltui_mutex_unlock(&r->m);
+}
+
+static void open_selected(RolltuiPicker* p);
+static void retarget(RolltuiPicker* p);
+static void sync_preview(RolltuiPicker* p);
+static void note_changes(RolltuiPicker* p);
+
+/* WHAT WAS READ, into its column: the listing, or why it could not be. */
+static void adopt_folder(RolltuiPicker* p, Column* c, FolderRead* r) {
+  rolltui_dir_list_release(&c->entries);
+  c->entries = r->list;
+  memset(&r->list, 0, sizeof r->list);
+  rolltui_str_clear(&c->error);
+  if (!r->ok) rolltui_str_set(&c->error, r->err.p ? r->err.p : "", r->err.n);
+  c->hidden_n = c->entries.hidden_n;
+  c->load = NULL;
+  measure_width(p, c);
+  recall(p, c);
+  clamp_scroll(p, c);
+}
+
+static void folder_done(void* ctx, int cancelled) {
+  FolderRead* r = (FolderRead*)ctx;
+  RolltuiPicker* p = r->p;
+  if (p && !r->taken) {
+    size_t ci;
+    for (ci = 0; ci < p->n; ++ci)
+      if (p->cols[ci].load == r) {
+        if (cancelled) p->cols[ci].load = NULL; /* the workers went: left as it is, and read again by the watcher */
+        else adopt_folder(p, &p->cols[ci], r);
+        if (!cancelled && ci == p->focus_col) { /* the person went into it while it was read: what is beside the cursor now */
+          p->lazy = 1;
+          open_selected(p);
+          p->lazy = 0;
+          sync_preview(p);
+          note_changes(p);
+        }
+        retarget(p);
+        break;
+      }
+  }
+  rolltui_dir_list_release(&r->list);
+  rolltui_str_free(&r->err);
+  rolltui_str_free(&r->dir);
+  rolltui_mutex_destroy(&r->m);
+  rolltui_mem_free(r);
+}
+
+static void drop_load(Column* c) {
+  if (!c->load) return;
+  c->load->p = NULL; /* its `done` frees it */
+  rolltui_tasks_cancel(c->load->tasks, c->load->job);
+  c->load = NULL;
+}
+
+/* COLUMN `c` READ ON A WORKER, waited for a moment: 1 when the read was started (and may be back already). */
+static int read_column_later(RolltuiPicker* p, Column* c) {
+  FolderRead* r;
+  int waited;
+  if (!p->tasks || !p->lazy || rolltui_tasks_workers(p->tasks) == 0 || c->dir.n == 0) return 0;
+  r = (FolderRead*)rolltui_mem_alloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  r->p = p;
+  r->tasks = p->tasks;
+  rolltui_str_set(&r->dir, c->dir.p, c->dir.n);
+  r->sort = p->opt.sort;
+  r->flags = (p->opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS | (p->opt.reversed ? ROLLTUI_DIR_REVERSED : 0);
+  rolltui_mutex_init(&r->m);
+  /* DESCRIBED BEFORE IT IS READ, as `read_column` does */
+  c->read_pass = p->watch_pass;
+  c->scan_at = 0;
+  c->sig_read_secs = (long long)time(NULL);
+  rolltui_filesig_read(c->dir.p, &c->sig);
+  c->load = r;
+  c->load_since_ms = p->now_ms;
+  r->job = rolltui_tasks_start(p->tasks, folder_work, folder_done, r);
+  for (waited = 0; waited < FOLDER_WAIT_MS; ++waited) {
+    int done;
+    rolltui_mutex_lock(&r->m);
+    done = r->finished;
+    rolltui_mutex_unlock(&r->m);
+    if (done) {
+      r->taken = 1;
+      adopt_folder(p, c, r);
+      return 1;
+    }
+    rolltui_os_sleep_ms(1);
+  }
+  return 1;
+}
+
 /* ---- moving --------------------------------------------------------------------------------- */
 static void eye_moved(RolltuiPicker* p) { p->cursor_since_ms = p->now_ms; }
 /* The column to the right of the focused one exists exactly when a directory is selected. */
 static void open_selected(RolltuiPicker* p) {
   Column* c;
+  if (p->lazy && selected_is_folder(p) && p->focus_col + 1 < p->n) { /* the person's move: the folder already beside is kept */
+    selected_path(p, &p->s1);
+    if (rolltui_str_eq(&p->cols[p->focus_col + 1].dir, p->s1.p, p->s1.n)) {
+      cols_resize(p, p->focus_col + 2);
+      return;
+    }
+  }
   cols_resize(p, p->focus_col + 1);
   if (!selected_is_folder(p)) return;
   selected_path(p, &p->s1);
   c = cols_push(p);
   rolltui_str_set(&c->dir, p->s1.p, p->s1.n);
+  if (read_column_later(p, c)) return;
   read_column(p, c);
   measure_width(p, c);
   recall(p, c);
@@ -444,6 +634,10 @@ static void move_by(RolltuiPicker* p, long long delta) {
   long long at;
   if (!c || c->entries.n == 0) return;
   at = (long long)c->sel + delta;
+  if (p->opt.wrap && (delta == 1 || delta == -1)) { /* past an end, a step goes round to the other */
+    if (at < 0) at = (long long)c->entries.n - 1;
+    else if (at > (long long)c->entries.n - 1) at = 0;
+  }
   if (at < 0) at = 0;
   if (at > (long long)c->entries.n - 1) at = (long long)c->entries.n - 1;
   if ((size_t)at != c->sel) eye_moved(p);
@@ -618,7 +812,7 @@ int rolltui_picker_refresh(RolltuiPicker* p) {
   ++p->watch_pass;
   for (ci = 1; ci < p->n; ++ci) {
     Column* c = &p->cols[ci];
-    if (c->read_pass == p->watch_pass || !column_stale(p, c)) continue;
+    if (c->load || c->read_pass == p->watch_pass || !column_stale(p, c)) continue;
     changed = 1;
     column_refresh(p, ci);
     chain_repair(p, ci);
@@ -681,28 +875,267 @@ static void sync_syntax(RolltuiPicker* p) {
   if (!p->syn) p->syn = rolltui_syntax_new_standard(NULL); /* the languages are parsed once, when the first file is looked at */
   rolltui_preview_set_syntax(p->pv, p->syn);
 }
+#define PREVIEW_COMMAND_MS 30
+/* A COMMAND LET GO: stopped on a worker when there is one, since a program slow to stop would hold the frame. */
+typedef struct Retired {
+  RolltuiChild* c;
+  int freed;
+} Retired;
+static void retired_work(void* ctx, const RolltuiJob* job) {
+  Retired* r = (Retired*)ctx;
+  (void)job;
+  rolltui_child_free(r->c);
+  r->freed = 1;
+}
+static void retired_done(void* ctx, int cancelled) {
+  Retired* r = (Retired*)ctx;
+  (void)cancelled;
+  if (!r->freed) rolltui_child_free(r->c); /* the workers went before it ran */
+  rolltui_mem_free(r);
+}
+static void retire_command(RolltuiPicker* p) {
+  p->cmd_due = 0;
+  if (!p->child) return;
+  if (p->tasks && rolltui_tasks_workers(p->tasks) > 0) {
+    Retired* r = (Retired*)rolltui_mem_alloc(sizeof *r);
+    r->c = p->child;
+    r->freed = 0;
+    rolltui_tasks_start(p->tasks, retired_work, retired_done, r);
+  } else {
+    rolltui_child_free(p->child);
+  }
+  p->child = NULL;
+}
+
+static RolltuiPreview* preview_for(RolltuiPicker* p, const char* path, size_t len, const RolltuiPreview* keep, int* kept);
+
+/* THE COMMAND STARTED for the file previewed, the preview's size after its own arguments. One that cannot start gives the file back to
+ * the built-in preview. */
+static void start_command(RolltuiPicker* p, RolltuiRect r) {
+  const char** argv = (const char**)rolltui_mem_alloc((p->cmd_n + 4) * sizeof *argv);
+  char wbuf[16], hbuf[16];
+  RolltuiChildOptions o;
+  size_t i;
+  const int w = r.w > 0 ? r.w : 80, h = r.h > 0 ? r.h : 24;
+  p->cmd_due = 0;
+  snprintf(wbuf, sizeof wbuf, "%d", w);
+  snprintf(hbuf, sizeof hbuf, "%d", h);
+  for (i = 0; i < p->cmd_n; ++i) argv[i] = p->cmd[i];
+  argv[p->cmd_n] = p->pv_path.p ? p->pv_path.p : "";
+  argv[p->cmd_n + 1] = wbuf;
+  argv[p->cmd_n + 2] = hbuf;
+  argv[p->cmd_n + 3] = NULL;
+  memset(&o, 0, sizeof o);
+  o.argv = argv;
+  o.mode = ROLLTUI_CHILD_PTY;
+  o.cols = w;
+  o.rows = h;
+  p->child = rolltui_child_spawn(&o, NULL);
+  rolltui_mem_free((void*)argv);
+  if (!p->child) { /* the built-in preview, then */
+    int kept = 0;
+    p->host_on = 0;
+    p->pv = preview_for(p, p->pv_path.p ? p->pv_path.p : "", p->pv_path.n, NULL, &kept);
+  }
+}
+
+/* THE COMMAND'S TURN at a frame, in `r`: started once the cursor has rested, and what it wrote since read, as far as `r` shows. */
+static void step_command(RolltuiPicker* p, RolltuiRect r) {
+  if (p->cmd_due && (p->now_ms == 0 || p->now_ms >= p->cmd_asked_ms + PREVIEW_COMMAND_MS)) start_command(p, r);
+  if (p->child && p->host_text) rolltui_child_pump(p->child, p->host_text, p->host_offset + (size_t)(r.h > 0 ? r.h : 24) + 1);
+}
+
+void rolltui_picker_set_preview_command(RolltuiPicker* p, const char* const* argv) {
+  size_t i, n = 0;
+  if (!p) return;
+  retire_command(p);
+  for (i = 0; i < p->cmd_n; ++i) rolltui_mem_free(p->cmd[i]);
+  rolltui_mem_free(p->cmd);
+  p->cmd = NULL;
+  p->cmd_n = 0;
+  while (argv && argv[n]) ++n;
+  if (n) {
+    p->cmd = (char**)rolltui_mem_alloc(n * sizeof *p->cmd);
+    for (i = 0; i < n; ++i) {
+      const size_t len = strlen(argv[i]);
+      p->cmd[i] = (char*)rolltui_mem_alloc(len + 1);
+      memcpy(p->cmd[i], argv[i], len + 1);
+    }
+    p->cmd_n = n;
+  }
+  rolltui_str_clear(&p->pv_path); /* asked again at the next frame */
+  p->host_on = 0;
+}
+
+/* THE HOST'S PREVIEWER asked for the preview's path at `offset`, into its text, from empty. */
+static void ask_host(RolltuiPicker* p, size_t offset) {
+  if (!p->host_text) p->host_text = rolltui_ansi_new();
+  rolltui_ansi_clear(p->host_text);
+  p->host_bound = 0;
+  p->host_offset = offset;
+  p->host_on = p->host_fn(p->host_ctx, p->pv_path.p ? p->pv_path.p : "", p->pv_path.n, offset, p->host_text, &p->host_bound) != 0;
+}
+
+/* THE PREVIEW KEPT FOR `path`, else the one wanted longest ago (never `keep`) pointed at it. `*kept` 1 when it was already there. */
+static RolltuiPreview* preview_for(RolltuiPicker* p, const char* path, size_t len, const RolltuiPreview* keep, int* kept) {
+  size_t i, pick = 4;
+  *kept = 0;
+  for (i = 0; i < 4; ++i)
+    if (p->cache[i] && rolltui_preview_path_is(p->cache[i], path, len)) {
+      p->cache_used[i] = ++p->cache_tick;
+      *kept = 1;
+      return p->cache[i];
+    }
+  for (i = 0; i < 4; ++i) {
+    if (p->cache[i] == keep && keep) continue;
+    if (!p->cache[i]) {
+      pick = i;
+      break;
+    }
+    if (pick == 4 || p->cache_used[i] < p->cache_used[pick]) pick = i;
+  }
+  if (pick == 4) pick = 0;
+  if (!p->cache[pick]) p->cache[pick] = rolltui_preview_new();
+  p->cache_used[pick] = ++p->cache_tick;
+  rolltui_preview_set_tasks(p->cache[pick], p->tasks);
+  rolltui_preview_set_now(p->cache[pick], p->now_ms);
+  if (p->syn && !p->opt.no_syntax) rolltui_preview_set_syntax(p->cache[pick], p->syn);
+  rolltui_preview_set_path(p->cache[pick], path, len);
+  return p->cache[pick];
+}
+
+/* THE FILES EITHER SIDE OF THE CURSOR, read ahead on the workers lent: there by the time the cursor is. Never without workers, where
+ * a read would hold up the frame. */
+static void read_ahead(RolltuiPicker* p) {
+  Column* c = focused(p);
+  int d;
+  if (!p->tasks || !c || p->host_fn) return;
+  for (d = -1; d <= 1; d += 2) {
+    const long long at = (long long)c->sel + d;
+    const RolltuiDirEntry* e;
+    int kept;
+    if (at < 0 || (size_t)at >= c->entries.n) continue;
+    e = entry_at(c, (size_t)at);
+    if (!e || e->is_dir || e->unreadable || folder_like(p, c, e)) continue;
+    join(&c->dir, &e->name, &p->s2);
+    (void)preview_for(p, p->s2.p, p->s2.n, p->pv, &kept);
+  }
+}
+
 static void sync_preview(RolltuiPicker* p) {
   if (preview_target(p, &p->s3)) {
-    if (!p->pv) p->pv = rolltui_preview_new();
-    rolltui_preview_set_tasks(p->pv, p->tasks);
-    rolltui_preview_set_now(p->pv, p->now_ms);
-    sync_syntax(p);
     if (!rolltui_str_eq(&p->pv_path, p->s3.p, p->s3.n)) {
+      int kept = 0;
       rolltui_str_set(&p->pv_path, p->s3.p, p->s3.n);
-      rolltui_preview_set_path(p->pv, p->s3.p, p->s3.n);
+      p->host_on = 0;
+      retire_command(p);
+      if (p->host_fn) ask_host(p, 0);
+      if (!p->host_on && p->cmd_n) { /* the command's: started where the cursor rests */
+        if (!p->host_text) p->host_text = rolltui_ansi_new();
+        rolltui_ansi_clear(p->host_text);
+        p->host_bound = 0;
+        p->host_offset = 0;
+        p->host_on = 1;
+        p->cmd_due = 1;
+        p->cmd_asked_ms = p->now_ms;
+      }
+      if (p->host_on) { /* the host's: nothing read here, the shown preview a blank one */
+        if (!p->pv) p->pv = preview_for(p, "", 0, NULL, &kept);
+      } else {
+        p->pv = preview_for(p, p->s3.p, p->s3.n, NULL, &kept);
+        if (kept) rolltui_preview_refresh(p->pv); /* kept: read again if the file moved since */
+      }
       p->pv_focus = 0;
       p->pv_zoom = 0;
+      read_ahead(p);
     }
+    rolltui_preview_set_tasks(p->pv, p->tasks);
+    rolltui_preview_set_now(p->pv, p->now_ms);
+    rolltui_preview_set_layout(p->pv, p->opt.preview_tab, p->opt.preview_wrap);
+    sync_syntax(p);
     return;
   }
-  if (p->pv_path.n) {
+  p->host_on = 0;
+  retire_command(p);
+  if (p->pv_path.n) { /* nothing shown; what was read stays kept for the cursor coming back */
     rolltui_str_clear(&p->pv_path);
-    rolltui_preview_set_path(p->pv, "", 0);
+    p->pv = NULL;
   }
   p->pv_focus = 0;
   p->pv_zoom = 0;
 }
 static int preview_shown(const RolltuiPicker* p) { return p->pv && p->pv_path.n && p->pv_rect.w > 0; }
+
+/* THE PREVIEW SCROLLED: `by` lines (or places of the host previewer's own), or to an end (`edge` -1 the start, 1 the end). */
+static void preview_scroll(RolltuiPicker* p, long long by, int edge) {
+  if (p->host_on) {
+    const size_t most = p->host_bound ? p->host_bound - 1 : (rolltui_ansi_line_count(p->host_text) ? rolltui_ansi_line_count(p->host_text) - 1 : 0);
+    long long at = (long long)p->host_offset + by;
+    if (edge < 0) at = 0;
+    if (edge > 0) at = (long long)most;
+    if (at < 0) at = 0;
+    if ((size_t)at > most) at = (long long)most;
+    if (p->host_bound && (size_t)at != p->host_offset) ask_host(p, (size_t)at); /* a place of its own: asked again there */
+    else p->host_offset = (size_t)at;
+    return;
+  }
+  if (edge) rolltui_preview_scroll_edge(p->pv, edge > 0);
+  else rolltui_preview_scroll_by(p->pv, by);
+}
+
+/* THE PREVIEW DRAWN: the host's text, else the built-in preview. */
+static void draw_preview(RolltuiPicker* p, RolltuiFrame* f, RolltuiRect r, const RolltuiStyle* styles, int aw) {
+  if (p->host_on) step_command(p, r);
+  if (p->host_on) {
+    RolltuiStyle base = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
+    RolltuiStyle ground;
+    rolltui_frame_ground(f, &ground);
+    base.bg = ground.bg;
+    rolltui_ansi_draw(p->host_text, f, r, p->host_bound ? 0 : p->host_offset, 0, 1, base, aw);
+    return;
+  }
+  rolltui_preview_draw(p->pv, f, r, styles, aw, p->pv_focus);
+}
+
+void rolltui_picker_set_decor(RolltuiPicker* p, RolltuiPickerDecorFn fn, void* ctx) {
+  if (!p) return;
+  p->decor_fn = fn;
+  p->decor_ctx = ctx;
+}
+
+size_t rolltui_picker_marked(const RolltuiPicker* p, RolltuiStrListRaw* out) {
+  size_t i;
+  if (!p) return 0;
+  if (out)
+    for (i = 0; i < rolltui_map_count(&p->marked); ++i) {
+      size_t kl = 0;
+      const char* k = rolltui_map_key_at(&p->marked, i, &kl);
+      rolltui_str_list_add(out, k, kl);
+    }
+  return rolltui_map_count(&p->marked);
+}
+
+/* The entry under the cursor marked (`on` 1), unmarked (0) or turned over (-1). */
+static void mark_selected(RolltuiPicker* p, int on) {
+  RolltuiStr path;
+  memset(&path, 0, sizeof path);
+  selected_path(p, &path);
+  if (path.n) {
+    const int is = rolltui_map_get(&p->marked, path.p, path.n) != NULL;
+    if (on < 0) on = !is;
+    if (on) rolltui_map_put(&p->marked, path.p, path.n, (void*)1);
+    else rolltui_map_take(&p->marked, path.p, path.n);
+  }
+  rolltui_str_free(&path);
+}
+
+void rolltui_picker_set_previewer(RolltuiPicker* p, RolltuiPreviewerFn fn, void* ctx) {
+  if (!p) return;
+  p->host_fn = fn;
+  p->host_ctx = ctx;
+  rolltui_str_clear(&p->pv_path); /* asked again at the next frame */
+  p->host_on = 0;
+}
 
 /* ---- what the cursor is on, said without asking ------------------------------------------------------ */
 /* The entry under the cursor, when the listing described it. An entry that could not be described has no mode to say, and
@@ -750,8 +1183,18 @@ RolltuiPicker* rolltui_picker_new(void) {
   return p;
 }
 void rolltui_picker_free(RolltuiPicker* p) {
-  size_t i;
+  size_t ci, i;
   if (!p) return;
+  rolltui_ansi_free(p->host_text);
+  rolltui_child_free(p->child);
+  for (ci = 0; ci < p->cmd_n; ++ci) rolltui_mem_free(p->cmd[ci]);
+  rolltui_mem_free(p->cmd);
+  for (ci = 0; ci < 8; ++ci) rolltui_str_free(&p->changes[ci].path);
+  for (ci = 0; ci < p->visited_n; ++ci) rolltui_str_free(&p->visited[ci]);
+  rolltui_mem_free(p->visited);
+  rolltui_str_free(&p->seen_entry);
+  rolltui_str_free(&p->seen_folder);
+  rolltui_str_free(&p->previous);
   cols_resize(p, 0);
   rolltui_mem_free(p->cols);
   for (i = 0; i < rolltui_map_count(&p->remembered); ++i) {
@@ -760,10 +1203,14 @@ void rolltui_picker_free(RolltuiPicker* p) {
     rolltui_mem_free(s);
   }
   rolltui_map_release(&p->remembered);
+  rolltui_map_release(&p->marked);
   rolltui_str_free(&p->root);
   rolltui_str_free(&p->jump);
   rolltui_str_free(&p->event_path);
-  rolltui_preview_free(p->pv);
+  {
+    size_t ci2;
+    for (ci2 = 0; ci2 < 4; ++ci2) rolltui_preview_free(p->cache[ci2]);
+  }
   rolltui_syntax_free(p->syn);
   rolltui_str_free(&p->pv_path);
   rolltui_str_free(&p->s1);
@@ -785,7 +1232,8 @@ void rolltui_picker_options_init(RolltuiPickerOptions* o) {
 void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o) {
   const int reread = o->hidden != p->opt.hidden || o->sort != p->opt.sort || o->reversed != p->opt.reversed;
   const int remeasure = o->show_size != p->opt.show_size || o->show_modified != p->opt.show_modified;
-  const int previewing = o->preview != p->opt.preview || o->info != p->opt.info;
+  const int previewing = o->preview != p->opt.preview || o->info != p->opt.info || o->ratio_parent != p->opt.ratio_parent ||
+                         o->ratio_current != p->opt.ratio_current || o->ratio_next != p->opt.ratio_next;
   p->opt = *o;
   if (reread) rolltui_picker_reload(p);
   else if (remeasure) { size_t i; for (i = 0; i < p->n; ++i) measure_width(p, &p->cols[i]); retarget(p); }
@@ -794,17 +1242,28 @@ void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o)
 }
 const RolltuiPickerOptions* rolltui_picker_options(const RolltuiPicker* p) { return &p->opt; }
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms) {
+  size_t i;
   p->now_ms = now_ms;
-  if (p->pv) rolltui_preview_set_now(p->pv, now_ms);
+  for (i = 0; i < 4; ++i)
+    if (p->cache[i]) rolltui_preview_set_now(p->cache[i], now_ms);
 }
-void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks) { p->tasks = tasks; }
+void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks) {
+  size_t i;
+  p->tasks = tasks;
+  for (i = 0; i < 4; ++i) /* the kept previews too: none holds workers the host has let go */
+    if (p->cache[i]) rolltui_preview_set_tasks(p->cache[i], tasks);
+}
 
 /* GO TO A PATH WITH ITS ANCESTORS SHOWING: from `/` down to `path`, each column with the next
  * component selected. The walk IS a visit — each selection goes into the memory — and a
  * component that cannot be entered ends it with one column that says why, in full. */
+static void note_changes(RolltuiPicker* p);
+static int walk(RolltuiPicker* p, int step);
 void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len) {
   size_t at;
   RolltuiStr full;
+  const int lazy = p->lazy;
+  p->lazy = 0;
   memset(&full, 0, sizeof full);
   if (len == 0 || root_len(path, len) == 0) {
     /* relative: from the working directory, which is where "." means */
@@ -874,6 +1333,7 @@ void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len) {
   rolltui_str_free(&full);
   eye_moved(p);
   retarget(p);
+  p->lazy = lazy;
 }
 
 /* Re-read every column in place, keeping each selection BY NAME, and what is shown right of a column consistent with
@@ -883,6 +1343,7 @@ void rolltui_picker_reload(RolltuiPicker* p) {
   ++p->watch_pass;
   if (p->n) measure_width(p, &p->cols[0]);
   for (ci = 1; ci < p->n; ++ci) {
+    if (p->cols[ci].load) drop_load(&p->cols[ci]); /* read again below, with the options now set */
     if (p->cols[ci].read_pass == p->watch_pass) continue;
     column_refresh(p, ci);
     chain_repair(p, ci);
@@ -1030,6 +1491,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
                          const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide, int focused) {
   Draw d;
   size_t ci;
+  p->aw = ambiguous_wide;
   int first_drawn = 0;
   const RolltuiStyle text = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
   const RolltuiStyle dim = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT_MUTED);
@@ -1058,7 +1520,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   /* ZOOMED: the preview has the whole picker, and the columns are not drawn at all */
   if (p->pv_zoom && p->pv && p->pv_path.n) {
     preview_caption(p, d.r.w - 2);
-    rolltui_preview_draw(p->pv, f, d.r, styles, ambiguous_wide, p->pv_focus);
+    draw_preview(p, f, d.r, styles, ambiguous_wide);
     p->pv_rect = d.r;
     return;
   }
@@ -1186,21 +1648,45 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
        * `highlight` draws both as a block of background; independently, the host's own glow
        * effect (marked below regardless) may also be lit. A host is expected to keep at least
        * one of the two on, or neither row reads as the cursor's. */
-      is_trail = is_sel && ci < p->focus_col;
+      /* the folder the cursor is on, to the right, marks the entry last used in it, as the path behind is marked */
+      is_trail = is_sel && (ci < p->focus_col || (ci == p->focus_col + 1 && last_used(p, c, e)));
       /* THE ENTRY UNDER THE POINTER is the one a press would select, by `handle_inner`'s own test: this column's cells, this row.
        * The cursor's row keeps its own look; a trail row under the pointer shows the hover until the pointer leaves. */
       is_hover = p->hover_on && !(is_sel && is_focus_col) && p->hover_y == y && p->hover_x >= x && p->hover_x < x + sw &&
                  p->hover_x >= d.r.x && !(preview_shown(p) && p->hover_x >= p->pv_rect.x && p->hover_x < p->pv_rect.x + p->pv_rect.w &&
                                           p->hover_y >= p->pv_rect.y && p->hover_y < p->pv_rect.y + p->pv_rect.h);
+      RolltuiPickerDecor decor;
+      int is_marked = 0, cell_w = 0;
       st = is_hover ? hover
                     : is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
       if (is_sel && is_focus_col && show_highlight && !is_hover && shape != ROLLTUI_CURSOR_FILL)
         rolltui_cursor_text_style(&here, d.ground, shape, &st);
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
+      { /* AN ENTRY'S OWN MARKS: the host's decor, and whether it is marked */
+        RolltuiStr full;
+        memset(&decor, 0, sizeof decor);
+        memset(&full, 0, sizeof full);
+        if (p->decor_fn || (p->opt.marks && rolltui_map_count(&p->marked))) join(&c->dir, &e->name, &full);
+        if (p->decor_fn) p->decor_fn(p->decor_ctx, full.p ? full.p : "", full.n, e->is_dir, &decor);
+        is_marked = p->opt.marks && full.n && rolltui_map_get(&p->marked, full.p, full.n) != NULL;
+        rolltui_str_free(&full);
+        decor.cell[sizeof decor.cell - 1] = 0;
+        decor.gutter[sizeof decor.gutter - 1] = 0;
+        cell_w = decor.cell[0] ? width_of(p, decor.cell, strlen(decor.cell)) + 1 : 0;
+        if (cell_w > cw / 2) cell_w = 0; /* a name keeps most of its column */
+        if (decor.role && !is_sel && !is_hover) {
+          st = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, decor.role);
+          st.bg = d.ground;
+        }
+        if (is_marked) { /* bold in the mark's colour, so it reads with no colour too */
+          st.bold = 1;
+          if (!(is_sel && is_focus_col)) st.fg = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_ACCENT_1)->fg;
+        }
+      }
       rolltui_str_set(&p->s2, e->name.p ? e->name.p : "", e->name.n);
       if (e->is_dir && !is_bundle(e)) rolltui_str_append(&p->s2, " \xE2\x80\xBA", 4);
-      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1 - extras_width(p) - (shape != ROLLTUI_CURSOR_FILL), &p->s1);
+      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1 - extras_width(p) - cell_w - (shape != ROLLTUI_CURSOR_FILL), &p->s1);
       if (is_sel && (is_focus_col || is_trail)) {
         const int fx = imax(x, d.r.x);
         const unsigned long long opened_age = p->now_ms >= p->opened_since_ms ? p->now_ms - p->opened_since_ms : 0;
@@ -1219,7 +1705,18 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       }
       if (is_hover && !(is_sel && (is_focus_col || is_trail))) /* those two rows were filled above */
         fill_row(&d, imax(x, d.r.x), y, x + cw - imax(x, d.r.x), st);
-      put_clipped(&d, x + 1, y, p->s1.p ? p->s1.p : "", p->s1.n, st, cw - 1 - extras_width(p));
+      put_clipped(&d, x + 1, y, p->s1.p ? p->s1.p : "", p->s1.n, st, cw - 1 - extras_width(p) - cell_w);
+      if (is_marked || decor.gutter[0]) { /* the cell before the name: the host's glyph, else the mark's ▌ */
+        RolltuiStyle gs = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, decor.gutter[0] && decor.gutter_role ? decor.gutter_role : ROLLTUI_ROLE_ACCENT_1);
+        const char* g = decor.gutter[0] ? decor.gutter : ambiguous_wide ? "*" : "\xE2\x96\x8C";
+        gs.bg = st.bg.kind ? st.bg : d.ground;
+        if (x >= d.r.x) rolltui_frame_put_text(f, d.ds, x, y, g, strlen(g), gs, 1, ambiguous_wide, 0);
+      }
+      if (cell_w) { /* the host's cell, right of the name and before the facts */
+        RolltuiStyle ks = decor.cell_role ? *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, decor.cell_role) : dim;
+        ks.bg = st.bg.kind ? st.bg : d.ground;
+        put_clipped(&d, x + cw - extras_width(p) - cell_w + 1, y, decor.cell, strlen(decor.cell), ks, cell_w - 1);
+      }
       if (extras_width(p) > 0) {
         /* THE FACTS, right-aligned at the column's edge, muted unless the row is the cursor's:
          * a folder has no size to say; a "-" keeps the column's shape. */
@@ -1246,7 +1743,12 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
         }
       }
     }
-    if (c->entries.n == 0 && d.r.h > 1) {
+    if (c->load && c->entries.n == 0 && d.r.h > 1) {
+      if (p->now_ms >= c->load_since_ms + FOLDER_LOADING_MS) { /* a read that is taking a while says so */
+        fit_into(p, "loading" "\xE2\x80\xA6", sizeof "loading" "\xE2\x80\xA6" - 1, cw - 1, &p->s1);
+        put_clipped(&d, x + 1, d.r.y + hr, p->s1.p ? p->s1.p : "", p->s1.n, dim, cw - 1);
+      }
+    } else if (c->entries.n == 0 && d.r.h > 1) {
       /* A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE, and an error is not
        * a filename: it gets the rest of the panel, which is space no name needed. */
       const int failed = c->error.n != 0;
@@ -1269,7 +1771,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       r.w = w;
       r.h = d.r.h;
       preview_caption(p, r.w - 2);
-      rolltui_preview_draw(p->pv, f, r, styles, ambiguous_wide, p->pv_focus);
+      draw_preview(p, f, r, styles, ambiguous_wide);
       p->pv_rect = r;
     }
   }
@@ -1410,8 +1912,12 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
     /* THE PREVIEW IS A PLACE THE POINTER CAN BE: the wheel over it scrolls the file, a press in it puts the keys there. */
     if (preview_shown(p) && m->x >= p->pv_rect.x && m->x < p->pv_rect.x + p->pv_rect.w && m->y >= p->pv_rect.y &&
         m->y < p->pv_rect.y + p->pv_rect.h) {
-      if (k == 4) { rolltui_preview_scroll_by(p->pv, -3); return 1; }
-      if (k == 5) { rolltui_preview_scroll_by(p->pv, 3); return 1; }
+      if (k == 4) { preview_scroll(p, -3, 0); return 1; }
+      if (k == 5) { preview_scroll(p, 3, 0); return 1; }
+      if (k == 6 || k == 7) {
+        if (!p->host_on) rolltui_preview_scroll_sideways(p->pv, k == 6 ? -4 : 4, p->aw);
+        return 1;
+      }
       if ((k == 0 || k == 8) && m->button == 1) { p->pv_focus = 1; return 1; }
       if (k == 1 || k == 2) return 1;
     }
@@ -1492,14 +1998,25 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
     /* THE KEYS ARE IN THE PREVIEW: the moving keys scroll the file instead of the list, and Left or Escape are the
      * way back to the list (Escape goes back one place, it does not leave the picker). Anything else is what it
      * always is — Enter still takes the file — and typing a letter is the list's again. */
+    if (act && len && preview_shown(p) && !p->host_on && (action_is(act, len, a->preview_left) || action_is(act, len, a->preview_right)))
+      return rolltui_preview_scroll_sideways(p->pv, action_is(act, len, a->preview_left) ? -8 : 8, p->aw) || 1;
     if (p->pv_focus && preview_shown(p)) {
       if (act && len) {
-        if (action_is(act, len, a->up)) { rolltui_preview_scroll_by(p->pv, -1); return 1; }
-        if (action_is(act, len, a->down)) { rolltui_preview_scroll_by(p->pv, 1); return 1; }
-        if (action_is(act, len, a->page_up)) { rolltui_preview_scroll_page(p->pv, -1); return 1; }
-        if (action_is(act, len, a->page_down)) { rolltui_preview_scroll_page(p->pv, 1); return 1; }
-        if (action_is(act, len, a->first)) { rolltui_preview_scroll_edge(p->pv, 0); return 1; }
-        if (action_is(act, len, a->last)) { rolltui_preview_scroll_edge(p->pv, 1); return 1; }
+        const long long page = p->host_on && p->host_bound ? 1 : imax(1, p->pv_rect.h - 1); /* a place of its own pages one at a time */
+        if (action_is(act, len, a->up)) { preview_scroll(p, -1, 0); return 1; }
+        if (action_is(act, len, a->down)) { preview_scroll(p, 1, 0); return 1; }
+        if (action_is(act, len, a->page_up)) {
+          if (p->host_on) preview_scroll(p, -page, 0);
+          else rolltui_preview_scroll_page(p->pv, -1);
+          return 1;
+        }
+        if (action_is(act, len, a->page_down)) {
+          if (p->host_on) preview_scroll(p, page, 0);
+          else rolltui_preview_scroll_page(p->pv, 1);
+          return 1;
+        }
+        if (action_is(act, len, a->first)) { preview_scroll(p, 0, -1); return 1; }
+        if (action_is(act, len, a->last)) { preview_scroll(p, 0, 1); return 1; }
         /* RIGHT GOES DEEPER, LEFT AND ESCAPE STEP BACK, one place at a time: the list, the file beside it, the file
          * with the whole picker */
         if (action_is(act, len, a->out) || action_is(act, len, a->cancel)) {
@@ -1520,6 +2037,27 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
     else if (action_is(act, len, a->down)) move_by(p, 1);
     else if (action_is(act, len, a->page_up)) move_by(p, -page);
     else if (action_is(act, len, a->page_down)) move_by(p, page);
+    else if (p->opt.marks && action_is(act, len, a->mark)) { mark_selected(p, -1); move_by(p, 1); }
+    else if (p->opt.marks && (action_is(act, len, a->mark_up) || action_is(act, len, a->mark_down))) {
+      mark_selected(p, 1);
+      move_by(p, action_is(act, len, a->mark_up) ? -1 : 1);
+      mark_selected(p, 1);
+    } else if (p->opt.marks && action_is(act, len, a->unmark_all)) {
+      if (!rolltui_map_count(&p->marked)) return 0;
+      rolltui_map_clear(&p->marked);
+    }
+    else if (action_is(act, len, a->half_up)) move_by(p, -imax(1, rows_visible(p) / 2));
+    else if (action_is(act, len, a->half_down)) move_by(p, imax(1, rows_visible(p) / 2));
+    else if (action_is(act, len, a->back) || action_is(act, len, a->forward)) {
+      if (!walk(p, action_is(act, len, a->back) ? -1 : 1)) return 0;
+    } else if (action_is(act, len, a->previous)) {
+      RolltuiStr to;
+      if (!p->previous.n) return 0;
+      memset(&to, 0, sizeof to);
+      rolltui_str_set(&to, p->previous.p, p->previous.n);
+      rolltui_picker_go_to(p, to.p, to.n);
+      rolltui_str_free(&to);
+    }
     else if (action_is(act, len, a->first)) select_row(p, 0);
     else if (action_is(act, len, a->last)) { Column* c = focused(p); if (c && c->entries.n) select_row(p, c->entries.n - 1); }
     else if (action_is(act, len, a->into)) into(p);
@@ -1533,10 +2071,81 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
   }
 }
 
+/* ---- what changed, and the folders visited --------------------------------------------------- */
+
+static void push_change(RolltuiPicker* p, unsigned char kind, const RolltuiStr* path) {
+  size_t at;
+  if (p->change_n == 8) { /* full: the oldest goes */
+    p->change_head = (p->change_head + 1) % 8;
+    --p->change_n;
+  }
+  at = (p->change_head + p->change_n) % 8;
+  p->changes[at].kind = kind;
+  rolltui_str_set(&p->changes[at].path, path->p ? path->p : "", path->n);
+  ++p->change_n;
+}
+
+/* A FOLDER VISITED, after any the picker had gone back past: going forward from here means this one. */
+static void visit(RolltuiPicker* p, const RolltuiStr* dir) {
+  size_t k;
+  if (p->walking || !dir->n) return;
+  if (p->visited_n && rolltui_str_eq(&p->visited[p->visited_at], dir->p, dir->n)) return;
+  for (k = p->visited_at + 1; k < p->visited_n; ++k) rolltui_str_free(&p->visited[k]); /* the ones gone back past */
+  p->visited_n = p->visited_n ? p->visited_at + 1 : 0;
+  if (p->visited_n == 64) { /* the oldest goes */
+    rolltui_str_free(&p->visited[0]);
+    memmove(p->visited, p->visited + 1, 63 * sizeof *p->visited);
+    p->visited_n = 63;
+  }
+  p->visited = (RolltuiStr*)rolltui_grow(p->visited, &p->visited_cap, p->visited_n + 1, sizeof *p->visited);
+  memset(&p->visited[p->visited_n], 0, sizeof p->visited[p->visited_n]);
+  rolltui_str_set(&p->visited[p->visited_n], dir->p, dir->n);
+  p->visited_at = p->visited_n++;
+}
+
+/* Back (`step` -1) or forward (1) through the folders visited. 0 when there is none that way. */
+static int walk(RolltuiPicker* p, int step) {
+  RolltuiStr to;
+  if (!p->visited_n) return 0;
+  if (step < 0 && p->visited_at == 0) return 0;
+  if (step > 0 && p->visited_at + 1 >= p->visited_n) return 0;
+  p->visited_at = step < 0 ? p->visited_at - 1 : p->visited_at + 1;
+  memset(&to, 0, sizeof to);
+  rolltui_str_set(&to, p->visited[p->visited_at].p, p->visited[p->visited_at].n);
+  p->walking = 1;
+  rolltui_picker_go_to(p, to.p, to.n);
+  p->walking = 0;
+  rolltui_str_free(&to);
+  return 1;
+}
+
+/* WHAT CHANGED since it was last told: the focused folder, and the entry the cursor is on. The folder left is `previous`. */
+static void note_changes(RolltuiPicker* p) {
+  const Column* c = focused(p);
+  RolltuiStr entry;
+  if (c && !rolltui_str_eq(&p->seen_folder, c->dir.p ? c->dir.p : "", c->dir.n)) {
+    if (p->seen_folder.n) rolltui_str_set(&p->previous, p->seen_folder.p, p->seen_folder.n);
+    rolltui_str_set(&p->seen_folder, c->dir.p ? c->dir.p : "", c->dir.n);
+    visit(p, &p->seen_folder);
+    if (p->opt.report_changes) push_change(p, ROLLTUI_PICKER_EVENT_FOLDER, &p->seen_folder);
+  }
+  memset(&entry, 0, sizeof entry);
+  selected_path(p, &entry);
+  if (!rolltui_str_eq(&p->seen_entry, entry.p ? entry.p : "", entry.n)) {
+    rolltui_str_set(&p->seen_entry, entry.p ? entry.p : "", entry.n);
+    if (entry.n && p->opt.report_changes) push_change(p, ROLLTUI_PICKER_EVENT_MOVED, &entry);
+  }
+  rolltui_str_free(&entry);
+}
+
 int rolltui_picker_handle(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBindings* b,
                           const RolltuiPickerActions* a) {
-  const int consumed = handle_inner(p, e, b, a);
+  int consumed;
+  p->lazy = 1;
+  consumed = handle_inner(p, e, b, a);
+  p->lazy = 0;
   sync_preview(p); /* a key that moved the cursor has changed what the preview is of */
+  note_changes(p);
   return consumed;
 }
 
@@ -1550,6 +2159,17 @@ void rolltui_picker_focus_column(RolltuiPicker* p, size_t column) {
 }
 
 int rolltui_picker_event(RolltuiPicker* p, RolltuiPickerEvent* out) {
+  if (p->event_kind == ROLLTUI_PICKER_EVENT_NONE && p->change_n) { /* what changed, oldest first, once the outcomes are taken */
+    const size_t i = p->change_head;
+    if (out) {
+      out->kind = p->changes[i].kind;
+      out->inverse = 0;
+      rolltui_str_set(&out->path, p->changes[i].path.p ? p->changes[i].path.p : "", p->changes[i].path.n);
+    }
+    p->change_head = (p->change_head + 1) % 8;
+    --p->change_n;
+    return 1;
+  }
   if (p->event_kind == ROLLTUI_PICKER_EVENT_NONE) return 0;
   if (out) {
     out->kind = p->event_kind;
@@ -1589,7 +2209,21 @@ void rolltui_picker_status(const RolltuiPicker* p, RolltuiPickerStatus* out) {
                                                 : 1;
   {
     const int pv_wake = p->pv ? rolltui_preview_wake_ms(p->pv) : 0;
+    size_t ci;
     if (pv_wake > 0 && (out->wake_ms == 0 || pv_wake < out->wake_ms)) out->wake_ms = pv_wake;
+    if (p->cmd_due && p->now_ms) { /* the command starts when the cursor has rested */
+      const int due = p->cmd_asked_ms + PREVIEW_COMMAND_MS > p->now_ms ? (int)(p->cmd_asked_ms + PREVIEW_COMMAND_MS - p->now_ms) : 1;
+      if (out->wake_ms == 0 || due < out->wake_ms) out->wake_ms = due;
+    }
+    if (p->child && rolltui_child_wait_ms(p->child) > 0) { /* and what it writes is drawn as it arrives */
+      const int due = rolltui_child_wait_ms(p->child);
+      if (out->wake_ms == 0 || due < out->wake_ms) out->wake_ms = due;
+    }
+    for (ci = 0; ci < p->n; ++ci) /* "loading…" is drawn when it is due */
+      if (p->cols[ci].load && p->now_ms && p->cols[ci].load_since_ms + FOLDER_LOADING_MS > p->now_ms) {
+        const int due = (int)(p->cols[ci].load_since_ms + FOLDER_LOADING_MS - p->now_ms);
+        if (out->wake_ms == 0 || due < out->wake_ms) out->wake_ms = due;
+      }
   }
   out->preview = (unsigned char)(!preview_shown(p) ? 0 : p->pv_zoom ? 3 : p->pv_focus ? 2 : 1);
   if (p->n && p->cols[0].error.n) rolltui_str_set(&out->error, p->cols[0].error.p, p->cols[0].error.n);
@@ -1617,6 +2251,12 @@ static Column* bar_column(RolltuiPicker* p) {
 }
 int rolltui_picker_scroll_extent(const RolltuiPicker* p, RolltuiScrollExtent* out) {
   const Column* c;
+  if (preview_shown(p) && p->host_on) { /* a host's or a command's text: its lines, or the previewer's own places */
+    out->first = p->host_offset;
+    out->visible = p->host_bound ? 1 : (size_t)(p->pv_rect.h > 0 ? p->pv_rect.h : 1);
+    out->total = p->host_bound ? p->host_bound : rolltui_ansi_line_count(p->host_text);
+    return 1;
+  }
   if (preview_shown(p)) return rolltui_preview_scroll_extent(p->pv, out); /* the file on screen is what the bar is of */
   c = bar_column((RolltuiPicker*)p);
   if (!c) return 0;
@@ -1627,6 +2267,11 @@ int rolltui_picker_scroll_extent(const RolltuiPicker* p, RolltuiScrollExtent* ou
 }
 int rolltui_picker_scroll_to(RolltuiPicker* p, size_t first) {
   Column* c;
+  if (preview_shown(p) && p->host_on) {
+    const size_t before = p->host_offset;
+    preview_scroll(p, (long long)first - (long long)p->host_offset, 0);
+    return p->host_offset != before;
+  }
   if (preview_shown(p)) return rolltui_preview_scroll_to(p->pv, first);
   c = bar_column(p);
   if (!c) return 0;

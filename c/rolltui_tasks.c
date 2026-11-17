@@ -267,6 +267,8 @@ void rolltui_tasks_post(RolltuiTasks* t, RolltuiPostFn fn, void* ctx) {
   wake(t);
 }
 
+int rolltui_tasks_workers(const RolltuiTasks* t) { return t ? t->worker_n : 0; }
+
 size_t rolltui_tasks_busy(RolltuiTasks* t) {
   size_t n;
   if (!t) return 0;

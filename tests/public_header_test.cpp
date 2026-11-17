@@ -535,7 +535,10 @@ int main() {
     // SGR, distinct colours, a theme's gradient (PUBLIC 593); a chart's default symbols (INTERNAL 930).
     // Then layout: half the screen set and read, a popup anchored, views pushed, popped and counted, hints ranked, whether a layout
     // fits (PUBLIC 601).
-    check(totals["PUBLIC"] == 601 && totals["INTERNAL"] == 930 && totals.size() == 2,
+    // Then the column browser: a host's previewer, a command as the previewer, its marks read, a host's own marks on entries (PUBLIC
+    // 605); the picker's halves of those four, a preview's path asked, its lines laid out and scrolled sideways, a tasks object's
+    // workers counted (INTERNAL 938).
+    check(totals["PUBLIC"] == 605 && totals["INTERNAL"] == 938 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -716,10 +719,11 @@ int main() {
     // Vocab 44, load 32, widget 81: a style from SGR and distinct colours; a theme's gradient; the charts' symbols, flags, time,
     // gradients and history.
     // Load 33, run 218: whether a layout fits; half the screen, an anchor, views, ranked hints.
+    // Run 222: the column browser's previewer, preview command, marks and entry marks.
     check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 218 && rt["HOST_RELEASE"] == 16 &&
+              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 222 && rt["HOST_RELEASE"] == 16 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 81,
-          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 115 / run 218 / "
+          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 115 / run 222 / "
           "release 16, tool interop 0, widget 81 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

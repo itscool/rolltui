@@ -462,13 +462,44 @@
     ],
     "picker.page_up": [
       "pageup",
-      "alt+pageup",
-      "ctrl+u"
+      "alt+pageup"
     ],
     "picker.page_down": [
       "pagedown",
-      "alt+pagedown",
+      "alt+pagedown"
+    ],
+    "picker.half_up": [
+      "ctrl+u"
+    ],
+    "picker.half_down": [
       "ctrl+d"
+    ],
+    "picker.back": [
+      "alt+left"
+    ],
+    "picker.forward": [
+      "alt+right"
+    ],
+    "picker.previous": [
+      "-"
+    ],
+    "picker.mark": [
+      "space"
+    ],
+    "picker.mark_up": [
+      "shift+up"
+    ],
+    "picker.mark_down": [
+      "shift+down"
+    ],
+    "picker.unmark_all": [
+      "alt+u"
+    ],
+    "picker.preview_left": [
+      "shift+left"
+    ],
+    "picker.preview_right": [
+      "shift+right"
     ],
     "picker.take": [
       "enter"

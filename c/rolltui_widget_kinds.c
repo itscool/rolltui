@@ -1792,6 +1792,22 @@ void rolltui_windows_set_picker_options(RolltuiWindows* w, const char* content, 
   RolltuiPicker* p = picker_for(w, content, len);
   if (p) rolltui_picker_set_options(p, o);
 }
+size_t rolltui_windows_picker_marked(RolltuiWindows* w, const char* content, size_t len, RolltuiStrListRaw* out) {
+  RolltuiPicker* p = picker_for(w, content, len);
+  return p ? rolltui_picker_marked(p, out) : 0;
+}
+void rolltui_windows_set_picker_decor(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerDecorFn fn, void* ctx) {
+  RolltuiPicker* p = picker_for(w, content, len);
+  if (p) rolltui_picker_set_decor(p, fn, ctx);
+}
+void rolltui_windows_set_picker_preview_command(RolltuiWindows* w, const char* content, size_t len, const char* const* argv) {
+  RolltuiPicker* p = picker_for(w, content, len);
+  if (p) rolltui_picker_set_preview_command(p, argv);
+}
+void rolltui_windows_set_picker_previewer(RolltuiWindows* w, const char* content, size_t len, RolltuiPreviewerFn fn, void* ctx) {
+  RolltuiPicker* p = picker_for(w, content, len);
+  if (p) rolltui_picker_set_previewer(p, fn, ctx);
+}
 int rolltui_windows_picker_event(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerEvent* out) {
   RolltuiPicker* p = picker_for(w, content, len);
   if (!p) return 0;

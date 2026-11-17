@@ -490,7 +490,7 @@ as the letter itself, and every lookup matches it as shift and the letter. The h
 letter as typed (`g`) and shift with a letter as the capital (`G`).
 
 The shipped `vim` bindings preset is the default table with j and k, h and l, `g g` and `G`,
-Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages (half a page in a list),
+Ctrl-D and Ctrl-U added in scrolling pages (both tables move half a page with them in a list and the column browser),
 H, M and L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it.
 In the column browser those letters are keys rather than jumps to a name.
 
@@ -722,6 +722,8 @@ names the columns in bold, the sorted one marked ▲ or ▼.
 - `scrolloff`: rows kept between the cursor and the window's edge. Past half the window, the
   cursor stays in the middle.
 - `wrap`: the cursor goes from the last row to the first and back.
+
+  `RolltuiMenuOptions` and `RolltuiPickerOptions` take `scrolloff` and `wrap` too.
 - `hide_header`: no header row.
 - `headings`: with `tree`, a row at depth 0 is a section heading, drawn bold with a rule after its
   name. The cursor passes over headings, a heading is always open, and a filter keeps a heading
@@ -1089,6 +1091,54 @@ under that name, or the file the path names (relative to the preset directory, a
 read again when it changes. The column browser's preview shows a picture file the same way, with
 its size in pixels in the head.
 
+## The column browser
+
+A `picker:` window shows one column per folder from the root to the cursor's, and the folder or file
+under the cursor beside them.
+
+| Keys | Action |
+|---|---|
+| Up, Down, Home, End, Page Up, Page Down | move in the folder |
+| Ctrl-U, Ctrl-D | half a page |
+| Left, Right | the folder above; into the folder under the cursor |
+| Alt-Left, Alt-Right | back and forward through the folders visited |
+| `-` | the folder last left |
+| Enter, Escape | take the entry; cancel |
+
+A folder keeps the entry its cursor was last on, and the column beside the cursor draws that entry
+in the selection's colour, as the path behind the cursor is drawn.
+
+With workers lent (`rolltui_windows_set_tasks`), the folder beside the cursor is read on them as the
+cursor moves. A move waits up to 30 ms for it, so a folder read quickly is there in the same frame.
+A slower one (a network share, a very large folder) says "loading…" from 100 ms and fills in when its
+read is back; going into it meanwhile puts the cursor in it at that point. A folder a host points
+the browser at (`rolltui_windows_set_picker_dir`), and each folder on the way to it, is read at once,
+as are the folders Alt-Left, Alt-Right and `-` return to.
+
+`RolltuiPickerOptions.ratio_parent`, `ratio_current` and `ratio_next` set the panes' widths as
+shares: 1, 2 and 1 give each folder above a quarter, the cursor's folder a half and the pane beside
+it a quarter. A share of 0 leaves that pane at the width of its names.
+
+### Marks
+
+With `RolltuiPickerOptions.marks`, entries are marked by path, in any folder: Space marks or unmarks
+the entry and moves to the next, Shift-Up and Shift-Down mark as they move, Alt-U clears every mark.
+A marked entry is bold in the `accent_1` role with ▌ before it (`*` where ambiguous-width glyphs
+are drawn two cells wide). `rolltui_windows_picker_marked` gives the marked paths, for a host to
+copy, move or open together.
+
+A host marks entries of its own with `rolltui_windows_set_picker_decor`. Its function is asked for
+each entry drawn and fills a `RolltuiPickerDecor`: `gutter`, a glyph in the cell before the name
+(a copied or cut tag); `cell`, a few characters right of the name (a git status); `role`, the
+name's role. A host's glyph takes the place of the mark's.
+
+### Events
+
+`rolltui_windows_picker_event` reads what the person did: an entry taken, a cancel, a copy. With
+`RolltuiPickerOptions.report_changes` it also reads `ROLLTUI_PICKER_EVENT_MOVED` when the cursor is
+on another entry and `ROLLTUI_PICKER_EVENT_FOLDER` when the focused folder changes, each with its
+path, after those outcomes.
+
 ## File watching
 
 The column browser re-reads every folder on screen, and the previewed file, about twice a second.
@@ -1116,7 +1166,57 @@ less often. `RolltuiPickerOptions.no_watch` turns watching off.
 | Markdown | rendered: headings, lists, tables, code blocks |
 | Binary | offsets, hex byte pairs and an ASCII column, read one screen at a time |
 
-Control characters are drawn as their symbols (`␛`) and invalid bytes as `�`.
+Control characters are drawn as their symbols (`␛`) and invalid bytes as `�`. A tab reaches the
+next stop of `RolltuiPickerOptions.preview_tab` columns (4 when 0). With `preview_wrap`, a line
+wider than the preview carries on in the rows below; without it, the line ends in an ellipsis, and
+Shift-Left and Shift-Right (from the list or in the preview) and the wheel's sideways turns scroll a
+text file's lines sideways, as far as the widest line's end.
+
+With workers lent (`rolltui_windows_set_tasks`; `rolltui_run_tasks` gives the run's own), a file is
+read off the UI thread and the files above and below the cursor are read ahead, unless a host's
+previewer is set. The last four previews are kept, so a file looked at before shows at once; a kept
+file is read again only when it changed on disk.
+
+### A host's previewer
+
+`rolltui_windows_set_picker_previewer` puts a host's function before the built-in preview, for a
+document's pages or another program's output. It is asked for each file previewed. It fills the
+`RolltuiAnsiText` with text and SGR colour and returns 1, or returns 0 and the built-in preview
+draws the file.
+
+```c
+static int pdf_pages(void* ctx, const char* path, size_t len, size_t offset, RolltuiAnsiText* out, size_t* bound) {
+  Pdf* pdf;
+  if (len < 4 || memcmp(path + len - 4, ".pdf", 4) != 0) return 0;
+  pdf = pdf_open(ctx, path, len);
+  if (!pdf) return 0;
+  *bound = pdf_page_count(pdf);           /* offset is a page, 0 to *bound - 1 */
+  pdf_page_text(pdf, offset, out);        /* rolltui_ansi_feed(out, ...) */
+  return 1;
+}
+rolltui_windows_set_picker_previewer(w, "picker:files", sizeof "picker:files" - 1, pdf_pages, docs);
+```
+
+`offset` is where the person has scrolled the preview. With `*bound` left at 0 it is a line of what
+the function filled, and scrolling moves through those lines. With `*bound` set it is a place of
+the function's own (a page, a percent) from 0 to `*bound` - 1: each scroll asks again at the new
+offset, and Page Up and Page Down move one place. The text stays the preview's until the next ask,
+so a function may go on feeding it, on the thread that draws, as a command's output arrives.
+
+### A command as the previewer
+
+`rolltui_windows_set_picker_preview_command` runs a program for each file previewed:
+
+```c
+static const char* const pv[] = {"pistol", NULL};
+rolltui_windows_set_picker_preview_command(w, "picker:files", sizeof "picker:files" - 1, pv);
+```
+
+The program gets the file's path, the preview's width and its height after its own arguments
+(`pistol notes.md 50 30`). It runs on a pseudo-terminal that size, so it writes colour, and what it
+writes is the preview, drawn as it arrives. The cursor resting on a file for 30 ms starts it, so a
+cursor moving over files starts nothing; moving away stops it. A program that cannot start leaves
+the built-in preview. A host's previewer function is asked before the command.
 
 ## Mermaid diagrams
 

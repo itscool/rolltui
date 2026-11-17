@@ -2814,6 +2814,8 @@ typedef struct RolltuiMenuOptions {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   int inset ROLLTUI_DEFAULT(0); /* columns kept clear on each side of the area */
   unsigned char cursor_shape ROLLTUI_DEFAULT(0); /* ROLLTUI_CURSOR_*: CAPS and EDGES are drawn in the inset's cells */
+  int scrolloff ROLLTUI_DEFAULT(0);  /* rows kept between the selection and the edge; past half the view, centred */
+  unsigned char wrap ROLLTUI_DEFAULT(0); /* the selection goes from the last row to the first and back */
 } RolltuiMenuOptions;
 
 /* THE ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
@@ -4362,6 +4364,10 @@ int rolltui_windows_picker_taken(RolltuiWindows* w, const char* content, size_t 
 #define ROLLTUI_PICKER_EVENT_TAKEN 1
 #define ROLLTUI_PICKER_EVENT_CANCELLED 2
 #define ROLLTUI_PICKER_EVENT_COPY 3
+/* With `report_changes`: the cursor is on another entry (`path` the entry's), and the folder shown in the focused column changed (`path`
+ * the folder's). Each is told once a change, the newest last, after the outcomes above. */
+#define ROLLTUI_PICKER_EVENT_MOVED 4
+#define ROLLTUI_PICKER_EVENT_FOLDER 5
 typedef struct RolltuiPickerEvent {
   unsigned char kind ROLLTUI_DEFAULT(0);
   unsigned char inverse ROLLTUI_DEFAULT(0);
@@ -4369,6 +4375,30 @@ typedef struct RolltuiPickerEvent {
 } RolltuiPickerEvent;
 void rolltui_picker_event_release(RolltuiPickerEvent* e);
 int rolltui_windows_picker_event(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerEvent* out);
+/* A HOST'S PREVIEWER, asked first for each file the column browser previews: it fills `out` (another program's output, a document it
+ * renders) and answers 1, or answers 0 and the built-in preview draws the file. `offset` is where the person has scrolled to: a line, or
+ * with `*bound` set, a place of the previewer's own (a page, a percent) from 0 to `*bound` - 1, and each scroll there asks again at the
+ * new offset. `out` stays the preview's until the next ask, so a previewer may feed it as a command's output arrives. */
+typedef int (*RolltuiPreviewerFn)(void* ctx, const char* path, size_t len, size_t offset, RolltuiAnsiText* out, size_t* bound);
+void rolltui_windows_set_picker_previewer(RolltuiWindows* w, const char* content, size_t len, RolltuiPreviewerFn fn, void* ctx);
+/* A COMMAND AS THE PREVIEWER: `argv` (NULL-terminated, copied; NULL turns it off) run for each file previewed, with the file's path,
+ * the preview's width and its height after its own arguments, on a pseudo-terminal that size, so it writes colour. What it writes is
+ * the preview, drawn as it arrives. The cursor resting 30 ms on a file starts it, so a cursor passing over files starts nothing; moving
+ * away stops it. A command that cannot start leaves the built-in preview; a host's previewer is asked before it. */
+void rolltui_windows_set_picker_preview_command(RolltuiWindows* w, const char* content, size_t len, const char* const* argv);
+/* The paths marked (`marks`), into `out` (may be NULL); how many. */
+size_t rolltui_windows_picker_marked(RolltuiWindows* w, const char* content, size_t len, RolltuiStrListRaw* out);
+/* AN ENTRY'S OWN MARKS, from the host, asked for each entry drawn: a glyph in the cell before its name (copied, cut, tagged) in
+ * `gutter_role`; a short cell of text right of the name (a git status, a count) in `cell_role`; the name in `role` (0: as it is). */
+typedef struct RolltuiPickerDecor {
+  char gutter[8];
+  unsigned char gutter_role ROLLTUI_DEFAULT(0);
+  char cell[32];
+  unsigned char cell_role ROLLTUI_DEFAULT(0);
+  unsigned char role ROLLTUI_DEFAULT(0);
+} RolltuiPickerDecor;
+typedef void (*RolltuiPickerDecorFn)(void* ctx, const char* path, size_t len, int is_dir, RolltuiPickerDecor* out);
+void rolltui_windows_set_picker_decor(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerDecorFn fn, void* ctx);
 
 /* THE PICKER'S SETTINGS, a host's to set: dotfiles shown, the sort (`ROLLTUI_SORT_*`), motion (the column slide only; off snaps),
  * highlight (a background block on the cursor's row and the trail's, independent of motion; a host that also turns its own glow effect
@@ -4411,6 +4441,22 @@ typedef struct RolltuiPickerOptions {
    * a size column already says it, and the same second row. The columns lose one row for it, and a picker too short to spare one shows
    * none. A slot is kept right of the focus whatever is under the cursor, so nothing moves as it passes from a file to a folder. */
   unsigned char info ROLLTUI_DEFAULT(0);
+  /* SCROLLING: rows kept between the cursor and a column's top or foot (past half the view, centred), and the cursor going from the
+   * last entry to the first and back. */
+  int scrolloff ROLLTUI_DEFAULT(0);
+  unsigned char wrap ROLLTUI_DEFAULT(0);
+  /* CHANGES REPORTED: ROLLTUI_PICKER_EVENT_MOVED and _FOLDER events as the cursor and the folder change (0: only the outcomes). */
+  unsigned char report_changes ROLLTUI_DEFAULT(0);
+  /* THE PANES' WIDTHS AS SHARES, a folder above, the one the cursor is in and what is beside it: 1, 4, 3 gives them an eighth, a half and
+   * three eighths of the width. A share of 0 leaves that pane its own width, its names' (the slot beside the cursor, 28 cells or half
+   * the picker with a preview). */
+  unsigned char ratio_parent ROLLTUI_DEFAULT(0), ratio_current ROLLTUI_DEFAULT(0), ratio_next ROLLTUI_DEFAULT(0);
+  /* THE FILE PREVIEW'S LINES: the columns between tab stops (0: four), and a line wider than the preview wrapping onto the rows below
+   * (`preview_wrap`) instead of ending in an ellipsis. */
+  unsigned char preview_tab ROLLTUI_DEFAULT(0), preview_wrap ROLLTUI_DEFAULT(0);
+  /* MARKS: entries chosen several at once, in any folder, by path: Space marks and moves on, Shift-Up and Shift-Down mark as they
+   * go, Alt-U clears them. A marked entry is bold in the mark's colour with ▌ before it. */
+  unsigned char marks ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
 #define ROLLTUI_PREVIEW_OFF 0
 #define ROLLTUI_PREVIEW_RIGHT 1
@@ -4467,6 +4513,18 @@ typedef struct RolltuiPickerActions {
   const char* cancel;
   const char* copy;
   const char* copy_inverse;
+  const char* half_up;
+  const char* half_down;
+  /* THE FOLDERS VISITED: back to the one before, forward again, and to the one last left (as `cd -`) */
+  const char* back;
+  const char* forward;
+  const char* previous;
+  const char* mark;
+  const char* mark_up;
+  const char* mark_down;
+  const char* unmark_all;
+  const char* preview_left;
+  const char* preview_right;
 } RolltuiPickerActions;
 
 /* ---- a hint bar: the keys a status line names, clickable ---------------------------------

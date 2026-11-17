@@ -163,6 +163,8 @@ struct RolltuiList* rolltui_windows_list(RolltuiWindows* w, const char* name, si
 int rolltui_windows_has_list(const RolltuiWindows* w, const char* name, size_t len);
 /* The workers the built-in kinds read files on (`rolltui_windows_set_tasks`); NULL: this thread. */
 RolltuiTasks* rolltui_windows_tasks(const RolltuiWindows* w);
+/* The workers a tasks object started; 0 when its jobs run on the draining thread, at the drain. */
+int rolltui_tasks_workers(const RolltuiTasks* t);
 /* The picture an `image:<name>` window shows instead of reading the file; NULL when none is bound. */
 const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* name, size_t len);
 /* The table's message log, which its `messages` kind reads. */

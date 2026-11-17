@@ -13,12 +13,21 @@
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <cstdio>
 #include <vector>
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_widget_picker.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_preview.h"  /* INTERNAL: the formatters the head and the info say things with */
 #include "rolltui/c/rolltui_screen.h"  /* INTERNAL: a frame of its own to draw into */
 #include "rolltui_test.hpp"
+#if !defined(_WIN32)
+#include <signal.h>
+#include <sys/types.h>
+#endif
 namespace {
 namespace fs = std::filesystem;
 void write_file(const fs::path& p, const std::string& t) {
@@ -973,6 +982,495 @@ int main() {
     if (had_tz) ::setenv("TZ", kept_tz.c_str(), 1);
     else ::unsetenv("TZ");
     ::tzset();
+  }
+  // ---- the seventh batch: changes told, the folders visited, a scroll margin, wrapping, half a page ----------------------------
+  {
+    RolltuiPicker* q = rolltui_picker_new();
+    RolltuiPickerOptions o;
+    rolltui_picker_options_init(&o);
+    o.report_changes = 1;
+    o.wrap = 1;
+    o.scrolloff = 2;
+    rolltui_picker_set_options(q, &o);
+    auto press = [&](unsigned char k, bool alt = false, char32_t ch = 0) {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = ch ? static_cast<unsigned char>(ROLLTUI_KEY_CHAR) : k;
+      e.key.ch = ch;
+      e.key.alt = alt ? 1 : 0;
+      return rolltui_picker_handle(q, &e, b, A);
+    };
+    auto drain = [&](unsigned char kind) {
+      RolltuiPickerEvent e{};
+      std::string last;
+      while (rolltui_picker_event(q, &e))
+        if (e.kind == kind) last = str(e.path);
+      rolltui_picker_event_release(&e);
+      return last;
+    };
+    auto selected_name = [&] {
+      RolltuiStr sel{};
+      int is_dir = 0;
+      rolltui_picker_selected(q, &sel, &is_dir);
+      const std::string got_path = str(sel);
+      rolltui_str_free(&sel);
+      return got_path.substr(got_path.rfind('/') + 1);
+    };
+    rolltui_picker_layout(q, RolltuiRect{0, 0, 80, 8});
+    const std::string beta = (root / "beta").string();
+    rolltui_picker_go_to(q, beta.data(), beta.size());
+    press(ROLLTUI_KEY_DOWN);
+    check(!drain(ROLLTUI_PICKER_EVENT_MOVED).empty(), "with report_changes, a move is told as a MOVED event with the entry's path");
+    const std::string a = (root / "alpha").string();
+    rolltui_picker_go_to(q, a.data(), a.size());
+    press(ROLLTUI_KEY_DOWN);
+    check(drain(ROLLTUI_PICKER_EVENT_FOLDER) == a, "…and a folder opened, as FOLDER with the folder's [" + a + "]");
+    {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = ROLLTUI_KEY_LEFT;
+      e.key.alt = 1;
+      rolltui_picker_handle(q, &e, b, A); /* Alt-Left: back */
+    }
+    RolltuiStr dir{};
+    rolltui_picker_dir(q, &dir);
+    check(str(dir) == beta, "Alt-Left goes back to the folder visited before [" + str(dir) + "]");
+    {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = ROLLTUI_KEY_RIGHT;
+      e.key.alt = 1;
+      rolltui_picker_handle(q, &e, b, A); /* Alt-Right: forward */
+    }
+    rolltui_picker_dir(q, &dir);
+    check(str(dir) == a, "…and Alt-Right forward again");
+    press(0, false, '-');
+    rolltui_picker_dir(q, &dir);
+    check(str(dir) == beta, "- goes to the folder last left");
+    // WRAPPING and a margin: up from the first entry is the last
+    for (int i = 0; i < 20; ++i) write_file(root / "many" / ((i < 10 ? "m0" : "m") + std::to_string(i) + ".txt"), "m");
+    const std::string many = (root / "many").string();
+    rolltui_picker_go_to(q, many.data(), many.size());
+    press(ROLLTUI_KEY_RIGHT);
+    press(ROLLTUI_KEY_END);
+    const std::string last = selected_name();
+    press(ROLLTUI_KEY_HOME);
+    const std::string first = selected_name();
+    press(ROLLTUI_KEY_UP);
+    check(selected_name() == last, "with wrap, Up from the first entry is the last [" + selected_name() + "]");
+    press(ROLLTUI_KEY_DOWN);
+    check(selected_name() == first, "…and Down from the last the first");
+    press(ROLLTUI_KEY_HOME);
+    auto index_of = [&] { return std::atoi(selected_name().c_str() + 1); }; /* m07.txt is the eighth */
+    {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = ROLLTUI_KEY_CHAR;
+      e.key.ch = 'd';
+      e.key.ctrl = 1;
+      rolltui_picker_handle(q, &e, b, A); /* Ctrl-D: half a page */
+    }
+    const int half = index_of();
+    press(ROLLTUI_KEY_HOME);
+    press(ROLLTUI_KEY_PAGEDOWN);
+    const int page = index_of();
+    check(half > 0 && half * 2 <= page + 1 && half * 2 >= page - 1, "Ctrl-D moves half a page [" + std::to_string(half) + " of " + std::to_string(page) + "]");
+    rolltui_str_free(&dir);
+    rolltui_picker_free(q);
+  }
+  // ---- a host's previewer, a preview's lines, ratios, the entry last used, marks and a host's own marks ----------------------------
+  {
+    write_file(root / "prev" / "long.txt", std::string("a\tb ") + std::string(70, 'x') + "\nsecond line\n");
+    write_file(root / "prev" / "page.pdf", "%PDF");
+    fs::create_directories(root / "prev" / "sub");
+    write_file(root / "prev" / "sub" / "inner.txt", "i");
+    RolltuiPicker* q = rolltui_picker_new();
+    RolltuiPickerOptions o;
+    rolltui_picker_options_init(&o);
+    o.preview = ROLLTUI_PREVIEW_RIGHT;
+    rolltui_picker_set_options(q, &o);
+    struct Host {
+      int asked = 0;
+      std::size_t last_offset = 99;
+    } host;
+    rolltui_picker_set_previewer(q, [](void* c, const char* path, std::size_t len, std::size_t offset, RolltuiAnsiText* out, std::size_t* bound) {
+      Host* h = static_cast<Host*>(c);
+      const std::string pth(path, len);
+      if (pth.size() < 4 || pth.substr(pth.size() - 4) != ".pdf") return 0;
+      ++h->asked;
+      h->last_offset = offset;
+      *bound = 3; /* three pages */
+      const std::string page = "PAGE " + std::to_string(offset + 1) + " OF 3\n";
+      rolltui_ansi_feed(out, page.data(), page.size());
+      return 1;
+    }, &host);
+    auto draw_q = [&](int w, int h) {
+      RolltuiFrame* f = rolltui_frame_new(w, h, styles[ROLLTUI_ROLE_BACKGROUND]);
+      rolltui_picker_layout(q, RolltuiRect{0, 0, w, h});
+      rolltui_picker_draw(q, f, styles, &glyphs, 0, 1);
+      const std::string t = text_of(f);
+      rolltui_frame_free(f);
+      return t;
+    };
+    auto keyq = [&](unsigned char k) {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = k;
+      return rolltui_picker_handle(q, &e, b, A);
+    };
+    const std::string pdf = (root / "prev" / "page.pdf").string();
+    rolltui_picker_go_to(q, pdf.data(), pdf.size());
+    std::string t = draw_q(100, 10);
+    check(has(t, "PAGE 1 OF 3") && host.asked > 0, "a host's previewer shows the file it takes, in place of the built-in preview");
+    keyq(ROLLTUI_KEY_RIGHT); /* the keys into the preview */
+    keyq(ROLLTUI_KEY_DOWN);
+    t = draw_q(100, 10);
+    check(host.last_offset == 1 && has(t, "PAGE 2 OF 3"), "…and a scroll there asks it again at the next place it has");
+    keyq(ROLLTUI_KEY_END);
+    keyq(ROLLTUI_KEY_DOWN);
+    check(host.last_offset == 2, "…to its last, and no further [" + std::to_string(host.last_offset) + "]");
+    {
+      RolltuiScrollExtent ext{};
+      draw_q(100, 10);
+      check(rolltui_picker_scroll_extent(q, &ext) && ext.total == 3 && ext.first == 2 && ext.visible == 1,
+            "…and the window's bar is of the previewer's places, not of a file read before [" + std::to_string(ext.first) + "/" +
+                std::to_string(ext.total) + "]");
+      check(rolltui_picker_scroll_to(q, 0) && host.last_offset == 0, "…and the bar dragged to the top asks it for its first place");
+    }
+    keyq(ROLLTUI_KEY_LEFT); /* out of the preview */
+    // PREVIEWS KEPT, AND THE NEXT READ AHEAD: on workers, nothing drained between the move and the draw
+    {
+      write_file(root / "cache" / "a.txt", "ALPHA BODY\n");
+      write_file(root / "cache" / "b.txt", "BRAVO BODY\n");
+      write_file(root / "cache" / "c.txt", "CHARLIE BODY\n");
+      write_file(root / "cache" / "d.txt", "DELTA BODY\n");
+      RolltuiTasks* tasks = rolltui_tasks_new(1, nullptr, nullptr);
+      RolltuiPicker* r = rolltui_picker_new();
+      RolltuiPickerOptions ro;
+      rolltui_picker_options_init(&ro);
+      ro.preview = ROLLTUI_PREVIEW_RIGHT;
+      rolltui_picker_set_options(r, &ro);
+      rolltui_picker_set_tasks(r, tasks);
+      auto draw_r = [&]() {
+        RolltuiFrame* f = rolltui_frame_new(100, 8, styles[ROLLTUI_ROLE_BACKGROUND]);
+        rolltui_picker_layout(r, RolltuiRect{0, 0, 100, 8});
+        rolltui_picker_draw(r, f, styles, &glyphs, 0, 1);
+        const std::string t2 = text_of(f);
+        rolltui_frame_free(f);
+        return t2;
+      };
+      auto key_r = [&](unsigned char k) {
+        RolltuiEvent e{};
+        e.kind = ROLLTUI_EVENT_KEY;
+        e.key.key = k;
+        rolltui_picker_handle(r, &e, b, A);
+      };
+      const std::string a_txt = (root / "cache" / "a.txt").string();
+      rolltui_picker_go_to(r, a_txt.data(), a_txt.size());
+      draw_r();
+      rolltui_tasks_wait_idle(tasks, 5000);
+      check(has(draw_r(), "ALPHA BODY"), "a file previewed on the workers shows once they are done");
+      key_r(ROLLTUI_KEY_DOWN);
+      check(has(draw_r(), "BRAVO BODY"), "the file below was read ahead: it shows the moment the cursor is on it");
+      key_r(ROLLTUI_KEY_DOWN);
+      key_r(ROLLTUI_KEY_DOWN); /* d.txt: asked for as the cursor passed c.txt, and nothing drained since */
+      check(!has(draw_r(), "DELTA BODY"), "…while a file whose read has not come back waits for the workers (the control)");
+      key_r(ROLLTUI_KEY_UP);
+      key_r(ROLLTUI_KEY_UP);
+      check(has(draw_r(), "BRAVO BODY"), "a file looked at before is kept: back on it, it shows at once");
+      rolltui_tasks_wait_idle(tasks, 5000);
+      rolltui_picker_free(r);
+      rolltui_tasks_free(tasks);
+    }
+    // A FOLDER READ ON THE WORKERS as the cursor moves: there at once when quick, "loading…" when it waits, filled when it is back
+    {
+      write_file(root / "slow" / "one" / "x1.txt", "x");
+      write_file(root / "slow" / "two" / "y1.txt", "y");
+      write_file(root / "slow" / "two" / "y2.txt", "y");
+      RolltuiTasks* tasks = rolltui_tasks_new(1, nullptr, nullptr);
+      RolltuiPicker* r = rolltui_picker_new();
+      RolltuiPickerOptions ro;
+      rolltui_picker_options_init(&ro);
+      ro.no_watch = 1;
+      ro.motion = 0; /* the clock is held still: the columns snap rather than slide */
+      rolltui_picker_set_options(r, &ro);
+      rolltui_picker_set_tasks(r, tasks);
+      auto draw_r = [&]() {
+        RolltuiFrame* f = rolltui_frame_new(90, 8, styles[ROLLTUI_ROLE_BACKGROUND]);
+        rolltui_picker_layout(r, RolltuiRect{0, 0, 90, 8});
+        rolltui_picker_draw(r, f, styles, &glyphs, 0, 1);
+        const std::string t2 = text_of(f);
+        rolltui_frame_free(f);
+        return t2;
+      };
+      auto key_r = [&](unsigned char k) {
+        RolltuiEvent e{};
+        e.kind = ROLLTUI_EVENT_KEY;
+        e.key.key = k;
+        rolltui_picker_handle(r, &e, b, A);
+      };
+      auto block_worker = [&]() { /* the one worker held, so a read waits behind it */
+        rolltui_tasks_start(tasks, [](void*, const RolltuiJob*) { std::this_thread::sleep_for(std::chrono::milliseconds(300)); },
+                            [](void*, int) {}, nullptr);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      };
+      const std::string slow = (root / "slow").string();
+      rolltui_picker_set_now(r, 1000);
+      rolltui_picker_go_to(r, slow.data(), slow.size());
+      draw_r();
+      key_r(ROLLTUI_KEY_DOWN); /* onto two: read while the move waits */
+      check(has(draw_r(), "y1.txt"), "a folder read quickly on the workers is beside the cursor in the same frame");
+      key_r(ROLLTUI_KEY_UP);
+      block_worker();
+      key_r(ROLLTUI_KEY_DOWN);
+      std::string t2 = draw_r();
+      check(!has(t2, "y1.txt") && !has(t2, "loading"), "a read that has not come back draws nothing at first");
+      RolltuiPickerStatus st{};
+      rolltui_picker_status(r, &st);
+      check(st.wake_ms > 0 && st.wake_ms <= 100, "…and asks for a frame when \"loading…\" is due [" + std::to_string(st.wake_ms) + "]");
+      rolltui_picker_status_release(&st);
+      rolltui_picker_set_now(r, 1150);
+      check(has(draw_r(), "loading\xE2\x80\xA6"), "…then says \"loading…\" once it has taken 100 ms");
+      rolltui_tasks_wait_idle(tasks, 5000);
+      t2 = draw_r();
+      check(has(t2, "y1.txt") && has(t2, "y2.txt") && !has(t2, "loading"), "…and shows the folder when its read is back");
+      // INTO A FOLDER STILL BEING READ: the cursor lands in it when the read is back
+      key_r(ROLLTUI_KEY_UP);
+      rolltui_tasks_wait_idle(tasks, 5000);
+      key_r(ROLLTUI_KEY_DOWN);
+      rolltui_tasks_wait_idle(tasks, 5000);
+      block_worker();
+      key_r(ROLLTUI_KEY_UP); /* onto one, its read held */
+      key_r(ROLLTUI_KEY_RIGHT);
+      rolltui_tasks_wait_idle(tasks, 5000);
+      RolltuiStr sel{};
+      int sel_dir = 0;
+      rolltui_picker_selected(r, &sel, &sel_dir);
+      const std::string sel_s(sel.p ? sel.p : "", sel.n);
+      check(sel_s.size() >= 6 && sel_s.substr(sel_s.size() - 6) == "x1.txt",
+            "Right into a folder still being read puts the cursor in it once the read is back [" + sel_s + "]");
+      rolltui_str_free(&sel);
+      rolltui_picker_free(r); /* a read still out when the picker goes is dropped, not shown */
+      block_worker();
+      rolltui_tasks_free(tasks);
+    }
+#if !defined(_WIN32)
+    // A COMMAND AS THE PREVIEWER: started where the cursor rests, its output the preview, stopped when the cursor moves on
+    {
+      write_file(root / "cmd" / "one.txt", "1");
+      write_file(root / "cmd" / "two.txt", "2");
+      write_file(root / "cmd" / "zzz.txt", "3");
+      const fs::path pids = root / "cmd_pids";
+      fs::create_directories(pids);
+      const std::string script = "echo $$ > '" + pids.string() + "'/\"${0##*/}\".pid; printf 'CMD %s %s %s\\n' \"${0##*/}\" \"$1\" \"$2\"; exec sleep 30";
+      const char* argv[] = {"/bin/sh", "-c", script.c_str(), nullptr};
+      RolltuiPicker* r = rolltui_picker_new();
+      RolltuiPickerOptions ro;
+      rolltui_picker_options_init(&ro);
+      ro.preview = ROLLTUI_PREVIEW_RIGHT;
+      ro.motion = 0;
+      ro.no_watch = 1;
+      rolltui_picker_set_options(r, &ro);
+      rolltui_picker_set_preview_command(r, argv);
+      auto draw_r = [&]() {
+        RolltuiFrame* f = rolltui_frame_new(100, 10, styles[ROLLTUI_ROLE_BACKGROUND]);
+        rolltui_picker_layout(r, RolltuiRect{0, 0, 100, 10});
+        rolltui_picker_draw(r, f, styles, &glyphs, 0, 1);
+        const std::string t2 = text_of(f);
+        rolltui_frame_free(f);
+        return t2;
+      };
+      auto key_r = [&](unsigned char k) {
+        RolltuiEvent e{};
+        e.kind = ROLLTUI_EVENT_KEY;
+        e.key.key = k;
+        rolltui_picker_handle(r, &e, b, A);
+      };
+      const std::string one = (root / "cmd" / "one.txt").string();
+      rolltui_picker_set_now(r, 10000);
+      rolltui_picker_go_to(r, one.data(), one.size());
+      draw_r();
+      key_r(ROLLTUI_KEY_DOWN); /* onto two.txt at once: one.txt was passed */
+      std::string t2 = draw_r();
+      check(!has(t2, "CMD"), "the command waits for the cursor to rest");
+      rolltui_picker_set_now(r, 10040);
+      const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(3000 * rolltui_test::kClockScale));
+      while (!has(t2 = draw_r(), "CMD two.txt") && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      check(has(t2, "CMD two.txt"), "…then its output is the preview of the file it rests on");
+      {
+        std::size_t at = t2.find("CMD two.txt ");
+        int cw2 = 0, ch2 = 0;
+        if (at != std::string::npos) std::sscanf(t2.c_str() + at + 12, "%d %d", &cw2, &ch2);
+        check(cw2 > 10 && ch2 > 2, "…given the preview's width and height after the file's path [" + std::to_string(cw2) + "x" + std::to_string(ch2) + "]");
+      }
+      check(!fs::exists(pids / "one.txt.pid"), "a file the cursor passed over started nothing");
+      pid_t two_pid = 0;
+      {
+        std::ifstream in(pids / "two.txt.pid");
+        in >> two_pid;
+      }
+      key_r(ROLLTUI_KEY_DOWN); /* on to zzz.txt */
+      check(two_pid > 0 && kill(two_pid, 0) != 0, "moving on stops the command that was running [" + std::to_string(two_pid) + "]");
+      rolltui_picker_free(r);
+    }
+#endif
+    // A LINE WRAPPED, at the tab stop set
+    const std::string longp = (root / "prev" / "long.txt").string();
+    o.preview_wrap = 1;
+    o.preview_tab = 8;
+    rolltui_picker_set_options(q, &o);
+    rolltui_picker_go_to(q, longp.data(), longp.size());
+    t = draw_q(100, 12);
+    std::size_t xs = 0, x_rows = 0;
+    const std::vector<std::string> wrap_lines = lines_of(t);
+    for (std::size_t li = 1; li < wrap_lines.size(); ++li) { /* the preview's body (below its caption) is right of the last divider */
+      const std::string& l = wrap_lines[li];
+      const std::size_t bar = l.rfind("\xE2\x94\x82");
+      const std::string right = bar == std::string::npos ? "" : l.substr(bar + 3);
+      const std::size_t n = static_cast<std::size_t>(std::count(right.begin(), right.end(), 'x'));
+      xs += n;
+      x_rows += n ? 1 : 0;
+    }
+    check(has(t, "a       b x"), "a tab reaches the stop set for the preview: eight columns");
+    check(xs == 70 && x_rows == 2 && !has(t, "x\xE2\x80\xA6"),
+          "…and a line too long wraps onto the next row, all of it there [" + std::to_string(xs) + " in " + std::to_string(x_rows) + " rows]");
+    // SIDEWAYS: a long line's preview, not wrapped, scrolled right and back, as far as its end
+    {
+      o.preview_wrap = 0;
+      rolltui_picker_set_options(q, &o);
+      rolltui_picker_go_to(q, longp.data(), longp.size());
+      draw_q(100, 12);
+      RolltuiEvent sr{};
+      sr.kind = ROLLTUI_EVENT_KEY;
+      sr.key.key = ROLLTUI_KEY_RIGHT;
+      sr.key.shift = 1;
+      rolltui_picker_handle(q, &sr, b, A);
+      t = draw_q(100, 12);
+      check(has(t, "b xxx") && !has(t, "a       b"), "Shift-Right scrolls the preview's lines sideways, from the list");
+      for (int i = 0; i < 20; ++i) rolltui_picker_handle(q, &sr, b, A);
+      t = draw_q(100, 12);
+      check(has(t, "xxxx") && !has(t, "x\xE2\x80\xA6"), "…as far as the widest line's end shown whole, and no further");
+      RolltuiEvent sl = sr;
+      sl.key.key = ROLLTUI_KEY_LEFT;
+      for (int i = 0; i < 30; ++i) rolltui_picker_handle(q, &sl, b, A);
+      check(has(draw_q(100, 12), "a       b x"), "Shift-Left scrolls back to the lines' start");
+      // CODE: its colours move with its text
+      write_file(root / "prev" / "wide.c", "int a = 1; /* " + std::string(80, 'y') + " */\n");
+      const std::string widec = (root / "prev" / "wide.c").string();
+      rolltui_picker_go_to(q, widec.data(), widec.size());
+      draw_q(100, 12);
+      rolltui_picker_handle(q, &sr, b, A);
+      RolltuiFrame* f = rolltui_frame_new(100, 12, styles[ROLLTUI_ROLE_BACKGROUND]);
+      rolltui_picker_layout(q, RolltuiRect{0, 0, 100, 12});
+      rolltui_picker_draw(q, f, styles, &glyphs, 0, 1);
+      t = text_of(f);
+      int yx = -1, yy = -1;
+      for (int y = 0; y < 12 && yx < 0; ++y)
+        for (int x = 60; x < 100; ++x) {
+          RolltuiCellRaw c{};
+          rolltui_frame_cell(f, x, y, &c);
+          if (c.len == 1 && c.bytes[0] == 'y') { yx = x, yy = y; break; }
+        }
+      RolltuiCellRaw yc{};
+      if (yx >= 0) rolltui_frame_cell(f, yx, yy, &yc);
+      check(!has(t, "int a") && has(t, "/* yyy") && yx >= 0 && yc.style.italic,
+            "a line of code scrolls sideways with its classes in step: the comment still drawn as a comment");
+      rolltui_frame_free(f);
+    }
+    // THE ENTRY LAST USED, marked in the folder beside the cursor
+    const std::string sub = (root / "prev" / "sub").string();
+    rolltui_picker_go_to(q, (root / "prev" / "sub" / "inner.txt").string().data(), (root / "prev" / "sub" / "inner.txt").string().size());
+    keyq(ROLLTUI_KEY_LEFT); /* the cursor on sub, in prev: sub's listing beside it, inner.txt its last used */
+    {
+      RolltuiFrame* f = rolltui_frame_new(100, 10, styles[ROLLTUI_ROLE_BACKGROUND]);
+      rolltui_picker_layout(q, RolltuiRect{0, 0, 100, 10});
+      rolltui_picker_draw(q, f, styles, &glyphs, 0, 1);
+      int ix = -1, iy = -1;
+      for (int y = 0; y < 10 && ix < 0; ++y)
+        for (int x = 0; x < 100; ++x) {
+          RolltuiCellRaw c{};
+          rolltui_frame_cell(f, x, y, &c);
+          if (c.len == 1 && c.bytes[0] == 'i' && x + 5 < 100) { /* "inner", the entry itself: not "info" in a column further up */
+            bool word = true;
+            for (int k = 1; k < 5 && word; ++k) {
+              RolltuiCellRaw n1{};
+              rolltui_frame_cell(f, x + k, y, &n1);
+              word = n1.len == 1 && n1.bytes[0] == "inner"[k];
+            }
+            if (word) { ix = x, iy = y; break; }
+          }
+        }
+      RolltuiCellRaw c{};
+      if (ix >= 0) rolltui_frame_cell(f, ix, iy, &c);
+      check(ix >= 0 && c.style.bg.r == styles[ROLLTUI_ROLE_SELECTION].bg.r && c.style.bg.g == styles[ROLLTUI_ROLE_SELECTION].bg.g,
+            "the folder beside the cursor marks the entry last used in it, in the selection's style");
+      rolltui_frame_free(f);
+    }
+    // RATIOS: a fifth, a half and the rest
+    o.preview_wrap = 0;
+    o.ratio_parent = 1, o.ratio_current = 2, o.ratio_next = 1;
+    rolltui_picker_set_options(q, &o);
+    rolltui_picker_go_to(q, longp.data(), longp.size());
+    {
+      RolltuiFrame* f = rolltui_frame_new(102, 10, styles[ROLLTUI_ROLE_BACKGROUND]);
+      rolltui_picker_layout(q, RolltuiRect{0, 0, 102, 10});
+      rolltui_picker_draw(q, f, styles, &glyphs, 0, 1);
+      std::vector<int> bars;
+      for (int x = 0; x < 102; ++x) {
+        RolltuiCellRaw c{};
+        rolltui_frame_cell(f, x, 9, &c); /* the bottom row: past every name, so nothing but the dividers */
+        if (c.len == 3 && std::memcmp(c.bytes, "\xE2\x94\x82", 3) == 0) bars.push_back(x);
+      }
+      /* 100 cells less the two dividers: a quarter, a half and a quarter */
+      check(bars.size() == 2 && bars[0] == 25 && bars[1] == 76,
+            "ratios of 1, 2 and 1 give the panes a quarter, a half and a quarter [" + (bars.empty() ? std::string("none") : std::to_string(bars[0]) + "," + std::to_string(bars.back())) + "]");
+      rolltui_frame_free(f);
+    }
+    // MARKS, and a host's own glyph and cell
+    o.ratio_parent = o.ratio_current = o.ratio_next = 0;
+    o.preview = ROLLTUI_PREVIEW_OFF;
+    o.marks = 1;
+    rolltui_picker_set_options(q, &o);
+    const std::string beta = (root / "beta").string();
+    rolltui_picker_go_to(q, beta.data(), beta.size());
+    keyq(ROLLTUI_KEY_RIGHT);
+    {
+      RolltuiEvent sp{};
+      sp.kind = ROLLTUI_EVENT_KEY;
+      sp.key.key = ROLLTUI_KEY_CHAR;
+      sp.key.ch = ' ';
+      rolltui_picker_handle(q, &sp, b, A);
+      rolltui_picker_handle(q, &sp, b, A);
+    }
+    RolltuiStrList marked;
+    check(rolltui_picker_marked(q, &marked) == 2 && marked.n == 2, "Space marks an entry and moves on: two marked");
+    rolltui_picker_set_decor(q, [](void*, const char* path, std::size_t len, int, RolltuiPickerDecor* out) {
+      const std::string pth(path, len);
+      if (pth.find("b3.txt") != std::string::npos) {
+        std::memcpy(out->gutter, "C", 2);
+        std::memcpy(out->cell, "M", 2);
+      }
+    }, nullptr);
+    t = draw_q(80, 18);
+    bool gutter = false, cell = false, mark = false;
+    for (const std::string& l : lines_of(t)) {
+      gutter = gutter || l.find("Cb3") != std::string::npos;
+      cell = cell || (l.find("b3") != std::string::npos && l.find(" M") != std::string::npos);
+      mark = mark || l.find("\xE2\x96\x8C" "b0") != std::string::npos;
+    }
+    check(mark, "a marked entry has ▌ before it");
+    check(gutter && cell, "a host's own glyph stands before an entry, and its cell beside the name");
+    {
+      RolltuiEvent u{};
+      u.kind = ROLLTUI_EVENT_KEY;
+      u.key.key = ROLLTUI_KEY_CHAR;
+      u.key.ch = 'u';
+      u.key.alt = 1;
+      rolltui_picker_handle(q, &u, b, A);
+    }
+    check(rolltui_picker_marked(q, nullptr) == 0, "Alt-U clears every mark");
+    rolltui_picker_free(q);
   }
   rolltui_picker_event_release(&ev);
   rolltui_str_free(&got);

@@ -47,6 +47,10 @@ typedef struct Gathered {
 
 struct RolltuiPreview {
   RolltuiStr path;
+  int tab;            /* the columns between tab stops (`rolltui_preview_set_layout`); 0: TAB_COLUMNS */
+  int left;           /* TEXT, not wrapped: the columns scrolled sideways */
+  int cols_vis;       /* the body's width at the last draw */
+  unsigned char wrap; /* a line wider than the preview carries on below, rather than ending in an ellipsis */
   int kind;
   RolltuiStr message; /* UNREADABLE: why, in words */
   long long size;     /* bytes on disk */
@@ -110,6 +114,7 @@ static void release_content(RolltuiPreview* pv) {
   pv->truncated = 0;
   pv->line_n = 0;
   pv->top = 0;
+  pv->left = 0;
   pv->rows_vis = 0;
   pv->md_width = 0;
   pv->diagram = 0;
@@ -602,6 +607,17 @@ void rolltui_preview_set_syntax(RolltuiPreview* pv, RolltuiSyntax* syn) {
   else if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) pv->md_width = 0; /* laid out again at the next draw, its code coloured or not */
 }
 
+void rolltui_preview_set_layout(RolltuiPreview* pv, int tab, int wrap) {
+  if (!pv) return;
+  if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN && (tab > 0 ? tab : 0) != pv->tab) pv->md_width = -1; /* laid out again at the new stop */
+  pv->tab = tab > 0 && tab <= 16 ? tab : 0;
+  pv->wrap = wrap ? 1 : 0;
+}
+
+int rolltui_preview_path_is(const RolltuiPreview* pv, const char* path, size_t len) {
+  return pv && len && rolltui_str_eq(&pv->path, path, len);
+}
+
 void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) {
   if (!pv) return;
   if (len == 0 || !path) {
@@ -642,7 +658,8 @@ void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) 
  * visible picture (`␛`), a byte that is not UTF-8 a `�`. Stops once `cells` are filled and reports whether
  * there was more. With `runs`, also notes in `segs` where the class of the text changes (as offsets into `out`), so a
  * coloured line can be drawn a class at a time after it has been made safe as a whole. */
-static int sanitize(const char* s, size_t n, int cells, int aw, RolltuiStr* out, const RolltuiSyntaxRun* runs, size_t nruns, SegList* segs) {
+static int sanitize_tab(const char* s, size_t n, int cells, int aw, int tab, RolltuiStr* out, const RolltuiSyntaxRun* runs, size_t nruns,
+                        SegList* segs) {
   size_t i = 0, r = 0;
   int col = 0;
   int cur = -1;
@@ -672,7 +689,7 @@ static int sanitize(const char* s, size_t n, int cells, int aw, RolltuiStr* out,
       }
     }
     if (cp == '\t') {
-      const int stop = TAB_COLUMNS - (col % TAB_COLUMNS);
+      const int stop = tab - (col % tab);
       int k;
       for (k = 0; k < stop; ++k) rolltui_str_append(out, " ", 1);
       col += stop;
@@ -691,11 +708,38 @@ static int sanitize(const char* s, size_t n, int cells, int aw, RolltuiStr* out,
 }
 
 /* One line of text at (x, y), cut at `cells` with an ellipsis where it did not fit. */
+/* THE LINE SCROLLED SIDEWAYS: its first `pv->left` columns, as made safe in `pv->s1`, dropped (and the class runs in `segs` moved with
+ * them). A wide glyph the edge cuts becomes a space. */
+static void shift_left(RolltuiPreview* pv, int aw, SegList* segs) {
+  int took = 0;
+  size_t drop, k;
+  int pad = 0;
+  if (pv->left <= 0 || !pv->s1.n) return;
+  drop = rolltui_u_fit(pv->u, pv->s1.p, pv->s1.n, pv->left, aw, &took);
+  if (took < pv->left && drop < pv->s1.n) { /* the glyph across the edge: its right half is a space */
+    RolltuiDecodedChar d;
+    rolltui_u_decode_one(pv->s1.p, pv->s1.n, drop, &d);
+    drop += d.length ? d.length : 1;
+    pad = 1;
+  }
+  if (drop > pv->s1.n) drop = pv->s1.n;
+  memmove(pv->s1.p + pad, pv->s1.p + drop, pv->s1.n - drop);
+  if (pad) pv->s1.p[0] = ' ';
+  pv->s1.n = pv->s1.n - drop + (size_t)pad;
+  pv->s1.p[pv->s1.n] = 0;
+  if (segs)
+    for (k = 0; k < segs->n; ++k) {
+      const size_t at = segs->v[k].at;
+      segs->v[k].at = at <= drop ? 0 : at - drop + (size_t)pad;
+    }
+}
+
 static void put_row(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, const char* s, size_t n, RolltuiStyle st,
                     RolltuiStyle dim, int cells, int aw) {
   int more, w;
   if (cells <= 0) return;
-  more = sanitize(s, n, cells, aw, &pv->s1, NULL, 0, NULL);
+  more = sanitize_tab(s, n, cells + pv->left, aw, pv->tab > 0 ? pv->tab : TAB_COLUMNS, &pv->s1, NULL, 0, NULL);
+  shift_left(pv, aw, NULL);
   w = rolltui_u_display_width(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, aw);
   if (!more && w <= cells) {
     rolltui_frame_put_text(f, pv->ds, x, y, pv->s1.p ? pv->s1.p : "", pv->s1.n, st, cells, aw, 0);
@@ -717,7 +761,8 @@ static void put_row_code(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, cons
   int more, w, took = 0, col = 0, limit = cells;
   size_t keep, k;
   if (cells <= 0) return;
-  more = sanitize(s, n, cells, aw, &pv->s1, runs, nruns, &pv->segs);
+  more = sanitize_tab(s, n, cells + pv->left, aw, pv->tab > 0 ? pv->tab : TAB_COLUMNS, &pv->s1, runs, nruns, &pv->segs);
+  shift_left(pv, aw, &pv->segs);
   w = rolltui_u_display_width(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, aw);
   keep = pv->s1.n;
   if (more || w > cells) {
@@ -733,6 +778,41 @@ static void put_row_code(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, cons
     col += rolltui_frame_put_text(f, pv->ds, x + col, y, pv->s1.p + from, to - from, cs[pv->segs.v[k].cls], limit - col, aw, 0);
   }
   if (more || w > cells) rolltui_frame_put_text(f, pv->ds, x + took, y, ELLIPSIS, 3, dim, 1, 0, 0);
+}
+
+/* ONE LINE, WRAPPED: drawn from (x, y) across `rows` rows of `cells`, each class of text in its style (`cs`, or `plain` with no runs).
+ * The rows it took. */
+static int put_wrapped(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, int rows, const char* s, size_t n, const RolltuiSyntaxRun* runs,
+                       size_t nruns, const RolltuiStyle* cs, RolltuiStyle plain, int cells, int aw) {
+  size_t k;
+  int row = 0, col = 0;
+  if (cells <= 0 || rows <= 0) return 0;
+  sanitize_tab(s, n, 1 << 28, aw, pv->tab > 0 ? pv->tab : TAB_COLUMNS, &pv->s1, runs, nruns, &pv->segs);
+  if (!pv->segs.n) { /* plain: one class */
+    pv->segs.v = (Seg*)rolltui_grow(pv->segs.v, &pv->segs.cap, 1, sizeof *pv->segs.v);
+    pv->segs.v[0].at = 0;
+    pv->segs.v[0].cls = 0;
+    pv->segs.n = 1;
+  }
+  for (k = 0; k < pv->segs.n && row < rows; ++k) {
+    size_t at = pv->segs.v[k].at;
+    const size_t to = k + 1 < pv->segs.n ? pv->segs.v[k + 1].at : pv->s1.n;
+    const RolltuiStyle st = runs ? cs[pv->segs.v[k].cls] : plain;
+    while (at < to && row < rows) {
+      int took = 0;
+      const size_t fit = rolltui_u_fit(pv->u, pv->s1.p + at, to - at, cells - col, aw, &took);
+      if (fit == 0) { /* nothing more fits on this row: the next */
+        if (col == 0) break; /* a glyph wider than the row: left out */
+        ++row, col = 0;
+        continue;
+      }
+      rolltui_frame_put_text(f, pv->ds, x + col, y + row, pv->s1.p + at, fit, st, took, aw, 0);
+      col += took;
+      at += fit;
+      if (col >= cells && at < to) ++row, col = 0;
+    }
+  }
+  return row + 1;
 }
 
 /* ---- hex ----------------------------------------------------------------------------------- */
@@ -880,7 +960,7 @@ static void render_md(RolltuiPreview* pv, int width, int aw) {
   memset(&ro, 0, sizeof ro);
   ro.width = width;
   ro.ambiguous_wide = aw;
-  ro.tab_width = TAB_COLUMNS;
+  ro.tab_width = pv->tab > 0 ? pv->tab : TAB_COLUMNS;
   ro.base = ROLLTUI_ROLE_TEXT;
   ro.roles = *rolltui_md_roles();
   if (pv->md_syn) { /* a fenced block that names a language the set knows is coloured; one that does not is drawn as it always was */
@@ -1084,8 +1164,11 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       int row;
       if (pinned) pv->top = total_rows(pv);
       clamp_top(pv);
+      size_t li_wrap = pv->top; /* wrapped: lines go on from the top until the rows run out */
+      pv->cols_vis = body.w;
+      if (pv->wrap) pv->left = 0;
       for (row = 0; row < body.h; ++row) {
-        const size_t li = pv->top + (size_t)row;
+        const size_t li = pv->wrap ? li_wrap++ : pv->top + (size_t)row;
         size_t from, to;
         if (li == pv->line_n && pv->truncated) {
           /* the last row of a truncated file says that it stops here, and that the file does not */
@@ -1100,7 +1183,12 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
         to = li + 1 < pv->line_n ? pv->line_off[li + 1] - 1 : pv->body.n;
         if (to > from && pv->body.p[to - 1] == '\n') --to;
         if (to > from && pv->body.p[to - 1] == '\r') --to;
-        if (pv->hl_ok) {
+        if (pv->wrap) {
+          const RolltuiSyntaxRun* runs = NULL;
+          const size_t nr = pv->hl_ok ? rolltui_highlight_line(pv->hl, li, &runs) : 0;
+          row += put_wrapped(pv, f, body.x, body.y + row, body.h - row, pv->body.p + from, to - from, pv->hl_ok ? runs : NULL, nr, cs, text,
+                             body.w, ambiguous_wide) - 1;
+        } else if (pv->hl_ok) {
           const RolltuiSyntaxRun* runs = NULL;
           const size_t nr = rolltui_highlight_line(pv->hl, li, &runs);
           put_row_code(pv, f, body.x, body.y + row, pv->body.p + from, to - from, runs, nr, cs, dim, body.w, ambiguous_wide);
@@ -1114,6 +1202,26 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
 }
 
 /* ---- scrolling ------------------------------------------------------------------------------ */
+
+int rolltui_preview_scroll_sideways(RolltuiPreview* pv, int columns, int aw) {
+  int widest = 0, before;
+  size_t li;
+  if (!pv || pv->kind != ROLLTUI_PREVIEW_TEXT || pv->wrap) return 0;
+  for (li = 0; li < pv->line_n; ++li) { /* as far as the widest line's end */
+    size_t from = pv->line_off[li], to = li + 1 < pv->line_n ? pv->line_off[li + 1] - 1 : pv->body.n;
+    int w;
+    if (to > from && pv->body.p[to - 1] == '\n') --to;
+    if (to > from && pv->body.p[to - 1] == '\r') --to;
+    sanitize_tab(pv->body.p + from, to - from, 1 << 28, aw, pv->tab > 0 ? pv->tab : TAB_COLUMNS, &pv->s1, NULL, 0, NULL);
+    w = rolltui_u_display_width(pv->u, pv->s1.p ? pv->s1.p : "", pv->s1.n, aw);
+    if (w > widest) widest = w;
+  }
+  before = pv->left;
+  pv->left += columns;
+  if (pv->left > widest - (pv->cols_vis > 0 ? pv->cols_vis : 1)) pv->left = widest - (pv->cols_vis > 0 ? pv->cols_vis : 1);
+  if (pv->left < 0) pv->left = 0;
+  return pv->left != before;
+}
 
 int rolltui_preview_scroll_by(RolltuiPreview* pv, long long lines) {
   size_t before, total;

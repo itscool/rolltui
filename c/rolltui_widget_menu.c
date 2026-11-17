@@ -1002,8 +1002,12 @@ static void ensure_visible(RolltuiMenu* m) {
     m->top = 0;
     return;
   }
-  if ((int)m->sel < m->top) m->top = (int)m->sel;
-  if ((int)m->sel >= m->top + rows) m->top = (int)m->sel - rows + 1;
+  {
+    int off = m->opt.scrolloff > 0 ? m->opt.scrolloff : 0;
+    if (off > (rows - 1) / 2) off = (rows - 1) / 2; /* a margin past half the view centres the selection */
+    if ((int)m->sel < m->top + off) m->top = (int)m->sel - off;
+    if ((int)m->sel + off >= m->top + rows) m->top = (int)m->sel + off - rows + 1;
+  }
   n = (int)build_visible(m);
   m->top = iclamp(m->top, 0, imax(0, n - rows));
 }
@@ -1907,14 +1911,24 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
   if (!a) return;
   n = build_visible(m);
   if (action_is(a, alen, A->up)) {
+    const size_t was = m->sel;
     move_to(m, m->sel == 0 ? 0 : m->sel - 1, n);
     settle(m, -1);
+    if (m->opt.wrap && m->sel == was && n) { /* at the top: round to the last row */
+      move_to(m, n - 1, n);
+      settle(m, -1);
+    }
     ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->down)) {
+    const size_t was = m->sel;
     move_to(m, m->sel + 1, n);
     settle(m, 1);
+    if (m->opt.wrap && m->sel == was && n) { /* at the foot: round to the first row */
+      move_to(m, 0, n);
+      settle(m, 1);
+    }
     ensure_visible(m);
     return;
   }

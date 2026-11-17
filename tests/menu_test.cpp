@@ -1452,6 +1452,45 @@ int main() {
     rolltui_menu_free(m);
   }
 
+  // ---- A SCROLL MARGIN AND WRAPPING: rows kept round the selection, and Up from the first row to the last -----------------------------
+  {
+    std::string text = R"({ "id": "root", "label": "m", "items": [)";
+    for (int i = 0; i < 12; ++i) text += std::string(i ? "," : "") + "{ \"id\": \"i" + std::to_string(i) + "\", \"label\": \"item " + std::to_string(i) + "\" }";
+    text += "] }";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    rolltui_menu_parse_json(text.data(), text.size(), &root, &rep);
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    RolltuiMenuOptions o = *rolltui_menu_options(m);
+    o.wrap = 1;
+    o.scrolloff = 2;
+    rolltui_menu_set_options_struct(m, &o);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 20, 6});
+    const RolltuiBindings* bd = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiMenuEvent ev{};
+    RolltuiEvent up = key(Key::Up), down = key(Key::Down);
+    rolltui_menu_handle(m, &up, bd, A, &ev);
+    check(rolltui_menu_selected(m) == 11, "with wrap, Up from the first row is the last [" + std::to_string(rolltui_menu_selected(m)) + "]");
+    rolltui_menu_handle(m, &down, bd, A, &ev);
+    check(rolltui_menu_selected(m) == 0, "…and Down from the last the first");
+    for (int i = 0; i < 4; ++i) rolltui_menu_handle(m, &down, bd, A, &ev);
+    {
+      Frame f(20, 6);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      bool two_below = false;
+      for (int y = 0; y < 6; ++y) two_below = two_below || row(f, y).find("item 6") != std::string::npos;
+      check(rolltui_menu_selected(m) == 4 && two_below, "a margin of two keeps two rows below the selection in view: item 6 under item 4");
+    }
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
+  }
+
   // ---- THE CURSOR ROW'S SHAPE: caps or edges in the inset's cells, the theme's choice -----------------------------------------------
   {
     const char* text = R"({ "id": "root", "label": "m", "items": [ { "id": "a", "label": "Alpha" }, { "id": "b", "label": "Beta" } ] })";

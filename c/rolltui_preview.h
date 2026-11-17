@@ -56,6 +56,10 @@ void rolltui_preview_free(RolltuiPreview* pv); /* a no-op on NULL */
 /* Points the preview at a file, and reads it. The same path again is a no-op; a different one
  * replaces everything and scrolls to the top; an empty path clears it (kind NONE). */
 void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len);
+/* The preview is of `path` (set, read or being read). */
+int rolltui_preview_path_is(const RolltuiPreview* pv, const char* path, size_t len);
+/* The columns between tab stops (0: four), and whether a long line wraps onto the rows below instead of ending in an ellipsis. */
+void rolltui_preview_set_layout(RolltuiPreview* pv, int tab, int wrap);
 int rolltui_preview_kind(const RolltuiPreview* pv);
 /* COLOUR. Lends the preview a set of languages (`rolltui_syntax_new_standard`), which the caller keeps and frees AFTER the
  * preview. A text file that the set knows — by its name, its extension or its first line — is drawn with its keywords,
@@ -116,6 +120,8 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
 /* Scrolling, in the units the body draws: a text line, a markdown line, a hex row. Each returns 1
  * when the view moved. `page` is what the last draw showed, less one. */
 int rolltui_preview_scroll_by(RolltuiPreview* pv, long long lines);
+/* A text file's lines scrolled sideways by `columns` (not when wrapped), as far as the widest line's end. 1 when the view moved. */
+int rolltui_preview_scroll_sideways(RolltuiPreview* pv, int columns, int ambiguous_wide);
 int rolltui_preview_scroll_page(RolltuiPreview* pv, int direction);
 int rolltui_preview_scroll_edge(RolltuiPreview* pv, int to_end);
 int rolltui_preview_scroll_extent(const RolltuiPreview* pv, RolltuiScrollExtent* out);
