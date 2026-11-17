@@ -155,6 +155,7 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(stack,     next_tab,          "stack.next_tab",              "show the focused window's next tab") \
   X(stack,     prev_tab,          "stack.prev_tab",              "show the focused window's previous tab") \
   X(stack,     maximize,          "stack.maximize",              "make the focused window fill the screen, and put it back") \
+  X(stack,     half,              "stack.half",                  "give the focused window half the screen, and put it back") \
   X(sheet,     remove,            "sheet.remove",                "remove the row's last key") \
   X(sheet,     undo,              "sheet.undo",                  "undo the last change") \
   X(sheet,     redo,              "sheet.redo",                  "do it again") \

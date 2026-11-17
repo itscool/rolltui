@@ -109,6 +109,20 @@ void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* fr
   to->tab_count = from->tab_count;
   rolltui_str_set(&to->tabs, from->tabs.p, from->tabs.n);
   to->show_width = from->show_width;
+  to->pane_width = from->pane_width;
+  to->pane_height = from->pane_height;
+  to->size_min = from->size_min;
+  to->size_max = from->size_max;
+  to->fit = from->fit;
+  to->padding = from->padding;
+  to->gap = from->gap;
+  to->separators = from->separators;
+  to->stack_below = from->stack_below;
+  to->focus_weight = from->focus_weight;
+  to->grid_cols = from->grid_cols;
+  to->grid_cell_h = from->grid_cell_h;
+  to->span_r = from->span_r;
+  to->span_c = from->span_c;
   to->show_height = from->show_height;
   rolltui_node_list_copy(&to->children, &from->children);
 }
@@ -157,6 +171,11 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
     return 0;
   if (!split_size_equal(&a->size, &b->size)) return 0;
   if (a->tab != b->tab || a->tab_count != b->tab_count || a->show_width != b->show_width || a->show_height != b->show_height) return 0;
+  if (a->pane_width != b->pane_width || a->pane_height != b->pane_height || a->size_min != b->size_min || a->size_max != b->size_max ||
+      a->fit != b->fit || a->padding != b->padding || a->gap != b->gap || a->separators != b->separators ||
+      a->stack_below != b->stack_below || a->focus_weight != b->focus_weight || a->grid_cols != b->grid_cols ||
+      a->grid_cell_h != b->grid_cell_h || a->span_r != b->span_r || a->span_c != b->span_c)
+    return 0;
   if (!str_equal(&a->tabs, &b->tabs)) return 0;
   if (a->children.n != b->children.n) return 0;
   for (i = 0; i < a->children.n; ++i)

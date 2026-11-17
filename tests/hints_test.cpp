@@ -204,6 +204,25 @@ int main() {
     rolltui_hint_bar_free(hb);
     rolltui_bindings_free(b);
   }
+  // WHICH GO FIRST: short of room, the hints that rank lowest are left out, and the rest keep their order
+  {
+    RolltuiHintBar* hb = rolltui_hint_bar_new();
+    rolltui_hint_bar_add(hb, "F1", 2, "help", 4, "app.help", 8);
+    rolltui_hint_bar_add(hb, "F2", 2, "settings", 8, "app.menu", 8);
+    rolltui_hint_bar_add(hb, "F10", 3, "quit", 4, "app.quit", 8);
+    rolltui_hint_bar_set_priority(hb, "app.quit", 8, 2);
+    rolltui_hint_bar_set_priority(hb, "app.help", 8, 1);
+    RolltuiFrame* fr = rolltui_frame_new(18, 1, RolltuiStyle{});
+    rolltui_hint_bar_draw(hb, fr, s, 0, 0, 18, RolltuiStyle{}, RolltuiStyle{}, RolltuiStyle{}, 0);
+    RolltuiStr text{};
+    rolltui_frame_to_text(fr, &text);
+    const std::string line(text.p ? text.p : "", text.n);
+    check(line.find("F1 help") == 0 && line.find("F10 quit") != std::string::npos && line.find("settings") == std::string::npos,
+          "eighteen cells hold two hints: settings, ranked lowest, goes, and help keeps its place before quit [" + line + "]");
+    rolltui_str_free(&text);
+    rolltui_frame_free(fr);
+    rolltui_hint_bar_free(hb);
+  }
   rolltui_frame_free(f);
   rolltui_draw_scratch_free(s);
   rolltui_hint_bar_free(bar);

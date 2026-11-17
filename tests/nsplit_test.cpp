@@ -95,6 +95,70 @@ int main() {
     check(r[0].inner.w == 0 && r[0].inner.h == 0, "a seam wider than the box clamps the inner rect to zero, not negative");
   }
 
+  // ---- BOUNDS, PADDING, GAPS, A ROW THAT STACKS, CHILDREN SHOWN BY THEIR PARENT'S ROOM, A GRID ---------------------------------
+  {
+    // three fills in a 30-wide row, the first held to at most 4: the other two share what it leaves
+    TestNode* root = make(0, false, 0, 0, 1, 1);
+    const OwnedTree own{root};
+    TestNode* a = make(1, true, 0, 0);
+    TestNode* b = make(2, true, 0, 0);
+    TestNode* c = make(3, true, 0, 0);
+    a->base.size.max = 4;
+    nsplit_attach(&root->base, 0, &a->base);
+    nsplit_attach(&root->base, 1, &b->base);
+    nsplit_attach(&root->base, 2, &c->base);
+    std::vector<Resolved> r = resolve(root, {0, 0, 30, 5});
+    check(r[1].outer.w == 4 && r[2].outer.w == 13 && r[3].outer.w == 13 && r[3].outer.x == 17,
+          "a fill held to its max gives the rest to the other fills [" + std::to_string(r[1].outer.w) + "," + std::to_string(r[2].outer.w) + "]");
+    a->base.size.max = 0;
+    b->base.size.min = 20;
+    r = resolve(root, {0, 0, 30, 5});
+    check(r[2].outer.w == 20 && r[1].outer.w == 5 && r[3].outer.w == 5, "…and one held to its min takes it from them");
+    b->base.size.min = 0;
+    root->base.gap = 1;
+    root->base.pad = 1;
+    r = resolve(root, {0, 0, 32, 5});
+    check(req(r[0].inner, 1, 1, 30, 3) && r[1].outer.x == 1 && r[2].outer.x == r[1].outer.x + r[1].outer.w + 1 &&
+              r[1].outer.w + r[2].outer.w + r[3].outer.w + 2 == 30,
+          "padding insets the children, and a gap of one stands between each");
+    root->base.gap = 0;
+    root->base.pad = 0;
+    root->base.stack_below = 40;
+    r = resolve(root, {0, 0, 30, 12});
+    check(r[1].outer.w == 30 && r[2].outer.y == r[1].outer.h, "a row narrower than its stack_below places its children as a column");
+    root->base.stack_below = 0;
+    c->base.parent_min_w = 40;
+    r = resolve(root, {0, 0, 30, 5});
+    check(r.size() == 3 && r[1].outer.w == 15, "a child shown only in a parent at least 40 wide takes no space in a 30-wide one");
+    r = resolve(root, {0, 0, 60, 5});
+    check(r.size() == 4, "…and is back in a wider one");
+  }
+  {
+    // A GRID of three columns: a tile two by two, then four single cells flowing round it
+    TestNode* root = make(0, false, 0, 0, 1, 2);
+    const OwnedTree own{root};
+    root->base.cols = 3;
+    TestNode* big = make(1, true, 0, 0);
+    big->base.span_r = 2, big->base.span_c = 2;
+    nsplit_attach(&root->base, 0, &big->base);
+    for (int i = 2; i <= 5; ++i) nsplit_attach(&root->base, root->base.n, &make(i, true, 0, 0)->base);
+    const std::vector<Resolved> r = resolve(root, {0, 0, 30, 30});
+    check(req(r[1].outer, 0, 0, 20, 20), "a tile spanning two rows and two columns of a three-column grid takes their cells");
+    check(req(r[2].outer, 20, 0, 10, 10) && req(r[3].outer, 20, 10, 10, 10), "…the next two flow down the free column beside it");
+    check(req(r[4].outer, 0, 20, 10, 10) && req(r[5].outer, 10, 20, 10, 10), "…and the rest into the row below");
+  }
+  {
+    // AN AUTO GRID: eight cells three rows tall, in a box nine rows high, take three columns
+    TestNode* root = make(0, false, 0, 0, 1, 2);
+    const OwnedTree own{root};
+    root->base.cell_h = 3;
+    for (int i = 1; i <= 8; ++i) nsplit_attach(&root->base, root->base.n, &make(i, true, 0, 0)->base);
+    std::vector<Resolved> r = resolve(root, {0, 0, 30, 9});
+    check(r[1].outer.w == 10 && r[1].outer.h == 3 && r[4].outer.y == 3, "eight cores in nine rows: three columns, three rows tall");
+    r = resolve(root, {0, 0, 30, 24});
+    check(r[1].outer.w == 30, "…and in a taller box, one column");
+  }
+
   // ---- two fixed children, 50/50 by fraction, in a row -----------------------------------------
   {
     TestNode* root = make(0, false, 0, 0, 1, /*axis=row*/ 1);

@@ -54,10 +54,13 @@ typedef struct NSplitSize {
   int weight;         /* fill only; treated as at least 1 */
   double fraction;    /* fixed only */
   int cells;          /* fixed only */
+  /* BOUNDS on what the share comes to, in units; 0 is none. A fill share held at a bound gives what it does not take to the other
+   * fills, by their weights, until none is past its own. */
+  int min, max;
 } NSplitSize;
 
 typedef struct NSplitNode {
-  unsigned char axis;    /* 0: children stack in a column (top to bottom); 1: a row (left to right).
+  unsigned char axis;    /* 0: children stack in a column (top to bottom); 1: a row (left to right); 2: a grid (`cols`).
                           * Meaningless on a leaf. */
   unsigned char seam;    /* THIS node's own inset, each side, before its children (or its resolved
                           * inner rect, if it has none) are computed. */
@@ -65,6 +68,17 @@ typedef struct NSplitNode {
                           * space in its parent's division. */
   NSplitSize size;       /* how this node is sized within ITS PARENT's axis; irrelevant for a root,
                           * which is sized by the caller's own `box` argument instead. */
+  /* PADDING inside the seam, each side, before the children (or the inner rect); GAP between children along the axis. */
+  unsigned char pad, gap;
+  /* A ROW THAT STACKS: below this many units of inner width, the children are placed as a column (0: never). */
+  int stack_below;
+  /* SHOWN BY ITS PARENT'S ROOM: below this parent inner width or height the node takes no space, as if hidden (0: always). */
+  int parent_min_w, parent_min_h;
+  /* A GRID (`axis` 2): `cols` columns of equal width, rows as many as the children fill, each child spanning `span_r` rows and
+   * `span_c` columns (0 is 1), placed in reading order at the first free cell. `cols` 0 with `cell_h`: as many columns as it takes
+   * to fit every child in rows `cell_h` tall (a core a cell, in one to three columns as the height allows); 0 with neither: one. */
+  int cols, cell_h;
+  unsigned char span_r, span_c;
   struct NSplitNode** children; /* OWNED array of BORROWED pointers — see nsplit_attach/_detach:
                                  * this library never allocates or frees what they point to. */
   size_t n, cap;

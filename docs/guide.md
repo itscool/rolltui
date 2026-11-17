@@ -358,7 +358,31 @@ A window with `"tabs"` in place of `"content"` shows one of several contents:
 
 `"breakpoint": { "width": 100, "height": 30 }` on any node shows it only while the screen is at
 least that big. Below it, the node takes no space and focus passes over it. Either bound may be
-left out.
+left out. `"pane_width"` and `"pane_height"` judge the same by the room the node's parent has, so a
+column of a split drops out when its split is narrow, whatever the screen is.
+
+### Room and spacing
+
+- `"min"` and `"max"` hold a node's share to a number of cells. A fill held at a bound gives what
+  it does not take to the other fills, by their weights.
+- `"size": "content"` makes a window as tall as what it holds and a spare line, within its `min`
+  and `max`, each frame; the fill windows share what it leaves. Lists, text and output windows
+  size themselves this way.
+- `"padding"` keeps cells clear inside a split's or a window's border; `"gap"` keeps cells between
+  a split's children, and `"separators": true` draws a line in each gap.
+- `"stack_below": 80` on a row places its children as a column while it is narrower than 80 cells:
+  two diffs side by side on a wide screen, one above the other on a narrow one.
+- `"focus_weight": 2` on a split gives the child holding the focus that weight: the focused panel
+  grows as focus moves.
+- `"grid": { "columns": 3, "cells": [ … ] }` lays cells on three equal columns in reading order, a
+  cell with `"span": [2, 2]` taking two rows and two columns. `"columns": "auto"` with
+  `"cell_height": 3` takes as many columns as it needs to fit every cell three rows tall: a core a
+  cell, in one to three columns as the height allows.
+
+`rolltui_layout_fits(layout, w, h)` answers whether a layout fits a screen: its minimums, fixed
+sizes, borders, padding and gaps, and its own `min_width` and `min_height`. A host refuses a preset
+that would not fit with it, and `rolltui_window_stack_set_visible` refuses to show a node that would
+make the layout need more than the screen (`ROLLTUI_STACK_REFUSED`).
 
 ### Hiding, resizing and maximising
 
@@ -369,6 +393,11 @@ left out.
 - `rolltui_window_stack_maximize(stack, id, len)` makes one window fill its layer, and gives it the
   focus; a NULL id puts the layout back. `stack.maximize` (Alt-Z) does both for the focused window.
   `rolltui_window_stack_maximized` names the window.
+- `rolltui_window_stack_set_half(stack, id, len)` gives a window half the screen: the rest of the
+  layout in one half and the window in the other, side by side on a wide screen and stacked on a
+  tall one. `stack.half` (Alt-Shift-Z) does it for the focused window, and again puts it back.
+- `rolltui_window_stack_anchor(stack, rect)` places the topmost popup just under `rect`, above it
+  where there is no room below, kept on the screen: a rename box under the file it renames.
 - `stack.focus_number` (Alt-1 to Alt-9) focuses the window with that number, counting the
   focusable windows of the focus layer in order. `rolltui_window_stack_set_numbered(stack, 1)`
   puts each one's number before its title. `stack.focus_left`, `_right`, `_up` and `_down`
@@ -390,6 +419,14 @@ left out.
 Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
 over to a new base while its window is in it.
 
+### Views in a window
+
+`rolltui_windows_push_view(windows, window, len, content, clen, title, tlen)` draws another content
+in a window's place, with its own keys: a drill-down, a pager, a log. The window's own content keeps
+its state underneath. The title reads the views' titles after the window's own ("files › details").
+Escape pops the top view once it has nothing of its own to back out of, as does
+`rolltui_windows_pop_view`; `rolltui_windows_view_depth` says how deep the window is.
+
 A press or key that changed what is shown makes `rolltui_window_stack_route` answer
 `ROLLTUI_ROUTE_LAYOUT_CHANGED`, naming the window.
 
@@ -397,12 +434,15 @@ A press or key that changed what is shown makes `rolltui_window_stack_route` ans
 
 On a screen smaller than the layout's `min_width` by `min_height`, the stack draws a note in place
 of the layout: "the screen is 40×6; this needs 60×8", or "40×6 < 60×8" where the sentence does not
-fit. Presses reach nothing; keys still reach the focused window, so a quit key works. A host with
+fit, the screen's size bold in the `error` role and the size needed bold in the `ok` role
+(`RolltuiLayoutRoles`). A layout with no window in it shows the program's keys instead of a blank
+screen. Presses reach nothing; keys still reach the focused window, so a quit key works. A host with
 a layout for smaller screens sets it as the base first: rolltui-chat and the studio switch to the
 shipped `stacked` layout.
 
 The studio's layout editor edits tabs (typed `Title = content | Title = content`), the shown tab,
-and a breakpoint (typed `width`, `width x height` or `x height`).
+a breakpoint (typed `width`, `width x height` or `x height`), and under Spacing and bounds a node's
+min, max, padding, gap, separators, stack_below, focus_weight and grid span.
 
 ## Key sequences and counts
 
@@ -530,7 +570,9 @@ window a press there would reach: `RolltuiResolvedNode.hover`, with the pointer'
 `hover_x` and `hover_y`. A host's own widget reads them in its `draw`. For what a host draws
 outside the windows, `rolltui_window_stack_pointer` gives the pointer's cell and
 `rolltui_hint_bar_hover` lights a hint bar from it. `rolltui_hint_bar_add_scope(bar, bindings, "app",
-3)` fills a bar with a scope's actions, each its first key the terminal can send and what it does.
+3)` fills a bar with a scope's actions, each its first key the terminal can send and what it does. Short of
+room, a bar leaves out whichever hints do not fit; `rolltui_hint_bar_set_priority(bar, action, len,
+rank)` makes the lowest-ranked go first, the rest keeping their order.
 
 - Nothing is lit until the terminal first reports the pointer moving. A click alone does not
   say where the pointer rests afterwards.
@@ -835,7 +877,8 @@ A dashboard is a `"grid"` in the layout file: rows of cells, each cell a node.
             [ { "content": "list:procs" }, { "content": "output:log" } ] ] }
 ```
 
-A grid is a column whose children are rows; it is written back as that column of rows.
+A grid is a column whose children are rows; it is written back as that column of rows. A grid with
+spans, `{ "grid": { "columns": 3, "cells": [ … ] } }`, is under Room and spacing.
 
 ## Progress
 

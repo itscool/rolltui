@@ -14,12 +14,12 @@
 │                                                                     │ Shown from (width x height):                   │
 │                                                                     │ Size (Alt+arrows nudge): fill                  │
 │                                                                     │ [✓] Focusable                                  │
+│                                                                     │ Spacing and bounds                           ▸ │
 │                                                                     │ Tree — split, swap, delete                   ▸ │
 │                                                                     │ This screen — sizes, focus, popups, actions  ▸ │
 │                                                                     │ Layout file — new, load, save                ▸ │
 │                                                                     │ Undo                                    Ctrl-Z │
 │                                                                     │ Redo                                    Ctrl-Y │
-│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

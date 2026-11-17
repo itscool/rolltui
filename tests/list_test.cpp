@@ -1041,6 +1041,54 @@ void test_cursor_shape() {
                                                              std::to_string(t.cur_x) + "," + std::to_string(t.cur_y) + "]");
 }
 
+// A VIEW PUSHED INTO A WINDOW, popped by Escape once it has nothing to back out of; a window as tall as what it holds; a layout with
+// no window showing the program's keys.
+void test_views_fit_empty() {
+  Data d, details;
+  d.keys = {"a", "b"};
+  d.a = {"alpha", "beta"};
+  details.keys = {"x"};
+  details.a = {"the details"};
+  constexpr std::string_view kTitled =
+      R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "files", "focusable": true } ] } })";
+  Screen s(30, 8, kTitled);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  rolltui_windows_bind_list(s.w, "more", 4, count_fn, row_fn, &details, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  rolltui_windows_set_list_options(s.w, "more", 4, &o);
+  s.paint();
+  check(rolltui_windows_push_view(s.w, "rows", 4, "list:more", 9, "details", 7) == 1 && rolltui_windows_view_depth(s.w, "rows", 4) == 1,
+        "a view is pushed into a window");
+  auto rows = s.paint();
+  check(has(rows, "the details") && !has(rows, "alpha"), "…and drawn in its place");
+  check(rows[0].find("files \xE2\x80\xBA details") != std::string::npos, "…the title the window's, then the view's [" + rows[0] + "]");
+  s.key(ROLLTUI_KEY_ESCAPE);
+  rows = s.paint();
+  check(rolltui_windows_view_depth(s.w, "rows", 4) == 0 && has(rows, "alpha"), "Escape, with nothing in the view to back out of, pops it");
+  check(rolltui_windows_pop_view(s.w, "rows", 4) == 0, "…and there is none left to pop");
+  // AS TALL AS WHAT IT HOLDS: two rows, the border and a spare line; the window below takes the rest
+  constexpr std::string_view kFit = R"({ "name": "f", "root": { "column": [
+    { "id": "rows", "content": "list:things", "border": "single", "size": "content" }, { "id": "rest", "content": "text:rest" } ] } })";
+  Screen t(30, 20, kFit);
+  rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  rolltui_windows_set_list_options(t.w, "things", 6, &o);
+  t.paint();
+  rows = t.paint();
+  int foot = -1;
+  for (int y = 0; y < 20; ++y)
+    if (rows[static_cast<std::size_t>(y)].rfind("\xE2\x94\x94", 0) == 0) { foot = y; break; }
+  check(foot == 4, "a window sized to its content: two rows, a spare line, its border [foot at " + std::to_string(foot) + "]");
+  // A LAYOUT WITH NO WINDOW shows the program's keys
+  constexpr std::string_view kEmpty = R"({ "name": "e", "root": { "column": [] } })";
+  Screen e(40, 10, kEmpty);
+  rows = e.paint();
+  bool keys = false;
+  for (const std::string& r : rows) keys = keys || r.find("help") != std::string::npos || r.find("quit") != std::string::npos;
+  check(keys, "an empty layout shows the program's keys");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -1065,5 +1113,6 @@ int main() {
   test_reorder_and_edge();
   test_sparkline();
   test_cursor_shape();
+  test_views_fit_empty();
   return testkit::report("list_test");
 }

@@ -1534,6 +1534,8 @@ typedef struct RolltuiLayoutRoles {
   unsigned char border_active;
   unsigned char title;
   unsigned char overlay;
+  /* A SCREEN TOO SMALL: its size in `error`, the size needed in `ok`; 0 for either draws it in `title`. */
+  unsigned char error ROLLTUI_DEFAULT(0), ok ROLLTUI_DEFAULT(0);
 } RolltuiLayoutRoles;
 
 /* The host fills a window's content slot into `rn->inner` (already clipped). NULL draws
@@ -1649,6 +1651,7 @@ typedef struct RolltuiStackActions {
   const char* focus_up;
   const char* focus_down;
   const char* focus_number;
+  const char* half;
 } RolltuiStackActions;
 
 #define ROLLTUI_ROUTE_DELIVER 0
@@ -3830,6 +3833,13 @@ size_t rolltui_windows_list_mark_matching(RolltuiWindows* w, const char* name, s
 int rolltui_windows_list_reveal(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen);
 /* A tree's node opened (`open` 1) or closed by the host, as the person's key would. 0 when no node has the key. */
 int rolltui_windows_list_set_open(RolltuiWindows* w, const char* name, size_t len, const char* key, size_t klen, int open);
+/* A VIEW PUSHED INTO A WINDOW: `content` ("list:procs", "text:...") drawn in its place with its own keys, until popped; the window's
+ * own content keeps its state underneath. The title reads the views' titles after its own ("files › details"). Escape pops one once
+ * the view has nothing of its own to back out of. 0 when no window has that id. */
+int rolltui_windows_push_view(RolltuiWindows* w, const char* window, size_t len, const char* content, size_t clen, const char* title,
+                              size_t tlen);
+int rolltui_windows_pop_view(RolltuiWindows* w, const char* window, size_t len);
+size_t rolltui_windows_view_depth(const RolltuiWindows* w, const char* window, size_t len);
 /* THE ROWS ARE STILL COMING: an empty list says "loading" (after 100 ms, with a spinner) instead of "no rows", and the footer says
  * so while rows arrive. 0 when they have all come. */
 void rolltui_windows_list_set_loading(RolltuiWindows* w, const char* name, size_t len, int loading);
@@ -4099,8 +4109,20 @@ int rolltui_window_stack_pop(RolltuiWindowStack* s); /* 0 when only the base rem
  * WHAT A SCREEN SHOWS CHANGES WITHOUT A NEW LAYOUT. Each call names a window or a split by id, finds it in any layer, and answers 0
  * when nothing has that id. Visibility and size hold until the next `rolltui_window_stack_set_base`; the tab each window shows and
  * the maximised window carry over to a new base wherever their window is still there. */
-/* Shown or hidden: a hidden node takes no space, as `"visible": false` in the file. */
+/* Shown or hidden: a hidden node takes no space, as `"visible": false` in the file. Showing one that would make the layout need more
+ * than the screen it was last laid out on is refused: ROLLTUI_STACK_REFUSED, and nothing changes. */
+#define ROLLTUI_STACK_REFUSED 2
 int rolltui_window_stack_set_visible(RolltuiWindowStack* s, const char* id, size_t len, int visible);
+/* WHETHER A LAYOUT FITS a screen `w` by `h`: the least its minimums, fixed sizes, borders, padding and gaps add up to, and its own
+ * `min_width` and `min_height`. A host refuses a preset that would not fit with it. 1 or 0. */
+int rolltui_layout_fits(const RolltuiLayout* l, int w, int h);
+/* HALF THE SCREEN for a window: the rest of the layout in one half and the window in the other, side by side on a wide screen and
+ * stacked on a tall one. NULL id puts the layout back. `stack.half` does it for the focused window. */
+int rolltui_window_stack_set_half(RolltuiWindowStack* s, const char* id, size_t len);
+const char* rolltui_window_stack_half(const RolltuiWindowStack* s, size_t* len);
+/* A POPUP AT A PLACE: the topmost popup drawn just under `at` (a row, a window's rect), above it where there is no room below,
+ * kept on the screen. Its size is its placement's. */
+void rolltui_window_stack_anchor(RolltuiWindowStack* s, RolltuiRect at);
 /* A node's size, spelled as the file spells it: cells ("30"), a share ("40%"), "fill" or "fill N". 0 for a spelling that is none. */
 int rolltui_window_stack_set_size(RolltuiWindowStack* s, const char* id, size_t len, const char* size, size_t size_len);
 /* The window fills its layer alone, and takes the focus, until it is maximised again or a NULL `id` puts the layout back. The
@@ -4470,6 +4492,9 @@ void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on);
 /* A hint whose action cannot be taken now is DISABLED: drawn in `muted`, never hit. Set by
  * action name, every frame if need be — it allocates nothing. */
 void rolltui_hint_bar_enable(RolltuiHintBar* b, const char* action, size_t len, int on);
+/* WHICH GO FIRST when the bar is short of room: hints that rank lower are left out before any that rank higher, and the rest keep
+ * their order (0, every hint's to begin with: whichever do not fit go). */
+void rolltui_hint_bar_set_priority(RolltuiHintBar* b, const char* action, size_t len, int priority);
 /* THE POINTER, for the next draw: the hint whose cells hold (x, y) is drawn in `hover`, chord and label alike, as a button lit under
  * it; (-1, -1) for none. A disabled hint is never lit. Set every frame from `rolltui_window_stack_pointer`; it allocates nothing. */
 void rolltui_hint_bar_hover(RolltuiHintBar* b, int x, int y, RolltuiStyle hover);

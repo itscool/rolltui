@@ -673,6 +673,9 @@ ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_set_visible, PUBLIC)  /* a host shows or hides a panel at run time */
 ROLLTUI_API(rolltui_window_stack_set_size, PUBLIC)  /* a host resizes a panel at run time */
 ROLLTUI_API(rolltui_window_stack_maximize, PUBLIC)  /* a host's own command fills the screen with one window */
+ROLLTUI_API(rolltui_window_stack_set_half, PUBLIC)  /* KEPT: a host's own command gives a window half the screen */
+ROLLTUI_API(rolltui_window_stack_half, PUBLIC)  /* KEPT: which window has half the screen */
+ROLLTUI_API(rolltui_window_stack_anchor, PUBLIC)  /* KEPT: a popup opened under the row it is for */
 ROLLTUI_API(rolltui_window_stack_maximized, PUBLIC)  /* which one, for a status line */
 ROLLTUI_API(rolltui_window_stack_set_tab, PUBLIC)  /* a host shows a tab: a search result in its tab */
 ROLLTUI_API(rolltui_window_stack_tab, PUBLIC)  /* which tab is shown, after the route says the layout changed */
@@ -950,6 +953,9 @@ ROLLTUI_API(rolltui_windows_list_mark_matching, PUBLIC)  /* marks by pattern */
 ROLLTUI_API(rolltui_windows_list_reveal, PUBLIC)  /* a row shown and chosen, its parents opened */
 ROLLTUI_API(rolltui_windows_list_set_loading, PUBLIC)  /* "loading" instead of "no rows" */
 ROLLTUI_API(rolltui_windows_list_set_open, PUBLIC)  /* a tree node opened or closed by the host */
+ROLLTUI_API(rolltui_windows_push_view, PUBLIC)  /* KEPT: a drill-down into a window */
+ROLLTUI_API(rolltui_windows_pop_view, PUBLIC)  /* KEPT: …and back out of it */
+ROLLTUI_API(rolltui_windows_view_depth, PUBLIC)  /* KEPT: how deep it is, for a host's crumbs */
 ROLLTUI_API(rolltui_windows_list_sort, PUBLIC)  /* the sort, set */
 ROLLTUI_API(rolltui_windows_list_sort_state, PUBLIC)  /* the sort, read */
 ROLLTUI_API(rolltui_windows_list, INTERNAL)  /* the kind reaches the table's list by name */
@@ -1028,6 +1034,7 @@ ROLLTUI_API(rolltui_hint_bar_hit, PUBLIC)
 ROLLTUI_API(rolltui_hint_bar_set_separator, PUBLIC)  /* a breadcrumb: dirktui */
 ROLLTUI_API(rolltui_hint_bar_set_keep_tail, PUBLIC)  /* a breadcrumb: dirktui */
 ROLLTUI_API(rolltui_hint_bar_enable, PUBLIC)  /* a hint that cannot be taken now: dirktui */  /* the press half: a hint answers with its action */
+ROLLTUI_API(rolltui_hint_bar_set_priority, PUBLIC)  /* KEPT: which hints go first when the bar is short of room */
 ROLLTUI_API(rolltui_hint_bar_hover, PUBLIC)  /* the hint under the pointer, lit: dirktui */
 ROLLTUI_API(rolltui_hint_bar_count, INTERNAL)
 ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; the picker draws the same capsule the window does */
@@ -1675,6 +1682,7 @@ ROLLTUI_API(rolltui_layout_new, PUBLIC)
 ROLLTUI_API(rolltui_layout_free, PUBLIC)
 ROLLTUI_API(rolltui_layout_clone, PUBLIC)
 ROLLTUI_API(rolltui_layout_base, PUBLIC)
+ROLLTUI_API(rolltui_layout_fits, PUBLIC)  /* KEPT: a preset refused when it would not fit the screen */
 ROLLTUI_API(rolltui_layout_actions, PUBLIC)
 ROLLTUI_API(rolltui_layout_min_size, PUBLIC)
 ROLLTUI_API(rolltui_layout_inline, PUBLIC)  /* a host makes its terminal inline for a layout that says so */

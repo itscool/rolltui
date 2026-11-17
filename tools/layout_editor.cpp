@@ -6,6 +6,7 @@
 #include "layout_editor.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 
 namespace rolltui::tools {
@@ -470,6 +471,27 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::input("breakpoint", "Shown from (width x height)", text.clone()));
   top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
   top.push_back(MenuItem::toggle("focusable", "Focusable", false));
+  // SPACING AND BOUNDS: every key the file takes for a node's room, each a field named as the key is. A count of cells, 0 for none.
+  {
+    InputSpec cells;
+    cells.type = InputType::Int;
+    cells.min = 0;
+    cells.max = 10000;
+    cells.hint = "cells; 0 = none";
+    InputSpec span;
+    span.type = InputType::Text;
+    span.optional = true;
+    std::vector<MenuItem> spacing;
+    spacing.push_back(MenuItem::input("min", "Least size", cells.clone()));
+    spacing.push_back(MenuItem::input("max", "Most size", cells.clone()));
+    spacing.push_back(MenuItem::input("padding", "Padding inside the border", cells.clone()));
+    spacing.push_back(MenuItem::input("gap", "Gap between children", cells.clone()));
+    spacing.push_back(MenuItem::toggle("separators", "A line in each gap", false));
+    spacing.push_back(MenuItem::input("stack_below", "A row stacks below this width", cells.clone()));
+    spacing.push_back(MenuItem::input("focus_weight", "Weight of the child with focus", cells.clone()));
+    spacing.push_back(MenuItem::input("span", "Span in a grid (rows x columns)", span.clone()));
+    top.push_back(submenu_of("spacing", "Spacing and bounds", std::move(spacing)));
+  }
   // A LABEL SAYS WHAT IS BEHIND IT. `Tree`, `This screen` and `Layout file` name categories, and
   // a category tells someone who already knows the answer nothing they needed and someone who
   // does not nothing at all — `New layout` lived behind the last of them, eleven rows down, with
@@ -631,6 +653,18 @@ void LayoutEditor::sync_values() {
   }
   set_value(menu_, "size", split_size_to_string(n->size));
   set_checked(menu_, "focusable", n->focusable);
+  set_value(menu_, "min", rolltui::to_str(n->size_min));
+  set_value(menu_, "max", rolltui::to_str(n->size_max));
+  set_value(menu_, "padding", rolltui::to_str(n->padding));
+  set_value(menu_, "gap", rolltui::to_str(n->gap));
+  set_checked(menu_, "separators", n->separators != 0);
+  set_value(menu_, "stack_below", rolltui::to_str(n->stack_below));
+  set_value(menu_, "focus_weight", rolltui::to_str(n->focus_weight));
+  {
+    RolltuiStr sp;
+    if (n->span_r > 1 || n->span_c > 1) rolltui::appendf(sp, "%dx%d", n->span_r ? n->span_r : 1, n->span_c ? n->span_c : 1);
+    set_value(menu_, "span", sp);
+  }
   set_enabled(menu_, "focusable", n->is_window());
   {
     RolltuiStr spelled;
@@ -991,6 +1025,13 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       apply_op(id == "visible" ? Op::ToggleVisible : Op::ToggleFocusable);
       return commit_current();
     }
+    if (id == "separators") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      begin_preview();
+      n->separators = n->separators ? 0 : 1;
+      return commit_current();
+    }
     if (idv.starts_with("popup.")) {
       // SPLIT ON THE LAST DOT, the way the input handler above already does. This read
       // `id.substr(6, id.size() - 12)` and then set `modal` unconditionally — correct only
@@ -1038,6 +1079,32 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       if (current_.min_width || current_.min_height) rolltui::appendf(status_, "; min %dx%d from the app", current_.min_width, current_.min_height);
       else status_ += "; no size threshold";
       return {O::Committed, {}};
+    }
+    if (id == "min" || id == "max" || id == "padding" || id == "gap" || id == "stack_below" || id == "focus_weight") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      const int v = std::atoi(value.c_str());
+      begin_preview();
+      if (id == "min") n->size_min = v;
+      else if (id == "max") n->size_max = v;
+      else if (id == "padding") n->padding = static_cast<unsigned char>(v > 255 ? 255 : v);
+      else if (id == "gap") n->gap = static_cast<unsigned char>(v > 255 ? 255 : v);
+      else if (id == "stack_below") n->stack_below = v;
+      else n->focus_weight = v;
+      return commit_current();
+    }
+    if (id == "span") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      int r = 0, c = 0;
+      if (!value.empty() && (std::sscanf(value.c_str(), "%dx%d", &r, &c) != 2 || r < 1 || c < 1 || r > 255 || c > 255)) {
+        status_ = RolltuiStr("'") + value + "' is not a span (rows x columns)";
+        return {O::Changed, {}};
+      }
+      begin_preview();
+      n->span_r = static_cast<unsigned char>(value.empty() ? 0 : r);
+      n->span_c = static_cast<unsigned char>(value.empty() ? 0 : c);
+      return commit_current();
     }
     if (id == "min_width" || id == "min_height") {
       // The Int spec already refused anything that is not a number in range, so a commit

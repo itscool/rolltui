@@ -25,12 +25,12 @@
 │ │ → styled wrapped lines)         │             │                   │ Shown from (width x height):                   │
 │ │ Theme (roles → styles, JSON     │ build       │ single header     │ Size (Alt+arrows nudge): 3                     │
 │ │ loader, built-ins)              │             │                   │ [✓] Focusable                                  │
-│ └─────────────────────────────────┴─────────────┴───────────────────│ Tree — split, swap, delete                   ▸ │
-│                                                                     │ This screen — sizes, focus, popups, actions  ▸ │
-│ Here is the function you asked for:                                 │ Layout file — new, load, save                ▸ │
-│                                                                     │ Undo                                    Ctrl-Z │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ Redo                                    Ctrl-Y │
-│ │ int add(int a, int b) {                                           │                                                │
+│ └─────────────────────────────────┴─────────────┴───────────────────│ Spacing and bounds                           ▸ │
+│                                                                     │ Tree — split, swap, delete                   ▸ │
+│ Here is the function you asked for:                                 │ This screen — sizes, focus, popups, actions  ▸ │
+│                                                                     │ Layout file — new, load, save                ▸ │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ Undo                                    Ctrl-Z │
+│ │ int add(int a, int b) {                                           │ Redo                                    Ctrl-Y │
 │ │   return a + b;                                                   │                                                │
 │ └───────────────────────────────────────────────────────────────────│ selected: input  size 3  border single  input: │
 └─────────────────────────────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │

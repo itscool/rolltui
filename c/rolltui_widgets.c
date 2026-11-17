@@ -164,7 +164,36 @@ typedef struct WindowSlot {
   RolltuiStr content;
   Track track;
   int live; /* this sync found it */
+  /* VIEWS PUSHED INTO IT, the top drawn in its place: each a content and a title, NUL after each, and its widget (BORROWED from
+   * `by_content`, as `widget` is) */
+  RolltuiStr views;
+  RolltuiWidget** view_w;
+  size_t view_n, view_cap;
 } WindowSlot;
+
+static void slot_free(WindowSlot* s) {
+  rolltui_str_free(&s->content);
+  rolltui_str_free(&s->views);
+  rolltui_mem_free(s->view_w);
+  rolltui_mem_free(s);
+}
+
+/* View `i` of a slot: its content and its title. 0 past the last. */
+static int slot_view(const WindowSlot* s, size_t i, const char** content, size_t* cl, const char** title, size_t* tl) {
+  const char* p = s->views.p;
+  size_t k;
+  if (!p || i >= s->view_n) return 0;
+  for (k = 0; k < i; ++k) {
+    p += strlen(p) + 1;
+    p += strlen(p) + 1;
+  }
+  *content = p;
+  *cl = strlen(p);
+  p += *cl + 1;
+  *title = p;
+  *tl = strlen(p);
+  return 1;
+}
 
 /* ---- WHAT A SESSION CONFIGURES, ONCE --------------------------------------------------------
  * The half of `RolltuiWindows` that was never about what is on screen: a program's widget-kind
@@ -390,11 +419,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < rolltui_map_count(&w->by_content); ++i)
     widget_destroy((RolltuiWidget*)rolltui_map_value_at(&w->by_content, i));
   rolltui_map_release(&w->by_content);
-  for (i = 0; i < rolltui_map_count(&w->by_window); ++i) {
-    WindowSlot* s = (WindowSlot*)rolltui_map_value_at(&w->by_window, i);
-    rolltui_str_free(&s->content);
-    rolltui_mem_free(s);
-  }
+  for (i = 0; i < rolltui_map_count(&w->by_window); ++i) slot_free((WindowSlot*)rolltui_map_value_at(&w->by_window, i));
   rolltui_map_release(&w->by_window);
   for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
   rolltui_mem_free(w->report);
@@ -565,7 +590,40 @@ static WindowSlot* slot_of(const RolltuiWindows* w, const char* window, size_t l
 
 RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, size_t len) {
   WindowSlot* s = slot_of(w, window, len);
+  if (s && s->view_n) return s->view_w[s->view_n - 1]; /* a pushed view, in the window's place */
   return s ? s->widget : NULL;
+}
+
+int rolltui_windows_push_view(RolltuiWindows* w, const char* window, size_t len, const char* content, size_t clen, const char* title,
+                              size_t tlen) {
+  WindowSlot* s = w && window ? slot_of(w, window, len) : NULL;
+  RolltuiWidget* wd;
+  if (!s || !content || clen == 0 || memchr(content, 0, clen) || (title && memchr(title, 0, tlen))) return 0;
+  wd = rolltui_windows_widget_for(w, content, clen);
+  s->view_w = (RolltuiWidget**)rolltui_grow(s->view_w, &s->view_cap, s->view_n + 1, sizeof *s->view_w);
+  s->view_w[s->view_n++] = wd;
+  rolltui_str_append(&s->views, content, clen);
+  rolltui_str_append(&s->views, "", 1);
+  rolltui_str_append(&s->views, title ? title : "", title ? tlen : 0);
+  rolltui_str_append(&s->views, "", 1);
+  return 1;
+}
+
+int rolltui_windows_pop_view(RolltuiWindows* w, const char* window, size_t len) {
+  WindowSlot* s = w && window ? slot_of(w, window, len) : NULL;
+  const char *c, *t;
+  size_t cl, tl;
+  if (!s || !s->view_n) return 0;
+  slot_view(s, s->view_n - 1, &c, &cl, &t, &tl);
+  s->views.n = (size_t)(c - s->views.p); /* the last content and title go */
+  if (s->views.p) s->views.p[s->views.n] = 0;
+  --s->view_n;
+  return 1;
+}
+
+size_t rolltui_windows_view_depth(const RolltuiWindows* w, const char* window, size_t len) {
+  const WindowSlot* s = w && window ? slot_of(w, window, len) : NULL;
+  return s ? s->view_n : 0;
 }
 
 const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
@@ -712,7 +770,8 @@ int rolltui_windows_window_rect(const RolltuiWindows* w, const char* window, siz
 int rolltui_windows_back(void* windows, const char* window, size_t len) {
   RolltuiWindows* w = (RolltuiWindows*)windows;
   RolltuiWidget* wd = rolltui_windows_at(w, window, len);
-  return wd && wd->vt && wd->vt->back ? wd->vt->back(wd->ctx) : 0;
+  if (wd && wd->vt && wd->vt->back && wd->vt->back(wd->ctx)) return 1;
+  return rolltui_windows_pop_view(w, window, len); /* the view has nothing left to back out of: it is the level, and goes */
 }
 
 RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len) {
@@ -972,12 +1031,60 @@ const char* rolltui_windows_message_at(const RolltuiWindows* w, size_t i, size_t
 }
 static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles, unsigned long long now);
 
+/* A LAYOUT WITH NO WINDOW IN IT shows the program's keys instead of a blank screen, so there is always a way on: a key a row, centred,
+ * in the key role and the text's. */
+static void draw_empty_keys(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles) {
+  const RolltuiBindings* b = rolltui_windows_bindings(w);
+  const unsigned char proto = rolltui_key_active_protocol();
+  const int aw = w->cfg->env.ambiguous_wide;
+  const size_t n = b ? rolltui_bindings_action_count(b) : 0;
+  size_t i, rows = 0, k;
+  int y;
+  RolltuiDrawScratch* ds;
+  if (!b || !n) return;
+  for (i = 0; i < w->node_n; ++i)
+    if (w->nodes[i].node->kind == ROLLTUI_NODE_WINDOW) return; /* a window: the layout is not empty */
+  ds = rolltui_draw_scratch_new(); /* only an empty layout reaches here */
+  for (k = 0; k < 2; ++k) { /* counted, then drawn */
+    y = screen.y + (screen.h - (int)rows) / 2;
+    rows = 0;
+    for (i = 0; i < n && (int)rows < screen.h; ++i) {
+      size_t al = 0, sl = 0, dl = 0, c;
+      const char* a = rolltui_bindings_action_at(b, i, &al);
+      const char* sc = rolltui_bindings_scope_of(a, al, &sl);
+      const char* d;
+      if (sl != 3 || memcmp(sc, "app", 3) != 0) continue;
+      for (c = 0; c < rolltui_bindings_chord_count(b, a, al); ++c) {
+        RolltuiChord ch;
+        char disp[ROLLTUI_CHORD_STRING_MAX];
+        size_t dn;
+        memset(&ch, 0, sizeof ch);
+        if (!rolltui_bindings_chord_at(b, a, al, c, &ch) || !rolltui_key_deliverable(&ch, proto)) continue;
+        if (k == 1) {
+          RolltuiStyle ks = styles[ROLLTUI_ROLE_MENU_SHORTCUT], ts = styles[ROLLTUI_ROLE_TEXT];
+          const int x = screen.x + (screen.w > 40 ? (screen.w - 40) / 2 : 0);
+          d = rolltui_bindings_description(b, a, al, &dl);
+          if (!d || !dl) d = a + sl + 1, dl = al - sl - 1;
+          dn = rolltui_chord_display(&ch, disp, sizeof disp);
+          ks.bold = 1;
+          rolltui_frame_put_text(f, ds, x, y + (int)rows, disp, dn, ks, 12, aw, 0);
+          rolltui_frame_put_text(f, ds, x + 13, y + (int)rows, d, dl, ts, screen.x + screen.w - (x + 13), aw, 0);
+        }
+        ++rows;
+        break;
+      }
+    }
+  }
+  rolltui_draw_scratch_free(ds);
+}
+
 int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
                                 unsigned long long now_ms) {
   int toasts, which;
   if (!w || !f || !styles) return -1;
   toasts = rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
                                            w->cfg->env.still);
+  draw_empty_keys(w, f, screen, styles);
   which = draw_which_key(w, f, screen, styles, now_ms);
   if (which > 0 && (toasts < 0 || which < toasts)) toasts = which;
   if (w->want_ms >= 0 && (toasts < 0 || w->want_ms < toasts)) toasts = w->want_ms; /* a window's own: the next frame it wants */
@@ -1298,6 +1405,7 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
   s->widget = wd;
   s->live = 1;
   rolltui_str_set(&s->content, n->content.p, n->content.n);
+  if (s->view_n) wd = s->view_w[s->view_n - 1]; /* what the window shows is its top view */
   /* THE "window 'x' (content 'y'): " PREFIX IS BUILT ONLY WHEN THERE IS SOMETHING TO SAY.
    * It used to be built for every window of every frame and thrown away. */
   if (wd->vt && wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {
@@ -1322,8 +1430,7 @@ void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
     WindowSlot* s = (WindowSlot*)rolltui_map_value_at(&w->by_window, i);
     if (s->live) continue;
     rolltui_map_remove_at(&w->by_window, i);
-    rolltui_str_free(&s->content);
-    rolltui_mem_free(s);
+    slot_free(s);
   }
 }
 
@@ -1355,9 +1462,39 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
       /* Into the node's own buffers, reused frame to frame. A widget answering 0, or one with no say (a tab shown in place of a
        * widget that had one), hands the title and the footer back to the layout. */
       RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
+      const WindowSlot* sl = slot_of(w, rn->node->id.p, rn->node->id.n);
       if (nd && !(wd->vt->title && wd->vt->title(wd->ctx, nd->title.p ? nd->title.p : "", nd->title.n, &nd->live_title)))
         rolltui_str_clear(&nd->live_title);
+      if (nd && sl && sl->view_n) { /* THE CRUMBS: the window's own title, then each view's */
+        size_t v;
+        if (!nd->live_title.n) rolltui_str_set(&nd->live_title, nd->title.p ? nd->title.p : "", nd->title.n);
+        for (v = 0; v < sl->view_n; ++v) {
+          const char *c, *t;
+          size_t cl, tl;
+          if (!slot_view(sl, v, &c, &cl, &t, &tl)) break;
+          if (nd->live_title.n) rolltui_str_append(&nd->live_title, " \xe2\x80\xba ", 5);
+          if (tl) rolltui_str_append(&nd->live_title, t, tl);
+          else rolltui_str_append(&nd->live_title, c, kind_len(c, cl));
+        }
+      }
       if (nd && !(wd->vt->footer && wd->vt->footer(wd->ctx, &nd->live_footer))) rolltui_str_clear(&nd->live_footer);
+    }
+    if (rn->node->fit && wd->vt->scroll_extent) { /* AS TALL AS WHAT IT HOLDS, and a line, within its own bounds */
+      RolltuiScrollExtent ext;
+      memset(&ext, 0, sizeof ext);
+      if (wd->vt->scroll_extent(wd->ctx, ROLLTUI_AXIS_VERTICAL, &ext)) {
+        RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
+        const int chrome = ext.visible > 0 && (int)ext.visible <= rn->inner.h ? rn->inner.h - (int)ext.visible : 0;
+        int want = (int)(ext.total > 100000 ? 100000 : ext.total) + chrome + 1 + (rn->outer.h - rn->inner.h);
+        if (nd) {
+          if (nd->size_max > 0 && want > nd->size_max) want = nd->size_max;
+          if (want < nd->size_min) want = nd->size_min;
+          nd->size.fill = 0;
+          nd->size.dim.fraction = 0;
+          nd->size.dim.cells = want;
+        }
+      }
+      continue;
     }
     if (!wd->vt->desired_outer) continue;
     /* The parent split is the INNERMOST one that contains this window — the last in tree
@@ -1686,7 +1823,12 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
       return any;
     }
   }
-  return deliver(w, window, len, wd, e);
+  if (deliver(w, window, len, wd, e)) return 1;
+  /* ESCAPE THAT NOTHING TOOK, in a window showing a view: the view is the level, and goes */
+  if (e->kind == ROLLTUI_EVENT_KEY && e->key.key == ROLLTUI_KEY_ESCAPE && !e->key.ctrl && !e->key.alt && !e->key.shift &&
+      rolltui_windows_view_depth(w, window, len))
+    return rolltui_windows_pop_view(w, window, len);
+  return 0;
 }
 
 /* Whether the window with focus takes `k` itself: its widget says, else a key bound in its own scope. */

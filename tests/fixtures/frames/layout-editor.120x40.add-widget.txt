@@ -25,12 +25,12 @@
 │ │ JSON       │            │            │ ││ send the line (always…  │ Shown from (width x height):                   │
 │ │ loader,    │            │            │ ││ insert a newline        │ Size (Alt+arrows nudge): fill                  │
 │ │ built-ins) │            │            │ ││ erase before the care…  │ [✓] Focusable                                  │
-│ └────────────┴────────────┴────────────┘ ││ erase after the caret…  │ Tree — split, swap, delete                   ▸ │
-│                                          ││ kill the word before …  │ This screen — sizes, focus, popups, actions  ▸ │
-│ Here is the function you asked for:      ││ kill the word after t…  │ Layout file — new, load, save                ▸ │
-│                                          ╻│ kill to the start of …  │ Undo                                    Ctrl-Z │
-│ ┌ cpp ─────────────────────────────────┐ ┃│ kill to the end of th…  │ Redo                                    Ctrl-Y │
-│ │ int add(int a, int b) {              │ ┃│ move one grapheme left  │                                                │
+│ └────────────┴────────────┴────────────┘ ││ erase after the caret…  │ Spacing and bounds                           ▸ │
+│                                          ││ kill the word before …  │ Tree — split, swap, delete                   ▸ │
+│ Here is the function you asked for:      ││ kill the word after t…  │ This screen — sizes, focus, popups, actions  ▸ │
+│                                          ╻│ kill to the start of …  │ Layout file — new, load, save                ▸ │
+│ ┌ cpp ─────────────────────────────────┐ ┃│ kill to the end of th…  │ Undo                                    Ctrl-Z │
+│ │ int add(int a, int b) {              │ ┃│ move one grapheme left  │ Redo                                    Ctrl-Y │
 │ │   return a + b;                      │ ┃│ app.help                │                                                │
 │ └──────────────────────────────────────┘ ╹│ Enter add a key  Delete │ selected: transcript-2  size fill  border sing │
 └──────────────────────────────────────────┘└─────────────────────────│ Tab · click · drag an edge · Alt+arrows        │

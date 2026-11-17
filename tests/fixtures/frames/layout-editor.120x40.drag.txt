@@ -25,12 +25,12 @@
 │ │ built │        │        │ ││ │ styles, JSON     │             │   │ Shown from (width x height):                   │
 │ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ Size (Alt+arrows nudge): 31                    │
 │ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ [✓] Focusable                                  │
-│                             ││ └──────────────────┴─────────────┴───│ Tree — split, swap, delete                   ▸ │
-│ Here is the function you    ││                                      │ This screen — sizes, focus, popups, actions  ▸ │
-│ asked for:                  ││ Here is the function you asked for:  │ Layout file — new, load, save                ▸ │
-│                             ││                                      │ Undo                                    Ctrl-Z │
-│ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│ Redo                                    Ctrl-Y │
-│ │ int add(int a, int b) { │ ┃│ │ int add(int a, int b) {            │                                                │
+│                             ││ └──────────────────┴─────────────┴───│ Spacing and bounds                           ▸ │
+│ Here is the function you    ││                                      │ Tree — split, swap, delete                   ▸ │
+│ asked for:                  ││ Here is the function you asked for:  │ This screen — sizes, focus, popups, actions  ▸ │
+│                             ││                                      │ Layout file — new, load, save                ▸ │
+│ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│ Undo                                    Ctrl-Z │
+│ │ int add(int a, int b) { │ ┃│ │ int add(int a, int b) {            │ Redo                                    Ctrl-Y │
 │ │   return a + b;         │ ┃│ │   return a + b;                    │                                                │
 │ └─────────────────────────┘ ╹│ └────────────────────────────────────│ selected: transcript  size 31  border single   │
 └─────────────────────────────┘└──────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │

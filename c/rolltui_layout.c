@@ -295,15 +295,37 @@ static int shown_at(const RolltuiLayoutNode* n, int sw, int sh) {
   return n->visible && (n->show_width <= 0 || sw >= n->show_width) && (n->show_height <= 0 || sh >= n->show_height);
 }
 
-static void sync_nsplit_tree(RolltuiLayoutNode* n, int sw, int sh) {
+/* `n` is, or holds, `focused`. */
+static int holds(const RolltuiLayoutNode* n, const RolltuiLayoutNode* focused) {
   size_t i;
-  n->base.axis = (unsigned char)(n->kind == ROLLTUI_NODE_ROW);
+  if (!focused) return 0;
+  if (n == focused) return 1;
+  for (i = 0; i < n->children.n; ++i)
+    if (holds(n->children.v[i], focused)) return 1;
+  return 0;
+}
+
+static void sync_nsplit_tree_at(RolltuiLayoutNode* n, int sw, int sh, const RolltuiLayoutNode* focused, int weight) {
+  size_t i;
+  const int grid = n->kind == ROLLTUI_NODE_COLUMN && (n->grid_cols > 0 || n->grid_cell_h > 0);
+  n->base.axis = (unsigned char)(grid ? 2 : n->kind == ROLLTUI_NODE_ROW);
   n->base.seam = seam_of(n->border);
   n->base.visible = (unsigned char)shown_at(n, sw, sh);
   n->base.size.fill = n->size.fill;
-  n->base.size.weight = n->size.weight;
+  n->base.size.weight = weight > 0 ? weight : n->size.weight;
   n->base.size.fraction = n->size.dim.fraction;
   n->base.size.cells = n->size.dim.cells;
+  n->base.size.min = n->size_min;
+  n->base.size.max = n->size_max;
+  n->base.pad = n->padding;
+  n->base.gap = n->gap;
+  n->base.stack_below = n->stack_below;
+  n->base.parent_min_w = n->pane_width;
+  n->base.parent_min_h = n->pane_height;
+  n->base.cols = n->grid_cols;
+  n->base.cell_h = n->grid_cell_h;
+  n->base.span_r = n->span_r;
+  n->base.span_c = n->span_c;
   if (n->kind == ROLLTUI_NODE_WINDOW) {
     n->base.children = NULL;
     n->base.n = 0;
@@ -313,7 +335,9 @@ static void sync_nsplit_tree(RolltuiLayoutNode* n, int sw, int sh) {
   n->base.children = (struct NSplitNode**)n->children.v;
   n->base.n = n->children.n;
   n->base.cap = n->children.cap;
-  for (i = 0; i < n->children.n; ++i) sync_nsplit_tree(n->children.v[i], sw, sh);
+  for (i = 0; i < n->children.n; ++i) /* THE ACCORDION: the child holding the focus takes the split's `focus_weight` */
+    sync_nsplit_tree_at(n->children.v[i], sw, sh, focused,
+                        n->focus_weight > 0 && n->children.v[i]->size.fill && holds(n->children.v[i], focused) ? n->focus_weight : 0);
 }
 
 /* What `nsplit_resolve`'s sink threads through `ctx`: everything `place()`'s own signature used
@@ -354,12 +378,19 @@ static void resolve_sink(void* ctx, const NSplitNode* node, NSplitRect outer, NS
   rc->emit(rc->user_ctx, &rn);
 }
 
+static void resolve_tree_focused(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
+                                 const RolltuiLayoutNode* focused, RolltuiResolvedSink emit, void* ctx);
 void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
                           RolltuiResolvedSink emit, void* ctx) {
+  resolve_tree_focused(root, box, screen, layer, NULL, emit, ctx);
+}
+
+static void resolve_tree_focused(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
+                                 const RolltuiLayoutNode* focused, RolltuiResolvedSink emit, void* ctx) {
   ResolveCtx rc;
   NSplitRect nbox;
   if (!shown_at(root, screen.w, screen.h)) return;
-  sync_nsplit_tree((RolltuiLayoutNode*)root, screen.w, screen.h); /* `base` is scratch (see its declaration): rewriting
+  sync_nsplit_tree_at((RolltuiLayoutNode*)root, screen.w, screen.h, focused, 0); /* `base` is scratch (see its declaration): rewriting
                                                * it through a tree the caller lent us `const` is not
                                                * a mutation of the node's own logical state. */
   rc.screen = screen;
@@ -769,6 +800,41 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
       const RolltuiStr* ft = n->live_footer.n ? &n->live_footer : &n->footer;
       if (ft->n) draw_footer(f, scratch->draw, rn->outer, ft->p, ft->n, line, ambiguous_wide);
     }
+  }
+  /* SEPARATORS: a line in each gap of a split that asks for them, the length of the split's inner box */
+  for (i = 0; i < count; ++i) {
+    const RolltuiResolvedNode* rn = &nodes[i];
+    const RolltuiLayoutNode* n = rn->node;
+    const RolltuiResolvedNode* prev = NULL;
+    size_t k, j;
+    RolltuiStyle line;
+    if (!n->separators || n->gap == 0 || n->kind == ROLLTUI_NODE_WINDOW) continue;
+    line = styles[roles->border];
+    {
+      RolltuiStyle g;
+      rolltui_frame_ground(f, &g);
+      line.bg = styles[n->background].bg.kind ? styles[n->background].bg : g.bg;
+    }
+    for (k = 0; k < n->children.n; ++k)
+      for (j = i + 1; j < count; ++j) {
+        const RolltuiResolvedNode* c = &nodes[j];
+        if (c->node != n->children.v[k]) continue;
+        if (prev) {
+          const int across = c->outer.x > prev->outer.x; /* side by side: a line down the gap; stacked: along it */
+          int p;
+          if (across) {
+            const int x = prev->outer.x + prev->outer.w + (n->gap - 1) / 2;
+            for (p = rn->inner.y; p < rn->inner.y + rn->inner.h; ++p)
+              rolltui_frame_put(f, x, p, ambiguous_wide ? "|" : "\xe2\x94\x82", ambiguous_wide ? 1 : 3, 1, line, 0);
+          } else {
+            const int y = prev->outer.y + prev->outer.h + (n->gap - 1) / 2;
+            for (p = rn->inner.x; p < rn->inner.x + rn->inner.w; ++p)
+              rolltui_frame_put(f, p, y, ambiguous_wide ? "-" : "\xe2\x94\x80", ambiguous_wide ? 1 : 3, 1, line, 0);
+          }
+        }
+        prev = c;
+        break;
+      }
   }
   if (!render) return;
   for (i = 0; i < count; ++i)
@@ -1666,6 +1732,28 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
           rolltui_str_free(&cat);
         }
       }
+    } else if (streq(k, klen, "grid") && rolltui_json_is_object(x)) {
+      /* A GRID WITH SPANS: { "columns": 3 or "auto", "cell_height": rows, "cells": [ nodes, each may have "span": [rows, cols] ] } */
+      const RolltuiJsonValue* cols = rolltui_json_get(x, K("columns"));
+      const RolltuiJsonValue* cells = rolltui_json_get(x, K("cells"));
+      const RolltuiJsonValue* ch = rolltui_json_get(x, K("cell_height"));
+      const size_t cn = rolltui_json_is_array(cells) ? rolltui_json_array_size(cells) : 0;
+      size_t ci;
+      if (rolltui_json_is_number(cols) && rolltui_json_as_number(cols, 0) >= 1) n->grid_cols = (int)rolltui_json_as_number(cols, 1);
+      else if (!rolltui_json_is_null(cols) && !(rolltui_json_is_string(cols) && rolltui_json_has(x, K("cell_height"))))
+        bad_at(report, at.p, at.n, ".columns: expected a count, or \"auto\" with a cell_height");
+      if (rolltui_json_is_number(ch) && rolltui_json_as_number(ch, 0) >= 1) n->grid_cell_h = (int)rolltui_json_as_number(ch, 1);
+      if (!n->grid_cols && !n->grid_cell_h) n->grid_cols = 1;
+      if (!rolltui_json_is_array(cells)) bad_at(report, at.p, at.n, ".cells: expected an array of nodes");
+      for (ci = 0; ci < cn; ++ci) {
+        RolltuiStr cat = {0};
+        char buf[24];
+        const int bl = snprintf(buf, sizeof buf, ".cells[%zu]", ci);
+        appn(&cat, at.p, at.n);
+        appn(&cat, buf, (size_t)(bl > 0 ? bl : 0));
+        node_from_json(rolltui_json_array_at(cells, ci), cat.p, cat.n, hooks, report, rolltui_node_list_add(&n->children));
+        rolltui_str_free(&cat);
+      }
     } else if (streq(k, klen, "grid")) {
       size_t rn = rolltui_json_is_array(x) ? rolltui_json_array_size(x) : 0, ri;
       if (!rolltui_json_is_array(x)) bad_at(report, at.p, at.n, ": expected rows, each an array of nodes");
@@ -1720,10 +1808,13 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         appn(&bat, at.p, at.n);
         app(&bat, ".");
         appn(&bat, bk, bkl);
-        if (!streq(bk, bkl, "width") && !streq(bk, bkl, "height")) unknown_at(report, bat.p, bat.n);
+        if (!streq(bk, bkl, "width") && !streq(bk, bkl, "height") && !streq(bk, bkl, "pane_width") && !streq(bk, bkl, "pane_height"))
+          unknown_at(report, bat.p, bat.n);
         else if (!rolltui_json_is_number(bv) || rolltui_json_as_number(bv, 0) < 0) bad_at(report, bat.p, bat.n, ": expected cells");
         else if (streq(bk, bkl, "width")) n->show_width = (int)rolltui_json_as_number(bv, 0);
-        else n->show_height = (int)rolltui_json_as_number(bv, 0);
+        else if (streq(bk, bkl, "height")) n->show_height = (int)rolltui_json_as_number(bv, 0);
+        else if (streq(bk, bkl, "pane_width")) n->pane_width = (int)rolltui_json_as_number(bv, 0);
+        else n->pane_height = (int)rolltui_json_as_number(bv, 0);
         rolltui_str_free(&bat);
       }
     } else if (streq(k, klen, "id")) {
@@ -1740,7 +1831,7 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       size_t sl = 0;
       const char* s = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &sl) : NULL;
       if (!s || !rolltui_border_from_name(s, sl, &b))
-        bad_at(report, at.p, at.n, ": expected none | single | rounded | double | heavy");
+        bad_at(report, at.p, at.n, ": expected none | single | rounded | double | heavy | hidden | quadrant-inside | quadrant-outside");
       else n->border = b, border_given = 1;
     } else if (streq(k, klen, "background")) {
       unsigned char role;
@@ -1749,6 +1840,31 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       if (!s || !hooks || !hooks->role_from_name || !hooks->role_from_name(hooks->role_from_name_ctx, s, sl, &role))
         bad_at(report, at.p, at.n, ": expected a role name");
       else n->background = role;
+    } else if (streq(k, klen, "min") || streq(k, klen, "max") || streq(k, klen, "padding") || streq(k, klen, "gap") ||
+               streq(k, klen, "stack_below") || streq(k, klen, "focus_weight")) {
+      if (!rolltui_json_is_number(x) || rolltui_json_as_number(x, 0) < 0 || rolltui_json_as_number(x, 0) > 10000) {
+        bad_at(report, at.p, at.n, ": expected cells");
+      } else {
+        const int v = (int)rolltui_json_as_number(x, 0);
+        if (streq(k, klen, "min")) n->size_min = v;
+        else if (streq(k, klen, "max")) n->size_max = v;
+        else if (streq(k, klen, "padding")) n->padding = (unsigned char)(v > 255 ? 255 : v);
+        else if (streq(k, klen, "gap")) n->gap = (unsigned char)(v > 255 ? 255 : v);
+        else if (streq(k, klen, "stack_below")) n->stack_below = v;
+        else n->focus_weight = v;
+      }
+    } else if (streq(k, klen, "separators")) {
+      bool_from_json(x, at.p, at.n, report, &n->separators);
+    } else if (streq(k, klen, "span")) {
+      if (!rolltui_json_is_array(x) || rolltui_json_array_size(x) != 2 || !rolltui_json_is_number(rolltui_json_array_at(x, 0)) ||
+          !rolltui_json_is_number(rolltui_json_array_at(x, 1)) || rolltui_json_as_number(rolltui_json_array_at(x, 0), 0) < 1 ||
+          rolltui_json_as_number(rolltui_json_array_at(x, 1), 0) < 1)
+        bad_at(report, at.p, at.n, ": expected [rows, columns]");
+      else {
+        const double r = rolltui_json_as_number(rolltui_json_array_at(x, 0), 1), c = rolltui_json_as_number(rolltui_json_array_at(x, 1), 1);
+        n->span_r = (unsigned char)(r > 255 ? 255 : r);
+        n->span_c = (unsigned char)(c > 255 ? 255 : c);
+      }
     } else if (streq(k, klen, "focusable")) {
       bool_from_json(x, at.p, at.n, report, &n->focusable);
     } else if (streq(k, klen, "visible")) {
@@ -1765,7 +1881,13 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         size_t sl = 0;
         const char* s = rolltui_json_as_string(x, "", 0, &sl);
         RolltuiSplitSizeRaw ss;
-        if (rolltui_parse_split_size(s, sl, &ss)) {
+        if (streq(s, sl, "content")) { /* as tall (or wide) as what the window holds, set each frame */
+          n->fit = 1;
+          n->size.fill = 0;
+          n->size.weight = 1;
+          n->size.dim.fraction = 0;
+          n->size.dim.cells = 3;
+        } else if (rolltui_parse_split_size(s, sl, &ss)) {
           n->size = ss;
         } else {
           RolltuiStr msg = {0};
@@ -2201,11 +2323,26 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
   if (n->footer.n) rolltui_json_set(o, K("footer"), rolltui_json_string(n->footer.p, n->footer.n));
   if (n->focusable) rolltui_json_set(o, K("focusable"), rolltui_json_bool(1));
   if (!n->visible) rolltui_json_set(o, K("visible"), rolltui_json_bool(0));
-  if (n->show_width || n->show_height) {
+  if (n->show_width || n->show_height || n->pane_width || n->pane_height) {
     RolltuiJsonValue* bp = rolltui_json_object();
     if (n->show_width) rolltui_json_set(bp, K("width"), rolltui_json_number(n->show_width));
     if (n->show_height) rolltui_json_set(bp, K("height"), rolltui_json_number(n->show_height));
+    if (n->pane_width) rolltui_json_set(bp, K("pane_width"), rolltui_json_number(n->pane_width));
+    if (n->pane_height) rolltui_json_set(bp, K("pane_height"), rolltui_json_number(n->pane_height));
     rolltui_json_set(o, K("breakpoint"), bp);
+  }
+  if (n->size_min) rolltui_json_set(o, K("min"), rolltui_json_number(n->size_min));
+  if (n->size_max) rolltui_json_set(o, K("max"), rolltui_json_number(n->size_max));
+  if (n->padding) rolltui_json_set(o, K("padding"), rolltui_json_number(n->padding));
+  if (n->gap) rolltui_json_set(o, K("gap"), rolltui_json_number(n->gap));
+  if (n->separators) rolltui_json_set(o, K("separators"), rolltui_json_bool(1));
+  if (n->stack_below) rolltui_json_set(o, K("stack_below"), rolltui_json_number(n->stack_below));
+  if (n->focus_weight) rolltui_json_set(o, K("focus_weight"), rolltui_json_number(n->focus_weight));
+  if (n->span_r > 1 || n->span_c > 1) {
+    RolltuiJsonValue* sp = rolltui_json_array();
+    rolltui_json_array_push(sp, rolltui_json_number(n->span_r ? n->span_r : 1));
+    rolltui_json_array_push(sp, rolltui_json_number(n->span_c ? n->span_c : 1));
+    rolltui_json_set(o, K("span"), sp);
   }
   if (n->background != ROLLTUI_ROLE_DEFAULT_BACKGROUND) {
     char namebuf[ROLLTUI_ROLE_NAME_MAX];
@@ -2216,7 +2353,9 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
   {
     /* RolltuiSplitSizeRaw{}'s own default (rolltui_layout_tree.h: fill=1, weight=1, dim={0,0}). */
     const int is_default = n->size.fill && n->size.weight == 1 && n->size.dim.fraction == 0 && n->size.dim.cells == 0;
-    if (!is_default) {
+    if (n->fit) {
+      rolltui_json_set(o, K("size"), rolltui_json_string(K("content")));
+    } else if (!is_default) {
       if (!n->size.fill && n->size.dim.fraction == 0) {
         rolltui_json_set(o, K("size"), rolltui_json_number(n->size.dim.cells));
       } else {
@@ -2230,8 +2369,18 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
     RolltuiJsonValue* arr = rolltui_json_array();
     size_t i;
     for (i = 0; i < n->children.n; ++i) rolltui_json_array_push(arr, node_to_json(n->children.v[i], hooks));
-    if (n->kind == ROLLTUI_NODE_ROW) rolltui_json_set(o, K("row"), arr);
-    else rolltui_json_set(o, K("column"), arr);
+    if (n->kind == ROLLTUI_NODE_COLUMN && (n->grid_cols || n->grid_cell_h)) { /* a grid with spans */
+      RolltuiJsonValue* g = rolltui_json_object();
+      if (n->grid_cols) rolltui_json_set(g, K("columns"), rolltui_json_number(n->grid_cols));
+      else rolltui_json_set(g, K("columns"), rolltui_json_string(K("auto")));
+      if (n->grid_cell_h) rolltui_json_set(g, K("cell_height"), rolltui_json_number(n->grid_cell_h));
+      rolltui_json_set(g, K("cells"), arr);
+      rolltui_json_set(o, K("grid"), g);
+    } else if (n->kind == ROLLTUI_NODE_ROW) {
+      rolltui_json_set(o, K("row"), arr);
+    } else {
+      rolltui_json_set(o, K("column"), arr);
+    }
   }
   return o;
 }
@@ -2325,6 +2474,7 @@ struct RolltuiWindowStack {
   RolltuiStr maximized;
   int screen_w, screen_h;
   int numbered; /* each focusable window's title starts with its number (`rolltui_window_stack_set_numbered`): 1 a digit, 2 a superscript */
+  RolltuiStr half; /* the window given half the screen (`rolltui_window_stack_set_half`); "" none */
   RolltuiStr label;  /* the action of the title label last pressed */
   int label_pressed; /* …and whether it is still to be taken */
 };
@@ -2411,6 +2561,108 @@ static const RolltuiLayoutNode* shown_root(const RolltuiWindowStack* s, size_t i
   return &s->layers[i].root;
 }
 
+/* A LAYER'S BOX: its placement on the screen, or for a popup put at a place, under that place (above it with no room below), kept on
+ * the screen. */
+static void layer_box(const RolltuiWindowStack* s, size_t i, RolltuiRect screen, RolltuiRect* box) {
+  const RolltuiLayer* l = &s->layers[i];
+  rolltui_placement_resolve(&l->placement, screen, box);
+  if (!l->anchored || i == 0) return;
+  box->x = l->anchor.x;
+  box->y = l->anchor.y + l->anchor.h;
+  if (box->y + box->h > screen.y + screen.h && l->anchor.y - box->h >= screen.y) box->y = l->anchor.y - box->h;
+  if (box->x + box->w > screen.x + screen.w) box->x = screen.x + screen.w - box->w;
+  if (box->x < screen.x) box->x = screen.x;
+  if (box->y + box->h > screen.y + screen.h) box->y = screen.y + screen.h - box->h;
+  if (box->y < screen.y) box->y = screen.y;
+}
+
+static const RolltuiLayoutNode* layer_focused(const RolltuiWindowStack* s, size_t i);
+
+/* RESOLVES LAYER `i` INTO `screen`: its root, or the maximised window alone, or with a window given half the screen, the rest of the
+ * layout in one half and that window in the other. The window holding the focus is the one a split's `focus_weight` grows. */
+static void resolve_layer(const RolltuiWindowStack* s, size_t i, RolltuiRect screen, RolltuiResolvedSink sink, void* ctx) {
+  RolltuiRect box;
+  const RolltuiLayoutNode* focused = layer_focused(s, i);
+  RolltuiLayoutNode* half = s->half.n && !s->maximized.n ? (RolltuiLayoutNode*)find_in(&s->layers[i].root, s->half.p, s->half.n) : NULL;
+  layer_box(s, i, screen, &box);
+  if (half && half != &s->layers[i].root && half->visible) {
+    const int wide = box.w >= box.h * 2; /* a cell is about twice as tall as it is wide */
+    RolltuiRect rest = box, own = box;
+    if (wide) rest.w = box.w / 2, own.x = box.x + rest.w, own.w = box.w - rest.w;
+    else rest.h = box.h / 2, own.y = box.y + rest.h, own.h = box.h - rest.h;
+    half->visible = 0; /* the rest of the layout without it; then it alone */
+    resolve_tree_focused(&s->layers[i].root, rest, screen, i, focused, sink, ctx);
+    half->visible = 1;
+    resolve_tree_focused(half, own, screen, i, focused, sink, ctx);
+    return;
+  }
+  resolve_tree_focused(shown_root(s, i), box, screen, i, focused, sink, ctx);
+}
+
+int rolltui_window_stack_set_half(RolltuiWindowStack* s, const char* id, size_t len) {
+  if (!s) return 0;
+  if (!id) {
+    rolltui_str_clear(&s->half);
+    return 1;
+  }
+  if (!rolltui_window_stack_find(s, id, len)) return 0;
+  rolltui_str_set(&s->half, id, len);
+  return 1;
+}
+
+const char* rolltui_window_stack_half(const RolltuiWindowStack* s, size_t* len) {
+  if (len) *len = s ? s->half.n : 0;
+  return s && s->half.n ? s->half.p : NULL;
+}
+
+void rolltui_window_stack_anchor(RolltuiWindowStack* s, RolltuiRect at) {
+  if (!s || s->n < 2) return;
+  s->layers[s->n - 1].anchored = 1;
+  s->layers[s->n - 1].anchor = at;
+}
+
+/* THE LEAST A NODE NEEDS, across (`w`) and down (`h`): its border, padding and gaps, and its children's least along its axis (summed)
+ * and across it (the most); a window at least a cell; a node's own fixed size or `min` along its parent's axis. */
+static void least_of(const RolltuiLayoutNode* n, int parent_row, int* w, int* h) {
+  const int inset = 2 * ((n->border != ROLLTUI_BORDER_NONE ? 1 : 0) + n->padding);
+  size_t i, shown = 0;
+  int cw = 0, ch = 0;
+  if (n->kind == ROLLTUI_NODE_WINDOW || n->children.n == 0) {
+    cw = 1, ch = 1;
+  } else {
+    const int row = n->kind == ROLLTUI_NODE_ROW;
+    for (i = 0; i < n->children.n; ++i) {
+      int kw, kh;
+      if (!n->children.v[i]->visible) continue;
+      least_of(n->children.v[i], row, &kw, &kh);
+      if (row) cw += kw, ch = kh > ch ? kh : ch;
+      else ch += kh, cw = kw > cw ? kw : cw;
+      ++shown;
+    }
+    if (shown > 1) {
+      if (row) cw += n->gap * (int)(shown - 1);
+      else ch += n->gap * (int)(shown - 1);
+    }
+  }
+  *w = cw + inset;
+  *h = ch + inset;
+  { /* along the parent's axis, its own size or bound */
+    int* along = parent_row ? w : h;
+    if (!n->size.fill && n->size.dim.fraction == 0 && n->size.dim.cells > *along) *along = n->size.dim.cells;
+    if (n->size_min > *along) *along = n->size_min;
+  }
+}
+
+int rolltui_layout_fits(const RolltuiLayout* l, int w, int h) {
+  int lw, lh;
+  const RolltuiLayer* base = l ? rolltui_layout_base(l) : NULL;
+  if (!base) return 1;
+  least_of(&base->root, 0, &lw, &lh);
+  if (base->min_width > lw) lw = base->min_width;
+  if (base->min_height > lh) lh = base->min_height;
+  return w >= lw && h >= lh;
+}
+
 /* No list. This runs once per layer per resolve — three times a frame — and only ever needs
  * the FIRST focusable or the one matching a name. */
 static const RolltuiLayoutNode* first_focusable(const RolltuiLayoutNode* n, int sw, int sh) {
@@ -2485,6 +2737,7 @@ void rolltui_window_stack_free(RolltuiWindowStack* s) {
   rolltui_str_free(&s->captured);
   rolltui_str_free(&s->maximized);
   rolltui_str_free(&s->label);
+  rolltui_str_free(&s->half);
   rolltui_mem_free(s);
 }
 
@@ -2533,6 +2786,16 @@ void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* ba
 int rolltui_window_stack_set_visible(RolltuiWindowStack* s, const char* id, size_t len, int visible) {
   RolltuiLayoutNode* n = rolltui_window_stack_find(s, id, len);
   if (!n) return 0;
+  if (visible && !n->visible && s->screen_w > 0 && s->screen_h > 0) { /* shown, would the layout still fit the screen it has? */
+    int lw, lh;
+    n->visible = 1;
+    least_of(&s->layers[0].root, 0, &lw, &lh);
+    if (lw > s->screen_w || lh > s->screen_h) {
+      n->visible = 0;
+      return ROLLTUI_STACK_REFUSED;
+    }
+    return 1;
+  }
   n->visible = (unsigned char)(visible != 0);
   return 1;
 }
@@ -2769,9 +3032,7 @@ static void stack_hover(const RolltuiWindowStack* s, RolltuiRect screen, StackSi
   h.node = NULL;
   h.layer = 0;
   for (i = 0; i < s->n; ++i) {
-    RolltuiRect box;
-    rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-    rolltui_resolve_tree(shown_root(s, i), box, screen, i, hover_sink, &h);
+    resolve_layer(s, i, screen, hover_sink, &h);
   }
   if (!h.node || (h.layer != top && (s->layers[top].modal || s->layers[top].dismiss))) return;
   w->hover = h.node;
@@ -2788,9 +3049,7 @@ void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect scree
   w.focused = rolltui_window_stack_focused(s);
   stack_hover(s, screen, &w);
   for (i = 0; i < s->n; ++i) {
-    RolltuiRect box;
-    rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-    rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
+    resolve_layer(s, i, screen, stack_sink, &w);
   }
 }
 
@@ -2819,9 +3078,30 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
       n = snprintf(msg, sizeof msg, "%d%s%d < %d%s%d", screen.w, x, screen.h, s->layers[0].min_width, x, s->layers[0].min_height);
       mw = n > 0 ? rolltui_frame_text_width(scratch->draw, msg, (size_t)n, ambiguous_wide) : 0;
     }
-    if (n > 0 && mw <= screen.w)
-      rolltui_frame_put_text(f, scratch->draw, screen.x + (screen.w - mw) / 2, screen.y + (screen.h - 1) / 2, msg, (size_t)n, text, mw,
-                             ambiguous_wide, 0);
+    if (n > 0 && mw <= screen.w) {
+      const int nx = screen.x + (screen.w - mw) / 2, ny = screen.y + (screen.h - 1) / 2;
+      char now[24], need[24];
+      const int nn = snprintf(now, sizeof now, "%d%s%d", screen.w, x, screen.h);
+      const int dn = snprintf(need, sizeof need, "%d%s%d", s->layers[0].min_width, x, s->layers[0].min_height);
+      rolltui_frame_put_text(f, scratch->draw, nx, ny, msg, (size_t)n, text, mw, ambiguous_wide, 0);
+      { /* THE TWO SIZES IN THEIR OWN ROLES: what the screen is, and what it needs; bold, so they read in every theme */
+        const char* hit = nn > 0 ? strstr(msg, now) : NULL;
+        const char* want = dn > 0 ? strstr(hit ? hit + nn : msg, need) : NULL;
+        RolltuiStyle es = styles[roles->error ? roles->error : roles->title], os = styles[roles->ok ? roles->ok : roles->title];
+        es.bg = ground.bg, os.bg = ground.bg;
+        es.bold = os.bold = 1;
+        if (hit) {
+          const RolltuiRect r = {nx + rolltui_frame_text_width(scratch->draw, msg, (size_t)(hit - msg), ambiguous_wide), ny,
+                                 rolltui_frame_text_width(scratch->draw, now, (size_t)nn, ambiguous_wide), 1};
+          rolltui_frame_tint(f, r, es);
+        }
+        if (want) {
+          const RolltuiRect r = {nx + rolltui_frame_text_width(scratch->draw, msg, (size_t)(want - msg), ambiguous_wide), ny,
+                                 rolltui_frame_text_width(scratch->draw, need, (size_t)dn, ambiguous_wide), 1};
+          rolltui_frame_tint(f, r, os);
+        }
+      }
+    }
     return;
   }
   w.emit = collect_sink;
@@ -2832,11 +3112,11 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
     RolltuiRect box;
     if (s->layers[i].modal) rolltui_frame_shade(f, screen, styles[roles->overlay], ROLLTUI_SHADE_MODAL);
     scratch->nodes.n = 0;
-    rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
+    layer_box(s, i, screen, &box);
     /* The cells this popup covers are its now: a mark a lower layer left on them would put
      * that layer's motion onto the popup when the effects are applied to the finished frame. */
     if (i > 0) rolltui_frame_unmark_rect(f, box);
-    rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
+    resolve_layer(s, i, screen, stack_sink, &w);
     scratch->numbered_n = s->numbered && i == rolltui_window_stack_focus_layer(s) ? focusables(s, i, scratch->numbered, 9) : 0;
     scratch->numbered_sup = s->numbered == 2;
     if (scratch->numbered_n > 9) scratch->numbered_n = 9;
@@ -2941,9 +3221,7 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       w.hover = NULL;
       w.hover_x = w.hover_y = 0;
       for (i = 0; i < s->n; ++i) {
-        RolltuiRect box;
-        rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
-        rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
+        resolve_layer(s, i, screen, stack_sink, &w);
       }
     }
     for (k = c.n; k-- > 0;) {
@@ -3041,11 +3319,18 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
         const int next_tab = actions->next_tab && alen == strlen(actions->next_tab) && memcmp(action, actions->next_tab, alen) == 0;
         const int prev_tab = actions->prev_tab && alen == strlen(actions->prev_tab) && memcmp(action, actions->prev_tab, alen) == 0;
         const int maximize = actions->maximize && alen == strlen(actions->maximize) && memcmp(action, actions->maximize, alen) == 0;
+        const int half = actions->half && alen == strlen(actions->half) && memcmp(action, actions->half, alen) == 0;
         if (f && (next_tab || prev_tab) && f->tab_count > 1) {
           RolltuiLayoutNode* nd = rolltui_window_stack_find(s, f->id.p, f->id.n);
           const size_t count = f->tab_count;
           show_tab(nd, next_tab ? (f->tab + 1) % count : (f->tab + count - 1) % count);
           rolltui_str_set(window, nd->id.p, nd->id.n);
+          return ROLLTUI_ROUTE_LAYOUT_CHANGED;
+        }
+        if (f && half) { /* half the screen, and back */
+          const int same = s->half.n && rolltui_str_eq(&s->half, f->id.p, f->id.n);
+          rolltui_window_stack_set_half(s, same ? NULL : f->id.p, f->id.n);
+          rolltui_str_set(window, f->id.p, f->id.n);
           return ROLLTUI_ROUTE_LAYOUT_CHANGED;
         }
         if (f && maximize) {
@@ -3224,6 +3509,8 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
       /*border_active=*/ROLLTUI_ROLE_BORDER_ACTIVE,
       /*title=*/ROLLTUI_ROLE_TITLE,
       /*overlay=*/ROLLTUI_ROLE_OVERLAY,
+      /*error=*/ROLLTUI_ROLE_ERROR,
+      /*ok=*/ROLLTUI_ROLE_ACCENT_2,
   };
   return &r;
 }

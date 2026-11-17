@@ -327,6 +327,9 @@
     "stack.maximize": [
       "alt+z"
     ],
+    "stack.half": [
+      "alt+shift+z"
+    ],
     "stack.focus_next": [
       "tab"
     ],

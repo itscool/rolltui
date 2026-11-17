@@ -189,7 +189,8 @@ struct RouteC {
   struct Kind {
     static constexpr unsigned char Deliver = ROLLTUI_ROUTE_DELIVER, ClosedPopup = ROLLTUI_ROUTE_CLOSED_POPUP,
                                     FocusMoved = ROLLTUI_ROUTE_FOCUS_MOVED, Dropped = ROLLTUI_ROUTE_DROPPED,
-                                    ClosedLevel = ROLLTUI_ROUTE_CLOSED_LEVEL, Label = ROLLTUI_ROUTE_LABEL;
+                                    ClosedLevel = ROLLTUI_ROUTE_CLOSED_LEVEL, Label = ROLLTUI_ROUTE_LABEL,
+                                    LayoutChanged = ROLLTUI_ROUTE_LAYOUT_CHANGED;
   };
 };
 
@@ -1575,6 +1576,173 @@ int main() {
             std::string(what) + ": its own window is marked under the pointer; below it [" + outside + "]");
       rolltui_window_stack_pop(s.s);
     }
+  }
+
+  // ---- 6b. the sixth batch: bounds, padding, gaps, stacking, pane breakpoints, grids, separators, the accordion, half, anchors ----
+  std::printf("-- layout: room, spacing and grids\n");
+  {
+    auto window_rect = [](const std::vector<RolltuiResolvedNode>& v, std::string_view id) {
+      for (const RolltuiResolvedNode& rn : v)
+        if (rn.node->is_window() && std::string_view(rn.node->id.p ? rn.node->id.p : "", rn.node->id.n) == id) return rn.outer;
+      return RolltuiRect{-1, -1, 0, 0};
+    };
+    static const char kSpaced[] = R"({ "name": "s", "root": { "row": [
+      { "id": "side", "content": "text:a", "max": 20 },
+      { "id": "main", "content": "text:b" },
+      { "id": "extra", "content": "text:c", "breakpoint": { "pane_width": 90 } } ], "gap": 1, "padding": 1, "separators": true } })";
+    LayoutReport rep;
+    std::optional<RolltuiLayout> l = load_layout_c(kSpaced, rep);
+    check(l && rep.clean(), "a layout with max, gap, padding, separators and a pane breakpoint loads clean");
+    StackC st(*l);
+    std::vector<RolltuiResolvedNode> v = st.resolve(RolltuiRect{0, 0, 80, 10});
+    const RolltuiRect side = window_rect(v, "side"), main = window_rect(v, "main"), extra = window_rect(v, "extra");
+    check(side.x == 1 && side.y == 1 && side.w == 20, "padding insets the row's children, and the side is held to its max of 20");
+    check(main.x == side.x + side.w + 1 && main.x + main.w == 79, "a gap of one stands between them, and the main window takes the rest");
+    check(extra.x < 0, "a window shown only in a pane at least 90 wide takes no room in an 80-wide one");
+    v = st.resolve(RolltuiRect{0, 0, 120, 10});
+    check(window_rect(v, "extra").x > 0, "…and is there in a wider one");
+    const std::string back = layout_to_json_c(*l);
+    check(back.find("\"max\": 20") != std::string::npos && back.find("\"gap\": 1") != std::string::npos &&
+              back.find("\"padding\": 1") != std::string::npos && back.find("\"separators\": true") != std::string::npos &&
+              back.find("\"pane_width\": 90") != std::string::npos,
+          "…and every one of them is written back");
+    ThemeFixture t;
+    builtin_theme_c("default-dark", t);
+    FrameC f(80, 10, t.style(ROLLTUI_ROLE_BACKGROUND));
+    st.compose(f, RolltuiRect{0, 0, 80, 10}, t, [](const RolltuiResolvedNode&, FrameC&) {});
+    check(cell(f, side.x + side.w, 4) == "\xE2\x94\x82", "separators: a line down the gap between them");
+  }
+  {
+    static const char kStacks[] = R"({ "name": "s", "root": { "row": [ { "id": "a", "content": "text:a" }, { "id": "b", "content": "text:b" } ],
+      "stack_below": 60 } })";
+    LayoutReport rep;
+    std::optional<RolltuiLayout> l = load_layout_c(kStacks, rep);
+    StackC st(*l);
+    auto v = st.resolve(RolltuiRect{0, 0, 50, 20});
+    RolltuiRect a{}, b{};
+    for (const RolltuiResolvedNode& rn : v) {
+      if (!rn.node->is_window()) continue;
+      if (rn.node->id.n == 1 && rn.node->id.p[0] == 'a') a = rn.outer;
+      else b = rn.outer;
+    }
+    check(a.w == 50 && b.y == a.y + a.h, "a row narrower than its stack_below stacks its windows");
+    v = st.resolve(RolltuiRect{0, 0, 80, 20});
+    for (const RolltuiResolvedNode& rn : v)
+      if (rn.node->is_window() && rn.node->id.p[0] == 'b') b = rn.outer;
+    check(b.y == 0 && b.x == 40, "…and is a row again where it is wide enough");
+  }
+  {
+    static const char kGrid[] = R"({ "name": "g", "root": { "grid": { "columns": 3, "cells": [
+      { "id": "big", "content": "text:a", "span": [2, 2] }, { "id": "c1", "content": "text:b" }, { "id": "c2", "content": "text:c" },
+      { "id": "c3", "content": "text:d" } ] } } })";
+    LayoutReport rep;
+    std::optional<RolltuiLayout> l = load_layout_c(kGrid, rep);
+    check(l && rep.clean(), "a grid with spans loads clean");
+    StackC st(*l);
+    auto v = st.resolve(RolltuiRect{0, 0, 60, 30});
+    RolltuiRect big{}, c3{};
+    for (const RolltuiResolvedNode& rn : v) {
+      const std::string id(rn.node->id.p ? rn.node->id.p : "", rn.node->id.n);
+      if (id == "big") big = rn.outer;
+      if (id == "c3") c3 = rn.outer;
+    }
+    check(big.w == 40 && big.h == 20 && c3.y == 20 && c3.x == 0, "a tile two by two of a three-column grid, and the rest flowing round it");
+    const std::string back = layout_to_json_c(*l);
+    check(back.find("\"columns\": 3") != std::string::npos && back.find("\"span\": [") != std::string::npos, "…written back as a grid with its spans");
+  }
+  {
+    // THE ACCORDION: the child holding the focus takes the split's focus_weight
+    static const char kAcc[] = R"({ "name": "a", "root": { "column": [ { "id": "one", "content": "text:a", "focusable": true },
+      { "id": "two", "content": "text:b", "focusable": true } ], "focus_weight": 3 }, "focus": "one" })";
+    LayoutReport rep;
+    std::optional<RolltuiLayout> l = load_layout_c(kAcc, rep);
+    StackC st(*l);
+    auto v = st.resolve(RolltuiRect{0, 0, 40, 20});
+    int one = 0, two = 0;
+    for (const RolltuiResolvedNode& rn : v) {
+      if (!rn.node->is_window()) continue;
+      (rn.node->id.p[0] == 'o' ? one : two) = rn.outer.h;
+    }
+    check(one == 15 && two == 5, "the focused window takes three shares to the other's one [" + std::to_string(one) + "," + std::to_string(two) + "]");
+    rolltui_window_stack_focus(st.s, "two", 3);
+    v = st.resolve(RolltuiRect{0, 0, 40, 20});
+    for (const RolltuiResolvedNode& rn : v)
+      if (rn.node->is_window()) (rn.node->id.p[0] == 'o' ? one : two) = rn.outer.h;
+    check(one == 5 && two == 15, "…and when the focus moves, the other grows");
+    // HALF THE SCREEN for a window, the rest beside it
+    check(rolltui_window_stack_set_half(st.s, "one", 3) == 1, "a window is given half the screen");
+    v = st.resolve(RolltuiRect{0, 0, 80, 20});
+    RolltuiRect o{}, w2{};
+    for (const RolltuiResolvedNode& rn : v)
+      if (rn.node->is_window()) (rn.node->id.p[0] == 'o' ? o : w2) = rn.outer;
+    check(o.x == 40 && o.w == 40 && o.h == 20 && w2.x == 0 && w2.w == 40, "…on a wide screen it stands at the right, the rest of the layout at the left");
+    rolltui_window_stack_set_half(st.s, nullptr, 0);
+    v = st.resolve(RolltuiRect{0, 0, 80, 20});
+    for (const RolltuiResolvedNode& rn : v)
+      if (rn.node->is_window() && rn.node->id.p[0] == 'o') o = rn.outer;
+    check(o.w == 80, "…and put back, the layout is as it was");
+    // FITS, AND A WINDOW SHOWN THAT WOULD NOT FIT IS REFUSED
+    static const char kTight[] = R"({ "name": "t", "root": { "row": [ { "id": "l", "content": "text:a", "min": 50 },
+      { "id": "r", "content": "text:b", "min": 40, "visible": false } ] } })";
+    LayoutReport rep2;
+    std::optional<RolltuiLayout> tl = load_layout_c(kTight, rep2);
+    check(rolltui_layout_fits(&*tl, 60, 10) && !rolltui_layout_fits(&*tl, 40, 10), "a layout fits a screen as wide as its minimums, and not one narrower");
+    StackC ts(*tl);
+    ts.resolve(RolltuiRect{0, 0, 60, 10});
+    route_c(ts.s, chr_ev('x'), RolltuiRect{0, 0, 60, 10});  // the stack learns the screen it is on
+    check(rolltui_window_stack_set_visible(ts.s, "r", 1, 1) == ROLLTUI_STACK_REFUSED && !ts.find("r")->visible,
+          "showing a window that would make the layout need more than the screen is refused, and nothing changes");
+  }
+  {
+    // A POPUP AT A PLACE: under the row it was opened for, above it where there is no room below
+    StackC st(*builtin_layout_c("default"));
+    RolltuiLayer help = (*builtin_layout_c("default")->popup("help", 4)).clone();
+    rolltui_window_stack_push(st.s, &help);
+    const RolltuiRect scr{0, 0, 80, 24};
+    rolltui_window_stack_anchor(st.s, RolltuiRect{5, 3, 20, 1});
+    auto v = resolve_stack_c(st.s, scr);
+    const RolltuiResolvedNode* h = by_id(v, "help");
+    check(h && h->outer.x == 5 && h->outer.y == 4, "an anchored popup opens just under its place [" + std::to_string(h ? h->outer.y : -1) + "]");
+    rolltui_window_stack_anchor(st.s, RolltuiRect{70, 20, 10, 1});
+    v = resolve_stack_c(st.s, scr);
+    h = by_id(v, "help");
+    check(h && h->outer.y + h->outer.h == 20 && h->outer.x + h->outer.w <= 80, "…above it, and inside the screen, where there is no room below");
+    // HALF BY ITS KEY, and back
+    RolltuiEvent half = chr_ev('Z');
+    half.key.alt = 1;
+    half.key.shift = 1;
+    half.key.ch = 'z';
+    StackC hs(*builtin_layout_c("default"));
+    check(route_c(hs.s, half, scr).kind == RouteC::Kind::LayoutChanged && rolltui_window_stack_half(hs.s, nullptr) != nullptr,
+          "Alt-Shift-Z gives the focused window half the screen");
+    route_c(hs.s, half, scr);
+    check(rolltui_window_stack_half(hs.s, nullptr) == nullptr, "…and again puts it back");
+    // A SCREEN TOO SMALL: its size in the error role, the size it needs in the ok role
+    static const char kBig[] = R"({ "name": "b", "min_width": 100, "min_height": 30, "root": { "column": [ { "id": "a", "content": "text:a" } ] } })";
+    LayoutReport rep;
+    std::optional<RolltuiLayout> big = load_layout_c(kBig, rep);
+    StackC bs(*big);
+    ThemeFixture t;
+    builtin_theme_c("default-dark", t);
+    FrameC f(80, 24, t.style(ROLLTUI_ROLE_BACKGROUND));
+    bs.compose(f, scr, t, [](const RolltuiResolvedNode&, FrameC&) {});
+    std::string row;
+    int ry = -1;
+    for (int y = 0; y < 24 && ry < 0; ++y) {
+      std::string r;
+      for (int x = 0; x < 80; ++x) r += f.glyph(x, y);
+      if (r.find("needs") != std::string::npos) row = r, ry = y;
+    }
+    const int now_x = static_cast<int>(row.find("80"));
+    const std::size_t need_b = row.find("100");
+    int need_x = 0;
+    for (std::size_t i = 0, cells = 0; i < row.size(); ++cells) { /* bytes to cells: the × is two bytes */
+      if (i == need_b) { need_x = static_cast<int>(cells); break; }
+      i += (static_cast<unsigned char>(row[i]) >= 0xC0) ? ((static_cast<unsigned char>(row[i]) >= 0xE0) ? 3 : 2) : 1;
+    }
+    check(ry >= 0 && f.at(now_x, ry).style.fg == t.style(ROLLTUI_ROLE_ERROR).fg && f.at(need_x, ry).style.fg == t.style(ROLLTUI_ROLE_ACCENT_2).fg &&
+              f.at(now_x, ry).style.bold,
+          "a screen too small says its size in the error role and what it needs in the ok role, both bold [" + row + "]");
   }
 
   // ---- 7. content and widgets --------------------------------------------------

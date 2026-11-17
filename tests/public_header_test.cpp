@@ -533,7 +533,9 @@ int main() {
     // the Linux console's tty (INTERNAL 929, the box leaving).
     // Then charts and theming: symbols, flags, capacity, time, gradients and a history of five calls, a series from one; a style from
     // SGR, distinct colours, a theme's gradient (PUBLIC 593); a chart's default symbols (INTERNAL 930).
-    check(totals["PUBLIC"] == 593 && totals["INTERNAL"] == 930 && totals.size() == 2,
+    // Then layout: half the screen set and read, a popup anchored, views pushed, popped and counted, hints ranked, whether a layout
+    // fits (PUBLIC 601).
+    check(totals["PUBLIC"] == 601 && totals["INTERNAL"] == 930 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -713,10 +715,11 @@ int main() {
     // paths, spans, hotkeys, a box, the cursor's shapes; another program's tab stop and a window's border role, subtitle and labels.
     // Vocab 44, load 32, widget 81: a style from SGR and distinct colours; a theme's gradient; the charts' symbols, flags, time,
     // gradients and history.
-    check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 32 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 211 && rt["HOST_RELEASE"] == 16 &&
+    // Load 33, run 218: whether a layout fits; half the screen, an anchor, views, ranked hints.
+    check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 94 &&
+              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 218 && rt["HOST_RELEASE"] == 16 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 81,
-          "the roles are the recorded shape — vocab 44, host load 32 / settings 94 / bind 115 / run 211 / "
+          "the roles are the recorded shape — vocab 44, host load 33 / settings 94 / bind 115 / run 218 / "
           "release 16, tool interop 0, widget 81 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

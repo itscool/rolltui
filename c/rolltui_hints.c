@@ -17,6 +17,8 @@ typedef struct Hint {
   RolltuiStr chord, label, action;
   int x, w, y; /* where it landed on the last draw; w 0 when it did not fit */
   unsigned char disabled; /* drawn muted, never hit: the action cannot be taken now */
+  int priority;           /* short of room, the lowest go first (`rolltui_hint_bar_set_priority`) */
+  unsigned char dropped;  /* this draw: left out for a hint that ranks above it */
 } Hint;
 
 struct RolltuiHintBar {
@@ -98,7 +100,27 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
   RolltuiStyle gap_style = chord_style;
   gap_style.underline = 0;
   gap_style.reverse = 0;
-  for (i = 0; i < b->n; ++i) b->v[i].w = 0;
+  for (i = 0; i < b->n; ++i) b->v[i].w = 0, b->v[i].dropped = 0;
+  if (!b->keep_tail && b->n) { /* RANKED: short of room, the hints that rank lowest go, the rest keep their order */
+    int ranked = 0, total = 0;
+    size_t k;
+    for (i = 0; i < b->n; ++i) ranked |= b->v[i].priority != 0;
+    if (ranked) {
+      for (i = 0; i < b->n; ++i) b->v[i].dropped = 1;
+      for (;;) { /* the highest not yet placed, first in order among equals, while it fits */
+        size_t best = b->n;
+        int cw;
+        for (k = 0; k < b->n; ++k)
+          if (b->v[k].dropped == 1 && (best == b->n || b->v[k].priority > b->v[best].priority)) best = k;
+        if (best == b->n) break;
+        {
+          const int hw = hint_width(b, &b->v[best], ambiguous_wide, &cw) + (total ? sep_w : 0);
+          b->v[best].dropped = total + hw <= width ? 0 : 2; /* 2: considered, and left out */
+          if (!b->v[best].dropped) total += hw;
+        }
+      }
+    }
+  }
   if (b->keep_tail && b->n) {
     /* A BREADCRUMB KEEPS ITS TAIL: the last hint is the place the eye is at and the pencil after
      * it, so when the bar is short of room the HEAD is dropped, an ellipsis standing for it, and
@@ -124,6 +146,7 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
     Hint* h = &b->v[i];
     int cw;
     const int hw = hint_width(b, h, ambiguous_wide, &cw);
+    if (h->dropped) continue;
     const int tail = b->keep_tail && i + 1 == b->n && i > 0;
     const int gap = (used && !(b->keep_tail && i == first && first > 0)) ? (tail ? 1 : sep_w) : 0;
     const int cl = cw ? cw + 1 : 0;
@@ -150,6 +173,13 @@ int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch
     used += gap + hw;
   }
   return used;
+}
+
+void rolltui_hint_bar_set_priority(RolltuiHintBar* b, const char* action, size_t len, int priority) {
+  size_t i;
+  if (!b || !action) return;
+  for (i = 0; i < b->n; ++i)
+    if (rolltui_str_eq(&b->v[i].action, action, len)) b->v[i].priority = priority;
 }
 
 const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* len) {

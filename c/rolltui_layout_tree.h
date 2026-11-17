@@ -254,8 +254,20 @@ typedef struct RolltuiLayoutNode {
   RolltuiStr tabs;
   unsigned char tab_count ROLLTUI_DEFAULT(0), tab ROLLTUI_DEFAULT(0);
   /* A BREAKPOINT: shown only while the SCREEN is at least this wide and this tall; 0 for no bound. A node below its breakpoint takes
-   * no space, as a hidden one. */
+   * no space, as a hidden one. `pane_width` and `pane_height` judge the same by the PARENT's room instead. */
   int show_width ROLLTUI_DEFAULT(0), show_height ROLLTUI_DEFAULT(0);
+  int pane_width ROLLTUI_DEFAULT(0), pane_height ROLLTUI_DEFAULT(0);
+  /* BOUNDS on the node's share, in cells (0: none); "size": "content" (`fit`) sizes a window by what it holds, plus a line. */
+  int size_min ROLLTUI_DEFAULT(0), size_max ROLLTUI_DEFAULT(0);
+  unsigned char fit ROLLTUI_DEFAULT(0);
+  /* A SPLIT'S SPACING: padding inside its border, a gap between its children, a line drawn in each gap (`separators`), a row that
+   * stacks into a column below `stack_below` cells of width, and the weight the child holding the focus takes (`focus_weight`). */
+  unsigned char padding ROLLTUI_DEFAULT(0), gap ROLLTUI_DEFAULT(0), separators ROLLTUI_DEFAULT(0);
+  int stack_below ROLLTUI_DEFAULT(0), focus_weight ROLLTUI_DEFAULT(0);
+  /* A GRID with spans: `grid_cols` columns, or as many as rows `grid_cell_h` tall need; each child spans `span_r` by `span_c`
+   * cells. A column with neither is a column. */
+  int grid_cols ROLLTUI_DEFAULT(0), grid_cell_h ROLLTUI_DEFAULT(0);
+  unsigned char span_r ROLLTUI_DEFAULT(0), span_c ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   bool is_window() const { return kind == Kind::Window; }
@@ -283,6 +295,9 @@ typedef struct RolltuiLayer {
   /* The screen this layer needs, the layout's `min_width` and `min_height` on its base: smaller, the stack draws a note saying so
    * instead of a layout squeezed past use. 0 on a popup. */
   int min_width ROLLTUI_DEFAULT(0), min_height ROLLTUI_DEFAULT(0);
+  /* A POPUP AT A PLACE (`rolltui_window_stack_anchor`): drawn under `anchor`, or above it. Screen state. */
+  unsigned char anchored ROLLTUI_DEFAULT(0);
+  RolltuiRect anchor;
 
 #ifdef __cplusplus
   RolltuiLayer();
