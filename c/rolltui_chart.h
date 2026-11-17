@@ -19,6 +19,8 @@ typedef struct RolltuiChartRoles {
 
 void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect area, const RolltuiStyle* styles,
                               const RolltuiChartRoles* roles, int ambiguous_wide);
+/* The symbols a chart with none of its own draws in: the theme's (`glyphs.chart`). */
+void rolltui_chart_set_default_symbols(RolltuiChart* c, unsigned char symbols);
 
 #ifdef __cplusplus
 } /* extern "C" */

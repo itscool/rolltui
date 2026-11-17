@@ -514,6 +514,9 @@ int rolltui_theme_mode_from_name(const char* name, size_t len);
  * legible; a WIDGET drawing may write any colour into any cell (`rolltui_frame_put_text` and `_fill` take a style by value), and the
  * renderer down-converts at the frame's depth. */
 int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out);
+/* COLOURS TOLD APART on a ground: `n` of them into `out`, each a hue of its own and each reading on `ground` at `min_contrast` (WCAG;
+ * below 1: 4.5): a colour an author, a host or a series. `ground` that is not RGB is taken as black. Returns `n`. */
+size_t rolltui_colors_distinct(RolltuiStyleColorRaw ground, size_t n, double min_contrast, RolltuiStyleColorRaw* out);
 /* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
  * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
 void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out);
@@ -3656,6 +3659,9 @@ void rolltui_ansi_clear(RolltuiAnsiText* t);
 void rolltui_ansi_set_limit(RolltuiAnsiText* t, size_t max_lines);
 /* The columns between tab stops another program's tabs reach (8 unless set; 1 to 16). */
 void rolltui_ansi_set_tab_width(RolltuiAnsiText* t, int columns);
+/* A STYLE FROM SGR's PARAMETERS ("1;38;5;208", "4:3;58:2::255:0:0"), as another program's output would set it: 1, or 0 when it is not
+ * numbers 0 to 255 between ; and :. */
+int rolltui_style_from_sgr(const char* params, size_t n, RolltuiStyle* out);
 /* The lines so far; the one being written counts once it has text. */
 size_t rolltui_ansi_line_count(const RolltuiAnsiText* t);
 /* Line `i`'s text without its styles: a BORROW valid until the next feed. "" past the end. */
@@ -3876,6 +3882,13 @@ size_t rolltui_filter_spans(const RolltuiFilter* f, const char* text, size_t len
 #define ROLLTUI_CHART_LINE 0
 #define ROLLTUI_CHART_BARS 1
 #define ROLLTUI_CHART_SPARK 2
+/* AN AREA: the line filled to its foot. A row covers a band of values: full above the value, empty below it, the row the value is in
+ * filled to it; any value above the least shows at least one dot. */
+#define ROLLTUI_CHART_AREA 3
+/* A METER a series: its newest value as a bar of ■ along the row, the rest of the row a track in the axis role. */
+#define ROLLTUI_CHART_METER 4
+/* BY THE ROOM: a meter on one row, a sparkline on two or three, a line on more. */
+#define ROLLTUI_CHART_AUTO 5
 #define ROLLTUI_CHART_SERIES_MAX 4
 typedef struct RolltuiChart RolltuiChart;
 RolltuiChart* rolltui_chart_new(void);
@@ -3888,6 +3901,51 @@ int rolltui_chart_set_series(RolltuiChart* c, size_t i, const char* label, size_
                              size_t n);
 /* The range the chart spans, fixed: a percentage is 0 to 100 however high it has been. Ignored unless `hi` > `lo`. */
 void rolltui_chart_set_range(RolltuiChart* c, double lo, double hi);
+/* THE SYMBOLS a line or an area is drawn in: braille (two dots across a cell, four down), quadrant blocks (two by two), or shades
+ * (one a cell, ░▒▓█ by how full). DEFAULT is the theme's (`glyphs.chart`: "braille", "blocks", "shades"), braille when it says
+ * nothing. The Linux console draws braille as shades. */
+#define ROLLTUI_CHART_SYMBOLS_DEFAULT 0
+#define ROLLTUI_CHART_SYMBOLS_BRAILLE 1
+#define ROLLTUI_CHART_SYMBOLS_BLOCKS 2
+#define ROLLTUI_CHART_SYMBOLS_SHADES 3
+void rolltui_chart_set_symbols(RolltuiChart* c, unsigned char symbols);
+/* WAYS A CHART IS DRAWN, OR'd. FLOW: a time series, a value a column (a dot across in a line or area, a cell in bars and a sparkline),
+ * the newest at the right and the left empty while there are fewer than fit, never stretched. AXES: a line up the plot's left and
+ * one along its foot, in box drawing. INVERT: a meter fills from its right. */
+#define ROLLTUI_CHART_FLOW 1
+#define ROLLTUI_CHART_AXES 2
+#define ROLLTUI_CHART_INVERT 4
+void rolltui_chart_set_flags(RolltuiChart* c, unsigned flags);
+/* How many values a series shows in `cells` columns at this chart's kind and symbols: the most a history for it needs to keep. */
+size_t rolltui_chart_capacity(const RolltuiChart* c, int cells);
+/* TIME ALONG THE FOOT, with AXES: the newest value is at `newest_s` (seconds since the epoch), each one `step_s` after the one before;
+ * HH:MM labels under the axis every ten columns from the right. */
+void rolltui_chart_set_time(RolltuiChart* c, double newest_s, double step_s);
+/* A GRADIENT: a colour from `start` at the least to `end` at the most, through `mid` when it has one. `end` none: `start` alone; `mid`
+ * none: two stops. Only RGB stops are blended; a palette stop is taken as it is. */
+typedef struct RolltuiGradient {
+  RolltuiStyleColorRaw start, mid, end;
+} RolltuiGradient;
+/* The colour at `t` (0 to 1), into `*out`: a number coloured by where it falls. */
+void rolltui_gradient_at(const RolltuiGradient* g, double t, RolltuiStyleColorRaw* out);
+/* A THEME'S GRADIENT by name, from its `"gradients": { "cpu": { "start": "#2a7", "mid": "yellow", "end": "#d33" } }`, each stop any
+ * colour a role takes (a `defs` name, a dark and light pair). `root` is the theme's colours, as `rolltui_theme_load` reads them;
+ * `mode` below zero follows the terminal. 1, or 0 when the theme has none by that name. */
+int rolltui_theme_gradient(const RolltuiJsonValue* root, int mode, const char* name, size_t len, RolltuiGradient* out);
+/* Series `i` in a gradient (NULL: its role's colour): a line or an area coloured by height a row at a time, a sparkline and bars a
+ * value at a time, a meter along its length. */
+void rolltui_chart_set_gradient(RolltuiChart* c, size_t i, const RolltuiGradient* g);
+/* A KEPT HISTORY for a chart that flows: the newest `cap` values pushed. OWNED. */
+typedef struct RolltuiHistory RolltuiHistory;
+RolltuiHistory* rolltui_history_new(size_t cap);
+void rolltui_history_free(RolltuiHistory* h); /* a no-op on NULL */
+void rolltui_history_push(RolltuiHistory* h, double v);
+/* Keeps at most `cap`, the newest: what `rolltui_chart_capacity` says the chart shows. */
+void rolltui_history_resize(RolltuiHistory* h, size_t cap);
+size_t rolltui_history_count(const RolltuiHistory* h);
+/* Series `i` from a history, oldest first: as `rolltui_chart_set_series` with its values. */
+int rolltui_chart_set_series_history(RolltuiChart* c, size_t i, const char* label, size_t label_len, unsigned char role,
+                                     const RolltuiHistory* h);
 /* Draws `c` into `area` in the table's roles (`styles` indexed by role): a host's own widget, a dashboard cell. */
 void rolltui_chart_draw(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect area, const RolltuiStyle* styles,
                         int ambiguous_wide);
@@ -4177,6 +4235,8 @@ typedef struct RolltuiScrollbarGlyphs {
   char ascii_single[4], ascii_top[4], ascii_middle[4], ascii_bottom[4];
   /* THE CURSOR ROW'S SHAPE in lists, menus and the column browser (`glyphs.cursor`: "fill", "caps", "edges"): ROLLTUI_CURSOR_* */
   unsigned char cursor;
+  /* THE SYMBOLS a chart with none of its own draws in (`glyphs.chart`: "braille", "blocks", "shades"): ROLLTUI_CHART_SYMBOLS_* */
+  unsigned char chart;
 } RolltuiScrollbarGlyphs;
 
 /* What a host does with the pair: READ a theme's answer, APPLY it. The default set and the read-back live in the library's own header,

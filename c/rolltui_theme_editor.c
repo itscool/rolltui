@@ -1183,7 +1183,7 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
       } else {
         char buf[96];
         cancel_preview(e);
-        snprintf(buf, sizeof buf, "'%.*s' is not a colour (#rrggbb, 0-255, none)", (int)value.n, value.p ? value.p : "");
+        snprintf(buf, sizeof buf, "'%.*s' is not a colour (#rrggbb, #rgb, 0-255, r g b, a colour's name, none)", (int)value.n, value.p ? value.p : "");
         rolltui_str_set(&e->status, buf, strlen(buf));
         out->kind = ROLLTUI_THEME_EDIT_CHANGED;
       }

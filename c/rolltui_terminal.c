@@ -658,6 +658,11 @@ static void on_reply(void* ctx, const char* bytes, size_t len) {
     t->facts.mode_source = ROLLTUI_FACT_PROBE;
     if (t->publishing) rolltui_termfacts_set_active_mode(mode);
     if (t->facts_events && mode != t->reported_mode) t->facts_dirty = 1;
+    /* …AND THE BACKGROUND ASKED AGAIN: its answer, when it comes, decides (`late_background`), as it did at the start */
+    if (t->tty) {
+      static const char kAskBackground[] = "\x1b]11;?\x1b\\";
+      rolltui_terminal_write(t, kAskBackground, sizeof kAskBackground - 1);
+    }
     return;
   }
   memset(&rep, 0, sizeof rep);

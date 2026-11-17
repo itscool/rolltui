@@ -103,6 +103,29 @@ static void push_line(RolltuiAnsiText* t) {
   ++t->n;
 }
 
+static void sgr(RolltuiAnsiText* t, const char* p, size_t n);
+int rolltui_style_from_sgr(const char* params, size_t n, RolltuiStyle* out) {
+  RolltuiAnsiText* t;
+  size_t i;
+  if (!params || !out) return 0;
+  for (i = 0; i < n; ++i) { /* numbers, and ; or : between them; each number 0 to 255 */
+    const char c = params[i];
+    if (c == ';' || c == ':') continue;
+    if (c < '0' || c > '9') return 0;
+    {
+      unsigned v = 0;
+      while (i < n && params[i] >= '0' && params[i] <= '9') v = v * 10 + (unsigned)(params[i++] - '0');
+      --i;
+      if (v > 255) return 0;
+    }
+  }
+  t = rolltui_ansi_new();
+  sgr(t, params, n);
+  *out = t->cur;
+  rolltui_ansi_free(t);
+  return 1;
+}
+
 RolltuiAnsiText* rolltui_ansi_new(void) {
   RolltuiAnsiText* t = (RolltuiAnsiText*)rolltui_mem_alloc(sizeof *t);
   memset(t, 0, sizeof *t);

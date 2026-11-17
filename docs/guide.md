@@ -123,7 +123,37 @@ cache; a terminal that does not answer costs 80 ms, once.
 `dirktui check-terminal` probes again and reports each answer and where it came from.
 
 Every theme has a light and a dark side. Mode (auto, dark or light) and colour depth are the
-person's settings, stored beside the chosen theme and kept when the theme changes.
+person's settings, stored beside the chosen theme and kept when the theme changes. In `auto` the
+terminal's background decides: light when its luminance is above 0.5. A terminal that reports its
+colour scheme (DSR 996) and not its background is drawn for the scheme it reports; one that reports
+both is drawn for its background.
+
+## Theme files
+
+A role's `fg`, `bg` and `underline_color` take `#rrggbb`, `#rgb`, `#BW` (a grey: `#80` is
+`#808080`), `"R G B"` in decimals, 0 to 255 for a palette colour, a colour's name, `none` or
+`default` (the terminal's own), or a name from the file's `defs`. The terminal's eight are names
+for its palette, so a theme for a 16-colour terminal follows the person's palette: `black`,
+`red`, `green`, `yellow`, `blue`, `magenta`, `cyan` and `white` are 0 to 7, and `bright-red` and
+the rest 8 to 15. Every other W3C name is the colour it names (`cornflowerblue`, `rebeccapurple`).
+A role may also be written as SGR's parameters, `"sgr": "1;38;5;208"`, read as another program's
+output would set it; `rolltui_style_from_sgr` reads the same for a host.
+
+`"extends": "default"` makes a theme of a shipped one: the file states only the roles it changes,
+each over the shipped role, and its effects over the shipped ones.
+
+`"gradients"` names colour ramps for meters, graphs and numbers:
+
+```json
+"gradients": { "cpu": { "start": "green", "mid": "#ffd700", "end": "#d03030" } }
+```
+
+`rolltui_theme_gradient(colours, mode, "cpu", 3, &gradient)` reads one by name, and
+`rolltui_gradient_at(&gradient, t, &colour)` gives its colour at `t` from 0 to 1: a number coloured
+by where it falls. A gradient with no `end` is its start alone; with no `mid`, two stops.
+
+`rolltui_colors_distinct(ground, n, 4.5, colours)` makes `n` colours told apart on a ground, each a
+hue of its own and each reading on it at 4.5:1: a colour an author, a host or a series.
 
 ## What a frame sends
 
@@ -470,9 +500,9 @@ and bg, each after a swatch, and its attributes. The footer names the preset, th
 many problems the theme has.
 
 - `rolltui_windows_set_theme_store(windows, "theme", 5, store, persist)` says where an edit goes.
-- Enter edits the row where it is. Type a colour (`#rrggbb`, 0 to 255, or `none`), or step through
-  the theme's own colours with Up and Down; Left and Right move between fg, bg and the attributes,
-  and Space turns an attribute on or off. The whole screen shows the edit as it is made. Enter
+- Enter edits the row where it is. Type a colour (any form a theme file takes: `#rrggbb`, a name,
+  0 to 255, `none`), or step through the theme's own colours with Up and Down; Left and Right move
+  between fg, bg and the attributes, and Space turns an attribute on or off. The whole screen shows the edit as it is made. Enter
   keeps it, and Escape puts back what was kept.
 - A role whose colours are too close to read is marked on its row, with what would fix it.
   Ctrl-F (`theme.fix`) applies the fix; Ctrl-Z takes it back.
@@ -761,8 +791,10 @@ A `chart:<source>` window draws numbers the host binds with
 `rolltui_windows_bind_chart(windows, name, len, fill, ctx, free_ctx)`. Before each frame `fill` is
 handed the window's chart, cleared, and sets:
 
-- the kind, with `rolltui_chart_set_kind`: `ROLLTUI_CHART_LINE` (the default), `ROLLTUI_CHART_BARS`
-  or `ROLLTUI_CHART_SPARK`;
+- the kind, with `rolltui_chart_set_kind`: `ROLLTUI_CHART_LINE` (the default), `ROLLTUI_CHART_AREA`
+  (the line filled to its foot), `ROLLTUI_CHART_BARS`, `ROLLTUI_CHART_SPARK`, `ROLLTUI_CHART_METER`
+  (a row a series, its newest value as a bar of ■ along a track), or `ROLLTUI_CHART_AUTO` (a meter
+  on one row, a sparkline on two or three, a line on more);
 - up to four series, with `rolltui_chart_set_series(chart, i, label, len, role, values, n)`: a name
   (or none), a role (0 for the accents in order) and the values, copied;
 - the range, with `rolltui_chart_set_range(chart, lo, hi)`, when it is fixed (a percentage is 0 to
@@ -775,6 +807,23 @@ sparkline is one row a series, a block a value. More values than fit shows the n
 value is a gap. The range's labels are on the left, the most at the top; the series' names, each
 in its colour and bold, are on the top row. Braille is narrow in every terminal; where ambiguous
 glyphs are two cells wide, the blocks are ASCII.
+
+- `rolltui_chart_set_symbols` draws a line or an area in braille, quadrant blocks (two by two a
+  cell) or shades (one a cell, ░▒▓█ by how full). A chart that sets none takes the theme's
+  `"glyphs": { "chart": "blocks" }`, braille when it says nothing.
+- In an area, a row covers a band of values: full above the value, empty below it, the row the
+  value is in filled to it. A value above the least shows at least one dot, and a bar for one at
+  least the least block.
+- `rolltui_chart_set_gradient(chart, i, &gradient)` colours series `i` by its gradient: a line or
+  area a row at a time by height, bars and a sparkline a value at a time, a meter along its length.
+- `rolltui_chart_set_flags` takes `ROLLTUI_CHART_FLOW` (a time series: a value a column, the newest
+  at the right and the left empty while there are fewer than fit, never stretched),
+  `ROLLTUI_CHART_AXES` (a line up the plot's left and one along its foot) and
+  `ROLLTUI_CHART_INVERT` (a meter fills from its right). With axes,
+  `rolltui_chart_set_time(chart, newest_s, step_s)` writes HH:MM under the foot every ten columns.
+- A `RolltuiHistory` keeps the newest values pushed (`rolltui_history_new`, `_push`, `_resize`):
+  `rolltui_chart_capacity(chart, cells)` is how many a chart of that width shows, and
+  `rolltui_chart_set_series_history` makes a series of it.
 
 `rolltui_chart_new`, the same setters and `rolltui_chart_draw(chart, frame, scratch, area, styles,
 ambiguous_wide)` draw a chart inside a host's own widget.

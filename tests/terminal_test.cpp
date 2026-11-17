@@ -40,11 +40,13 @@ using namespace testkit;
 
 namespace {
 
-// Reads from `fd` until `want` has been seen or `ms` elapse; returns what arrived.
+// Reads from `fd` until `want` has been seen or `ms` elapse; returns what arrived. `ms` is an upper bound on elapsed time, so it is
+// scaled (`kClockScale`): under the sanitizer, with other suites running, a child takes several times as long to write.
 std::string read_until(int fd, const std::string& want, int ms) {
   std::string got;
   int waited = 0;
-  while (waited <= ms) {
+  const int limit = static_cast<int>(ms * rolltui_test::kClockScale);
+  while (waited <= limit) {
     pollfd p{fd, POLLIN, 0};
     int r = ::poll(&p, 1, 20);
     if (r > 0 && (p.revents & POLLIN)) {
@@ -541,6 +543,9 @@ int main() {
       }
       rolltui_terminal_free(t);
       close(tty);
+      // THE PARENT RELEASES THE MASTER once it has the restore bytes, which may be before this exits: the hang-up that sends is
+      // not this test's subject, so it is ignored here, after the terminal is freed and its own handlers are gone.
+      signal(SIGHUP, SIG_IGN);
       const char* word = got_enter ? "GOT" : "NOT";
       write(sig[1], word, 3);
       _exit(got_enter ? 0 : 1);
@@ -562,7 +567,8 @@ int main() {
     int status = 0;
     waitpid(pid, &status, 0);
     check(std::string(word) == "GOT" && WIFEXITED(status) && WEXITSTATUS(status) == 0,
-          "Enter reaches a terminal opened from /dev/tty through the ordinary poll [" + std::string(word) + "]");
+          "Enter reaches a terminal opened from /dev/tty through the ordinary poll [" + std::string(word) +
+              (WIFSIGNALED(status) ? ", signal " + std::to_string(WTERMSIG(status)) : ", exit " + std::to_string(WEXITSTATUS(status))) + "]");
     check(got.find("\x1b[?1049l") != std::string::npos && got.find("\x1b[?1006l") != std::string::npos,
           "…and its restore bytes (alt screen off, mouse off) reach the terminal on the way out");
   }

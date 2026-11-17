@@ -1269,6 +1269,7 @@ static void chart_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   roles.axis = br->text_muted;
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) roles.series[i] = br->series[i];
   rolltui_content_rect(rn, &r);
+  rolltui_chart_set_default_symbols(c, rolltui_windows_scrollbar_glyphs(cc->w)->chart);
   rolltui_chart_draw_roles(c, f, cc->draw, r, rolltui_windows_styles(cc->w), &roles, rolltui_windows_env(cc->w)->ambiguous_wide);
 }
 static void chart_ctx_destroy(void* ctx) {

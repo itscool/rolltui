@@ -319,6 +319,8 @@ ROLLTUI_API(rolltui_color_depth_name, INTERNAL)
 ROLLTUI_API(rolltui_color_depth_setting_valid, PUBLIC)
 ROLLTUI_API(rolltui_color_downgrade, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_color_parse, PUBLIC)    /* KEPT: the menu's typed color field hands a host TEXT, so without this its value is unusable (Phase 21, rolltui-paint) */
+ROLLTUI_API(rolltui_style_from_sgr, PUBLIC)  /* KEPT: a style a person wrote as SGR, read */
+ROLLTUI_API(rolltui_colors_distinct, PUBLIC)  /* KEPT: a colour each for authors, hosts or series, readable on the ground */
 ROLLTUI_API(rolltui_style_fade, PUBLIC)  /* a fading status note: dirktui; the picker's edge fade */
 ROLLTUI_API(rolltui_color_to_string, PUBLIC) /* KEPT: the other half of that round trip — a host that stores a colour writes it back to its own file */
 ROLLTUI_API(rolltui_detect_color_depth, PUBLIC)
@@ -787,6 +789,7 @@ ROLLTUI_API(rolltui_windows_default_roles, PUBLIC)
 ROLLTUI_API(rolltui_scrollbar_glyphs_default, INTERNAL)  /* the shipped capsule; a host never asks for it, because a theme's answer always arrives complete */
 ROLLTUI_API(rolltui_context_set_scrollbar_glyphs, PUBLIC)  /* the look of the thumb is a theme's, and this is where a theme's answer lands */
 ROLLTUI_API(rolltui_theme_scrollbar_glyphs, PUBLIC)  /* the read half: every host resolving a theme reads its glyphs beside its styles */
+ROLLTUI_API(rolltui_theme_gradient, PUBLIC)  /* KEPT: a theme's gradient by name, for a host's meters and numbers */
 ROLLTUI_API(rolltui_windows_dir, INTERNAL)
 ROLLTUI_API(rolltui_windows_document, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_draw, PUBLIC)
@@ -814,6 +817,7 @@ ROLLTUI_API(rolltui_bindings_sequence_ends_any, INTERNAL)
 ROLLTUI_API(rolltui_key_decoder_reset, INTERNAL)
 ROLLTUI_API(rolltui_list_set_count, INTERNAL)
 ROLLTUI_API(rolltui_list_can, INTERNAL)
+ROLLTUI_API(rolltui_chart_set_default_symbols, INTERNAL)
 ROLLTUI_API(rolltui_list_set_cursor_shape, INTERNAL)
 ROLLTUI_API(rolltui_frame_cursor_shape, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_is_console, INTERNAL)
@@ -978,6 +982,18 @@ ROLLTUI_API(rolltui_chart_clear, PUBLIC)  /* reused frame to frame */
 ROLLTUI_API(rolltui_chart_set_kind, PUBLIC)
 ROLLTUI_API(rolltui_chart_set_series, PUBLIC)
 ROLLTUI_API(rolltui_chart_set_range, PUBLIC)
+ROLLTUI_API(rolltui_chart_set_symbols, PUBLIC)  /* KEPT: a chart in braille, blocks or shades */
+ROLLTUI_API(rolltui_chart_set_flags, PUBLIC)  /* KEPT: a chart that flows, has axes, or a meter that fills from its right */
+ROLLTUI_API(rolltui_chart_capacity, PUBLIC)  /* KEPT: what a history for a chart keeps */
+ROLLTUI_API(rolltui_chart_set_time, PUBLIC)  /* KEPT: time along a chart's foot */
+ROLLTUI_API(rolltui_chart_set_gradient, PUBLIC)  /* KEPT: a series coloured by height, value or position */
+ROLLTUI_API(rolltui_gradient_at, PUBLIC)  /* KEPT: a number coloured by where it falls */
+ROLLTUI_API(rolltui_history_new, PUBLIC)  /* KEPT: the values a flowing chart shows, kept */
+ROLLTUI_API(rolltui_history_free, PUBLIC)  /* KEPT */
+ROLLTUI_API(rolltui_history_push, PUBLIC)  /* KEPT */
+ROLLTUI_API(rolltui_history_resize, PUBLIC)  /* KEPT */
+ROLLTUI_API(rolltui_history_count, PUBLIC)  /* KEPT */
+ROLLTUI_API(rolltui_chart_set_series_history, PUBLIC)  /* KEPT: a series from a history */
 ROLLTUI_API(rolltui_chart_draw, PUBLIC)
 ROLLTUI_API(rolltui_sparkline_text, PUBLIC)  /* a sparkline a list cell or a status line shows as text */
 ROLLTUI_API(rolltui_windows_bind_chart, PUBLIC)  /* a host's numbers in a `chart:` window */

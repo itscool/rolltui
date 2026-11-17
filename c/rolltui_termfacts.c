@@ -324,7 +324,9 @@ size_t rolltui_termprobe_queries(unsigned want, char* out, size_t cap) {
   } while (0)
   if (want & ROLLTUI_TERMQ_KEYBOARD) ROLLTUI_TERMQ_ADD("\x1b[?u"  /* kitty: which enhancement flags are set? */
                                                        "\x1b[?4m"); /* xterm: what is modifyOtherKeys? */
-  if (want & ROLLTUI_TERMQ_BACKGROUND) ROLLTUI_TERMQ_ADD("\x1b]11;?\x1b\\"); /* OSC 11 */
+  if (want & ROLLTUI_TERMQ_BACKGROUND)
+    ROLLTUI_TERMQ_ADD("\x1b]11;?\x1b\\"  /* OSC 11 */
+                      "\x1b[?996n");    /* the colour scheme: light or dark, where the background is not said */
   /* A 24-bit background, ASKED BACK (DECRQSS SGR), and reset. A terminal that took the colour as
    * 24-bit says so in its answer; one that reduced it says a palette index; one that does not
    * implement DECRQSS says nothing, which is "unknown" and never "no". */
@@ -413,6 +415,11 @@ static size_t take_csi(const char* p, size_t n, int expect_cpr, RolltuiTermRepli
     return total;
   }
   if (lead == '>' && fin == 'c') return total; /* Secondary DA: swallowed, never a key */
+  if (lead == '?' && fin == 'n' && params_end - 3 == 5 && memcmp(p + 3, "997;", 4) == 0 && (p[7] == '1' || p[7] == '2')) {
+    r->has_scheme = 1; /* the colour scheme: 1 dark, 2 light */
+    r->scheme = p[7] == '1' ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT;
+    return total;
+  }
   if (lead == '?' && fin == 'u') {              /* kitty: CSI ? flags u */
     r->kitty = 1;
     r->key_last = 1;
@@ -567,10 +574,13 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
     f->images = ROLLTUI_IMAGES_SIXEL;
     f->images_source = ROLLTUI_FACT_PROBE;
   }
-  if ((asked & ROLLTUI_TERMQ_BACKGROUND) && r->has_bg) {
+  if ((asked & ROLLTUI_TERMQ_BACKGROUND) && r->has_bg) { /* THE BACKGROUND WINS: what is drawn on is what the colours must read on */
     f->background = r->bg;
     f->has_background = 1;
     f->mode = rolltui_mode_for_background(r->bg);
+    f->mode_source = ROLLTUI_FACT_PROBE;
+  } else if ((asked & ROLLTUI_TERMQ_BACKGROUND) && r->has_scheme) { /* no background said: the scheme the terminal reports */
+    f->mode = (unsigned char)r->scheme;
     f->mode_source = ROLLTUI_FACT_PROBE;
   }
   if ((asked & ROLLTUI_TERMQ_WIDTH) && r->cpr && r->cpr_col >= 2 && f->ambiguous_source != ROLLTUI_FACT_FORCED) {

@@ -46,10 +46,218 @@ static int hex_digit(char c) {
   return -1;
 }
 
+/* ---- colour names ------------------------------------------------------------------------------ */
+
+/* THE TERMINAL'S EIGHT, by name, and their bright forms: palette colours, so a theme for a 16-colour terminal follows the person's own
+ * palette. Every other W3C name is the colour it names. */
+static const char* const kAnsiNames[8] = {"black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"};
+
+typedef struct NamedColour {
+  const char* name;
+  unsigned int rgb;
+} NamedColour;
+static const NamedColour kW3c[] = {
+    {"aliceblue", 0xf0f8ff},
+    {"antiquewhite", 0xfaebd7},
+    {"aqua", 0x00ffff},
+    {"aquamarine", 0x7fffd4},
+    {"azure", 0xf0ffff},
+    {"beige", 0xf5f5dc},
+    {"bisque", 0xffe4c4},
+    {"black", 0x000000},
+    {"blanchedalmond", 0xffebcd},
+    {"blue", 0x0000ff},
+    {"blueviolet", 0x8a2be2},
+    {"brown", 0xa52a2a},
+    {"burlywood", 0xdeb887},
+    {"cadetblue", 0x5f9ea0},
+    {"chartreuse", 0x7fff00},
+    {"chocolate", 0xd2691e},
+    {"coral", 0xff7f50},
+    {"cornflowerblue", 0x6495ed},
+    {"cornsilk", 0xfff8dc},
+    {"crimson", 0xdc143c},
+    {"cyan", 0x00ffff},
+    {"darkblue", 0x00008b},
+    {"darkcyan", 0x008b8b},
+    {"darkgoldenrod", 0xb8860b},
+    {"darkgray", 0xa9a9a9},
+    {"darkgreen", 0x006400},
+    {"darkgrey", 0xa9a9a9},
+    {"darkkhaki", 0xbdb76b},
+    {"darkmagenta", 0x8b008b},
+    {"darkolivegreen", 0x556b2f},
+    {"darkorange", 0xff8c00},
+    {"darkorchid", 0x9932cc},
+    {"darkred", 0x8b0000},
+    {"darksalmon", 0xe9967a},
+    {"darkseagreen", 0x8fbc8f},
+    {"darkslateblue", 0x483d8b},
+    {"darkslategray", 0x2f4f4f},
+    {"darkslategrey", 0x2f4f4f},
+    {"darkturquoise", 0x00ced1},
+    {"darkviolet", 0x9400d3},
+    {"deeppink", 0xff1493},
+    {"deepskyblue", 0x00bfff},
+    {"dimgray", 0x696969},
+    {"dimgrey", 0x696969},
+    {"dodgerblue", 0x1e90ff},
+    {"firebrick", 0xb22222},
+    {"floralwhite", 0xfffaf0},
+    {"forestgreen", 0x228b22},
+    {"fuchsia", 0xff00ff},
+    {"gainsboro", 0xdcdcdc},
+    {"ghostwhite", 0xf8f8ff},
+    {"gold", 0xffd700},
+    {"goldenrod", 0xdaa520},
+    {"gray", 0x808080},
+    {"green", 0x008000},
+    {"greenyellow", 0xadff2f},
+    {"grey", 0x808080},
+    {"honeydew", 0xf0fff0},
+    {"hotpink", 0xff69b4},
+    {"indianred", 0xcd5c5c},
+    {"indigo", 0x4b0082},
+    {"ivory", 0xfffff0},
+    {"khaki", 0xf0e68c},
+    {"lavender", 0xe6e6fa},
+    {"lavenderblush", 0xfff0f5},
+    {"lawngreen", 0x7cfc00},
+    {"lemonchiffon", 0xfffacd},
+    {"lightblue", 0xadd8e6},
+    {"lightcoral", 0xf08080},
+    {"lightcyan", 0xe0ffff},
+    {"lightgoldenrodyellow", 0xfafad2},
+    {"lightgray", 0xd3d3d3},
+    {"lightgreen", 0x90ee90},
+    {"lightgrey", 0xd3d3d3},
+    {"lightpink", 0xffb6c1},
+    {"lightsalmon", 0xffa07a},
+    {"lightseagreen", 0x20b2aa},
+    {"lightskyblue", 0x87cefa},
+    {"lightslategray", 0x778899},
+    {"lightslategrey", 0x778899},
+    {"lightsteelblue", 0xb0c4de},
+    {"lightyellow", 0xffffe0},
+    {"lime", 0x00ff00},
+    {"limegreen", 0x32cd32},
+    {"linen", 0xfaf0e6},
+    {"magenta", 0xff00ff},
+    {"maroon", 0x800000},
+    {"mediumaquamarine", 0x66cdaa},
+    {"mediumblue", 0x0000cd},
+    {"mediumorchid", 0xba55d3},
+    {"mediumpurple", 0x9370db},
+    {"mediumseagreen", 0x3cb371},
+    {"mediumslateblue", 0x7b68ee},
+    {"mediumspringgreen", 0x00fa9a},
+    {"mediumturquoise", 0x48d1cc},
+    {"mediumvioletred", 0xc71585},
+    {"midnightblue", 0x191970},
+    {"mintcream", 0xf5fffa},
+    {"mistyrose", 0xffe4e1},
+    {"moccasin", 0xffe4b5},
+    {"navajowhite", 0xffdead},
+    {"navy", 0x000080},
+    {"oldlace", 0xfdf5e6},
+    {"olive", 0x808000},
+    {"olivedrab", 0x6b8e23},
+    {"orange", 0xffa500},
+    {"orangered", 0xff4500},
+    {"orchid", 0xda70d6},
+    {"palegoldenrod", 0xeee8aa},
+    {"palegreen", 0x98fb98},
+    {"paleturquoise", 0xafeeee},
+    {"palevioletred", 0xdb7093},
+    {"papayawhip", 0xffefd5},
+    {"peachpuff", 0xffdab9},
+    {"peru", 0xcd853f},
+    {"pink", 0xffc0cb},
+    {"plum", 0xdda0dd},
+    {"powderblue", 0xb0e0e6},
+    {"purple", 0x800080},
+    {"rebeccapurple", 0x663399},
+    {"red", 0xff0000},
+    {"rosybrown", 0xbc8f8f},
+    {"royalblue", 0x4169e1},
+    {"saddlebrown", 0x8b4513},
+    {"salmon", 0xfa8072},
+    {"sandybrown", 0xf4a460},
+    {"seagreen", 0x2e8b57},
+    {"seashell", 0xfff5ee},
+    {"sienna", 0xa0522d},
+    {"silver", 0xc0c0c0},
+    {"skyblue", 0x87ceeb},
+    {"slateblue", 0x6a5acd},
+    {"slategray", 0x708090},
+    {"slategrey", 0x708090},
+    {"snow", 0xfffafa},
+    {"springgreen", 0x00ff7f},
+    {"steelblue", 0x4682b4},
+    {"tan", 0xd2b48c},
+    {"teal", 0x008080},
+    {"thistle", 0xd8bfd8},
+    {"tomato", 0xff6347},
+    {"turquoise", 0x40e0d0},
+    {"violet", 0xee82ee},
+    {"wheat", 0xf5deb3},
+    {"white", 0xffffff},
+    {"whitesmoke", 0xf5f5f5},
+    {"yellow", 0xffff00},
+    {"yellowgreen", 0x9acd32}
+};
+
+/* `a` equals the NUL-ended `b`, case aside. */
+static int name_is(const char* a, size_t n, const char* b) {
+  size_t i;
+  for (i = 0; i < n; ++i)
+    if (!b[i] || ((unsigned char)a[i] | 0x20) != (unsigned char)b[i]) return 0;
+  return b[n] == 0;
+}
+
+static int colour_by_name(const char* t, size_t n, RolltuiStyleColorRaw* out) {
+  size_t i, lo = 0, hi = sizeof kW3c / sizeof kW3c[0];
+  int bright = 0;
+  if (n > 7 && (name_is(t, 7, "bright-") || name_is(t, 7, "bright_"))) bright = 1, t += 7, n -= 7;
+  for (i = 0; i < 8; ++i)
+    if (name_is(t, n, kAnsiNames[i])) {
+      memset(out, 0, sizeof *out);
+      out->kind = 1;
+      out->index = (unsigned char)(i + (bright ? 8 : 0));
+      return 1;
+    }
+  if (bright) return 0;
+  while (lo < hi) { /* the W3C names, in order */
+    const size_t mid = (lo + hi) / 2;
+    const char* nm = kW3c[mid].name;
+    size_t k = 0;
+    int c = 0;
+    for (; k < n && nm[k]; ++k) {
+      const int a = (unsigned char)t[k] | 0x20, b = (unsigned char)nm[k];
+      if (a != b) {
+        c = a < b ? -1 : 1;
+        break;
+      }
+    }
+    if (c == 0) c = k < n ? 1 : nm[k] ? -1 : 0;
+    if (c == 0) {
+      memset(out, 0, sizeof *out);
+      out->kind = 2;
+      out->r = (unsigned char)(kW3c[mid].rgb >> 16);
+      out->g = (unsigned char)((kW3c[mid].rgb >> 8) & 0xFF);
+      out->b = (unsigned char)(kW3c[mid].rgb & 0xFF);
+      return 1;
+    }
+    if (c < 0) hi = mid;
+    else lo = mid + 1;
+  }
+  return 0;
+}
+
 int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out) {
   size_t i;
   unsigned v = 0;
-  if (len == 4 && text[0] == 'n' && text[1] == 'o' && text[2] == 'n' && text[3] == 'e') {
+  if ((len == 4 && text[0] == 'n' && text[1] == 'o' && text[2] == 'n' && text[3] == 'e') || name_is(text, len, "default")) {
     out->kind = 0;
     out->index = 0;
     out->r = out->g = out->b = 0;
@@ -68,7 +276,17 @@ int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out)
     out->b = (unsigned char)(v & 0xFF);
     return 1;
   }
-  if (len > 0 && len <= 3) {
+  if ((len == 3 || len == 4) && text[0] == '#') { /* #BW, a grey; #RGB, each digit doubled */
+    int d[3], k;
+    for (k = 0; k < (int)len - 1; ++k)
+      if ((d[k] = hex_digit(text[k + 1])) < 0) return 0;
+    memset(out, 0, sizeof *out);
+    out->kind = 2;
+    if (len == 3) out->r = out->g = out->b = (unsigned char)(d[0] * 16 + d[1]);
+    else out->r = (unsigned char)(d[0] * 17), out->g = (unsigned char)(d[1] * 17), out->b = (unsigned char)(d[2] * 17);
+    return 1;
+  }
+  if (len > 0 && len <= 3 && text[0] >= '0' && text[0] <= '9') { /* 0-255: a palette colour */
     for (i = 0; i < len; ++i) {
       if (text[i] < '0' || text[i] > '9') return 0;
       v = v * 10 + (unsigned)(text[i] - '0');
@@ -79,7 +297,30 @@ int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out)
     out->r = out->g = out->b = 0;
     return 1;
   }
-  return 0;
+  { /* "R G B", three numbers 0-255 */
+    unsigned rgb[3] = {0, 0, 0};
+    int k = 0, digits = 0;
+    for (i = 0; i <= len; ++i) {
+      const char ch = i < len ? text[i] : ' ';
+      if (ch >= '0' && ch <= '9') {
+        rgb[k] = rgb[k] * 10 + (unsigned)(ch - '0');
+        if (rgb[k] > 255 || ++digits > 3) return 0;
+      } else if (ch == ' ' && digits) {
+        if (++k > 3) return 0;
+        digits = 0;
+      } else if (ch != ' ') {
+        k = -1;
+        break;
+      }
+    }
+    if (k == 3) {
+      memset(out, 0, sizeof *out);
+      out->kind = 2;
+      out->r = (unsigned char)rgb[0], out->g = (unsigned char)rgb[1], out->b = (unsigned char)rgb[2];
+      return 1;
+    }
+  }
+  return colour_by_name(text, len, out);
 }
 
 /* A byte as up to three decimal digits, appended. */
@@ -703,7 +944,7 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
       rolltui_labelf(where2, sizeof where2, "%s \xe2\x86\x92 defs.%s", where, s);
       return resolve_color(rolltui_json_get(defs, s, slen), defs, mode, where2, report, depth + 1, out);
     }
-    rolltui_labelf(buf, sizeof buf, "%s: '%s' is not a colour (#rrggbb, 0-255, none, or a defs name)", where, s);
+    rolltui_labelf(buf, sizeof buf, "%s: '%s' is not a colour (#rrggbb, #rgb, 0-255, r g b, a colour's name, none, or a defs name)", where, s);
     bad(report, buf);
     return 0;
   }
@@ -784,6 +1025,16 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
         else if (streq(k, klen, "bg")) out->bg = c;
         else out->underline_color = c;
       }
+    } else if (streq(k, klen, "sgr")) { /* a style as SGR writes it: its colours and attributes over the role's */
+      size_t sn = 0;
+      const char* sv = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &sn) : NULL;
+      RolltuiStyle st;
+      if (!sv || !rolltui_style_from_sgr(sv, sn, &st)) {
+        rolltui_labelf(buf, sizeof buf, "%s.sgr: expected SGR parameters, numbers 0 to 255", where);
+        bad(report, buf);
+        continue;
+      }
+      rolltui_style_patch(out, &st);
     } else if (streq(k, klen, "underline") && underline_shape(x, mode, out)) {
       /* a shape by name: "double", "curly", "dotted", "dashed" (true is a plain underline, below) */
     } else if (streq(k, klen, "bold") || streq(k, klen, "italic") || streq(k, klen, "underline") ||
@@ -861,8 +1112,18 @@ int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollba
                                                             : ROLLTUI_CURSOR_FILL;
     }
   }
+  {
+    const RolltuiJsonValue* ch = glyphs ? rolltui_json_get(glyphs, K("chart")) : NULL;
+    if (ch && rolltui_json_is_string(ch)) {
+      size_t n;
+      const char* v = rolltui_json_as_string(ch, "", 0, &n);
+      out->chart = n == 6 && memcmp(v, "blocks", 6) == 0   ? ROLLTUI_CHART_SYMBOLS_BLOCKS
+                   : n == 6 && memcmp(v, "shades", 6) == 0 ? ROLLTUI_CHART_SYMBOLS_SHADES
+                                                            : ROLLTUI_CHART_SYMBOLS_BRAILLE;
+    }
+  }
   bar = glyphs ? rolltui_json_get(glyphs, K("scrollbar")) : NULL;
-  if (!bar) return out->cursor != ROLLTUI_CURSOR_FILL;
+  if (!bar) return out->cursor != ROLLTUI_CURSOR_FILL || out->chart != ROLLTUI_CHART_SYMBOLS_DEFAULT;
   take_glyph(bar, "single", out->single, sizeof out->single);
   take_glyph(bar, "top", out->top, sizeof out->top);
   take_glyph(bar, "middle", out->middle, sizeof out->middle);
@@ -1102,11 +1363,60 @@ static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* voc
   }
 }
 
+static RolltuiEffectMap* theme_load_at(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
+                                       RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report, int depth);
+
 RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
                                      RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report) {
-  const RolltuiJsonValue *defs, *roles, *effects_v;
+  return theme_load_at(root, mode, vocab, out_styles, out_name, report, 0);
+}
+
+/* THE THEME A THEME EXTENDS, loaded into `styles`: a shipped one by name. Its effects map, or NULL with the reason in the report. */
+static RolltuiEffectMap* load_base(const RolltuiJsonValue* ext, int mode, const RolltuiThemeVocab* vocab, RolltuiStyle* styles,
+                                   RolltuiThemeReport* report, int depth) {
+  char buf[ROLLTUI_THEME_WHERE_MAX];
+  size_t n;
+  const char* name;
+  const char* text;
+  RolltuiJsonValue* broot;
+  RolltuiStr err, bname;
+  RolltuiThemeReport brep;
+  RolltuiEffectMap* m;
+  if (!rolltui_json_is_string(ext)) {
+    bad(report, "extends: expected a shipped theme's name");
+    return NULL;
+  }
+  name = rolltui_json_as_string(ext, "", 0, &n);
+  if (depth >= 4) {
+    bad(report, "extends: themes extend each other more than four deep");
+    return NULL;
+  }
+  text = rolltui_embedded_text(rolltui_kThemePresets, rolltui_kThemePresetCount, name, n);
+  if (!text) {
+    rolltui_labelf(buf, sizeof buf, "extends: no shipped theme is called \"%.*s\"", (int)(n > 60 ? 60 : n), name);
+    bad(report, buf);
+    return NULL;
+  }
+  memset(&err, 0, sizeof err);
+  broot = rolltui_json_parse(text, strlen(text), &err);
+  rolltui_str_free(&err);
+  if (!broot) return NULL;
+  memset(&bname, 0, sizeof bname);
+  memset(&brep, 0, sizeof brep);
+  m = theme_load_at(rolltui_json_get(broot, K("colours")), mode, vocab, styles, &bname, &brep, depth + 1);
+  rolltui_theme_report_release(&brep);
+  rolltui_str_free(&bname);
+  rolltui_json_free(broot);
+  return m;
+}
+
+static RolltuiEffectMap* theme_load_at(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
+                                       RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report, int depth) {
+  const RolltuiJsonValue *defs, *roles, *effects_v, *ext;
   RolltuiUnicodeScratch* scratch;
   RolltuiEffectMap* map;
+  RolltuiEffectMap* base_map = NULL;
+  RolltuiStyle* base = NULL; /* the extended theme's styles, a role each */
   RolltuiStyle default_style, text_style;
   size_t i, n;
 
@@ -1130,14 +1440,41 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
     size_t klen;
     const char* k = rolltui_json_object_key_at(root, i, &klen);
     if (!streq(k, klen, "name") && !streq(k, klen, "defs") && !streq(k, klen, "roles") &&
-        !streq(k, klen, "meta") && !streq(k, klen, "effects"))
+        !streq(k, klen, "meta") && !streq(k, klen, "effects") && !streq(k, klen, "extends") && !streq(k, klen, "gradients"))
       unk(report, k);
   }
   defs = rolltui_json_get(root, K("defs"));
   roles = rolltui_json_get(root, K("roles"));
-  if (!rolltui_json_is_object(roles)) {
+  ext = rolltui_json_get(root, K("extends"));
+  if (!rolltui_json_is_null(ext)) { /* A THEME THAT EXTENDS ANOTHER states only what it changes */
+    base = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *base);
+    memset(base, 0, vocab->role_count * sizeof *base);
+    base_map = load_base(ext, mode, vocab, base, report, depth);
+    if (!base_map) {
+      rolltui_mem_free(base);
+      base = NULL;
+    }
+  }
+  if (!rolltui_json_is_object(roles) && !(base && rolltui_json_is_null(roles))) {
     rolltui_theme_report_set_error(report, K("theme file has no \"roles\" object"));
+    rolltui_mem_free(base);
+    rolltui_effect_map_free(base_map);
     return NULL;
+  }
+  {
+    const RolltuiJsonValue* gr = rolltui_json_get(root, K("gradients"));
+    const size_t gn = rolltui_json_object_size(gr);
+    if (!rolltui_json_is_null(gr) && !rolltui_json_is_object(gr)) bad(report, "gradients: expected an object of name \xe2\x86\x92 stops");
+    for (i = 0; i < gn; ++i) {
+      size_t klen;
+      const char* k = rolltui_json_object_key_at(gr, i, &klen);
+      const RolltuiJsonValue* g = rolltui_json_object_value_at(gr, i);
+      if (!rolltui_json_is_object(g) || !rolltui_json_has(g, K("start"))) {
+        char buf[ROLLTUI_THEME_WHERE_MAX];
+        rolltui_labelf(buf, sizeof buf, "gradients.%.*s: expected an object with a start", (int)(klen > 60 ? 60 : klen), k);
+        bad(report, buf);
+      }
+    }
   }
   n = rolltui_json_object_size(defs);
   for (i = 0; i < n; ++i) {
@@ -1169,12 +1506,13 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   }
 
   memset(&default_style, 0, sizeof default_style);
+  if (base) default_style = base[vocab->text_role];
   if (rolltui_json_has(roles, K("text"))) {
     read_role_style(rolltui_json_get(roles, K("text")), &default_style, defs, mode, "roles.text", report,
                     &text_style);
   } else {
     text_style = default_style;
-    missing(report, "text");
+    if (!base) missing(report, "text");
   }
 
   for (i = 0; i < vocab->role_count; ++i) {
@@ -1183,18 +1521,19 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
       out_styles[i] = text_style;
       continue;
     }
-    if (!rolltui_json_has(roles, rn, strlen(rn))) {
-      missing(report, rn);
-      out_styles[i] = text_style;
+    if (!rolltui_json_has(roles, rn, strlen(rn))) { /* the extended theme's, else the text's */
+      if (!base) missing(report, rn);
+      out_styles[i] = base ? base[i] : text_style;
       continue;
     }
     {
       char where[ROLLTUI_THEME_WHERE_MAX];
       rolltui_labelf(where, sizeof where, "roles.%s", rn);
-      read_role_style(rolltui_json_get(roles, rn, strlen(rn)), &text_style, defs, mode, where, report,
+      read_role_style(rolltui_json_get(roles, rn, strlen(rn)), base ? &base[i] : &text_style, defs, mode, where, report,
                       &out_styles[i]);
     }
   }
+  rolltui_mem_free(base);
 
   /* THE FILE'S OWN CLASSIFICATION, RECOMPUTED. `meta.badges` says what this theme claims to be;
    * the colours above say what it is. The stored value is never used for anything — it is read
@@ -1211,11 +1550,37 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   }
 
   effects_v = rolltui_json_get(root, K("effects"));
-  map = rolltui_effect_map_new(vocab->state_count, vocab->fallback_effect_role);
+  map = base_map ? base_map : rolltui_effect_map_new(vocab->state_count, vocab->fallback_effect_role);
   scratch = rolltui_u_scratch_new();
-  read_effects(effects_v, vocab, scratch, report, map, 0);
+  read_effects(effects_v, vocab, scratch, report, map, base_map != NULL); /* over the extended theme's own */
   rolltui_u_scratch_free(scratch);
   return map;
+}
+
+int rolltui_theme_gradient(const RolltuiJsonValue* root, int mode, const char* name, size_t len, RolltuiGradient* out) {
+  const RolltuiJsonValue* g;
+  const RolltuiJsonValue* defs;
+  RolltuiThemeReport rep;
+  static const char* const kStops[3] = {"start", "mid", "end"};
+  RolltuiStyleColorRaw* stops[3];
+  int k, ok = 1;
+  if (!out) return 0;
+  memset(out, 0, sizeof *out);
+  if (mode < 0) {
+    mode = rolltui_termfacts_active_mode();
+    if (mode < 0) mode = ROLLTUI_MODE_DARK;
+  }
+  g = root ? rolltui_json_get(rolltui_json_get(root, K("gradients")), name, len) : NULL;
+  if (!g || !rolltui_json_is_object(g) || !rolltui_json_has(g, K("start"))) return 0;
+  defs = rolltui_json_get(root, K("defs"));
+  stops[0] = &out->start, stops[1] = &out->mid, stops[2] = &out->end;
+  memset(&rep, 0, sizeof rep);
+  for (k = 0; k < 3; ++k)
+    if (rolltui_json_has(g, kStops[k], strlen(kStops[k])) &&
+        !resolve_color(rolltui_json_get(g, kStops[k], strlen(kStops[k])), defs, mode, kStops[k], &rep, 0, stops[k]))
+      ok = 0;
+  rolltui_theme_report_release(&rep);
+  return ok;
 }
 
 int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t len, const RolltuiThemeVocab* vocab,

@@ -978,3 +978,47 @@ void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char ro
   if (!styles || !after || role >= role_count) return;
   styles[role] = *after;
 }
+
+/* ---- colours that are told apart, on a ground ---------------------------------------------------- */
+
+/* A colour's linear sRGB, a palette colour taken as the ground's dark or light. */
+static void lin_of(RolltuiStyleColorRaw c, RolltuiLin* out) {
+  if (c.kind != 2) { /* not a colour this can measure: black, the ground a terminal most often has */
+    out->r = out->g = out->b = 0;
+    return;
+  }
+  out->r = rolltui_srgb_channel_to_linear(c.r / 255.0);
+  out->g = rolltui_srgb_channel_to_linear(c.g / 255.0);
+  out->b = rolltui_srgb_channel_to_linear(c.b / 255.0);
+}
+
+size_t rolltui_colors_distinct(RolltuiStyleColorRaw ground, size_t n, double min_contrast, RolltuiStyleColorRaw* out) {
+  RolltuiLin g;
+  RolltuiOkLab gl;
+  size_t i;
+  if (!out) return 0;
+  if (min_contrast < 1) min_contrast = 4.5;
+  lin_of(ground, &g);
+  rolltui_linear_to_oklab(g, &gl);
+  for (i = 0; i < n; ++i) {
+    /* EACH A HUE OF ITS OWN, by the golden angle from the last so any first few are far apart; the lightness steps away from the
+     * ground's until it reads at `min_contrast`, a little higher or lower each time round so neighbours differ in light too */
+    const double up = gl.L < 0.6 ? 1.0 : -1.0;
+    const double nudge = (double)((int)(i % 3) - 1) * 0.05;
+    RolltuiOkLch c;
+    RolltuiLin lin = g;
+    int k;
+    c.h = fmod(30.0 + (double)i * 137.50776, 360.0);
+    c.C = 0.14;
+    c.L = gl.L + up * 0.35 + nudge;
+    for (k = 0; k < 60; ++k) {
+      if (c.L < 0) c.L = 0;
+      if (c.L > 1) c.L = 1;
+      rolltui_into_gamut(c, &lin);
+      if (rolltui_wcag_contrast(lin, g) >= min_contrast || c.L <= 0 || c.L >= 1) break;
+      c.L += up * 0.01;
+    }
+    rolltui_from_linear(lin, &out[i]);
+  }
+  return n;
+}

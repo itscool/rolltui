@@ -240,7 +240,8 @@ int main() {
     check(all.find("\xE2\x96\x88\x1b[6n") != std::string::npos, "…and draws one ambiguous glyph and asks where the cursor went");
     check(all.find("\x1b[?2026$p") != std::string::npos, "…and asks whether it has synchronized output (DECRQM 2026)");
     n = rolltui_termprobe_queries(ROLLTUI_TERMQ_BACKGROUND, q, sizeof q);
-    check(std::string(q, n) == "\x1b]11;?\x1b\\\x1b[c", "asking one thing asks ONLY that thing, then DA");
+    check(std::string(q, n) == "\x1b]11;?\x1b\\\x1b[?996n\x1b[c",
+          "asking one thing asks ONLY that thing, then DA: the background, and the colour scheme for a terminal that keeps it quiet");
     n = rolltui_termprobe_queries(0, q, sizeof q);
     check(std::string(q, n) == "\x1b[c", "asking nothing still ends in DA");
     char small[12];
@@ -351,6 +352,20 @@ int main() {
     take_all("\x1bP>|XTerm(380)\x1b\\\x1b[?1;2c", false, rep);
     rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_VERSION);
     check(f.images == ROLLTUI_IMAGES_BLOCKS, "…and xterm, which names none of them, keeps blocks");
+  }
+
+  // ============================ LIGHT OR DARK: THE SCHEME ASKED, THE BACKGROUND WINS ============================
+  {
+    RolltuiTermFacts f = facts_of({.term = "xterm-256color"});
+    RolltuiTermReplies rep;
+    take_all("\x1b[?997;2n\x1b[?1;2c", false, rep);
+    check(rep.has_scheme && rep.scheme == ROLLTUI_MODE_LIGHT, "DSR 996's answer is read: 2 is light");
+    rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_BACKGROUND);
+    check(f.mode == ROLLTUI_MODE_LIGHT && f.mode_source == ROLLTUI_FACT_PROBE, "a terminal that says only its scheme is drawn for it");
+    f = facts_of({.term = "xterm-256color"});
+    take_all("\x1b]11;rgb:1010/1010/1010\x1b\\\x1b[?997;2n\x1b[?1;2c", false, rep);
+    rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_BACKGROUND);
+    check(f.mode == ROLLTUI_MODE_DARK && f.has_background, "…and where it says its background too, the background wins: a dark one is dark");
   }
 
   // ============================ APPLYING THEM ============================

@@ -187,6 +187,8 @@ typedef struct RolltuiTermReplies {
   int has_sync;     /* DECRPM for mode 2026 arrived */
   int sync;         /* …and the mode is one the terminal has: set, reset, or permanently set */
   int sgr;          /* ROLLTUI_TERMR_SGR_* */
+  int has_scheme;   /* the terminal said whether it is light or dark (DSR 996's answer, `CSI ? 997 ; 1|2 n`) */
+  int scheme;       /* …ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT */
   char version[64]; /* XTVERSION: "ghostty 1.1.3" */
   int da1_sixel;    /* Primary DA named attribute 4: the terminal draws sixel */
 } RolltuiTermReplies;

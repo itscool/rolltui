@@ -357,7 +357,80 @@ std::string visible(std::string s) {  // "\x1b[..." → "ESC[..." for readable f
 
 }  // namespace
 
+
+// ---- the fifth batch: colour names, short forms, SGR roles, a theme that extends another, gradients, distinct colours ------------
+void test_colour_vocabulary() {
+  auto parse = [](std::string_view t, RolltuiStyleColorRaw& c) { return rolltui_color_parse(t.data(), t.size(), &c) != 0; };
+  RolltuiStyleColorRaw c{};
+  check(parse("red", c) && c.kind == RolltuiStyleColorRaw::Kind::Indexed && c.index == 1, "red is the terminal's own red, palette 1");
+  check(parse("Bright-Blue", c) && c.index == 12, "bright-blue is 12, case aside");
+  check(parse("cornflowerblue", c) && c.kind == RolltuiStyleColorRaw::Kind::Rgb && c.r == 0x64 && c.g == 0x95 && c.b == 0xed,
+        "a W3C name is its colour: cornflowerblue #6495ed");
+  check(parse("rebeccapurple", c) && c.r == 0x66 && c.b == 0x99, "…every one of them, rebeccapurple too");
+  check(parse("#80", c) && c.r == 0x80 && c.g == 0x80 && c.b == 0x80, "#BW is a grey: #80 is #808080");
+  check(parse("#f80", c) && c.r == 0xff && c.g == 0x88 && c.b == 0x00, "#RGB doubles each digit");
+  check(parse("255 128 0", c) && c.r == 255 && c.g == 128 && c.b == 0, "\"R G B\" in decimals");
+  check(!parse("256 0 0", c) && !parse("1 2", c) && !parse("teal-ish", c), "…and a number past 255, two numbers, or no such name, is not a colour");
+  check(parse("default", c) && c.kind == RolltuiStyleColorRaw::Kind::None, "default is the terminal's own: none");
+  RolltuiStyle st{};
+  check(rolltui_style_from_sgr("1;38;5;208", 10, &st) && st.bold && st.fg.kind == RolltuiStyleColorRaw::Kind::Indexed && st.fg.index == 208,
+        "a style from SGR's parameters: bold, colour 208");
+  check(!rolltui_style_from_sgr("1;999", 5, &st) && !rolltui_style_from_sgr("bold", 4, &st), "…numbers 0 to 255 only");
+  ThemeLoadReport rep;
+  auto t = load_theme(R"({"roles": {"text": {"fg": "white"}, "error": {"sgr": "1;4;38;2;200;0;0"}}})", ThemeMode::Dark, rep);
+  check(t && t->style(Role::error).bold && t->style(Role::error).underline && t->style(Role::error).fg.r == 200,
+        "a theme role may be written as SGR");
+}
+
+void test_extends_and_gradients() {
+  // A THEME THAT EXTENDS ANOTHER states only what it changes
+  ThemeLoadReport rep;
+  RolltuiStyle base[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* bfx = rolltui_theme_builtin_fill("default-dark", 12, base, ROLLTUI_ROLE_COUNT);
+  auto t = load_theme(R"({"name": "mine", "extends": "default", "roles": {"error": {"fg": "#ff00ff"}}})", ThemeMode::Dark, rep);
+  check(t && rep.missing_roles.empty() && rep.bad_values.empty() && rep.error.empty(), "a theme that extends a shipped one loads, nothing missing");
+  check(t && t->style(Role::error).fg.r == 0xff && t->style(Role::error).fg.b == 0xff &&
+            t->style(Role::md_heading).fg == base[ROLLTUI_ROLE_MD_HEADING].fg,
+        "…its own role changed, every other the shipped theme's");
+  rolltui_effect_map_free(bfx);
+  ThemeLoadReport bad;
+  auto u = load_theme(R"({"extends": "nonesuch", "roles": {"text": {}}})", ThemeMode::Dark, bad);
+  check(u && contains(bad.bad_values, "extends: no shipped theme is called \"nonesuch\""), "a name no shipped theme has is reported");
+  // A THEME'S GRADIENT
+  static const char kGrad[] = R"({"roles": {"text": {}}, "defs": {"hot": "#d03030"}, "gradients": {"cpu": {"start": "green", "mid": "#ffd700", "end": "hot"}}})";
+  RolltuiStr err{};
+  RolltuiJsonValue* root = rolltui_json_parse(kGrad, std::strlen(kGrad), &err);
+  rolltui_str_free(&err);
+  RolltuiGradient g{};
+  check(rolltui_theme_gradient(root, ROLLTUI_MODE_DARK, "cpu", 3, &g) == 1 && g.start.kind == RolltuiStyleColorRaw::Kind::Indexed &&
+            g.mid.r == 0xff && g.end.r == 0xd0,
+        "a theme's gradient by name: its stops are colours a role takes, a defs name among them");
+  check(rolltui_theme_gradient(root, ROLLTUI_MODE_DARK, "net", 3, &g) == 0, "…and 0 for a name it has none for");
+  rolltui_json_free(root);
+  // COLOURS TOLD APART on a ground
+  RolltuiStyleColorRaw ground{};
+  ground.kind = RolltuiStyleColorRaw::Kind::Rgb;
+  ground.r = ground.g = ground.b = 0x1e;
+  RolltuiStyleColorRaw out[8]{};
+  check(rolltui_colors_distinct(ground, 8, 4.5, out) == 8, "eight colours for eight authors");
+  bool readable = true, apart = true;
+  RolltuiLin gl{};
+  gl.r = gl.g = gl.b = rolltui_srgb_channel_to_linear(0x1e / 255.0);
+  for (int i = 0; i < 8; ++i) {
+    RolltuiLin l{};
+    l.r = rolltui_srgb_channel_to_linear(out[i].r / 255.0);
+    l.g = rolltui_srgb_channel_to_linear(out[i].g / 255.0);
+    l.b = rolltui_srgb_channel_to_linear(out[i].b / 255.0);
+    readable = readable && rolltui_wcag_contrast(l, gl) >= 4.4;
+    for (int j = 0; j < i; ++j) apart = apart && !(out[i].r == out[j].r && out[i].g == out[j].g && out[i].b == out[j].b);
+  }
+  check(readable, "…each reads on the ground at 4.5:1");
+  check(apart, "…and no two are the same");
+}
+
 int main() {
+  test_colour_vocabulary();
+  test_extends_and_gradients();
   // ---- JSON ----------------------------------------------------------------------
   {
     std::string err;
@@ -437,10 +510,10 @@ int main() {
     check(l && l->style(Role::md_heading).fg == Color::indexed(21), "light mode picks the light variant");
 
     ThemeLoadReport rep3;
-    auto b = load_theme(R"({"roles": {"text": {"fg": "orange", "colour": 1, "bold": "yes"}, "md_headng": {}}, "extra": 1})",
+    auto b = load_theme(R"({"roles": {"text": {"fg": "orang", "colour": 1, "bold": "yes"}, "md_headng": {}}, "extra": 1})",
                         ThemeMode::Dark, rep3);
     check(b.has_value(), "a theme with problems still loads");
-    check(contains(rep3.bad_values, "roles.text.fg: 'orange' is not a colour (#rrggbb, 0-255, none, or a defs name)"),
+    check(contains(rep3.bad_values, "roles.text.fg: 'orang' is not a colour (#rrggbb, #rgb, 0-255, r g b, a colour's name, none, or a defs name)"),
           "bad colour named: " + join(rep3.bad_values));
     check(contains(rep3.unknown_keys, "roles.text.colour") && contains(rep3.unknown_keys, "roles.md_headng") &&
               contains(rep3.unknown_keys, "extra"),
