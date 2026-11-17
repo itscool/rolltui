@@ -2306,6 +2306,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
   const int aw = m->opt.ambiguous_wide;
   const unsigned char sel_role = !focused && roles->selected_away ? roles->selected_away : roles->selected;
   const int x0 = a.x + m->opt.inset, w = a.w - 2 * m->opt.inset;
+  const unsigned char shape = m->opt.inset >= 1 && !aw ? m->opt.cursor_shape : ROLLTUI_CURSOR_FILL;
   /* `shortcut`'s OWN role states "none" for a background that means "whatever I am drawn on" —
    * a theme file's word for it, not a value this widget invents. Every site below that borrows
    * the role for something other than a selected row's own solid block (the status line, an
@@ -2429,7 +2430,14 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
     row_rect.y = y + r;
     row_rect.w = w;
     row_rect.h = 1;
+    if (is_sel && shape != ROLLTUI_CURSOR_FILL) { /* the cursor's shape: its ends in the inset's cells */
+      const RolltuiRect band = {x0 - 1, y + r, w + 2, 1};
+      const RolltuiStyle cur = base;
+      rolltui_cursor_text_style(&cur, ground, shape, &base);
+      rolltui_frame_cursor_ends(f, band, cur, ground, shape);
+    }
     rolltui_frame_fill(f, draw, row_rect, base, NULL, 0);
+    if (is_sel && focused && !m->editing) rolltui_frame_set_cursor(f, x0, y + r, 0); /* hidden, where a screen reader looks */
     if (divider(it)) {
       /* A SECTION names the rows under it — its label, bold, then a rule to the edge. A
        * SEPARATOR is the rule alone. The rule is muted and the name is the breadcrumb's role:

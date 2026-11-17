@@ -106,7 +106,8 @@ ROLLTUI_API(rolltui_frame_fill, PUBLIC)
 ROLLTUI_API(rolltui_frame_text_width, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_fields, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_text, PUBLIC)
-ROLLTUI_API(rolltui_frame_tint, INTERNAL)
+ROLLTUI_API(rolltui_style_patch, PUBLIC)  /* KEPT: a host merges a highlight into its own style, the library's rule for it */
+ROLLTUI_API(rolltui_frame_tint, PUBLIC)  /* KEPT: a host's own widget patches a highlight over what it drew */
 ROLLTUI_API(rolltui_style_on_window, INTERNAL)  /* plain text in a panel sits on the panel: the list, the menu, the scrollbar */
 ROLLTUI_API(rolltui_frame_shade, INTERNAL)
 ROLLTUI_API(rolltui_frame_unmark_rect, INTERNAL)
@@ -149,6 +150,9 @@ ROLLTUI_API(rolltui_frame_new, PUBLIC)  /* an inline host builds the rows it com
 ROLLTUI_API(rolltui_frame_put, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_reset, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_set_cursor, PUBLIC)
+ROLLTUI_API(rolltui_frame_set_cursor_shape, PUBLIC)  /* KEPT: a host's own field says which caret it wants */
+ROLLTUI_API(rolltui_cursor_text_style, PUBLIC)  /* KEPT: a host's own row in the theme's cursor shape */
+ROLLTUI_API(rolltui_frame_cursor_ends, PUBLIC)  /* KEPT: …and its ends */
 ROLLTUI_API(rolltui_frame_set_style, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_width, INTERNAL)  /* Phase 24: a widget is handed a resolved node's rect and the library clips; nothing needs the frame's own bounds. Old KEPT reason was a meta-test's reach */
 
@@ -443,6 +447,11 @@ ROLLTUI_API(rolltui_list_has_back, INTERNAL)  /* a focused list takes its back k
 ROLLTUI_API(rolltui_list_footer, INTERNAL)  /* the list kind's footer */
 ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a name with an ellipsis, at its end, middle or start */
 ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
+ROLLTUI_API(rolltui_text_cut_with, PUBLIC)  /* KEPT: a cut with a marker, a split and an extension kept, for a host's own line */
+ROLLTUI_API(rolltui_frame_put_text_cut_with, PUBLIC)  /* KEPT: the same cut, drawn */
+ROLLTUI_API(rolltui_path_shorten, PUBLIC)  /* KEPT: a path in a status line or a title, each folder to a letter */
+ROLLTUI_API(rolltui_frame_put_spans, PUBLIC)  /* KEPT: a host's own line of styled parts, aligned, cut or wrapped */
+ROLLTUI_API(rolltui_hotkey_at, PUBLIC)  /* KEPT: the letter a key names in a host's own label */
 ROLLTUI_API(rolltui_bindings_add_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_bind, PUBLIC)
 ROLLTUI_API(rolltui_bindings_breaks_enter_rule, INTERNAL)  /* a step of bind */
@@ -566,7 +575,7 @@ ROLLTUI_API(rolltui_content_init, INTERNAL)  /* a Content is a field of a node; 
 ROLLTUI_API(rolltui_content_parse, PUBLIC)
 ROLLTUI_API(rolltui_content_release, INTERNAL)  /* a Content is a field of a node; its lifetime is the node's */
 ROLLTUI_API(rolltui_dim_to_string, INTERNAL)
-ROLLTUI_API(rolltui_draw_border, INTERNAL)  /* a step of loading, saving or resolving a layout */
+ROLLTUI_API(rolltui_draw_border, PUBLIC)  /* KEPT: a widget boxes a group of its own content */
 ROLLTUI_API(rolltui_inner_rect, INTERNAL)  /* a step of layout */
 ROLLTUI_API(rolltui_layout_actions_free, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_layout_builtin, INTERNAL)  /* a step of loading, saving or resolving a layout */
@@ -797,10 +806,18 @@ ROLLTUI_API(rolltui_terminal_set_mouse, PUBLIC)  /* mouse reporting on or off wh
 ROLLTUI_API(rolltui_terminal_mouse, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_set_numbered, PUBLIC)  /* each window's number before its title, for Alt and that digit */
 ROLLTUI_API(rolltui_window_stack_set_busy, PUBLIC)  /* a spinner in a window's title while it works */
+ROLLTUI_API(rolltui_window_stack_set_border_role, PUBLIC)  /* KEPT: a window's border in a state's colour */
+ROLLTUI_API(rolltui_window_stack_set_subtitle, PUBLIC)  /* KEPT: a live count at the top right of a window */
+ROLLTUI_API(rolltui_window_stack_set_title_parts, PUBLIC)  /* KEPT: a title in parts, labels a press runs */
+ROLLTUI_API(rolltui_window_stack_pressed_label, PUBLIC)  /* KEPT: the label a press ran */
 ROLLTUI_API(rolltui_bindings_sequence_ends_any, INTERNAL)
 ROLLTUI_API(rolltui_key_decoder_reset, INTERNAL)
 ROLLTUI_API(rolltui_list_set_count, INTERNAL)
 ROLLTUI_API(rolltui_list_can, INTERNAL)
+ROLLTUI_API(rolltui_list_set_cursor_shape, INTERNAL)
+ROLLTUI_API(rolltui_frame_cursor_shape, INTERNAL)
+ROLLTUI_API(rolltui_os_tty_is_console, INTERNAL)
+ROLLTUI_API(rolltui_termfacts_underline_shapes, INTERNAL)
 ROLLTUI_API(rolltui_list_cursor_column, INTERNAL)
 ROLLTUI_API(rolltui_list_freeze, INTERNAL)
 ROLLTUI_API(rolltui_list_mark_matching, INTERNAL)
@@ -891,6 +908,7 @@ ROLLTUI_API(rolltui_ansi_free, PUBLIC)
 ROLLTUI_API(rolltui_ansi_feed, PUBLIC)  /* KEPT: a host feeds output it read itself (a socket, a file being written) */
 ROLLTUI_API(rolltui_ansi_clear, PUBLIC)  /* KEPT: a host runs the command again into the same pane */
 ROLLTUI_API(rolltui_ansi_set_limit, PUBLIC)  /* chat keeps a command's newest 2000 lines */
+ROLLTUI_API(rolltui_ansi_set_tab_width, PUBLIC)  /* KEPT: another program's tab stop, as its own settings have it */
 ROLLTUI_API(rolltui_ansi_line_count, PUBLIC)
 ROLLTUI_API(rolltui_ansi_line, PUBLIC)
 ROLLTUI_API(rolltui_ansi_rows, PUBLIC)  /* KEPT: a host's own widget scrolling over output */

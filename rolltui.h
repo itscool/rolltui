@@ -438,14 +438,27 @@ typedef struct RolltuiStyleColorRaw {
 
 ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyleColorRaw) == 5, "RolltuiStyleColorRaw must be five bytes in both languages");
 
+/* AN UNDERLINE'S SHAPE, in `RolltuiStyle.underline`. A terminal that draws only one sort of underline draws each of these as it. */
+#define ROLLTUI_UNDERLINE_SINGLE 1
+#define ROLLTUI_UNDERLINE_DOUBLE 2
+#define ROLLTUI_UNDERLINE_CURLY 3 /* a spelling mistake, an error under a word */
+#define ROLLTUI_UNDERLINE_DOTTED 4
+#define ROLLTUI_UNDERLINE_DASHED 5
+
 typedef struct RolltuiStyle {
   RolltuiStyleColorRaw fg ROLLTUI_DEFAULT({}), bg ROLLTUI_DEFAULT({});
-  unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0), underline ROLLTUI_DEFAULT(0),
-      dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
-  unsigned char strike ROLLTUI_DEFAULT(0); /* a line through the text: what was removed, what is done */
+  /* the underline's own colour (a red curl under a word in its text colour); none: the text's */
+  RolltuiStyleColorRaw underline_color ROLLTUI_DEFAULT({});
+  unsigned char bold ROLLTUI_DEFAULT(0), italic ROLLTUI_DEFAULT(0);
+  unsigned char underline ROLLTUI_DEFAULT(0); /* 0 none, else ROLLTUI_UNDERLINE_*: 1 is a plain underline */
+  unsigned char dim ROLLTUI_DEFAULT(0), reverse ROLLTUI_DEFAULT(0);
+  unsigned char strike ROLLTUI_DEFAULT(0);   /* a line through the text: what was removed, what is done */
+  unsigned char blink ROLLTUI_DEFAULT(0);    /* 1 slow, 2 rapid; a terminal that does not blink draws it steady */
+  unsigned char hidden ROLLTUI_DEFAULT(0);   /* drawn in the background's colour: there, selectable, not shown */
+  unsigned char overline ROLLTUI_DEFAULT(0); /* a line over the text */
 } RolltuiStyle;
 
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 16, "RolltuiStyle must be sixteen bytes with no padding in either language");
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiStyle) == 24, "RolltuiStyle must be twenty-four bytes with no padding in either language");
 
 /* ---- THE MODE AND DEPTH VOCABULARY ---------------------------------------------------------
  * Same move as `ROLLTUI_ROLE_LIST` and `ROLLTUI_EFFECT_STATE_LIST`: a vocabulary the C refuses to carry relocates into every caller
@@ -504,6 +517,9 @@ int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColorRaw* out)
 /* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
  * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
 void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColorRaw ground, double keep, RolltuiStyle* out);
+/* A STYLE PATCHED OVER ANOTHER: `over`'s colours where it has them, its underline's shape and colour where it has one, its other
+ * attributes added to `base`'s. A highlight over a row's own style, a row dimmed. */
+void rolltui_style_patch(RolltuiStyle* base, const RolltuiStyle* over);
 
 /* A style ON a ground: `fg`/`bg` "none" (kind 0) become `ground`; a stated colour is left as the theme wrote it. That is what "none"
  * in a theme file MEANS for a role that sits on whatever it is drawn over. Mutates in place; `ground` is typically the caller's
@@ -513,8 +529,8 @@ void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColorRaw ground);
 size_t rolltui_color_to_string(RolltuiStyleColorRaw c, char* out, size_t cap);
 
 /* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset, so a cell's style never depends on the
- * previous cell's. The longest is 48 bytes; the cap is a constraint on this file, not on a caller's data. */
-#define ROLLTUI_SGR_MAX 64
+ * previous cell's. The longest is 77 bytes; the cap is a constraint on this file, not on a caller's data. */
+#define ROLLTUI_SGR_MAX 96
 
 /* ========================================================================================
  * screen and frame_ops — the cell grid, and drawing into it
@@ -540,7 +556,7 @@ typedef struct RolltuiCellRaw {
 } RolltuiCellRaw;
 
 /* THE CELL HAS NO PADDING, asserted: `rolltui_frame_equal` compares cells with `memcmp`, which is only right when every byte was written. */
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 16 + ROLLTUI_CELL_INLINE_GLYPH + 3,
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCellRaw) == 4 + 24 + ROLLTUI_CELL_INLINE_GLYPH + 3,
                       "RolltuiCellRaw has padding; memcmp equality would compare bytes nobody wrote");
 
 typedef struct RolltuiFrame RolltuiFrame;
@@ -558,7 +574,19 @@ void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
 size_t rolltui_frame_mark_count(const RolltuiFrame* f);
 
 /* ---- cursor ------------------------------------------------------------------------ */
+/* Where the terminal's cursor is left after the frame, and whether it shows. A focused list, menu or column browser leaves it, hidden,
+ * on its cursor's row, where a screen reader looks. */
 void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible);
+/* THE CURSOR'S SHAPE while it shows (DECSCUSR): ROLLTUI_CARET_*; 0 the terminal's own. Sent when it changes, put back when the
+ * program leaves; never sent to the Linux console. */
+#define ROLLTUI_CARET_DEFAULT 0
+#define ROLLTUI_CARET_BLOCK_BLINK 1
+#define ROLLTUI_CARET_BLOCK 2
+#define ROLLTUI_CARET_UNDERLINE_BLINK 3
+#define ROLLTUI_CARET_UNDERLINE 4
+#define ROLLTUI_CARET_BAR_BLINK 5
+#define ROLLTUI_CARET_BAR 6
+void rolltui_frame_set_cursor_shape(RolltuiFrame* f, unsigned char shape);
 
 RolltuiDrawScratch* rolltui_draw_scratch_new(void);
 
@@ -612,6 +640,72 @@ int rolltui_frame_put_text_cut(RolltuiFrame* f, RolltuiDrawScratch* s, int x, in
                                int max_cells, int where, int ambiguous_wide, unsigned int link);
 /* The same cut, as text: REPLACES `*out` with `utf8` cut to `max_cells`; returns the cells it takes. */
 int rolltui_text_cut(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, int where, int ambiguous_wide, RolltuiStr* out);
+/* Every cell of `r` patched with `style` (`rolltui_style_patch`): a row dimmed, a match lit. */
+void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
+
+/* THE CURSOR ROW'S SHAPE. FILL: the row in the cursor's style. CAPS: the same, its two ends rounded by a half block each (▐…▌).
+ * EDGES: the row on its own ground, its text in the cursor's colour, a bar at each end (▌…▐), so a terminal's own background
+ * shows through. Where ambiguous glyphs are wide, CAPS and EDGES draw as FILL. */
+#define ROLLTUI_CURSOR_FILL 0
+#define ROLLTUI_CURSOR_CAPS 1
+#define ROLLTUI_CURSOR_EDGES 2
+/* The style a cursor row's text takes in `shape`, into `*out`: the cursor's own, or for EDGES its colour on `ground`. */
+void rolltui_cursor_text_style(const RolltuiStyle* cursor, RolltuiStyleColorRaw ground, unsigned char shape, RolltuiStyle* out);
+/* The ends of a cursor row: the first and last cells of `band`, which the widget left blank, drawn for `shape`. */
+void rolltui_frame_cursor_ends(RolltuiFrame* f, RolltuiRect band, RolltuiStyle cursor, RolltuiStyleColorRaw ground, unsigned char shape);
+
+/* A BOX a widget draws inside its own content, with no joining: a group, a nested section. The kinds a layout file names
+ * ("border"): lines thin, rounded, double and heavy; blocks a half cell inside or outside the edge; hidden, a ring of the box's
+ * ground that keeps its room. Where ambiguous glyphs are wide, + - |. `title` may be NULL when `title_n` is 0. */
+#define ROLLTUI_BORDER_NONE 0
+#define ROLLTUI_BORDER_SINGLE 1
+#define ROLLTUI_BORDER_ROUNDED 2
+#define ROLLTUI_BORDER_DOUBLE 3
+#define ROLLTUI_BORDER_HEAVY 4
+#define ROLLTUI_BORDER_HIDDEN 5
+#define ROLLTUI_BORDER_QUADRANT_INSIDE 6
+#define ROLLTUI_BORDER_QUADRANT_OUTSIDE 7
+#define ROLLTUI_BORDER_COUNT 8
+void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border, RolltuiStyle line,
+                         const char* title, size_t title_n, RolltuiStyle title_style, int ambiguous_wide);
+
+/* A CUT WITH ITS OWN RULES. `marker` stands where text was cut (NULL: an ellipsis, as above; "~" as lf draws it). `keep_extension`
+ * keeps a file name's extension whole after the cut ("a_long_rep….pdf"). `split` is the percent of the room a middle cut gives the
+ * head (0: half). */
+typedef struct RolltuiCutOptions {
+  unsigned char where ROLLTUI_DEFAULT(ROLLTUI_CUT_END);
+  unsigned char keep_extension ROLLTUI_DEFAULT(0);
+  unsigned char split ROLLTUI_DEFAULT(0);
+  const char* marker ROLLTUI_DEFAULT(nullptr); /* BORROWED for the call; NUL-terminated */
+} RolltuiCutOptions;
+int rolltui_text_cut_with(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, const RolltuiCutOptions* o,
+                          int ambiguous_wide, RolltuiStr* out);
+int rolltui_frame_put_text_cut_with(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
+                                    RolltuiStyle style, int max_cells, const RolltuiCutOptions* o, int ambiguous_wide);
+/* A PATH SHORTENED TO FIT: each folder from the left down to its first letter (a leading dot kept: ".config" is ".c") until it fits,
+ * then the name itself cut in its middle, its extension kept: "~/git/rolltui/c/frame.c" in 15 cells is "~/g/r/c/frame.c". REPLACES
+ * `*out`; returns the cells it takes. */
+int rolltui_path_shorten(RolltuiDrawScratch* s, const char* path, size_t len, int max_cells, int ambiguous_wide, RolltuiStr* out);
+
+/* A LINE OF SPANS, each its own style, laid into `r`: at its left, centre or right, and where it is wider than `r`, cut at the edge,
+ * cut with an ellipsis, or wrapped at word breaks onto the rows below. Returns the rows it used. */
+typedef struct RolltuiTextSpan {
+  const char* text; /* BORROWED for the call */
+  size_t len;
+  RolltuiStyle style;
+} RolltuiTextSpan;
+#define ROLLTUI_ALIGN_LEFT 0
+#define ROLLTUI_ALIGN_CENTER 1
+#define ROLLTUI_ALIGN_RIGHT 2
+#define ROLLTUI_OVERFLOW_CLIP 0
+#define ROLLTUI_OVERFLOW_ELLIPSIS 1
+#define ROLLTUI_OVERFLOW_WRAP 2
+int rolltui_frame_put_spans(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, const RolltuiTextSpan* spans, size_t n,
+                            unsigned char align, unsigned char overflow, int ambiguous_wide);
+/* THE LETTER A KEY NAMES in a label, to light it: the first word that starts with `ch` (case and accents aside), else the first
+ * place `ch` is at all. Its byte offset, with its length in `*n`; (size_t)-1 when the label has none. "Save _as" for a, "E_xit"
+ * for x. */
+size_t rolltui_hotkey_at(const char* label, size_t len, unsigned int ch, size_t* n);
 
 /* The cells `utf8` WOULD occupy, measured with the same cluster walk that draws it (`rolltui_frame_put_text` answers only after drawing,
  * and a caller sizing a column must know first). Same walk, same ambiguous-width rule, same result. */
@@ -1322,7 +1416,7 @@ void rolltui_theme_preset_report_summary(const RolltuiThemePresetReport* r, Roll
 
 #ifdef __cplusplus
 namespace rolltui {
-enum class Border : unsigned char { None, Single, Rounded, Double, Heavy };
+enum class Border : unsigned char { None, Single, Rounded, Double, Heavy, Hidden, QuadrantInside, QuadrantOutside };
 enum class Anchor : unsigned char {
   TopLeft, Top, TopRight, Left, Center, Right, BottomLeft, Bottom, BottomRight
 };
@@ -1567,6 +1661,9 @@ typedef struct RolltuiStackActions {
 #define ROLLTUI_ROUTE_CLOSED_LEVEL 4
 /* A press on a window's tab strip, or a tab or maximise key, changed what the screen shows; `window` names the window. */
 #define ROLLTUI_ROUTE_LAYOUT_CHANGED 5
+/* A press on a label in a window's title (`rolltui_window_stack_set_title_parts`); `window` names the window and
+ * `rolltui_window_stack_pressed_label` gives the label's action. */
+#define ROLLTUI_ROUTE_LABEL 6
 
 /* WHO ANSWERS "CLOSE ONE LEVEL" — the shape; the setter is with the stack's other setup. */
 typedef int (*RolltuiStackLevelFn)(void* ctx, const char* window, size_t len);
@@ -2113,6 +2210,8 @@ typedef struct RolltuiInputOptionsRaw {
   /* 0: a printable key is an action like any other, looked up in the bindings, and nothing is typed when none is bound — a modal
    * editor's normal mode, made from a bindings table and `rolltui_input_perform`. 1: a printable key types itself. */
   unsigned char insert_typed ROLLTUI_DEFAULT(1);
+  /* THE CARET'S SHAPE, ROLLTUI_CARET_*; 0: by the mode, a bar while printable keys type and a block while they are actions. */
+  unsigned char caret ROLLTUI_DEFAULT(0);
 } RolltuiInputOptionsRaw;
 
 #define ROLLTUI_INPUT_SHOW_ALL 0
@@ -2708,6 +2807,7 @@ typedef struct RolltuiMenuActionListRaw {
 typedef struct RolltuiMenuOptions {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   int inset ROLLTUI_DEFAULT(0); /* columns kept clear on each side of the area */
+  unsigned char cursor_shape ROLLTUI_DEFAULT(0); /* ROLLTUI_CURSOR_*: CAPS and EDGES are drawn in the inset's cells */
 } RolltuiMenuOptions;
 
 /* THE ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
@@ -3554,6 +3654,8 @@ void rolltui_ansi_feed(RolltuiAnsiText* t, const char* bytes, size_t len);
 void rolltui_ansi_clear(RolltuiAnsiText* t);
 /* 0: no cap. Lowering it drops the oldest lines at once. */
 void rolltui_ansi_set_limit(RolltuiAnsiText* t, size_t max_lines);
+/* The columns between tab stops another program's tabs reach (8 unless set; 1 to 16). */
+void rolltui_ansi_set_tab_width(RolltuiAnsiText* t, int columns);
 /* The lines so far; the one being written counts once it has text. */
 size_t rolltui_ansi_line_count(const RolltuiAnsiText* t);
 /* Line `i`'s text without its styles: a BORROW valid until the next feed. "" past the end. */
@@ -3972,9 +4074,28 @@ int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
 /* NUMBERED WINDOWS: each focusable window of the focus layer has its number before its title, the digit Alt and that digit
  * (`stack.focus_number`) focuses it with. Off by default. */
+/* 1: each focusable window's title starts with its number ("2 files"); 2: with the number as a superscript before it ("²files"),
+ * plain digits where the terminal draws ambiguous glyphs wide; 0: none. */
 void rolltui_window_stack_set_numbered(RolltuiWindowStack* s, int on);
 /* A SPINNER IN A WINDOW'S TITLE while it works (`on`), turning from `since_ms`; 0 takes it away. */
 void rolltui_window_stack_set_busy(RolltuiWindowStack* s, const char* id, size_t len, int on, unsigned long long since_ms);
+/* A WINDOW'S BORDER IN A ROLE OF ITS OWN while it is in a state: searching, an error, a filter applied. 0 gives it back the focus
+ * colours. */
+void rolltui_window_stack_set_border_role(RolltuiWindowStack* s, const char* id, size_t len, unsigned char role);
+/* A SUBTITLE on the top edge, at its right: a live count, a mode. "" takes it away. */
+void rolltui_window_stack_set_subtitle(RolltuiWindowStack* s, const char* id, size_t len, const char* text, size_t text_len);
+/* A TITLE IN PARTS, each in its own role (0: the title's): a resource, a namespace, a count, a filter. A part with an `action` is a
+ * label a press runs: the press routes as ROLLTUI_ROUTE_LABEL, naming the window, and `rolltui_window_stack_pressed_label` gives
+ * the action. No parts gives the window its title back. */
+typedef struct RolltuiTitlePart {
+  const char* text;   /* BORROWED for the call */
+  size_t len;
+  unsigned char role;
+  const char* action; /* BORROWED for the call; NUL-terminated; NULL: not a label */
+} RolltuiTitlePart;
+void rolltui_window_stack_set_title_parts(RolltuiWindowStack* s, const char* id, size_t len, const RolltuiTitlePart* parts, size_t n);
+/* The action of the label the last ROLLTUI_ROUTE_LABEL pressed, into `*out`: 1, or 0 when none was pressed since. */
+int rolltui_window_stack_pressed_label(RolltuiWindowStack* s, RolltuiStr* out);
 
 /* WHERE THE POINTER RESTS, for what a host draws outside the windows (a status line's hints): 1 with its cell once the terminal has
  * reported it moving with no button held, which it does only for hover (`RolltuiTerminalOptions::hover`); 0 and (-1, -1) before. */
@@ -4054,6 +4175,8 @@ const RolltuiWindowRoles* rolltui_windows_default_roles(void);
 typedef struct RolltuiScrollbarGlyphs {
   char single[8], top[8], middle[8], bottom[8];
   char ascii_single[4], ascii_top[4], ascii_middle[4], ascii_bottom[4];
+  /* THE CURSOR ROW'S SHAPE in lists, menus and the column browser (`glyphs.cursor`: "fill", "caps", "edges"): ROLLTUI_CURSOR_* */
+  unsigned char cursor;
 } RolltuiScrollbarGlyphs;
 
 /* What a host does with the pair: READ a theme's answer, APPLY it. The default set and the read-back live in the library's own header,
@@ -4428,6 +4551,10 @@ typedef struct RolltuiTermFacts {
   unsigned char images;         /* ROLLTUI_IMAGES_*: how it draws a picture */
   unsigned char images_source;  /* ROLLTUI_FACT_* */
   unsigned short cell_w, cell_h; /* a cell's size in pixels, 0 when the terminal does not say */
+  /* 1: the Linux virtual console (TERM=linux, or a /dev/ttyN, or ROLLTUI_CONSOLE=1; ROLLTUI_CONSOLE=0 says it is not). Its font has
+   * the PC's glyphs only, so braille, quadrants, eighths, rounded and heavy lines and a few symbols are drawn as the nearest it has,
+   * and the cursor's shape is not sent. */
+  unsigned char console;
 } RolltuiTermFacts;
 
 /* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.

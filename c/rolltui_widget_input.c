@@ -142,6 +142,7 @@ void rolltui_input_options_copy(RolltuiInputOptionsRaw* to, const RolltuiInputOp
   to->refuse_empty = from->refuse_empty;
   to->history_prefix = from->history_prefix;
   to->insert_typed = from->insert_typed;
+  to->caret = from->caret;
 }
 
 int rolltui_input_options_equal(const RolltuiInputOptionsRaw* a, const RolltuiInputOptionsRaw* b) {
@@ -150,7 +151,7 @@ int rolltui_input_options_equal(const RolltuiInputOptionsRaw* a, const RolltuiIn
          a->history_limit == b->history_limit && a->single_line == b->single_line &&
          a->wrap_words == b->wrap_words && a->wrap_column == b->wrap_column && a->line_numbers == b->line_numbers &&
          a->auto_indent == b->auto_indent && a->secret == b->secret && a->refuse_empty == b->refuse_empty &&
-         a->history_prefix == b->history_prefix && a->insert_typed == b->insert_typed &&
+         a->history_prefix == b->history_prefix && a->insert_typed == b->insert_typed && a->caret == b->caret &&
          rolltui_str_eq(&a->language, b->language.p, b->language.n) &&
          rolltui_str_eq(&a->prompt, b->prompt.p, b->prompt.n) &&
          rolltui_str_eq(&a->placeholder, b->placeholder.p, b->placeholder.n);
@@ -1707,6 +1708,9 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
     int row, col;
     rolltui_input_cell_of(in, in->caret, &row, &col);
     if (VISIBLE(row)) rolltui_frame_set_cursor(f, a.x + imin(col - shift, imax(a.w - 1, 0)), a.y + (row - in->top), 1);
+    rolltui_frame_set_cursor_shape(f, in->opt.caret                                    ? in->opt.caret
+                                      : in->opt.insert_typed                           ? ROLLTUI_CARET_BAR
+                                                                                       : ROLLTUI_CARET_BLOCK);
   }
 #undef VISIBLE
 }

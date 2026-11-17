@@ -38,7 +38,8 @@ inline bool color_eq(const RolltuiStyleColorRaw& a, const RolltuiStyleColorRaw& 
 }
 inline bool style_eq(const RolltuiStyle& a, const RolltuiStyle& b) {
   return color_eq(a.fg, b.fg) && color_eq(a.bg, b.bg) && !a.bold == !b.bold && !a.dim == !b.dim && !a.italic == !b.italic &&
-         !a.underline == !b.underline && !a.reverse == !b.reverse && !a.strike == !b.strike;
+         !a.underline == !b.underline && !a.reverse == !b.reverse && !a.strike == !b.strike && !a.blink == !b.blink &&
+         !a.hidden == !b.hidden && !a.overline == !b.overline;
 }
 
 class Screen {
@@ -303,6 +304,12 @@ class Screen {
       else if (p == 7) style_.reverse = 1;
       else if (p == 9) style_.strike = 1;
       else if (p == 29) style_.strike = 0;
+      else if (p == 5 || p == 6) style_.blink = static_cast<unsigned char>(p - 4);
+      else if (p == 25) style_.blink = 0;
+      else if (p == 8) style_.hidden = 1;
+      else if (p == 28) style_.hidden = 0;
+      else if (p == 53) style_.overline = 1;
+      else if (p == 55) style_.overline = 0;
       else if (p == 22) style_.bold = style_.dim = 0;
       else if (p == 23) style_.italic = 0;
       else if (p == 24) style_.underline = 0;

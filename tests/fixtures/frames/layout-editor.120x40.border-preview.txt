@@ -17,9 +17,9 @@
 │ │ Windows, layers, placement (Dim │ build       │ single header;    │ rounded                                        │
 │ │ abs/rel per axis), focus        │             │ resolve(Placement,│ double                                         │
 │ │                                 │             │ Rect is a pure fun│ heavy                                          │
-│ │ Menu widget (hierarchical,      │ build       │ single header each│                                                │
-│ │ filterable) + list/text widgets │             │ set is deliberatel│                                                │
-│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│                                                │
+│ │ Menu widget (hierarchical,      │ build       │ single header each│ hidden                                         │
+│ │ filterable) + list/text widgets │             │ set is deliberatel│ quadrant-inside                                │
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│ quadrant-outside                               │
 │ │ placements + content slots)     │             │ parser; hot-reload│                                                │
 │ │ Markdown block renderer (blocks │ build       │ single header over│                                                │
 │ │ → styled wrapped lines)         │             │                   │                                                │

@@ -10,6 +10,7 @@
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_render.h"
+#include "rolltui/c/rolltui_unicode.h"
 
 static void put_lit(RolltuiStr* out, const char* s) { rolltui_str_append(out, s, strlen(s)); }
 
@@ -42,9 +43,10 @@ static int color_eq(const RolltuiStyleColorRaw* a, const RolltuiStyleColorRaw* b
 static int style_eq(const RolltuiStyle* a, const RolltuiStyle* b) {
   /* Field-wise, never memcmp: `RolltuiStyle` has padding, and reading it would call two
    * identical styles different — the same reason `rolltui_screen.h` gives for frames. */
-  return color_eq(&a->fg, &b->fg) && color_eq(&a->bg, &b->bg) && a->bold == b->bold &&
-         a->italic == b->italic && a->underline == b->underline && a->dim == b->dim &&
-         a->reverse == b->reverse && a->strike == b->strike;
+  return color_eq(&a->fg, &b->fg) && color_eq(&a->bg, &b->bg) && color_eq(&a->underline_color, &b->underline_color) &&
+         a->bold == b->bold && a->italic == b->italic && a->underline == b->underline && a->dim == b->dim &&
+         a->reverse == b->reverse && a->strike == b->strike && a->blink == b->blink && a->hidden == b->hidden &&
+         a->overline == b->overline;
 }
 
 /* WHAT THE SCREEN HOLDS where it is compared with the next frame: the previous frame, or after a scrolled region, its rows moved by
@@ -150,10 +152,12 @@ static void advance(Out* o, int cells) {
 
 static int is_blank(const RolltuiCellRaw* c) {
   return !c->continuation && c->width == 1 && c->len == 1 && c->bytes[0] == ' ' && c->link == 0 && !c->style.underline &&
-         !c->style.reverse && !c->style.strike;
+         !c->style.reverse && !c->style.strike && !c->style.overline;
 }
 
 /* Cells [x0, x1) of row y: moved to, then their links, styles and glyphs, a run of blanks as an erase where that is shorter. */
+static void put_glyph(RolltuiStr* s, const char* g, size_t n, unsigned char depth);
+
 static void emit_span(Out* o, const RolltuiFrame* f, int y, int x0, int x1) {
   unsigned int link = 0;
   int x = x0;
@@ -199,7 +203,7 @@ static void emit_span(Out* o, const RolltuiFrame* f, int y, int x0, int x1) {
     }
     set_style(o, c.style);
     g = rolltui_frame_glyph(f, x, y, &glen); /* borrows from the FRAME */
-    if (glen) rolltui_str_append(o->s, g, glen);
+    if (glen) put_glyph(o->s, g, glen, o->depth);
     advance(o, c.width > 1 ? c.width : 1);
     x += c.width > 1 ? c.width : 1;
   }
@@ -233,9 +237,17 @@ static void emit_cells(RolltuiStr* out, const RolltuiFrame* f, int y, int x0, in
     }
     size_t glen = 0;
     const char* g = rolltui_frame_glyph(f, x, y, &glen); /* borrows from the FRAME */
-    if (glen) rolltui_str_append(out, g, glen);
+    if (glen) put_glyph(out, g, glen, depth);
   }
   if (link != 0) put_lit(out, "\x1b]8;;\x1b\\");
+}
+
+/* THE CURSOR'S SHAPE, where the terminal takes one: `CSI n SP q`. */
+static void put_shape(RolltuiStr* s, unsigned char depth, unsigned char shape) {
+  char b[8];
+  if (!(depth & ROLLTUI_RENDER_CARET)) return;
+  b[0] = '\x1b', b[1] = '[', b[2] = (char)('0' + (shape <= ROLLTUI_CARET_BAR ? shape : 0)), b[3] = ' ', b[4] = 'q';
+  rolltui_str_append(s, b, 5);
 }
 
 static void finish(Out* o, const RolltuiFrame* f) {
@@ -245,6 +257,72 @@ static void finish(Out* o, const RolltuiFrame* f) {
   o->sgr.have = 0;
   move_to(o, cx, cy);
   if (vis) put_lit(o->s, "\x1b[?25h");
+}
+
+/* A GLYPH THE LINUX CONSOLE'S FONT HAS, for one it lacks: each the nearest of the PC's own (box lines, shades, half blocks, arrows),
+ * one cell for one cell. NULL: the glyph is drawn as it is. */
+typedef struct ConsoleGlyph {
+  unsigned int cp;
+  const char* as;
+} ConsoleGlyph;
+static const ConsoleGlyph kConsole[] = {
+    {0x2014, "-"}, {0x2018, "'"}, {0x2019, "'"}, {0x201C, "\""}, {0x201D, "\""}, {0x2026, "~"}, {0x2039, "<"}, {0x203A, ">"},
+    {0x2070, "0"}, {0x2074, "4"}, {0x2075, "5"}, {0x2076, "6"}, {0x2077, "7"}, {0x2078, "8"}, {0x2079, "9"}, {0x21B5, "<"},
+    {0x2501, "\xe2\x95\x90"}, {0x2503, "\xe2\x95\x91"}, {0x2504, "\xe2\x94\x80"}, {0x2505, "\xe2\x95\x90"},
+    {0x2506, "\xe2\x94\x82"}, {0x2507, "\xe2\x95\x91"}, {0x2508, "\xe2\x94\x80"}, {0x2509, "\xe2\x95\x90"},
+    {0x250A, "\xe2\x94\x82"}, {0x250B, "\xe2\x95\x91"}, {0x250F, "\xe2\x95\x94"}, {0x2513, "\xe2\x95\x97"},
+    {0x2517, "\xe2\x95\x9a"}, {0x251B, "\xe2\x95\x9d"}, {0x2523, "\xe2\x95\xa0"}, {0x252B, "\xe2\x95\xa3"},
+    {0x2533, "\xe2\x95\xa6"}, {0x253B, "\xe2\x95\xa9"}, {0x254B, "\xe2\x95\xac"}, {0x256D, "\xe2\x94\x8c"},
+    {0x256E, "\xe2\x94\x90"}, {0x256F, "\xe2\x94\x98"}, {0x2570, "\xe2\x94\x94"}, {0x2574, "\xe2\x94\x80"},
+    {0x2575, "\xe2\x94\x82"}, {0x2576, "\xe2\x94\x80"}, {0x2577, "\xe2\x94\x82"}, {0x2579, "\xe2\x95\x91"},
+    {0x257B, "\xe2\x95\x91"}, {0x2581, "_"}, {0x2582, "\xe2\x96\x84"}, {0x2583, "\xe2\x96\x84"},
+    {0x2585, "\xe2\x96\x84"}, {0x2586, "\xe2\x96\x88"}, {0x2587, "\xe2\x96\x88"}, {0x2589, "\xe2\x96\x88"},
+    {0x258A, "\xe2\x96\x88"}, {0x258B, "\xe2\x96\x88"}, {0x258D, "\xe2\x96\x8c"}, {0x258E, "\xe2\x96\x8c"},
+    {0x258F, "\xe2\x96\x8c"}, {0x2594, "\xe2\x96\x80"}, {0x2595, "\xe2\x96\x90"}, {0x2596, "\xe2\x96\x84"},
+    {0x2597, "\xe2\x96\x84"}, {0x2598, "\xe2\x96\x80"}, {0x2599, "\xe2\x96\x88"}, {0x259A, "\xe2\x96\x92"},
+    {0x259B, "\xe2\x96\x88"}, {0x259C, "\xe2\x96\x88"}, {0x259D, "\xe2\x96\x80"}, {0x259E, "\xe2\x96\x92"},
+    {0x259F, "\xe2\x96\x88"}, {0x25B4, "\xe2\x96\xb2"}, {0x25B8, "\xe2\x96\xba"}, {0x25BE, "\xe2\x96\xbc"},
+    {0x25C2, "\xe2\x97\x84"}, {0x25C6, "\xe2\x99\xa6"}, {0x25CF, "\xe2\x80\xa2"}, {0x2605, "*"}, {0x2713, "\xe2\x88\x9a"},
+    {0x2714, "\xe2\x88\x9a"}, {0x2717, "x"}, {0x2718, "x"},
+};
+
+static const char* console_glyph(const char* g, size_t n, size_t* out_n) {
+  RolltuiDecodedChar d;
+  size_t lo = 0, hi = sizeof kConsole / sizeof kConsole[0];
+  if (n < 2 || (unsigned char)g[0] < 0xC0) return NULL;
+  rolltui_u_decode_one(g, n, 0, &d);
+  if (d.length != n) return NULL; /* a cluster of several code points is left as it is */
+  if (d.cp >= 0x2800 && d.cp <= 0x28FF) { /* BRAILLE: a shade by how many of its eight dots are set */
+    static const char* const kShade[5] = {" ", "\xe2\x96\x91", "\xe2\x96\x92", "\xe2\x96\x93", "\xe2\x96\x88"};
+    unsigned int bits = d.cp - 0x2800, dots = 0;
+    while (bits) dots += bits & 1u, bits >>= 1;
+    *out_n = strlen(kShade[(dots + 1) / 2]);
+    return kShade[(dots + 1) / 2];
+  }
+  if (d.cp >= 0x2400 && d.cp <= 0x2426) return *out_n = 1, "?"; /* a control's picture */
+  while (lo < hi) {
+    const size_t mid = (lo + hi) / 2;
+    if (kConsole[mid].cp == d.cp) {
+      *out_n = strlen(kConsole[mid].as);
+      return kConsole[mid].as;
+    }
+    if (kConsole[mid].cp < d.cp) lo = mid + 1;
+    else hi = mid;
+  }
+  return NULL;
+}
+
+/* A cell's glyph as it is sent: the console's own where the terminal is the Linux console. */
+static void put_glyph(RolltuiStr* s, const char* g, size_t n, unsigned char depth) {
+  if (depth & ROLLTUI_RENDER_CONSOLE) {
+    size_t cn = 0;
+    const char* c = console_glyph(g, n, &cn);
+    if (c) {
+      rolltui_str_append(s, c, cn);
+      return;
+    }
+  }
+  rolltui_str_append(s, g, n);
 }
 
 /* A FULL REPAINT WRITES EVERY CELL, each in its own style, so nothing is cleared first: a clear is a
@@ -262,6 +340,7 @@ void rolltui_render_full_at(const RolltuiFrame* next, unsigned char depth, int o
    * condition calling one is a call per cell — invisible in C++, real here. */
   const int w = rolltui_frame_width(next), h = rolltui_frame_height(next);
   for (int y = 0; y < h; ++y) emit_span(&o, next, y, 0, w);
+  if (rolltui_frame_cursor_shape(next)) put_shape(out, depth, rolltui_frame_cursor_shape(next));
   finish(&o, next);
 }
 
@@ -278,7 +357,7 @@ int rolltui_render_row_extent(const RolltuiFrame* f, int y) {
     if (c.continuation) continue;
     g = rolltui_frame_glyph(f, x, y, &glen);
     if ((glen == 0 || (glen == 1 && g[0] == ' ')) && (c.style.bg.kind == 0 || color_eq(&c.style.bg, &ground.bg)) &&
-        !c.style.reverse && !c.style.underline && !c.style.strike)
+        !c.style.reverse && !c.style.underline && !c.style.strike && !c.style.overline)
       continue; /* a blank on the ground: the terminal keeps nothing there */
     extent = x + (c.width > 1 ? c.width : 1);
   }
@@ -465,6 +544,7 @@ void rolltui_render_diff_at(const RolltuiFrame* prev, const RolltuiFrame* next, 
     for (int y = top; y <= bottom; ++y) same_row[y] = 0; /* what the scroll moved is compared again, against where it went */
   }
   for (int y = 0; y < h; ++y) diff_row(&o, &base, next, y, w, &hid);
+  if (rolltui_frame_cursor_shape(prev) != rolltui_frame_cursor_shape(next)) put_shape(out, depth, rolltui_frame_cursor_shape(next));
   int pcx, pcy, pvis, ncx, ncy, nvis;
   rolltui_frame_cursor(prev, &pcx, &pcy, &pvis);
   rolltui_frame_cursor(next, &ncx, &ncy, &nvis);

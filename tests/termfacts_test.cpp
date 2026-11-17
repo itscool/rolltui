@@ -327,6 +327,32 @@ int main() {
     }
   }
 
+  // ============================ THE LINUX CONSOLE, AND PICTURES BY THE TERMINAL'S OWN NAME ============================
+  {
+    check(facts_of({.term = "linux"}).console == 1 && facts_of({.term = "xterm-256color"}).console == 0,
+          "TERM=linux is the Linux console; another TERM is not, unless its tty says so");
+    RolltuiTermEnv env = make({.term = "linux"});
+    env.force_console = "0";
+    RolltuiTermFacts f;
+    rolltui_termfacts_from_env(&env, &f);
+    check(f.console == 0, "ROLLTUI_CONSOLE=0 says it is not");
+    env = make({.term = "xterm-256color"});
+    env.force_console = "1";
+    rolltui_termfacts_from_env(&env, &f);
+    check(f.console == 1, "…and ROLLTUI_CONSOLE=1 that it is");
+    // over ssh with nothing in the environment naming the terminal, its answer to XTVERSION chooses the pictures
+    f = facts_of({.term = "xterm-256color", .ssh = "10.0.0.1 1 10.0.0.2 22"});
+    RolltuiTermReplies rep;
+    take_all("\x1bP>|kitty(0.35.2)\x1b\\\x1b[?1;2c", false, rep);
+    rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_VERSION);
+    check(f.images == ROLLTUI_IMAGES_KITTY && f.images_source == ROLLTUI_FACT_PROBE,
+          "a terminal that answers XTVERSION as kitty draws kitty's pictures when the environment said nothing");
+    f = facts_of({.term = "xterm-256color"});
+    take_all("\x1bP>|XTerm(380)\x1b\\\x1b[?1;2c", false, rep);
+    rolltui_termfacts_apply_replies(&f, &rep, ROLLTUI_TERMQ_VERSION);
+    check(f.images == ROLLTUI_IMAGES_BLOCKS, "…and xterm, which names none of them, keeps blocks");
+  }
+
   // ============================ APPLYING THEM ============================
   {
     // Terminal says 24-bit, environment said 256: the terminal knows itself.

@@ -168,6 +168,22 @@ int main() {
     f = draw(80, 8);
     check(!same(style_at(f, bx, by), styles[ROLLTUI_ROLE_HOVER]), "with no pointer, no entry is hovered");
     rolltui_frame_free(f);
+    // THE CURSOR ROW'S SHAPE: caps at the row's first and last cells, the name a cell narrower to leave them
+    glyphs.cursor = ROLLTUI_CURSOR_CAPS;
+    f = draw(80, 8);
+    {
+      std::size_t gn = 0;
+      const char* left = rolltui_frame_glyph(f, cx - 1, cy, &gn);
+      check(std::string(left, gn) == "\xE2\x96\x90" && same(style_at(f, cx, cy), styles[ROLLTUI_ROLE_MENU_SELECTED]),
+            "caps: the cursor's row opens with a half block, its name still in the cursor's style");
+    }
+    rolltui_frame_free(f);
+    glyphs.cursor = ROLLTUI_CURSOR_EDGES;
+    f = draw(80, 8);
+    check(style_at(f, cx, cy).bold && !same(style_at(f, cx, cy), styles[ROLLTUI_ROLE_MENU_SELECTED]),
+          "edges: the name bold in the cursor's colour, on the row's own ground");
+    rolltui_frame_free(f);
+    glyphs.cursor = ROLLTUI_CURSOR_FILL;
   }
   // ---- Enter: a folder enters by default, takes with the option; a file always takes ------
   key(ROLLTUI_KEY_UP);     // nested

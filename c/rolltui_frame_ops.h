@@ -21,7 +21,6 @@ extern "C" {
  * so their shape can change without breaking a consumer. */
 /* Amends every cell's style in `r` (clipped): a set colour replaces, an attribute bit is
  * OR'd in. Needs no scratch — it reads and writes styles and never looks at text. */
-void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
 /* A style ON A WINDOW'S GROUND: no background, or the screen's own (`styles[ROLLTUI_ROLE_BACKGROUND]`), takes `ground`, the window's; a
  * background of the role's own (a selection, a swatch) is kept. What a widget draws as plain text in a panel sits on the panel. */
 void rolltui_style_on_window(RolltuiStyle* st, const RolltuiStyle* styles, RolltuiStyleColorRaw ground);

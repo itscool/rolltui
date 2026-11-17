@@ -526,7 +526,12 @@ int main() {
     // Then lists and tables: a cell's spans, the sort set and read, the column cursor's column, marks by pattern, reveal, a node opened,
     // loading, paused, a busy title, a sparkline as text (PUBLIC 562); the list's own forms of them, its clock, what it can do now,
     // and a window's ask for its next frame (INTERNAL 927).
-    check(totals["PUBLIC"] == 562 && totals["INTERNAL"] == 927 && totals.size() == 2,
+    // Then rendering: a style patched over another, and the tint over a rect made public with it (PUBLIC 564); which terminals
+    // draw an underline's shapes (INTERNAL 927, the tint leaving). Then cuts with their own rules, a shortened path, a line of spans, a
+    // hotkey's letter, another program's tab stop, a box (made public), a window's border role, subtitle, title parts and the label
+    // pressed, the cursor row's shape and ends, the caret's shape (PUBLIC 578); a list's cursor shape, a frame's caret read back,
+    // the Linux console's tty (INTERNAL 929, the box leaving).
+    check(totals["PUBLIC"] == 578 && totals["INTERNAL"] == 929 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -702,12 +707,13 @@ int main() {
     // Run 196 and settings 94: the any key and an asked key, injected events, two flushes; mouse on and off, numbered windows.
     // Run 197 and widget 57: a hint bar from a scope; find with folding, its each-match form, and the shared filter's seven calls.
     // Bind 115, run 206, widget 58: a cell's spans; a list's sort, column, pattern marks, reveal, node, loading and pause, a busy
-    // title; a sparkline as text.
+    // title; a sparkline as text. Widget 60: a style patched over another, and the tint over a rect. Widget 69 and run 211: cuts,
+    // paths, spans, hotkeys, a box, the cursor's shapes; another program's tab stop and a window's border role, subtitle and labels.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 206 && rt["HOST_RELEASE"] == 16 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 58,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 94 / bind 115 / run 206 / "
-          "release 16, tool interop 0, widget 58 (got " +
+              rt["HOST_BIND"] == 115 && rt["HOST_RUN"] == 211 && rt["HOST_RELEASE"] == 16 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 69,
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 94 / bind 115 / run 211 / "
+          "release 16, tool interop 0, widget 69 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

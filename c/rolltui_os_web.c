@@ -221,6 +221,11 @@ struct RolltuiOsTty {
   int in_fd, out_fd;
 };
 
+int rolltui_os_tty_is_console(const RolltuiOsTty* t) {
+  (void)t;
+  return 0; /* no Linux console here */
+}
+
 int rolltui_os_isatty(int fd) { return fd == 0 || fd == 1; }
 
 RolltuiOsTty* rolltui_os_tty_open(int in_fd, int out_fd) {

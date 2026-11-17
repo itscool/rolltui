@@ -64,6 +64,7 @@ struct RolltuiFrame {
   RolltuiFrameImage* images; /* pictures drawn this frame (rolltui_frame_image), each a BORROW until it is presented */
   size_t image_count, image_cap;
   int cx, cy, cvis;
+  unsigned char cshape; /* ROLLTUI_CARET_* */
   RolltuiStyle fill; /* what `reset` filled it with: its ground */
 };
 
@@ -154,6 +155,7 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   f->image_count = 0;
   f->cx = f->cy = 0;
   f->cvis = 0;
+  f->cshape = 0;
 }
 
 void rolltui_frame_add_image(RolltuiFrame* f, const RolltuiImage* img, RolltuiRect cells, int protocol, int px_w, int px_h,
@@ -220,6 +222,7 @@ RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src) {
   f->cx = src->cx;
   f->cy = src->cy;
   f->cvis = src->cvis;
+  f->cshape = src->cshape;
   return f;
 }
 
@@ -552,6 +555,10 @@ void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible) {
   f->cy = y;
   f->cvis = visible;
 }
+void rolltui_frame_set_cursor_shape(RolltuiFrame* f, unsigned char shape) {
+  if (f) f->cshape = shape <= ROLLTUI_CARET_BAR ? shape : ROLLTUI_CARET_DEFAULT;
+}
+unsigned char rolltui_frame_cursor_shape(const RolltuiFrame* f) { return f ? f->cshape : 0; }
 void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible) {
   *x = f->cx;
   *y = f->cy;
@@ -563,7 +570,7 @@ void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible) {
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b) {
   size_t n, i;
   if (a->w != b->w || a->h != b->h) return 0;
-  if (a->cx != b->cx || a->cy != b->cy || a->cvis != b->cvis) return 0;
+  if (a->cx != b->cx || a->cy != b->cy || a->cvis != b->cvis || a->cshape != b->cshape) return 0;
   if (a->mark_count != b->mark_count) return 0;
   if (a->link_count != b->link_count || a->glyph_count != b->glyph_count) return 0;
   n = (size_t)a->w * (size_t)a->h;

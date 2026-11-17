@@ -302,6 +302,21 @@ static int reopen_if_unpollable(int fd) {
   return -1;
 }
 
+int rolltui_os_tty_is_console(const RolltuiOsTty* t) {
+  const char* name;
+  size_t i, n;
+  if (!t || !t->tty) return 0;
+  name = ttyname(t->out_fd);
+  if (!name) return 0;
+  if (strncmp(name, "/dev/vc/", 8) == 0) return 1;
+  if (strncmp(name, "/dev/tty", 8) != 0) return 0;
+  n = strlen(name);
+  if (n == 8) return 0;
+  for (i = 8; i < n; ++i)
+    if (name[i] < '0' || name[i] > '9') return 0; /* /dev/ttys003 is a pseudo-terminal, /dev/tty3 the console */
+  return 1;
+}
+
 RolltuiOsTty* rolltui_os_tty_open(int in_fd, int out_fd) {
   RolltuiOsTty* t = (RolltuiOsTty*)rolltui_mem_alloc(sizeof *t);
   int wake[2];

@@ -351,7 +351,12 @@ std::vector<MenuItem> LayoutEditor::action_items() const {
 
 void LayoutEditor::rebuild_menu() {
   std::vector<MenuItem> borders, anchors, loads;
-  for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
+  for (unsigned char b = 0; b < ROLLTUI_BORDER_COUNT; ++b) {  // the library's kinds, every one it draws
+    std::size_t bl = 0;
+    const char* bn = rolltui_border_name(b, &bl);
+    const std::string name(bn, bl);
+    borders.push_back(MenuItem::action(name.c_str(), name.c_str()));
+  }
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
   for (const RolltuiStr& n : layouts_) loads.push_back(MenuItem::action(n.c_str(), n.c_str()));
   InputSpec dim, opt_dim, size, name, text, threshold, margin;

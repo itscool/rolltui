@@ -38,6 +38,20 @@ or two where ambiguous glyphs are wide, and a wide glyph is never cut in half.
 `rolltui_text_cut` gives the same cut as text. The menu, the list and the column browser cut
 their text this way.
 
+`rolltui_text_cut_with` and `rolltui_frame_put_text_cut_with` take a `RolltuiCutOptions`:
+`marker` in place of the ellipsis (`"~"`), `keep_extension` to keep a file name's extension
+whole after the cut ("a_long_rep….pdf"), and `split`, the percent of the room a middle cut gives
+the head. `rolltui_path_shorten` shortens each folder of a path from the left to its first
+letter until it fits ("~/g/r/c/frame.c", a leading dot kept: ".c" for ".config"), then cuts the
+name in its middle with its extension kept.
+
+`rolltui_frame_put_spans(frame, scratch, rect, spans, n, align, overflow, ambiguous_wide)` lays a
+line of `RolltuiTextSpan`s, each its own style, into a rect: at its left, centre or right
+(`ROLLTUI_ALIGN_*`), and where it is wider, cut at the edge, cut with an ellipsis in the style
+of the span it cuts, or wrapped at word breaks onto the rows below (`ROLLTUI_OVERFLOW_*`). It
+returns the rows used. `rolltui_hotkey_at(label, len, ch, &n)` finds the letter a key names in a
+label, to light it: the first word that starts with it, else its first place.
+
 A window's FOOTER is at the right of its bottom border: `"footer"` in the layout file, or what the
 widget says that frame through the plugin's `footer` slot. A list says where the cursor is, "12
 of 340", while it shows fewer rows than it has or a filter narrows it, and how many rows are
@@ -51,6 +65,19 @@ A style's `strike` draws a line through the text (SGR 9). A theme file sets it p
 `"strikethrough": true`, the theme editor has it beside bold and italic, and every shipped theme
 strikes Markdown's `~~struck~~` text (`md_strikethrough`). A terminal that has no strikethrough
 draws the text plain.
+
+A style also has `blink` (1 slow, 2 rapid), `hidden`, `overline`, and an underline with a shape
+and a colour of its own: `underline` is 0 or a `ROLLTUI_UNDERLINE_*` (single, double, curly,
+dotted, dashed), and `underline_color` its colour, none for the text's. A theme file writes
+`"underline": "curly"`, `"underline_color": "#d04040"`, `"blink": true` and `"overline": true`.
+The shapes and the colour are sent to terminals that draw them: kitty, Ghostty, WezTerm, foot,
+iTerm2, Alacritty, VS Code, mintty, Windows Terminal and VTE from 0.52, by what the terminal
+answers to XTVERSION, else what the environment calls it. Every other terminal, and every
+terminal behind a multiplexer, gets a plain underline in the text's colour.
+
+`rolltui_style_patch(&base, &over)` puts one style over another: `over`'s colours where it has
+them, its underline's shape and colour where it has one, its other attributes added.
+`rolltui_frame_tint` patches every cell of a rect: a row dimmed, a match lit.
 
 ## Terminal detection
 
@@ -71,6 +98,16 @@ draws a frame whole. The library applies the answers:
 
 Windows' own console sets no `TERM` and is drawn in 24-bit colour.
 
+The Linux console is known by `TERM=linux` or by its tty, `/dev/ttyN`, whatever `TERM` says.
+Its font has the PC's glyphs only, so the frame is sent with the nearest it has: braille as a
+shade by how many of its dots are set, quadrants and eighths as half and full blocks, rounded
+corners square, heavy lines double, `…` as `~`, `✓` as `√`, superscripts four to nine as digits.
+It is drawn in 16 colours, and the cursor's shape is not sent.
+
+When nothing in the environment names the terminal, its answer to XTVERSION chooses how pictures
+are drawn: kitty's protocol for kitty and Ghostty, iTerm2's for WezTerm and iTerm2, sixel for foot,
+mlterm and Konsole.
+
 Answers are cached per terminal, keyed by terminal name and version, operating system, program
 build, and whether the session runs over ssh or inside a multiplexer. A cached answer is used at
 startup and checked again after the first frame. A probe costs 0.6 ms fresh and 0.2 ms from the
@@ -81,6 +118,7 @@ cache; a terminal that does not answer costs 80 ms, once.
 | `ROLL_COLOR_DEPTH` | `truecolor`, `256`, `16` or `mono` |
 | `ROLL_AMBIGUOUS_WIDE=1` | ambiguous-width characters take two cells |
 | `ROLL_TERM_PROBE=0` | probe only the keyboard |
+| `ROLLTUI_CONSOLE=1`, `=0` | the terminal is, or is not, the Linux console |
 
 `dirktui check-terminal` probes again and reports each answer and where it came from.
 
@@ -103,6 +141,12 @@ knows:
   reverse.
 - When a block of three or more rows moved up or down, the terminal scrolls that region (DECSTBM
   with SU or SD) and only the rows the scroll brought in are written.
+
+The cursor's shape (`rolltui_frame_set_cursor_shape`, `ROLLTUI_CARET_*`: block, underline or
+bar, each steady or blinking) is sent when it changes, and the terminal's own is put back when the
+program leaves. An input field asks for a bar while printable keys type and a block while they
+are actions (`RolltuiInputOptionsRaw.caret` sets one). A focused list, menu or column browser
+leaves the hidden cursor on its cursor's row, where a screen reader follows it.
 
 The erases and the scrolled region stand on the terminal filling an erase with the current
 background colour, which every terminal in use does, and tmux too. Directly under GNU screen
@@ -244,6 +288,22 @@ hold. Leaving commits a reply still arriving, as far as it got.
 A layout file says what a screen holds. The window stack changes what it shows while the program
 runs, by window or split id; each call answers 0 when nothing has that id.
 
+### Borders
+
+A window's `"border"` is one of `none`, `single`, `rounded`, `double`, `heavy`, `hidden` (a ring
+of the window's ground that keeps its room and its title), `quadrant-inside` (half blocks drawn
+inside the edge, ▗▄▖) or `quadrant-outside` (▛▀▜). Where ambiguous glyphs are wide every kind is
+drawn with `+ - |`. `rolltui_draw_border(frame, scratch, rect, ROLLTUI_BORDER_*, line, title, n,
+title_style, ambiguous_wide)` draws one inside a widget's own content, for a group or a nested
+section.
+
+A theme's `"glyphs": { "cursor": "caps" }` rounds the ends of the cursor's row in lists, menus and
+the column browser with a half block each (▐…▌); `"edges"` draws a bar at each end and leaves the
+row on its own ground, its text in the cursor's colour, so a terminal's own background shows
+through; `"fill"`, the default, draws the row in the cursor's style. A list keeps a cell clear at
+each side for the ends; a menu draws them in its inset and draws a fill without one.
+`rolltui_cursor_text_style` and `rolltui_frame_cursor_ends` draw the same in a host's own widget.
+
 ### Tabs
 
 A window with `"tabs"` in place of `"content"` shows one of several contents:
@@ -285,6 +345,17 @@ left out.
   (Alt-Shift-H, L, K, J) focus the nearest window that way.
 - `rolltui_window_stack_set_busy(stack, id, len, 1, since_ms)` puts a spinner before a window's
   title while it works, turning from `since_ms`; 0 takes it away.
+- `rolltui_window_stack_set_numbered(stack, 2)` puts each number as a superscript before the title
+  ("²files"), and plain digits where ambiguous glyphs are wide.
+- `rolltui_window_stack_set_border_role(stack, id, len, role)` draws a window's border in a role
+  of its own while it is in a state: searching, an error, a filter applied. 0 gives it back the
+  focus colours.
+- `rolltui_window_stack_set_subtitle(stack, id, len, text, n)` writes a subtitle at the right of
+  the top edge: a live count, a mode.
+- `rolltui_window_stack_set_title_parts(stack, id, len, parts, n)` makes the title of
+  `RolltuiTitlePart`s, each in its own role. A part with an `action` is a label, drawn underlined:
+  a press on it routes as `ROLLTUI_ROUTE_LABEL`, naming the window, and
+  `rolltui_window_stack_pressed_label` gives the action, once.
 
 Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
 over to a new base while its window is in it.
@@ -843,8 +914,10 @@ URL with what the system opens it with (`open`, `xdg-open`, ShellExecuteW).
 A `RolltuiAnsiText` reads what a program wrote to a terminal as lines to draw: `bat`, `delta`,
 `ls --color`, a log, a man page.
 
-- Text, newlines, tabs (stops every 8 columns) and SGR are read: 16, 256 and 24-bit colour, bold,
-  dim, italic, underline and reverse. A sequence or a character split across two feeds is joined.
+- Text, newlines, tabs (stops every 8 columns, or what `rolltui_ansi_set_tab_width` says) and SGR
+  are read: 16, 256 and 24-bit colour, bold, dim, italic, an underline's shape (4:1 to 4:5, 21)
+  and colour (58), blink, reverse, hidden, strikethrough and overline. A sequence or a character
+  split across two feeds is joined.
 - A carriage return not followed by a newline writes the line again, so a progress counter shows
   its last state. Erase-in-line clears the line being written.
 - Backspace overstrike is read as a man page writes it: `X\bX` bold, `_\bX` underlined.

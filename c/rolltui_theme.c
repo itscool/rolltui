@@ -231,7 +231,7 @@ void rolltui_color_downgrade(RolltuiStyleColorRaw* c, unsigned char depth) {
 
 static size_t emit_color(char* out, RolltuiStyleColorRaw c, int bg, unsigned char depth) {
   size_t n = 0;
-  rolltui_color_downgrade(&c, depth);
+  rolltui_color_downgrade(&c, ROLLTUI_SGR_DEPTH(depth));
   switch (c.kind) {
     case 1:
       out[n++] = ';';
@@ -263,6 +263,38 @@ static size_t emit_color(char* out, RolltuiStyleColorRaw c, int bg, unsigned cha
   }
 }
 
+/* An underline's shape as sent: 4 for a plain one, 4:N for a shape the terminal draws, else 4. */
+static size_t emit_underline(char* out, unsigned char shape, unsigned char depth) {
+  size_t n = 0;
+  if (!shape) return 0;
+  out[n++] = ';';
+  out[n++] = '4';
+  if ((depth & ROLLTUI_SGR_EXTENDED) && shape >= ROLLTUI_UNDERLINE_DOUBLE && shape <= ROLLTUI_UNDERLINE_DASHED) {
+    out[n++] = ':';
+    out[n++] = (char)('0' + shape);
+  }
+  return n;
+}
+
+/* The underline's own colour, 58 in its colon form (58:5:n, 58:2::r:g:b), where the terminal draws one and the depth has colour. */
+static size_t emit_underline_color(char* out, RolltuiStyleColorRaw c, unsigned char depth) {
+  size_t n = 0;
+  if (!(depth & ROLLTUI_SGR_EXTENDED) || c.kind == 0) return 0;
+  rolltui_color_downgrade(&c, ROLLTUI_SGR_DEPTH(depth));
+  if (c.kind == 1) {
+    memcpy(out, ";58:5:", 6), n = 6;
+    n += put_uint(out + n, c.index);
+  } else if (c.kind == 2) {
+    memcpy(out, ";58:2::", 7), n = 7;
+    n += put_uint(out + n, c.r);
+    out[n++] = ':';
+    n += put_uint(out + n, c.g);
+    out[n++] = ':';
+    n += put_uint(out + n, c.b);
+  }
+  return n;
+}
+
 size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, size_t cap) {
   size_t n = 0;
   if (cap < ROLLTUI_SGR_MAX) return 0;
@@ -272,11 +304,15 @@ size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, si
   if (style->bold) { out[n++] = ';'; out[n++] = '1'; }
   if (style->dim) { out[n++] = ';'; out[n++] = '2'; }
   if (style->italic) { out[n++] = ';'; out[n++] = '3'; }
-  if (style->underline) { out[n++] = ';'; out[n++] = '4'; }
+  n += emit_underline(out + n, style->underline, depth);
+  if (style->blink) { out[n++] = ';'; out[n++] = style->blink >= 2 ? '6' : '5'; }
   if (style->reverse) { out[n++] = ';'; out[n++] = '7'; }
+  if (style->hidden) { out[n++] = ';'; out[n++] = '8'; }
   if (style->strike) { out[n++] = ';'; out[n++] = '9'; }
+  if (style->overline) { memcpy(out + n, ";53", 3); n += 3; }
   n += emit_color(out + n, style->fg, 0, depth);
   n += emit_color(out + n, style->bg, 1, depth);
+  if (style->underline) n += emit_underline_color(out + n, style->underline_color, depth);
   out[n++] = 'm';
   return n;
 }
@@ -295,9 +331,31 @@ size_t rolltui_sgr_delta(const RolltuiStyle* from, const RolltuiStyle* to, unsig
     if (to->dim && !from->dim) memcpy(d + n, ";2", 2), n += 2;
   }
   if (!from->italic != !to->italic) memcpy(d + n, to->italic ? ";3" : ";23", to->italic ? 2 : 3), n += to->italic ? 2 : 3;
-  if (!from->underline != !to->underline) memcpy(d + n, to->underline ? ";4" : ";24", to->underline ? 2 : 3), n += to->underline ? 2 : 3;
+  {
+    char ua[8], ub[8];
+    const size_t na = emit_underline(ua, from->underline, depth), nb = emit_underline(ub, to->underline, depth);
+    if (na != nb || memcmp(ua, ub, na) != 0) {
+      if (nb) memcpy(d + n, ub, nb), n += nb;
+      else memcpy(d + n, ";24", 3), n += 3;
+    }
+  }
+  if ((from->blink ? (from->blink >= 2 ? 2 : 1) : 0) != (to->blink ? (to->blink >= 2 ? 2 : 1) : 0)) {
+    if (to->blink) d[n++] = ';', d[n++] = to->blink >= 2 ? '6' : '5';
+    else memcpy(d + n, ";25", 3), n += 3;
+  }
   if (!from->reverse != !to->reverse) memcpy(d + n, to->reverse ? ";7" : ";27", to->reverse ? 2 : 3), n += to->reverse ? 2 : 3;
+  if (!from->hidden != !to->hidden) memcpy(d + n, to->hidden ? ";8" : ";28", to->hidden ? 2 : 3), n += to->hidden ? 2 : 3;
   if (!from->strike != !to->strike) memcpy(d + n, to->strike ? ";9" : ";29", to->strike ? 2 : 3), n += to->strike ? 2 : 3;
+  if (!from->overline != !to->overline) memcpy(d + n, to->overline ? ";53" : ";55", 3), n += 3;
+  {
+    char ca2[24], cb2[24];
+    const size_t na = from->underline ? emit_underline_color(ca2, from->underline_color, depth) : 0;
+    const size_t nb = to->underline ? emit_underline_color(cb2, to->underline_color, depth) : 0;
+    if (na != nb || memcmp(ca2, cb2, na) != 0) {
+      if (nb) memcpy(d + n, cb2, nb), n += nb;
+      else memcpy(d + n, ";59", 3), n += 3;
+    }
+  }
   /* a colour by what it is SENT as, so two that the depth draws alike are no change */
   la = emit_color(ca, from->fg, 0, depth);
   lb = emit_color(cb, to->fg, 0, depth);
@@ -677,6 +735,28 @@ static int resolve_color(const RolltuiJsonValue* v, const RolltuiJsonValue* defs
   return 0;
 }
 
+static const char* const kUnderlineShapes[] = {"", "single", "double", "curly", "dotted", "dashed"};
+
+/* An underline given as a SHAPE'S NAME, alone or per variant: sets it and answers 1; anything else is the boolean form's to read. */
+static int underline_shape(const RolltuiJsonValue* x, int mode, RolltuiStyle* out) {
+  const RolltuiJsonValue* v = x;
+  size_t len, i;
+  const char* sv;
+  if (rolltui_json_is_object(x)) {
+    const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
+    if (!rolltui_json_has(x, key, strlen(key))) return 0;
+    v = rolltui_json_get(x, key, strlen(key));
+  }
+  if (!rolltui_json_is_string(v)) return 0;
+  sv = rolltui_json_as_string(v, "", 0, &len);
+  for (i = 1; i < sizeof kUnderlineShapes / sizeof kUnderlineShapes[0]; ++i)
+    if (strlen(kUnderlineShapes[i]) == len && memcmp(kUnderlineShapes[i], sv, len) == 0) {
+      out->underline = (unsigned char)i;
+      return 1;
+    }
+  return 0;
+}
+
 /* Reads one role's fg/bg/bold/italic/underline/dim/reverse object, inheriting `base` for any
  * field it does not set — mirrors `read_role` exactly, including a bad fg/bg/attribute
  * leaving that ONE field at `base` rather than failing the whole role. */
@@ -695,16 +775,20 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
     size_t klen;
     const char* k = rolltui_json_object_key_at(v, i, &klen);
     const RolltuiJsonValue* x = rolltui_json_object_value_at(v, i);
-    if (streq(k, klen, "fg") || streq(k, klen, "bg")) {
+    if (streq(k, klen, "fg") || streq(k, klen, "bg") || streq(k, klen, "underline_color")) {
       char where2[ROLLTUI_THEME_WHERE_MAX];
       RolltuiStyleColorRaw c;
       rolltui_labelf(where2, sizeof where2, "%s.%s", where, k);
       if (resolve_color(x, defs, mode, where2, report, 0, &c)) {
         if (streq(k, klen, "fg")) out->fg = c;
-        else out->bg = c;
+        else if (streq(k, klen, "bg")) out->bg = c;
+        else out->underline_color = c;
       }
+    } else if (streq(k, klen, "underline") && underline_shape(x, mode, out)) {
+      /* a shape by name: "double", "curly", "dotted", "dashed" (true is a plain underline, below) */
     } else if (streq(k, klen, "bold") || streq(k, klen, "italic") || streq(k, klen, "underline") ||
-              streq(k, klen, "dim") || streq(k, klen, "reverse") || streq(k, klen, "strikethrough")) {
+              streq(k, klen, "dim") || streq(k, klen, "reverse") || streq(k, klen, "strikethrough") ||
+              streq(k, klen, "blink") || streq(k, klen, "overline")) {
       const RolltuiJsonValue* b = x;
       if (rolltui_json_is_object(x)) {
         const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
@@ -727,6 +811,8 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
         else if (streq(k, klen, "underline")) out->underline = bv;
         else if (streq(k, klen, "dim")) out->dim = bv;
         else if (streq(k, klen, "strikethrough")) out->strike = bv;
+        else if (streq(k, klen, "blink")) out->blink = bv;
+        else if (streq(k, klen, "overline")) out->overline = bv;
         else out->reverse = bv;
       }
     } else {
@@ -765,8 +851,18 @@ int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollba
   if (!out) return 0;
   rolltui_scrollbar_glyphs_default(out);
   glyphs = root ? rolltui_json_get(root, K("glyphs")) : NULL;
+  {
+    const RolltuiJsonValue* cur = glyphs ? rolltui_json_get(glyphs, K("cursor")) : NULL;
+    if (cur && rolltui_json_is_string(cur)) {
+      size_t n;
+      const char* v = rolltui_json_as_string(cur, "", 0, &n);
+      out->cursor = n == 4 && memcmp(v, "caps", 4) == 0    ? ROLLTUI_CURSOR_CAPS
+                    : n == 5 && memcmp(v, "edges", 5) == 0 ? ROLLTUI_CURSOR_EDGES
+                                                            : ROLLTUI_CURSOR_FILL;
+    }
+  }
   bar = glyphs ? rolltui_json_get(glyphs, K("scrollbar")) : NULL;
-  if (!bar) return 0;
+  if (!bar) return out->cursor != ROLLTUI_CURSOR_FILL;
   take_glyph(bar, "single", out->single, sizeof out->single);
   take_glyph(bar, "top", out->top, sizeof out->top);
   take_glyph(bar, "middle", out->middle, sizeof out->middle);
@@ -1172,6 +1268,23 @@ static void set_attr(RolltuiJsonValue* o, const char* name, unsigned char d, int
   }
 }
 
+/* An underline: true for a plain one, its shape's name for another, per variant where the two differ. */
+static RolltuiJsonValue* underline_value(unsigned char u) {
+  if (u > ROLLTUI_UNDERLINE_SINGLE && u <= ROLLTUI_UNDERLINE_DASHED)
+    return rolltui_json_string(kUnderlineShapes[u], strlen(kUnderlineShapes[u]));
+  return rolltui_json_bool(u != 0);
+}
+static void set_underline(RolltuiJsonValue* o, unsigned char d, int has_light, unsigned char l) {
+  if (has_light && d != l) {
+    RolltuiJsonValue* pair = rolltui_json_object();
+    rolltui_json_set(pair, K("dark"), underline_value(d));
+    rolltui_json_set(pair, K("light"), underline_value(l));
+    rolltui_json_set(o, K("underline"), pair);
+  } else if (d) {
+    rolltui_json_set(o, K("underline"), underline_value(d));
+  }
+}
+
 static RolltuiJsonValue* style_to_json(const RolltuiStyle* s, const RolltuiStyle* light) {
   RolltuiJsonValue* o = rolltui_json_object();
   char buf[ROLLTUI_COLOR_STRING_MAX];
@@ -1201,10 +1314,26 @@ static RolltuiJsonValue* style_to_json(const RolltuiStyle* s, const RolltuiStyle
   rolltui_json_set(o, K("bg"), bgv);
   set_attr(o, "bold", s->bold, light != NULL, light ? light->bold : s->bold);
   set_attr(o, "italic", s->italic, light != NULL, light ? light->italic : s->italic);
-  set_attr(o, "underline", s->underline, light != NULL, light ? light->underline : s->underline);
+  set_underline(o, s->underline, light != NULL, light ? light->underline : s->underline);
+  if (s->underline_color.kind || (light && light->underline_color.kind)) {
+    RolltuiJsonValue* uv;
+    if (light && !color_eq(s->underline_color, light->underline_color)) {
+      uv = rolltui_json_object();
+      n = rolltui_color_to_string(s->underline_color, buf, sizeof buf);
+      rolltui_json_set(uv, K("dark"), rolltui_json_string(buf, n));
+      n = rolltui_color_to_string(light->underline_color, buf, sizeof buf);
+      rolltui_json_set(uv, K("light"), rolltui_json_string(buf, n));
+    } else {
+      n = rolltui_color_to_string(s->underline_color, buf, sizeof buf);
+      uv = rolltui_json_string(buf, n);
+    }
+    rolltui_json_set(o, K("underline_color"), uv);
+  }
   set_attr(o, "dim", s->dim, light != NULL, light ? light->dim : s->dim);
   set_attr(o, "reverse", s->reverse, light != NULL, light ? light->reverse : s->reverse);
   set_attr(o, "strikethrough", s->strike, light != NULL, light ? light->strike : s->strike);
+  set_attr(o, "blink", s->blink, light != NULL, light ? light->blink : s->blink);
+  set_attr(o, "overline", s->overline, light != NULL, light ? light->overline : s->overline);
   return o;
 }
 

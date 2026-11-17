@@ -156,6 +156,8 @@ typedef struct RolltuiOsTty RolltuiOsTty;
 RolltuiOsTty* rolltui_os_tty_open(int in_fd, int out_fd);
 void rolltui_os_tty_close(RolltuiOsTty* t);
 int rolltui_os_tty_is_tty(const RolltuiOsTty* t);
+/* The tty is a Linux virtual console: its name is /dev/ttyN or /dev/vc/N. */
+int rolltui_os_tty_is_console(const RolltuiOsTty* t);
 /* Saves the mode and switches to raw input (and, on Windows, VT input and output); 1 when a mode
  * was saved and will be restored. */
 int rolltui_os_tty_raw(RolltuiOsTty* t);

@@ -138,6 +138,9 @@ int rolltui_frame_cell_is_blank(const RolltuiFrame* f, int x, int y, RolltuiStyl
 
 int rolltui_frame_width(const RolltuiFrame* f);
 
+/* The cursor's shape the frame asked for (`rolltui_frame_set_cursor_shape`). */
+unsigned char rolltui_frame_cursor_shape(const RolltuiFrame* f);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

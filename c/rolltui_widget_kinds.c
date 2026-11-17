@@ -1172,6 +1172,7 @@ static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   roles.hover = br->hover;
   roles.prompt = br->prompt;
   roles.heading = rolltui_windows_menu_roles(lc->w)->breadcrumb;
+  rolltui_list_set_cursor_shape(l, rolltui_windows_scrollbar_glyphs(lc->w)->cursor);
   list_ctx_layout(ctx, rn);
   rolltui_windows_want_frame(lc->w, rolltui_list_tick(l, rolltui_windows_env(lc->w)->now_ms));
   rolltui_list_draw(l, f, rolltui_windows_styles(lc->w), &roles, rn->focused, rn->hover ? rn->hover_y : -1,
@@ -2581,6 +2582,7 @@ static void menu_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   o = *rolltui_menu_options(mc->m);
   o.ambiguous_wide = env->ambiguous_wide;
   o.inset = rn->node->border != 0 ? 1 : 0;
+  o.cursor_shape = rolltui_windows_scrollbar_glyphs(mc->w)->cursor;
   rolltui_menu_set_options_struct(mc->m, &o);
   rolltui_menu_layout(mc->m, rn->inner);
 }

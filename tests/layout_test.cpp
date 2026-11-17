@@ -189,7 +189,7 @@ struct RouteC {
   struct Kind {
     static constexpr unsigned char Deliver = ROLLTUI_ROUTE_DELIVER, ClosedPopup = ROLLTUI_ROUTE_CLOSED_POPUP,
                                     FocusMoved = ROLLTUI_ROUTE_FOCUS_MOVED, Dropped = ROLLTUI_ROUTE_DROPPED,
-                                    ClosedLevel = ROLLTUI_ROUTE_CLOSED_LEVEL;
+                                    ClosedLevel = ROLLTUI_ROUTE_CLOSED_LEVEL, Label = ROLLTUI_ROUTE_LABEL;
   };
 };
 
@@ -1224,6 +1224,26 @@ int main() {
     rolltui_draw_border(g, scratch, RolltuiRect{-2, -1, 5, 3}, static_cast<unsigned char>(Border::Single), RolltuiStyle{}, "", 0,
                        RolltuiStyle{}, 0);
     check(cell_c(g, 2, 1) == "┘" && cell_c(g, 0, 1) == "─", "a border partly off-frame is clipped, not wrapped");
+    {
+      FrameC q(4, 3);
+      rolltui_draw_border(q, scratch, RolltuiRect{0, 0, 4, 3}, ROLLTUI_BORDER_QUADRANT_INSIDE, RolltuiStyle{}, nullptr, 0, RolltuiStyle{}, 0);
+      check(cell(q, 0, 0) == "\xE2\x96\x97" && cell(q, 1, 0) == "\xE2\x96\x84" && cell(q, 3, 2) == "\xE2\x96\x98" && cell(q, 0, 1) == "\xE2\x96\x90",
+            "a block border a half cell inside the edge: ▗▄▖ ▐ ▌ ▝▀▘");
+      rolltui_draw_border(q, scratch, RolltuiRect{0, 0, 4, 3}, ROLLTUI_BORDER_QUADRANT_OUTSIDE, RolltuiStyle{}, nullptr, 0, RolltuiStyle{}, 0);
+      check(cell(q, 0, 0) == "\xE2\x96\x9B" && cell(q, 1, 2) == "\xE2\x96\x84" && cell(q, 3, 1) == "\xE2\x96\x90",
+            "…and outside it: ▛▀▜ ▌ ▐ ▙▄▟");
+      {
+        FrameC h(6, 3);
+        rolltui_draw_border(h, scratch, RolltuiRect{0, 0, 6, 3}, ROLLTUI_BORDER_HIDDEN, RolltuiStyle{}, "ab", 2, RolltuiStyle{}, 0);
+        check(cell(h, 0, 0) == " " && cell(h, 5, 2) == " " && cell(h, 1, 0) == " " && cell(h, 2, 0) == "a",
+              "a hidden border is the ground, its room kept, its title still drawn");
+      }
+      rolltui_draw_border(q, scratch, RolltuiRect{0, 0, 4, 3}, ROLLTUI_BORDER_QUADRANT_INSIDE, RolltuiStyle{}, nullptr, 0, RolltuiStyle{}, 1);
+      check(cell(q, 0, 0) == "+" && cell(q, 1, 0) == "-" && cell(q, 0, 1) == "|", "…and where ambiguous glyphs are wide, + - |");
+      unsigned char b = 0;
+      check(rolltui_border_from_name("quadrant-outside", 16, &b) && b == ROLLTUI_BORDER_QUADRANT_OUTSIDE && rolltui_border_from_name("hidden", 6, &b),
+            "a layout file names them hidden, quadrant-inside and quadrant-outside");
+    }
     rolltui_draw_scratch_free(scratch);
     rolltui_frame_free(f);
     rolltui_frame_free(g);
@@ -1266,7 +1286,53 @@ int main() {
       };
       check(top_row(false).find("1 transcript") == std::string::npos, "(the control: titles carry no number by default)");
       check(top_row(true).find("1 transcript") != std::string::npos, "numbered, the first window's title starts with 1");
+      rolltui_window_stack_set_numbered(s.s, 2);
+      {
+        FrameC f(scr.w, scr.h, t.style(ROLLTUI_ROLE_BACKGROUND));
+        s.compose(f, scr, t, [](const RolltuiResolvedNode&, FrameC&) {});
+        std::string top;
+        for (int x = 0; x < scr.w; ++x) top += f.glyph(x, 0);
+        check(top.find("\xC2\xB9transcript") != std::string::npos, "…or with the number as a superscript before it [" + top + "]");
+      }
       rolltui_window_stack_set_numbered(s.s, 0);
+      // A WINDOW'S BORDER IN A ROLE OF ITS OWN, A SUBTITLE AT THE TOP RIGHT, A TITLE IN PARTS WITH A LABEL A PRESS RUNS
+      rolltui_window_stack_set_border_role(s.s, "transcript", 10, ROLLTUI_ROLE_ERROR);
+      rolltui_window_stack_set_subtitle(s.s, "transcript", 10, "3 new", 5);
+      const RolltuiTitlePart parts[] = {{"files", 5, 0, nullptr}, {" [all]", 6, ROLLTUI_ROLE_ACCENT_1, "app.filter"}};
+      rolltui_window_stack_set_title_parts(s.s, "transcript", 10, parts, 2);
+      {
+        FrameC f(scr.w, scr.h, t.style(ROLLTUI_ROLE_BACKGROUND));
+        s.compose(f, scr, t, [](const RolltuiResolvedNode&, FrameC&) {});
+        std::string top;
+        for (int x = 0; x < scr.w; ++x) top += f.glyph(x, 0);
+        check(top.find("files [all]") != std::string::npos && top.find("transcript") == std::string::npos,
+              "a title in parts stands in place of the title [" + top + "]");
+        check(top.find("3 new") != std::string::npos && top.find("3 new") > top.find("[all]"), "…and the subtitle at the right of the top edge");
+        const RolltuiStyle err = t.style(ROLLTUI_ROLE_ERROR);
+        const RolltuiCell corner = f.at(0, 0);
+        check(corner.style.fg.r == err.fg.r && corner.style.fg.g == err.fg.g && corner.style.fg.b == err.fg.b,
+              "the border is drawn in the role it was given");
+        const int lx = static_cast<int>(top.find("[all]"));
+        check(f.at(lx, 0).style.underline && !f.at(2, 0).style.underline, "a part that is a label is underlined; a plain part is not");
+        RolltuiMouseEvent m;
+        m.kind = RolltuiMouseEvent::Kind::Press;
+        m.button = 1;
+        m.x = lx + 1;
+        m.y = 0;
+        check(route_c(s.s, mouse_ev(m), scr) == RouteC{RouteC::Kind::Label, "transcript"}, "a press on the label routes as a label");
+        RolltuiStr action{};
+        check(rolltui_window_stack_pressed_label(s.s, &action) == 1 && str_of(action) == "app.filter" &&
+                  rolltui_window_stack_pressed_label(s.s, &action) == 0,
+              "…and the host takes its action, once");
+        rolltui_str_free(&action);
+        m.x = 3;
+        check(route_c(s.s, mouse_ev(m), scr).kind != RouteC::Kind::Label, "a press on a plain part is the window's");
+      }
+      rolltui_window_stack_set_title_parts(s.s, "transcript", 10, nullptr, 0);
+      rolltui_window_stack_set_subtitle(s.s, "transcript", 10, "", 0);
+      rolltui_window_stack_set_border_role(s.s, "transcript", 10, 0);
+      check(top_row(false).find("transcript") != std::string::npos && top_row(false).find("3 new") == std::string::npos,
+            "…and with none, the window's title is back and the subtitle gone");
     }
     check(route_c(s.s, key_ev(ROLLTUI_KEY_ESCAPE), scr) == RouteC{RouteC::Kind::Deliver, "transcript"}, "Escape with no popup is delivered");
     RolltuiMouseEvent m;

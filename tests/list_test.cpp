@@ -81,6 +81,7 @@ struct Screen {
   unsigned long long now = 1000;  // the frame clock each paint hands the windows
   int wait = -1;                  // what the frame said it wants next (`rolltui_windows_draw_toasts`)
   bool busy = false;              // the window's title carries a spinner
+  int cur_x = -1, cur_y = -1, cur_vis = -1;  // where the frame left the terminal's cursor
   std::vector<RolltuiCell> cells;  // the last frame painted, a cell at a time
   const RolltuiCell& cell(int x, int y) const { return cells[static_cast<std::size_t>(y * width + x)]; }
   Screen(int wd, int ht, std::string_view screen = kScreen) : width(wd), height(ht) {
@@ -124,6 +125,7 @@ struct Screen {
         },
         &slot, 0, cs);
     wait = rolltui_windows_draw_toasts(w, f, area, styles, now);
+    rolltui_frame_cursor(f, &cur_x, &cur_y, &cur_vis);
     cells.assign(static_cast<std::size_t>(width * height), RolltuiCell{});
     for (int y = 0; y < height; ++y)
       for (int x = 0; x < width; ++x) rolltui_frame_cell(f, x, y, &cells[static_cast<std::size_t>(y * width + x)]);
@@ -1000,6 +1002,45 @@ void test_sparkline() {
   rolltui_str_free(&out);
 }
 
+// THE CURSOR ROW'S SHAPE, from the theme's glyphs: a cell kept clear at each side for its ends.
+void test_cursor_shape() {
+  Data d;
+  d.keys = {"a", "b"};
+  d.a = {"alpha", "beta"};
+  Screen s(20, 4);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  RolltuiScrollbarGlyphs g{};
+  rolltui_theme_scrollbar_glyphs(nullptr, &g);  // no theme: every glyph the default
+  g.cursor = ROLLTUI_CURSOR_CAPS;
+  rolltui_context_set_scrollbar_glyphs(ctx(), &g);
+  auto rows = s.paint();
+  check(starts(rows[0], "\xE2\x96\x90" "alpha") && rows[0].find("\xE2\x96\x8C") != std::string::npos && starts(rows[1], " beta"),
+        "caps: the cursor's row rounded at both ends, every row a cell in [" + rows[0] + "]");
+  g.cursor = ROLLTUI_CURSOR_EDGES;
+  rolltui_context_set_scrollbar_glyphs(ctx(), &g);
+  rows = s.paint();
+  check(starts(rows[0], "\xE2\x96\x8C" "alpha") && s.cell(1, 0).style.bold, "edges: a bar at each end, the text bold in the cursor's colour");
+  check(!same_fg(s.cell(1, 0), s.cell(1, 1)), "…and in a colour of its own, so it reads as the cursor");
+  rolltui_theme_scrollbar_glyphs(nullptr, &g);  // no theme: every glyph the default
+  rolltui_context_set_scrollbar_glyphs(ctx(), &g);
+  rows = s.paint();
+  check(starts(rows[0], "alpha"), "fill, the default: the row from its first cell");
+  check(s.cur_vis == 0 && s.cur_y == 0 && s.cur_x == 0, "(the control: a list without focus leaves the cursor where it was)");
+  // THE CURSOR PARKED, hidden, on the cursor's row of the focused list: where a screen reader looks
+  constexpr std::string_view kFocused = R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "focusable": true } ] } })";
+  Screen t(20, 4, kFocused);
+  rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  rolltui_windows_set_list_options(t.w, "things", 6, &o);
+  t.paint();
+  t.key(ROLLTUI_KEY_DOWN);
+  t.paint();
+  check(t.cur_y == 1 && t.cur_x == 0 && t.cur_vis == 0, "the terminal's cursor waits, hidden, on the focused list's cursor row [" +
+                                                             std::to_string(t.cur_x) + "," + std::to_string(t.cur_y) + "]");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -1023,5 +1064,6 @@ int main() {
   test_states();
   test_reorder_and_edge();
   test_sparkline();
+  test_cursor_shape();
   return testkit::report("list_test");
 }

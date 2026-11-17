@@ -400,6 +400,11 @@ void rolltui_os_dir_close(RolltuiOsDir* d) {
 
 /* ---- the terminal -------------------------------------------------------------------------- */
 
+int rolltui_os_tty_is_console(const RolltuiOsTty* t) {
+  (void)t;
+  return 0; /* no Linux console here */
+}
+
 int rolltui_os_isatty(int fd) {
   DWORD mode;
   const HANDLE h = (HANDLE)_get_osfhandle(fd);

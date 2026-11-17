@@ -24,11 +24,6 @@
 #include "rolltui/rolltui.h"
 #include "rolltui/testkit/testctl.h"
 
-#define ROLLTUI_BORDER_NONE 0
-#define ROLLTUI_BORDER_SINGLE 1
-#define ROLLTUI_BORDER_ROUNDED 2
-#define ROLLTUI_BORDER_DOUBLE 3
-#define ROLLTUI_BORDER_HEAVY 4
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }
@@ -471,6 +466,22 @@ static void draw_footer(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect o
   }
 }
 
+/* A BLOCK BORDER's glyph at (x, y) of `outer`: half cells drawn inside the edge (▗▄▖ ▐ ▌ ▝▀▘) or outside it (▛▀▜ ▌ ▐ ▙▄▟). Which
+ * edge a cell is on is by its place, since the top and the bottom draw different halves. */
+static const char* quadrant_for(unsigned char b, RolltuiRect o, int x, int y, int ascii) {
+  const int left = x == o.x, right = x == o.x + o.w - 1, top = y == o.y, bottom = y == o.y + o.h - 1;
+  const int in = b == ROLLTUI_BORDER_QUADRANT_INSIDE;
+  if (ascii) return (left || right) && (top || bottom) ? "+" : top || bottom ? "-" : "|";
+  if (top && left) return in ? "\xe2\x96\x97" : "\xe2\x96\x9b";     /* ▗ ▛ */
+  if (top && right) return in ? "\xe2\x96\x96" : "\xe2\x96\x9c";    /* ▖ ▜ */
+  if (bottom && left) return in ? "\xe2\x96\x9d" : "\xe2\x96\x99";  /* ▝ ▙ */
+  if (bottom && right) return in ? "\xe2\x96\x98" : "\xe2\x96\x9f"; /* ▘ ▟ */
+  if (top) return in ? "\xe2\x96\x84" : "\xe2\x96\x80";             /* ▄ ▀ */
+  if (bottom) return in ? "\xe2\x96\x80" : "\xe2\x96\x84";          /* ▀ ▄ */
+  if (left) return in ? "\xe2\x96\x90" : "\xe2\x96\x8c";            /* ▐ ▌ */
+  return in ? "\xe2\x96\x8c" : "\xe2\x96\x90";                      /* ▌ ▐ */
+}
+
 static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char b,
                              RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
                              int ascii) {
@@ -492,7 +503,9 @@ static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiR
       const int ring = x == outer.x || x == outer.x + outer.w - 1 || y == outer.y || y == outer.y + outer.h - 1;
       if (!ring) continue;
       m = own_mask(outer, x, y);
-      g = glyph_for(b, m, ascii);
+      g = b == ROLLTUI_BORDER_QUADRANT_INSIDE || b == ROLLTUI_BORDER_QUADRANT_OUTSIDE ? quadrant_for(b, outer, x, y, ascii)
+          : b == ROLLTUI_BORDER_HIDDEN                                              ? " "
+                                                                                    : glyph_for(b, m, ascii);
       if (!*g) g = " ";
       rolltui_frame_put(f, x, y, g, strlen(g), 1, line, 0);
     }
@@ -580,25 +593,105 @@ struct RolltuiComposeScratch {
   const RolltuiLayoutNode* numbered[9]; /* the focus layer's windows in focus order, while the stack numbers them */
   size_t numbered_n;
   RolltuiStr title;         /* a numbered title, built here */
+  RolltuiStr parts;         /* a title in parts, joined */
+  int numbered_sup;         /* the numbers are superscripts */
 };
 
 RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
   RolltuiComposeScratch* s = (RolltuiComposeScratch*)rolltui_mem_alloc(sizeof *s);
-  s->nodes.v = NULL;
-  s->nodes.n = 0;
-  s->nodes.cap = 0;
+  memset(s, 0, sizeof *s); /* every field starts empty: a new one cannot be left out */
   s->draw = rolltui_draw_scratch_new();
-  s->numbered_n = 0;
-  memset(&s->title, 0, sizeof s->title);
   return s;
 }
 
 void rolltui_compose_scratch_free(RolltuiComposeScratch* s) {
   if (!s) return;
   rolltui_str_free(&s->title);
+  rolltui_str_free(&s->parts);
   rolltui_mem_free(s->nodes.v);
   rolltui_draw_scratch_free(s->draw);
   rolltui_mem_free(s);
+}
+
+/* A NODE'S TITLE PART `i`: its role, text and action (NULL: not a label). 0 past the last. */
+static int title_part(const RolltuiLayoutNode* n, size_t i, unsigned char* role, const char** text, size_t* len, const char** action) {
+  const char* p = n->title_parts.p;
+  const char* end = p ? p + n->title_parts.n : NULL;
+  size_t k;
+  if (!p || i >= n->title_part_n) return 0;
+  for (k = 0; k < i; ++k) { /* past a role byte, a text and an action, each NUL-ended */
+    p += 1;
+    p += strlen(p) + 1;
+    p += strlen(p) + 1;
+    if (p >= end) return 0;
+  }
+  *role = (unsigned char)p[0];
+  *text = p + 1;
+  *len = strlen(p + 1);
+  p += 1 + *len + 1;
+  *action = *p ? p : NULL;
+  return 1;
+}
+
+/* WHAT GOES BEFORE A TITLE: the window's number (a digit and a space, or a superscript) and a spinner's cell, into `out`. Where the
+ * spinner goes, as cells into the title, in `*spin_at` (-1 none). */
+static void title_prefix(const RolltuiComposeScratch* scratch, const RolltuiLayoutNode* n, int superscript, int has_text, RolltuiStr* out,
+                         int* spin_at) {
+  static const char* const kSup[9] = {"\xc2\xb9", "\xc2\xb2", "\xc2\xb3", "\xe2\x81\xb4", "\xe2\x81\xb5",
+                                      "\xe2\x81\xb6", "\xe2\x81\xb7", "\xe2\x81\xb8", "\xe2\x81\xb9"};
+  size_t k;
+  int cells = 0;
+  rolltui_str_clear(out);
+  *spin_at = -1;
+  for (k = 0; k < scratch->numbered_n; ++k) /* THE WINDOW'S NUMBER, which Alt and that digit focuses */
+    if (scratch->numbered[k] == n) {
+      if (superscript) {
+        rolltui_str_append(out, kSup[k], strlen(kSup[k]));
+        cells = 1;
+      } else {
+        char d[2];
+        d[0] = (char)('1' + k), d[1] = ' ';
+        rolltui_str_append(out, d, has_text || n->busy ? 2 : 1);
+        cells = has_text || n->busy ? 2 : 1;
+      }
+      break;
+    }
+  if (n->busy) { /* the spinner's cell, then the title */
+    *spin_at = cells;
+    rolltui_str_append(out, has_text ? "  " : " ", has_text ? 2 : 1);
+  }
+}
+
+/* WHERE A TITLE'S PARTS FALL on the top edge: each part's first cell and its width, from `x0`, the title's first cell. */
+static size_t title_part_cells(const RolltuiLayoutNode* n, RolltuiDrawScratch* draw, int x0, int aw, int* xs, int* ws, size_t cap) {
+  size_t i, got = 0;
+  int x = x0;
+  for (i = 0; i < n->title_part_n && got < cap; ++i) {
+    unsigned char role;
+    const char *text, *action;
+    size_t len;
+    if (!title_part(n, i, &role, &text, &len, &action)) break;
+    xs[got] = x;
+    ws[got] = rolltui_frame_text_width(draw, text, len, aw);
+    x += ws[got];
+    ++got;
+  }
+  return got;
+}
+
+/* A SUBTITLE on the top edge at its right, inside the corner, after the title's `title_end` cell: cut at its start where it must. */
+static void draw_subtitle(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, const RolltuiStr* t, int title_end, RolltuiStyle st,
+                          int aw) {
+  int avail, w, x;
+  if (!t->n || outer.w < 7 || outer.y < 0 || outer.y >= rolltui_frame_height(f)) return;
+  avail = outer.x + outer.w - 2 - (title_end + 1) - 2; /* a cell of line after the title, a space each side */
+  if (avail < 1) return;
+  w = rolltui_frame_text_width(draw, t->p, t->n, aw);
+  if (w > avail) w = avail;
+  x = outer.x + outer.w - 2 - w - 1;
+  rolltui_frame_put_text(f, draw, x - 1, outer.y, " ", 1, st, 1, aw, 0);
+  rolltui_frame_put_text_cut(f, draw, x, outer.y, t->p, t->n, st, w, ROLLTUI_CUT_START, aw, 0);
+  rolltui_frame_put_text(f, draw, x + w, outer.y, " ", 1, st, 1, aw, 0);
 }
 
 void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, size_t count,
@@ -616,7 +709,7 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     if (!draws) continue;
     ground = styles[n->background];
     rolltui_frame_fill(f, scratch->draw, rn->outer, ground, NULL, 0);
-    line = styles[rn->focused ? roles->border_active : roles->border];
+    line = styles[n->border_role ? n->border_role : rn->focused ? roles->border_active : roles->border];
     line.bg = ground.bg;
     title = styles[roles->title];
     title.bg = ground.bg;
@@ -626,26 +719,51 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
       if (n->border != ROLLTUI_BORDER_NONE) draw_tabs(f, scratch->draw, n, rn->outer, line, title, ambiguous_wide);
     } else {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
+      int spin_at = -1, title_end;
       size_t k;
-      int spin_x = -1;
-      rolltui_str_clear(&scratch->title);
-      for (k = 0; k < scratch->numbered_n; ++k) /* THE WINDOW'S NUMBER, which Alt and that digit focuses */
-        if (scratch->numbered[k] == n) {
-          char d[4];
-          d[0] = (char)('1' + k), d[1] = ' ';
-          rolltui_str_set(&scratch->title, d, t->n || n->busy ? 2 : 1);
-          break;
+      const int sup = scratch->numbered_sup && !ambiguous_wide;
+      if (n->title_part_n) { /* the parts, joined, as the title; their roles over it below */
+        rolltui_str_clear(&scratch->parts);
+        for (k = 0; k < n->title_part_n; ++k) {
+          unsigned char role;
+          const char *text, *action;
+          size_t len;
+          if (title_part(n, k, &role, &text, &len, &action)) rolltui_str_append(&scratch->parts, text, len);
         }
-      if (n->busy && n->border != ROLLTUI_BORDER_NONE && rn->outer.w >= 7) { /* the spinner's cell, then the title */
-        spin_x = rn->outer.x + 2 + (int)scratch->title.n;
-        rolltui_str_append(&scratch->title, t->n ? "  " : " ", t->n ? 2 : 1);
+        t = &scratch->parts;
       }
+      title_prefix(scratch, n, sup, t->n != 0, &scratch->title, &spin_at);
+      if (n->border == ROLLTUI_BORDER_NONE || rn->outer.w < 7) spin_at = -1;
       if (scratch->title.n) {
         rolltui_str_append_str(&scratch->title, t);
         t = &scratch->title;
       }
       draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
-      if (spin_x >= 0) rolltui_spinner_draw(f, spin_x, rn->outer.y, title, n->busy_since_ms);
+      if (spin_at >= 0) rolltui_spinner_draw(f, rn->outer.x + 2 + spin_at, rn->outer.y, title, n->busy_since_ms);
+      title_end = rn->outer.x + 1 + (t->n ? 1 + rolltui_frame_text_width(scratch->draw, t->p, t->n, ambiguous_wide) : 0);
+      if (n->title_part_n && n->border != ROLLTUI_BORDER_NONE) { /* each part in its role, a label underlined */
+        int xs[32], ws[32];
+        const int x0 = rn->outer.x + 2 + (t == &scratch->title ? rolltui_frame_text_width(scratch->draw, scratch->title.p,
+                                                                                            scratch->title.n - scratch->parts.n,
+                                                                                            ambiguous_wide)
+                                                              : 0);
+        const size_t np = title_part_cells(n, scratch->draw, x0, ambiguous_wide, xs, ws, 32);
+        for (k = 0; k < np; ++k) {
+          unsigned char role;
+          const char *text, *action;
+          size_t len;
+          RolltuiStyle ps;
+          RolltuiRect pr;
+          int right = rn->outer.x + rn->outer.w - 1;
+          if (!title_part(n, k, &role, &text, &len, &action)) break;
+          ps = role ? styles[role] : title;
+          ps.bg.kind = 0; /* the border's ground stays */
+          if (action) ps.underline = ps.underline ? ps.underline : ROLLTUI_UNDERLINE_SINGLE;
+          pr.x = xs[k], pr.y = rn->outer.y, pr.w = xs[k] + ws[k] > right ? right - xs[k] : ws[k], pr.h = 1;
+          if (pr.w > 0) rolltui_frame_tint(f, pr, ps);
+        }
+      }
+      if (n->subtitle.n && n->border != ROLLTUI_BORDER_NONE) draw_subtitle(f, scratch->draw, rn->outer, &n->subtitle, title_end, title, ambiguous_wide);
     }
     if (n->border != ROLLTUI_BORDER_NONE) { /* the widget's footer this frame, else the file's, in the border's colour */
       const RolltuiStr* ft = n->live_footer.n ? &n->live_footer : &n->footer;
@@ -1017,7 +1135,8 @@ int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b) {
 
 static const char* const kAnchorNames[9] = {"top-left",     "top",    "top-right", "left",   "center",
                                             "right",        "bottom-left", "bottom", "bottom-right"};
-static const char* const kBorderNames[5] = {"none", "single", "rounded", "double", "heavy"};
+static const char* const kBorderNames[ROLLTUI_BORDER_COUNT] = {"none",   "single",          "rounded",         "double",
+                                                              "heavy",  "hidden",          "quadrant-inside", "quadrant-outside"};
 
 const char* rolltui_anchor_name(unsigned char a, size_t* len) {
   if (a >= 9) {
@@ -1039,7 +1158,7 @@ int rolltui_anchor_from_name(const char* name, size_t len, unsigned char* out) {
 }
 
 const char* rolltui_border_name(unsigned char b, size_t* len) {
-  if (b >= 5) {
+  if (b >= ROLLTUI_BORDER_COUNT) {
     if (len) *len = 0;
     return "";
   }
@@ -1049,7 +1168,7 @@ const char* rolltui_border_name(unsigned char b, size_t* len) {
 
 int rolltui_border_from_name(const char* name, size_t len, unsigned char* out) {
   size_t i;
-  for (i = 0; i < 5; ++i)
+  for (i = 0; i < ROLLTUI_BORDER_COUNT; ++i)
     if (streq(name, len, kBorderNames[i])) {
       *out = (unsigned char)i;
       return 1;
@@ -2205,8 +2324,44 @@ struct RolltuiWindowStack {
    * breakpoint is judged against when focus moves (0 until then: every breakpoint met). */
   RolltuiStr maximized;
   int screen_w, screen_h;
-  int numbered; /* each focusable window's title starts with its number (`rolltui_window_stack_set_numbered`) */
+  int numbered; /* each focusable window's title starts with its number (`rolltui_window_stack_set_numbered`): 1 a digit, 2 a superscript */
+  RolltuiStr label;  /* the action of the title label last pressed */
+  int label_pressed; /* …and whether it is still to be taken */
 };
+
+void rolltui_window_stack_set_border_role(RolltuiWindowStack* s, const char* id, size_t len, unsigned char role) {
+  RolltuiLayoutNode* n = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
+  if (n) n->border_role = role < ROLLTUI_ROLE_COUNT ? role : 0;
+}
+
+void rolltui_window_stack_set_subtitle(RolltuiWindowStack* s, const char* id, size_t len, const char* text, size_t text_len) {
+  RolltuiLayoutNode* n = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
+  if (n) rolltui_str_set(&n->subtitle, text ? text : "", text ? text_len : 0);
+}
+
+void rolltui_window_stack_set_title_parts(RolltuiWindowStack* s, const char* id, size_t len, const RolltuiTitlePart* parts, size_t n) {
+  RolltuiLayoutNode* nd = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
+  size_t i;
+  if (!nd) return;
+  rolltui_str_clear(&nd->title_parts);
+  nd->title_part_n = 0;
+  for (i = 0; i < n && i < 32 && parts; ++i) {
+    const unsigned char role = parts[i].role < ROLLTUI_ROLE_COUNT ? parts[i].role : 0;
+    rolltui_str_append(&nd->title_parts, (const char*)&role, 1);
+    rolltui_str_append(&nd->title_parts, parts[i].text ? parts[i].text : "", parts[i].text ? parts[i].len : 0);
+    rolltui_str_append(&nd->title_parts, "", 1);
+    if (parts[i].action) rolltui_str_append(&nd->title_parts, parts[i].action, strlen(parts[i].action));
+    rolltui_str_append(&nd->title_parts, "", 1);
+    ++nd->title_part_n;
+  }
+}
+
+int rolltui_window_stack_pressed_label(RolltuiWindowStack* s, RolltuiStr* out) {
+  if (!s || !s->label_pressed) return 0;
+  s->label_pressed = 0;
+  if (out) rolltui_str_set(out, s->label.p ? s->label.p : "", s->label.n);
+  return 1;
+}
 
 void rolltui_window_stack_set_busy(RolltuiWindowStack* s, const char* id, size_t len, int on, unsigned long long since_ms) {
   RolltuiLayoutNode* n = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
@@ -2216,7 +2371,7 @@ void rolltui_window_stack_set_busy(RolltuiWindowStack* s, const char* id, size_t
 }
 
 void rolltui_window_stack_set_numbered(RolltuiWindowStack* s, int on) {
-  if (s) s->numbered = on ? 1 : 0;
+  if (s) s->numbered = on == 2 ? 2 : on ? 1 : 0;
 }
 
 int rolltui_window_stack_pointer(const RolltuiWindowStack* s, int* x, int* y) {
@@ -2329,6 +2484,7 @@ void rolltui_window_stack_free(RolltuiWindowStack* s) {
   rolltui_mem_free(s->layers);
   rolltui_str_free(&s->captured);
   rolltui_str_free(&s->maximized);
+  rolltui_str_free(&s->label);
   rolltui_mem_free(s);
 }
 
@@ -2682,6 +2838,7 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
     if (i > 0) rolltui_frame_unmark_rect(f, box);
     rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
     scratch->numbered_n = s->numbered && i == rolltui_window_stack_focus_layer(s) ? focusables(s, i, scratch->numbered, 9) : 0;
+    scratch->numbered_sup = s->numbered == 2;
     if (scratch->numbered_n > 9) scratch->numbered_n = 9;
     rolltui_compose_layer(f, scratch->nodes.v, scratch->nodes.n, styles, roles, render, ctx, ambiguous_wide,
                           scratch);
@@ -2812,6 +2969,40 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
             rolltui_mem_free(c.v);
             return ROLLTUI_ROUTE_LAYOUT_CHANGED;
           }
+      }
+      if (m->kind == 0 /* Press */ && m->button == 1 && rn->node->title_part_n && m->y == rn->outer.y && rn->node->border) {
+        /* A PRESS ON A LABEL in the title runs its action: the host takes it */
+        int xs[32], ws[32];
+        RolltuiDrawScratch* draw = rolltui_draw_scratch_new();
+        const int aw = rolltui_termfacts_active_wide();
+        size_t np, t;
+        int x0 = rn->outer.x + 2;
+        {
+          RolltuiComposeScratch pre;
+          int spin_at;
+          RolltuiStr prefix;
+          memset(&pre, 0, sizeof pre);
+          memset(&prefix, 0, sizeof prefix);
+          pre.numbered_n = s->numbered && rn->layer == rolltui_window_stack_focus_layer(s) ? focusables(s, rn->layer, pre.numbered, 9) : 0;
+          if (pre.numbered_n > 9) pre.numbered_n = 9;
+          title_prefix(&pre, rn->node, s->numbered == 2 && !aw, 1, &prefix, &spin_at);
+          x0 += rolltui_frame_text_width(draw, prefix.p ? prefix.p : "", prefix.n, aw);
+          rolltui_str_free(&prefix);
+        }
+        np = title_part_cells(rn->node, draw, x0, aw, xs, ws, 32);
+        rolltui_draw_scratch_free(draw);
+        for (t = 0; t < np; ++t) {
+          unsigned char role;
+          const char *text, *action;
+          size_t len;
+          if (m->x < xs[t] || m->x >= xs[t] + ws[t]) continue;
+          if (!title_part(rn->node, t, &role, &text, &len, &action) || !action) break;
+          rolltui_str_set(&s->label, action, strlen(action));
+          s->label_pressed = 1;
+          rolltui_str_set(window, rn->node->id.p, rn->node->id.n);
+          rolltui_mem_free(c.v);
+          return ROLLTUI_ROUTE_LABEL;
+        }
       }
       if (m->kind == 0 /* Press */) {
         if (rn->node->focusable && rn->layer == rolltui_window_stack_focus_layer(s))

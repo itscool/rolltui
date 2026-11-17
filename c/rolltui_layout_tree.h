@@ -229,6 +229,12 @@ typedef struct RolltuiLayoutNode {
    * as `live_title` is. */
   unsigned char busy ROLLTUI_DEFAULT(0);
   unsigned long long busy_since_ms ROLLTUI_DEFAULT(0);
+  /* SCREEN STATE the host sets, as `busy` is: the border's own role (0: the focus colours), a subtitle at the top right, and a
+   * title in parts, each `role` byte, text, NUL, action, NUL (`rolltui_window_stack_set_title_parts`). */
+  unsigned char border_role ROLLTUI_DEFAULT(0);
+  RolltuiStr subtitle;
+  RolltuiStr title_parts;
+  unsigned char title_part_n ROLLTUI_DEFAULT(0);
   /* A FOOTER, at the right of the window's bottom border: the file's, or what the widget says this frame (a list's "12 of 340"),
    * which `live_footer` holds as `live_title` holds a title. */
   RolltuiStr footer;

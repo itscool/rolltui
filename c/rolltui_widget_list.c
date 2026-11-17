@@ -110,6 +110,8 @@ struct RolltuiList {
   RolltuiListRow tmp;
   RolltuiDrawScratch* draw;
   int dragging;
+  unsigned char shape; /* the cursor row's (ROLLTUI_CURSOR_*); not FILL: `area` is a cell in from each side, `full` the row */
+  RolltuiRect full;
 };
 
 /* ---- small things ------------------------------------------------------------------------------ */
@@ -1441,11 +1443,17 @@ static int digits_of(size_t n) {
 
 static int sort_arrow_w(const RolltuiList* l, int k) { return l->sort_col == k ? 2 : 0; }
 
+void rolltui_list_set_cursor_shape(RolltuiList* l, unsigned char shape) {
+  if (l) l->shape = shape <= ROLLTUI_CURSOR_EDGES ? shape : ROLLTUI_CURSOR_FILL;
+}
+
 void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
   const int show_header = !l->opt.hide_header && l->col_n > 0;
   const int show_foot = l->filtering || l->filter.n > 0;
   int k, used, r;
   ensure(l);
+  l->full = area;
+  if (l->shape != ROLLTUI_CURSOR_FILL && !aw && area.w > 4) area.x += 1, area.w -= 2; /* the ends' cells */
   l->area = area;
   l->header_y = show_header && area.h > 0 ? area.y : -1;
   l->body_y = area.y + (show_header ? 1 : 0);
@@ -1640,6 +1648,8 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
   rolltui_frame_ground(f, &ground);
   rolltui_style_on_window(&muted, styles, ground.bg);
   if (l->header_y >= 0) draw_header(l, f, styles, roles, aw);
+  if (focused && n && l->cursor >= l->top && l->cursor < l->top + (size_t)l->body_h) /* hidden, on the cursor's row: a screen reader's */
+    rolltui_frame_set_cursor(f, a.x, l->body_y + (int)(l->cursor - l->top), 0);
   if (n == 0) draw_empty(l, f, muted, aw); /* nothing to show says so, rather than a blank that reads as broken */
   for (r = 0; r < l->body_h && l->top + (size_t)r < n; ++r) {
     const size_t i = l->top + (size_t)r;
@@ -1692,7 +1702,13 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
       rolltui_style_fade(&st, ground.bg, 1.0 - (double)pct / 100.0, &faded);
       st = faded;
     }
-    if (lit) {
+    if (is_cursor && l->full.w != a.w) { /* the cursor's shape: its ends in the cells kept clear */
+      const RolltuiRect band = {l->full.x, y, l->full.w, 1};
+      const RolltuiStyle cur = st;
+      rolltui_cursor_text_style(&cur, ground.bg, l->shape, &st);
+      rolltui_frame_cursor_ends(f, band, cur, ground.bg, l->shape);
+    }
+    if (lit && !(is_cursor && l->shape == ROLLTUI_CURSOR_EDGES && l->full.w != a.w)) {
       const RolltuiRect band = {a.x, y, a.w, 1};
       rolltui_frame_fill(f, l->draw, band, st, NULL, 0);
     }

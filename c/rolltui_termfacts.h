@@ -55,6 +55,8 @@ typedef struct RolltuiTermEnv {
   const char* kitty_window_id;     /* kitty sets it in every window, and a tmux session started inside one keeps it */
   const char* konsole_version;
   const char* wt_session;          /* Windows Terminal */
+  const char* vte_version;         /* VTE: GNOME Terminal, Tilix, and every terminal built on it */
+  const char* force_console;       /* ROLLTUI_CONSOLE: 1 the Linux console, 0 not */
   const char* force_images;        /* ROLLTUI_IMAGES: blocks, kitty, iterm2 or sixel */
   const char* zellij;              /* ZELLIJ: inside Zellij, which passes no picture protocol through as the outer terminal's */
   const char* nvim;                /* NVIM: inside Neovim's :terminal, which draws no pictures whatever it inherited */
@@ -72,6 +74,10 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f);
  * terminal it is attached to can change between runs without one byte of the environment
  * changing. Answers from behind one are used but never remembered. */
 int rolltui_termenv_multiplexed(const RolltuiTermEnv* e);
+/* WHETHER THE TERMINAL DRAWS AN UNDERLINE'S SHAPES (4:2 to 4:5) AND ITS OWN COLOUR (58), by its name: what it answered to XTVERSION,
+ * else what the environment calls it. Behind a multiplexer, no: what reaches the outer terminal is the multiplexer's to say. A terminal
+ * not named here is sent plain underlines, which every terminal draws. */
+int rolltui_termfacts_underline_shapes(const RolltuiTermEnv* e, const char* name);
 
 /* A terminal this environment names that is KNOWN not to draw 24-bit colour (Apple's Terminal before
  * macOS 26). Its depth is decided, so nothing is gained by asking it to confirm one — and an exotic

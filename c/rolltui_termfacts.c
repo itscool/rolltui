@@ -41,6 +41,8 @@ void rolltui_termenv_read(RolltuiTermEnv* e) {
   e->kitty_window_id = nz(getenv("KITTY_WINDOW_ID"));
   e->konsole_version = nz(getenv("KONSOLE_VERSION"));
   e->wt_session = nz(getenv("WT_SESSION"));
+  e->vte_version = nz(getenv("VTE_VERSION"));
+  e->force_console = nz(getenv("ROLLTUI_CONSOLE"));
   e->force_images = nz(getenv("ROLLTUI_IMAGES"));
   e->zellij = nz(getenv("ZELLIJ"));
   e->nvim = nz(getenv("NVIM"));
@@ -105,6 +107,30 @@ static int mode_from_colorfgbg(const char* s) {
   return (bg <= 6 || bg == 8) ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT;
 }
 
+/* `s` starts with `p`, case aside. */
+static int starts_ci(const char* s, const char* p) {
+  for (; *p; ++s, ++p)
+    if (!*s || ((*s | 0x20) != (*p | 0x20))) return 0;
+  return 1;
+}
+
+int rolltui_termfacts_underline_shapes(const RolltuiTermEnv* e, const char* name) {
+  static const char* const kNames[] = {"kitty", "ghostty", "wezterm", "foot", "iterm2", "iTerm.app", "alacritty", "vscode", "mintty"};
+  const char* t = e && e->term ? e->term : "";
+  size_t i;
+  if (e && rolltui_termenv_multiplexed(e)) return 0;
+  if (name)
+    for (i = 0; i < sizeof kNames / sizeof kNames[0]; ++i)
+      if (starts_ci(name, kNames[i])) return 1;
+  if (!e) return 0;
+  if (strstr(t, "kitty") || strstr(t, "ghostty") || strncmp(t, "foot", 4) == 0 || strncmp(t, "alacritty", 9) == 0 ||
+      strncmp(t, "wezterm", 7) == 0)
+    return 1;
+  if (e->kitty_window_id || e->wt_session) return 1;
+  if (e->vte_version && atoi(e->vte_version) >= 5200) return 1; /* VTE 0.52 drew the shapes first */
+  return 0;
+}
+
 void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
   int forced, m;
   memset(f, 0, sizeof *f);
@@ -167,6 +193,9 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
       if (v) f->images = (unsigned char)v, f->images_source = ROLLTUI_FACT_FORCED;
     }
   }
+
+  /* THE LINUX CONSOLE, by its TERM or the person's word; its tty's name is the terminal's to read (`rolltui_os_tty_is_console`) */
+  f->console = e->force_console ? (unsigned char)eq(e->force_console, "1") : (unsigned char)(e->term && strncmp(e->term, "linux", 5) == 0);
 
   /* NAME, for a person reading `dirktui check-terminal`. */
   if (e->term_program) {
@@ -562,7 +591,16 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
       f->depth_source = ROLLTUI_FACT_PROBE;
     }
   }
-  if ((asked & ROLLTUI_TERMQ_VERSION) && r->version[0]) snprintf(f->name, sizeof f->name, "%s", r->version);
+  if ((asked & ROLLTUI_TERMQ_VERSION) && r->version[0]) {
+    snprintf(f->name, sizeof f->name, "%s", r->version);
+    if (f->images_source == ROLLTUI_FACT_DEFAULT) { /* PICTURES BY WHAT THE TERMINAL SAYS IT IS, where nothing in the environment said */
+      const char* v = r->version;
+      if (starts_ci(v, "kitty") || starts_ci(v, "ghostty")) f->images = ROLLTUI_IMAGES_KITTY, f->images_source = ROLLTUI_FACT_PROBE;
+      else if (starts_ci(v, "WezTerm") || starts_ci(v, "iTerm2")) f->images = ROLLTUI_IMAGES_ITERM2, f->images_source = ROLLTUI_FACT_PROBE;
+      else if (starts_ci(v, "foot") || starts_ci(v, "mlterm") || starts_ci(v, "Konsole"))
+        f->images = ROLLTUI_IMAGES_SIXEL, f->images_source = ROLLTUI_FACT_PROBE;
+    }
+  }
 }
 
 /* ---- remembered answers --------------------------------------------------------------------- */

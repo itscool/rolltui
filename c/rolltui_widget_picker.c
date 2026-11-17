@@ -1045,6 +1045,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   const RolltuiStyle bar_role = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SCROLLBAR);
   const int show_highlight = p->opt.highlight;
   const int hr = head_rows(p);
+  const unsigned char shape = glyphs && !ambiguous_wide ? glyphs->cursor : ROLLTUI_CURSOR_FILL;
   p->faded_cells = 0;
   d.p = p;
   d.f = f;
@@ -1193,17 +1194,24 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
                                           p->hover_y >= p->pv_rect.y && p->hover_y < p->pv_rect.y + p->pv_rect.h);
       st = is_hover ? hover
                     : is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
+      if (is_sel && is_focus_col && show_highlight && !is_hover && shape != ROLLTUI_CURSOR_FILL)
+        rolltui_cursor_text_style(&here, d.ground, shape, &st);
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
       rolltui_str_set(&p->s2, e->name.p ? e->name.p : "", e->name.n);
       if (e->is_dir && !is_bundle(e)) rolltui_str_append(&p->s2, " \xE2\x80\xBA", 4);
-      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1 - extras_width(p), &p->s1);
+      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1 - extras_width(p) - (shape != ROLLTUI_CURSOR_FILL), &p->s1);
       if (is_sel && (is_focus_col || is_trail)) {
         const int fx = imax(x, d.r.x);
         const unsigned long long opened_age = p->now_ms >= p->opened_since_ms ? p->now_ms - p->opened_since_ms : 0;
         const int opened_now = ci == p->opened_col && i == p->opened_sel && opened_age < OPENED_MS;
         size_t name_n = p->s1.n;
         if (show_highlight || is_hover) fill_row(&d, fx, y, x + cw - fx, st);
+        if (is_focus_col && focused) rolltui_frame_set_cursor(f, x + 1, y, 0); /* hidden, where a screen reader looks */
+        if (is_focus_col && show_highlight && !is_hover && shape != ROLLTUI_CURSOR_FILL && fx == x) {
+          const RolltuiRect band = {x, y, cw, 1};
+          rolltui_frame_cursor_ends(f, band, here, d.ground, shape);
+        }
         if (e->is_dir && name_n >= 4 && memcmp(p->s1.p + name_n - 4, " \xE2\x80\xBA", 4) == 0) name_n -= 4;
         mark_words(&d, p->s1.p ? p->s1.p : "", name_n, x, cw, y,
                    is_focus_col ? ROLLTUI_EFFECT_STATE_PICKER_CURSOR : ROLLTUI_EFFECT_STATE_PICKER_TRAIL,

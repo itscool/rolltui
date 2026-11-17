@@ -405,6 +405,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       if (base.bg.kind == RolltuiStyleColorRaw::Kind::None || base.bg == screen) base.bg = style(m->roles.item).bg;
     }
     rolltui_frame_fill(f, m->draw, row_rect, base, nullptr, 0);
+    if (is_sel && rn->focused) rolltui_frame_set_cursor(f, a.x, y + r, 0);  // hidden, on the selection: a screen reader's, as the library's
 
     // A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. Only the foreground comes from the
     // role — the row keeps its own background, so a selected row stays one solid block.

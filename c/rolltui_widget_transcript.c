@@ -171,14 +171,7 @@ struct RolltuiTranscript {
 /* ---- small helpers ----------------------------------------------------------------------- */
 
 static RolltuiStyle overlay_style(RolltuiStyle base, RolltuiStyle over) {
-  if (over.fg.kind != 0) base.fg = over.fg;
-  if (over.bg.kind != 0) base.bg = over.bg;
-  base.bold |= over.bold;
-  base.italic |= over.italic;
-  base.underline |= over.underline;
-  base.dim |= over.dim;
-  base.reverse |= over.reverse;
-  base.strike |= over.strike;
+  rolltui_style_patch(&base, &over);
   return base;
 }
 

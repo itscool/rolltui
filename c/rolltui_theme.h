@@ -118,6 +118,14 @@ RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const Roll
 
 /* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
  * needs them. ---- */
+/* OR'd into `depth`: the terminal draws an underline's shapes (4:2 to 4:5) and its own colour (58). Without it every shape is a
+ * plain underline and the colour is the text's. */
+#define ROLLTUI_SGR_EXTENDED 0x40
+/* OR'd into `depth` for the renderer: the terminal is the Linux console (glyphs its font lacks are drawn as the nearest it has), and
+ * the terminal takes the cursor's shape (DECSCUSR). */
+#define ROLLTUI_RENDER_CONSOLE 0x20
+#define ROLLTUI_RENDER_CARET 0x10
+#define ROLLTUI_SGR_DEPTH(d) ((unsigned char)((d) & 0x0F))
 size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, size_t cap);
 /* THE SGR FROM `from` TO `to`: what changed alone (an attribute turned off by its own reset, a colour by its own code), or the whole of
  * `to` from a reset where that is shorter. 0 bytes when the two draw the same at `depth`. `cap` >= ROLLTUI_SGR_MAX. */

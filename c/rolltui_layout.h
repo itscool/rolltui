@@ -111,11 +111,6 @@ void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
-/* Draws one border with NO joining — for a widget that boxes its own content. `title` may
- * be NULL when `title_n` is 0. */
-void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
-                         RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
-                         int ambiguous_wide);
 unsigned char rolltui_widget_kind_rule(const RolltuiContext* c, size_t row);
 const char* rolltui_widget_kind_source_is(const RolltuiContext* c, size_t row, size_t* len);
 /* A C caller's pair, for the same reason every owned type here has one — both strings empty

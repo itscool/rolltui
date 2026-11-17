@@ -42,6 +42,7 @@ enum { ST_GROUND = 0, ST_ESC, ST_ESC_SKIP, ST_CSI, ST_STRING, ST_STRING_ESC };
 #define TAB 8
 
 struct RolltuiAnsiText {
+  int tab; /* the columns between tab stops (`rolltui_ansi_set_tab_width`); 0: TAB */
   AnsiLine* lines; /* a ring: `head` is the oldest */
   size_t n, cap, head, limit;
   int state;
@@ -135,6 +136,10 @@ void rolltui_ansi_clear(RolltuiAnsiText* t) {
   t->pending_cr = 0;
   t->over_pending = 0;
   push_line(t);
+}
+
+void rolltui_ansi_set_tab_width(RolltuiAnsiText* t, int columns) {
+  if (t) t->tab = columns < 1 ? 1 : columns > 16 ? 16 : columns;
 }
 
 void rolltui_ansi_set_limit(RolltuiAnsiText* t, size_t max_lines) {
@@ -275,7 +280,7 @@ static void sgr(RolltuiAnsiText* t, const char* p, size_t n) {
     RolltuiStyleColorRaw* target = NULL;
     if (x == 38 || x == 48 || x == 58) {
       size_t j = i + 1;
-      target = x == 38 ? &t->cur.fg : x == 48 ? &t->cur.bg : NULL; /* 58, the underline's colour, is read and dropped */
+      target = x == 38 ? &t->cur.fg : x == 48 ? &t->cur.bg : &t->cur.underline_color;
       if (j < k && v[j] == 5 && j + 1 < k) {
         if (target) colour_indexed(target, v[j + 1]);
         i = j + 1;
@@ -306,12 +311,21 @@ static void sgr(RolltuiAnsiText* t, const char* p, size_t n) {
       case 1: t->cur.bold = 1; break;
       case 2: t->cur.dim = 1; break;
       case 3: t->cur.italic = 1; break;
-      case 4:
-        t->cur.underline = !(i + 1 < k && sub[i + 1] && v[i + 1] == 0);
+      case 4: /* 4, or 4:N with its shape: 4:0 none, 4:1 to 4:5 single, double, curly, dotted, dashed */
+        if (i + 1 < k && sub[i + 1]) t->cur.underline = (unsigned char)(v[i + 1] > ROLLTUI_UNDERLINE_DASHED ? 1 : v[i + 1]);
+        else t->cur.underline = 1;
         break;
+      case 5: t->cur.blink = 1; break;
+      case 6: t->cur.blink = 2; break;
       case 7: t->cur.reverse = 1; break;
+      case 8: t->cur.hidden = 1; break;
       case 9: t->cur.strike = 1; break;
-      case 21: t->cur.underline = 1; break;
+      case 21: t->cur.underline = ROLLTUI_UNDERLINE_DOUBLE; break;
+      case 25: t->cur.blink = 0; break;
+      case 28: t->cur.hidden = 0; break;
+      case 53: t->cur.overline = 1; break;
+      case 55: t->cur.overline = 0; break;
+      case 59: memset(&t->cur.underline_color, 0, sizeof t->cur.underline_color); break;
       case 22: t->cur.bold = 0; t->cur.dim = 0; break;
       case 23: t->cur.italic = 0; break;
       case 24: t->cur.underline = 0; break;
@@ -324,7 +338,7 @@ static void sgr(RolltuiAnsiText* t, const char* p, size_t n) {
         else if (x >= 40 && x <= 47) colour_indexed(&t->cur.bg, x - 40);
         else if (x >= 90 && x <= 97) colour_indexed(&t->cur.fg, x - 90 + 8);
         else if (x >= 100 && x <= 107) colour_indexed(&t->cur.bg, x - 100 + 8);
-        break; /* blink, conceal, fonts: read and dropped */
+        break; /* fonts, framed, encircled: read and dropped */
     }
   }
 }
@@ -382,7 +396,8 @@ static void ground(RolltuiAnsiText* t, unsigned char b) {
     backspace(t);
   } else if (b == '\t') {
     const int cols = last_line(t)->cols;
-    const int stop = (cols / TAB + 1) * TAB;
+    const int tw = t->tab > 0 ? t->tab : TAB;
+    const int stop = (cols / tw + 1) * tw;
     int i;
     if (t->pending_cr) {
       line_reset(last_line(t));
@@ -460,8 +475,12 @@ static RolltuiStyle over_base(const RolltuiStyle* run, const RolltuiStyle* base)
   s.bold |= run->bold;
   s.dim |= run->dim;
   s.italic |= run->italic;
-  s.underline |= run->underline;
+  if (run->underline) s.underline = run->underline;
+  if (run->underline_color.kind) s.underline_color = run->underline_color;
   s.strike |= run->strike;
+  s.blink |= run->blink;
+  s.hidden |= run->hidden;
+  s.overline |= run->overline;
   if (run->reverse) { /* reversed: the colours trade places, the base's standing in for one the run did not give */
     const RolltuiStyleColorRaw fg = s.fg;
     s.fg = s.bg;

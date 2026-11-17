@@ -1452,6 +1452,46 @@ int main() {
     rolltui_menu_free(m);
   }
 
+  // ---- THE CURSOR ROW'S SHAPE: caps or edges in the inset's cells, the theme's choice -----------------------------------------------
+  {
+    const char* text = R"({ "id": "root", "label": "m", "items": [ { "id": "a", "label": "Alpha" }, { "id": "b", "label": "Beta" } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    rolltui_menu_parse_json(text, std::strlen(text), &root, &rep);
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+    RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
+    auto drawn = [&](unsigned char shape, int inset) {
+      RolltuiMenuOptions o = *rolltui_menu_options(m);
+      o.inset = inset;
+      o.cursor_shape = shape;
+      rolltui_menu_set_options_struct(m, &o);
+      rolltui_menu_layout(m, RolltuiRect{0, 0, 20, 4});
+      Frame f(20, 4);
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      return row(f, 0);
+    };
+    check(drawn(ROLLTUI_CURSOR_CAPS, 1).rfind("\xE2\x96\x90" "Alpha", 0) == 0 && drawn(ROLLTUI_CURSOR_CAPS, 1).find("\xE2\x96\x8C") != std::string::npos,
+          "caps: the selected row's ends rounded in the inset's cells [" + drawn(ROLLTUI_CURSOR_CAPS, 1) + "]");
+    check(drawn(ROLLTUI_CURSOR_EDGES, 1).rfind("\xE2\x96\x8C" "Alpha", 0) == 0, "edges: a bar at each end");
+    check(drawn(ROLLTUI_CURSOR_CAPS, 0).rfind("Alpha", 0) == 0, "…and with no inset to draw them in, the row is filled as always");
+    check(drawn(ROLLTUI_CURSOR_FILL, 1).rfind(" Alpha", 0) == 0, "fill, the default: no ends");
+    rolltui_effect_map_free(fx);
+    rolltui_menu_free(m);
+    // a theme names the shape among its glyphs
+    RolltuiStr err{};
+    static const char kGlyphs[] = R"({ "glyphs": { "cursor": "edges" } })";
+    RolltuiJsonValue* j = rolltui_json_parse(kGlyphs, std::strlen(kGlyphs), &err);
+    rolltui_str_free(&err);
+    RolltuiScrollbarGlyphs g{};
+    check(rolltui_theme_scrollbar_glyphs(j, &g) == 1 && g.cursor == ROLLTUI_CURSOR_EDGES, "a theme's glyphs.cursor names the shape");
+    rolltui_json_free(j);
+  }
+
   // ---- SECTIONS AND SEPARATORS: how a level is organised, and nothing else -----------------
   // A section is a heading with a rule after it; a separator is the rule alone. Neither takes
   // the cursor, a click, a filter match or a palette entry — Down from the row above a heading

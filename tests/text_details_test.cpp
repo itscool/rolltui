@@ -13,6 +13,7 @@
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui_test.hpp"
 #include "vt_model.hpp"
@@ -213,6 +214,280 @@ void test_strike() {
   rolltui_effect_map_free(fx);
 }
 
+// ---- an underline's shapes and colour, blink, hidden and overline -------------------------------------------------------------------
+
+std::string sgr_of(const RolltuiStyle& st, unsigned char depth) {
+  char b[ROLLTUI_SGR_MAX];
+  const std::size_t n = rolltui_sgr(&st, depth, b, sizeof b);
+  return std::string(b, n);
+}
+
+void test_attributes() {
+  RolltuiStyle curl{};
+  curl.underline = ROLLTUI_UNDERLINE_CURLY;
+  curl.underline_color.kind = RolltuiStyleColorRaw::Kind::Rgb;
+  curl.underline_color.r = 255;
+  const unsigned char ext = ROLLTUI_DEPTH_TRUECOLOR | ROLLTUI_SGR_EXTENDED;
+  check(sgr_of(curl, ROLLTUI_DEPTH_TRUECOLOR) == "\x1b[0;4m", "a curly underline is a plain one where the terminal draws no shapes");
+  check(sgr_of(curl, ext) == "\x1b[0;4:3;58:2::255:0:0m", "…and 4:3 in its own colour, 58, where it does");
+  check(sgr_of(curl, ROLLTUI_DEPTH_MONO | ROLLTUI_SGR_EXTENDED) == "\x1b[0;4:3m", "at mono, the shape and no colour");
+  RolltuiStyle other{};
+  other.blink = 1;
+  other.hidden = 1;
+  other.overline = 1;
+  check(sgr_of(other, ROLLTUI_DEPTH_TRUECOLOR) == "\x1b[0;5;8;53m", "blink is 5, hidden 8, overline 53");
+  other.blink = 2;
+  check(sgr_of(other, ROLLTUI_DEPTH_TRUECOLOR).find(";6") != std::string::npos, "a rapid blink is 6");
+  char b[ROLLTUI_SGR_MAX];
+  RolltuiStyle plain{};
+  std::size_t d = rolltui_sgr_delta(&curl, &plain, ext, b, sizeof b);
+  check(std::string(b, d) == "\x1b[24;59m" || std::string(b, d) == "\x1b[0m", "the underline and its colour go by 24 and 59, or a reset");
+  RolltuiStyle single = curl;
+  single.underline = ROLLTUI_UNDERLINE_SINGLE;
+  d = rolltui_sgr_delta(&curl, &single, ext, b, sizeof b);
+  check(std::string(b, d) == "\x1b[4m", "a curly underline made plain sends 4 alone [" + std::string(b, d) + "]");
+  d = rolltui_sgr_delta(&curl, &single, ROLLTUI_DEPTH_TRUECOLOR, b, sizeof b);
+  check(d == 0, "…and where shapes are not drawn the two are the same, and nothing is sent");
+  RolltuiStyle longest{};
+  longest.bold = longest.dim = longest.italic = longest.reverse = longest.strike = longest.hidden = longest.overline = 1;
+  longest.blink = 2;
+  longest.underline = ROLLTUI_UNDERLINE_DASHED;
+  for (RolltuiStyleColorRaw* c : {&longest.fg, &longest.bg, &longest.underline_color}) {
+    c->kind = RolltuiStyleColorRaw::Kind::Rgb;
+    c->r = c->g = c->b = 255;
+  }
+  check(sgr_of(longest, ext).size() == 77, "the longest sequence is 77 bytes, inside ROLLTUI_SGR_MAX");
+
+  // ANOTHER PROGRAM'S: the shapes, the colour, blink, hidden and overline are read
+  RolltuiAnsiText* at = rolltui_ansi_new();
+  static const char kRich[] = "\x1b[4:3;58:2::1:2:3mA\x1b[4:0;59;5mB\x1b[25;8mC\x1b[28;53mD\x1b[55;21mE\x1b[0mF\n";
+  rolltui_ansi_feed(at, kRich, sizeof kRich - 1);
+  RolltuiFrame* f = rolltui_frame_new(8, 1, plain);
+  rolltui_ansi_draw(at, f, RolltuiRect{0, 0, 8, 1}, 0, 0, 0, plain, 0);
+  RolltuiCellRaw c[6]{};
+  for (int x = 0; x < 6; ++x) rolltui_frame_cell(f, x, 0, &c[x]);
+  check(c[0].style.underline == ROLLTUI_UNDERLINE_CURLY && c[0].style.underline_color.r == 1 && c[0].style.underline_color.b == 3,
+        "another program's 4:3 and 58 are a curly underline in its colour");
+  check(!c[1].style.underline && c[1].style.blink == 1 && c[1].style.underline_color.kind == RolltuiStyleColorRaw::Kind::None, "4:0 ends it, 59 drops its colour, 5 blinks");
+  check(!c[2].style.blink && c[2].style.hidden, "25 ends the blink, 8 hides");
+  check(!c[3].style.hidden && c[3].style.overline, "28 shows, 53 draws a line over");
+  check(!c[4].style.overline && c[4].style.underline == ROLLTUI_UNDERLINE_DOUBLE, "55 ends it, 21 is a double underline");
+  check(!c[5].style.underline && !c[5].style.blink, "and 0 resets every one");
+  rolltui_frame_free(f);
+  rolltui_ansi_free(at);
+
+  // A THEME FILE names a shape, an underline's colour, blink and overline, and writes them back the same
+  static const char kTheme[] = R"({ "name": "t", "roles": { "error": { "fg": "#ff0000", "underline": "curly", "underline_color": "#00ff00",
+    "blink": true, "overline": true }, "text": { "underline": { "dark": "dotted", "light": true } } } })";
+  RolltuiStr err{};
+  RolltuiJsonValue* root = rolltui_json_parse(kTheme, sizeof kTheme - 1, &err);
+  rolltui_str_free(&err);
+  RolltuiStyle dark[ROLLTUI_ROLE_COUNT]{}, light[ROLLTUI_ROLE_COUNT]{};
+  RolltuiStr name{};
+  RolltuiThemeReport rep{};
+  RolltuiEffectMap* e1 = rolltui_theme_load(root, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), dark, &name, &rep);
+  check(rep.bad_values_n == 0, "the theme's attributes are all read without complaint");
+  rolltui_theme_report_release(&rep);
+  RolltuiThemeReport rep2{};
+  RolltuiEffectMap* e2 = rolltui_theme_load(root, ROLLTUI_MODE_LIGHT, rolltui_theme_default_vocab(), light, &name, &rep2);
+  rolltui_theme_report_release(&rep2);
+  const RolltuiStyle& er = dark[ROLLTUI_ROLE_ERROR];
+  check(er.underline == ROLLTUI_UNDERLINE_CURLY && er.underline_color.g == 255 && er.blink && er.overline,
+        "a role's underline shape, its colour, blink and overline");
+  check(dark[ROLLTUI_ROLE_TEXT].underline == ROLLTUI_UNDERLINE_DOTTED && light[ROLLTUI_ROLE_TEXT].underline == ROLLTUI_UNDERLINE_SINGLE,
+        "…per variant: dotted in the dark, plain in the light");
+  RolltuiJsonValue* back = rolltui_theme_dump(dark, e1, light, e2, rolltui_theme_default_vocab());
+  RolltuiStr text{};
+  rolltui_json_dump(back, 0, &text);
+  const std::string out = str_of(text);
+  check(out.find("\"underline\":\"curly\"") != std::string::npos && out.find("\"underline_color\":\"#00ff00\"") != std::string::npos &&
+            out.find("\"blink\":true") != std::string::npos && out.find("\"overline\":true") != std::string::npos,
+        "…and written back the same way");
+  check(out.find("\"dark\":\"dotted\"") != std::string::npos, "…a shape per variant too");
+  rolltui_str_free(&text);
+  rolltui_json_free(back);
+  rolltui_json_free(root);
+  rolltui_str_free(&name);
+  rolltui_effect_map_free(e1);
+  rolltui_effect_map_free(e2);
+
+  // THE PATCH: a shape is replaced, never OR'd into another
+  RolltuiStyle base{}, over{};
+  base.underline = ROLLTUI_UNDERLINE_CURLY;
+  base.bold = 1;
+  over.underline = ROLLTUI_UNDERLINE_DOUBLE;
+  over.overline = 1;
+  rolltui_style_patch(&base, &over);
+  check(base.underline == ROLLTUI_UNDERLINE_DOUBLE && base.bold && base.overline, "a patched underline is the patch's shape; the rest add");
+  RolltuiStyle none{};
+  rolltui_style_patch(&base, &none);
+  check(base.underline == ROLLTUI_UNDERLINE_DOUBLE, "…and a patch with none leaves the shape as it was");
+
+  // WHICH TERMINALS draw the shapes, by name
+  RolltuiTermEnv env{};
+  env.term = "xterm-kitty";
+  check(rolltui_termfacts_underline_shapes(&env, "xterm-kitty"), "kitty draws the shapes");
+  env.term = "xterm-256color";
+  check(!rolltui_termfacts_underline_shapes(&env, "XTerm(380)"), "xterm does not");
+  check(rolltui_termfacts_underline_shapes(&env, "WezTerm 20240203"), "what the terminal answered to XTVERSION decides");
+  env.vte_version = "7600";
+  check(rolltui_termfacts_underline_shapes(&env, "xterm-256color"), "VTE from 0.52 does");
+  env.tmux = "/tmp/tmux-501/default,1,0";
+  check(!rolltui_termfacts_underline_shapes(&env, "kitty(0.32)"), "behind tmux, plain underlines");
+}
+
+// ---- cuts with their own rules, shortened paths, a line of spans, a hotkey's letter -------------------------------------------------
+
+std::string row_text(const RolltuiFrame* f, int y, int w) {
+  std::string out;
+  for (int x = 0; x < w; ++x) {
+    RolltuiCellRaw c{};
+    rolltui_frame_cell(f, x, y, &c);
+    if (c.continuation) continue;
+    out.append(c.bytes, c.len);
+  }
+  return out;
+}
+
+void test_text_rules() {
+  RolltuiDrawScratch* ds = ds2();
+  RolltuiStr out{};
+  RolltuiCutOptions co{};
+  co.keep_extension = 1;
+  rolltui_text_cut_with(ds, "a_long_report_name.pdf", 22, 14, &co, 0, &out);
+  check(str_of(out) == "a_long_re\xE2\x80\xA6.pdf", "a name cut at its end keeps its extension [" + str_of(out) + "]");
+  co.where = ROLLTUI_CUT_MIDDLE;
+  rolltui_text_cut_with(ds, "a_long_report_name.pdf", 22, 14, &co, 0, &out);
+  check(str_of(out) == "a_lon\xE2\x80\xA6name.pdf", "…and in its middle, the head given the odd cell [" + str_of(out) + "]");
+  co = RolltuiCutOptions{};
+  co.where = ROLLTUI_CUT_MIDDLE;
+  co.split = 25;
+  co.marker = "~";
+  rolltui_text_cut_with(ds, "abcdefghijklmnopqrst", 20, 9, &co, 0, &out);
+  check(str_of(out) == "ab~opqrst", "a marker of its own, and a split that gives the head a quarter of the room [" + str_of(out) + "]");
+  co = RolltuiCutOptions{};
+  rolltui_text_cut_with(ds, ".bashrc", 7, 20, &co, 0, &out);
+  check(str_of(out) == ".bashrc", "text that fits is left whole");
+  co.keep_extension = 1;
+  rolltui_text_cut_with(ds, ".bashrc_with_a_long_tail", 24, 10, &co, 0, &out);
+  check(str_of(out).size() > 0 && str_of(out).find(".bashrc") == 0, "a name that starts with its dot has no extension to keep [" + str_of(out) + "]");
+  rolltui_path_shorten(ds, "~/git/rolltui/c/frame.c", 23, 15, 0, &out);
+  check(str_of(out) == "~/g/r/c/frame.c", "a path shortens each folder to its first letter [" + str_of(out) + "]");
+  rolltui_path_shorten(ds, "~/git/rolltui/c/frame.c", 23, 19, 0, &out);
+  check(str_of(out) == "~/g/rolltui/c/frame.c" || str_of(out) == "~/g/r/c/frame.c", "…from the left, only as far as it must [" + str_of(out) + "]");
+  rolltui_path_shorten(ds, "/home/me/.config/app/settings.json", 34, 23, 0, &out);
+  check(str_of(out) == "/h/m/.c/a/settings.json", "…a leading dot kept [" + str_of(out) + "]");
+  rolltui_path_shorten(ds, "/a/b/a_very_long_file_name.txt", 30, 16, 0, &out);
+  check(str_of(out).find("/a/b/") == 0 && str_of(out).size() > 4 && str_of(out).substr(str_of(out).size() - 4) == ".txt",
+        "…and then the name cut in its middle, its extension kept [" + str_of(out) + "]");
+  rolltui_str_free(&out);
+
+  RolltuiStyle plain{}, bold{};
+  bold.bold = 1;
+  RolltuiFrame* f = rolltui_frame_new(12, 3, plain);
+  RolltuiTextSpan spans[] = {{"one ", 4, plain}, {"two", 3, bold}};
+  check(rolltui_frame_put_spans(f, ds, RolltuiRect{0, 0, 12, 1}, spans, 2, ROLLTUI_ALIGN_RIGHT, ROLLTUI_OVERFLOW_CLIP, 0) == 1 &&
+            row_text(f, 0, 12) == "     one two",
+        "spans at the right of their row");
+  RolltuiCellRaw cell{};
+  rolltui_frame_cell(f, 9, 0, &cell);
+  check(cell.style.bold, "…each in its own style");
+  rolltui_frame_put_spans(f, ds, RolltuiRect{0, 1, 12, 1}, spans, 2, ROLLTUI_ALIGN_CENTER, ROLLTUI_OVERFLOW_CLIP, 0);
+  check(row_text(f, 1, 12) == "  one two   ", "…in its middle [" + row_text(f, 1, 12) + "]");
+  rolltui_frame_free(f);
+  f = rolltui_frame_new(6, 3, plain);
+  check(rolltui_frame_put_spans(f, ds, RolltuiRect{0, 0, 6, 1}, spans, 2, ROLLTUI_ALIGN_LEFT, ROLLTUI_OVERFLOW_ELLIPSIS, 0) == 1 &&
+            row_text(f, 0, 6) == "one t\xE2\x80\xA6",
+        "wider than its row: cut with an ellipsis [" + row_text(f, 0, 6) + "]");
+  rolltui_frame_free(f);
+  f = rolltui_frame_new(6, 3, plain);
+  check(rolltui_frame_put_spans(f, ds, RolltuiRect{0, 0, 6, 3}, spans, 2, ROLLTUI_ALIGN_LEFT, ROLLTUI_OVERFLOW_WRAP, 0) == 2 &&
+            row_text(f, 0, 6).find("one") == 0 && row_text(f, 1, 6).find("two") == 0,
+        "…or wrapped at the word onto the next row");
+  rolltui_frame_cell(f, 0, 1, &cell);
+  check(cell.style.bold, "…the wrapped word still in its span's style");
+  rolltui_frame_free(f);
+
+  std::size_t n = 0;
+  check(rolltui_hotkey_at("Save as", 7, 'a', &n) == 5 && n == 1, "a hotkey's letter: the first word that starts with it");
+  check(rolltui_hotkey_at("Exit", 4, 'x', &n) == 1, "…else the first place it is at all");
+  check(rolltui_hotkey_at("Open", 4, 'O', &n) == 0, "…in either case");
+  check(rolltui_hotkey_at("Open", 4, 'z', &n) == static_cast<std::size_t>(-1), "…and none when the label has no such letter");
+
+  RolltuiAnsiText* at = rolltui_ansi_new();
+  rolltui_ansi_set_tab_width(at, 4);
+  rolltui_ansi_feed(at, "a\tb\n", 4);
+  std::size_t ln = 0;
+  const char* line = rolltui_ansi_line(at, 0, &ln);
+  check(std::string(line, ln) == "a   b", "another program's tab reaches the tab stop set for it [" + std::string(line, ln) + "]");
+  rolltui_ansi_free(at);
+}
+
+// ---- the Linux console's glyphs, the cursor's shape -------------------------------------------------------------------------------
+
+void test_console_and_caret() {
+  RolltuiStyle plain{};
+  RolltuiFrame* f = rolltui_frame_new(8, 1, plain);
+  rolltui_frame_put_text(f, ds2(), 0, 0, "\xE2\x95\xAD\xE2\x94\x81\xE2\xA3\xBF\xE2\x96\x9F\xE2\x80\xA6\xE2\x9C\x93" "a",
+                         std::strlen("\xE2\x95\xAD\xE2\x94\x81\xE2\xA3\xBF\xE2\x96\x9F\xE2\x80\xA6\xE2\x9C\x93" "a"), plain, 8, 0, 0);
+  RolltuiStr bytes{};
+  rolltui_render_full(f, ROLLTUI_DEPTH_ANSI16 | ROLLTUI_RENDER_CONSOLE, &bytes);
+  std::string out = str_of(bytes);
+  check(out.find("\xE2\x94\x8C\xE2\x95\x90\xE2\x96\x88\xE2\x96\x88~\xE2\x88\x9A" "a") != std::string::npos,
+        "on the Linux console: a rounded corner square, a heavy line double, full braille and a quadrant solid, the ellipsis ~, a tick √");
+  rolltui_str_clear(&bytes);
+  rolltui_render_full(f, ROLLTUI_DEPTH_ANSI16, &bytes);
+  check(str_of(bytes).find("\xE2\x95\xAD\xE2\x94\x81\xE2\xA3\xBF") != std::string::npos, "…and anywhere else, each as it is");
+  rolltui_str_clear(&bytes);
+  rolltui_frame_clear(f, plain);
+  static const char kDots[] = "\xE2\xA0\x81\xE2\xA0\x83\xE2\xA0\x87"; /* one dot, two, three */
+  rolltui_frame_put_text(f, ds2(), 0, 0, kDots, sizeof kDots - 1, plain, 8, 0, 0);
+  rolltui_render_full(f, ROLLTUI_DEPTH_ANSI16 | ROLLTUI_RENDER_CONSOLE, &bytes);
+  check(str_of(bytes).find("\xE2\x96\x91\xE2\x96\x91\xE2\x96\x92") != std::string::npos, "braille is a shade by how many of its dots are set");
+  rolltui_str_clear(&bytes);
+  // THE CURSOR'S SHAPE: sent where the terminal takes it, again only when it changes, and put back to the terminal's own
+  RolltuiFrame* g = rolltui_frame_new(8, 1, plain);
+  rolltui_frame_set_cursor(g, 2, 0, 1);
+  rolltui_frame_set_cursor_shape(g, ROLLTUI_CARET_BAR);
+  rolltui_render_full(g, ROLLTUI_DEPTH_TRUECOLOR | ROLLTUI_RENDER_CARET, &bytes);
+  check(str_of(bytes).find("\x1b[6 q") != std::string::npos, "a bar cursor is CSI 6 SP q");
+  rolltui_str_clear(&bytes);
+  rolltui_render_full(g, ROLLTUI_DEPTH_TRUECOLOR, &bytes);
+  check(str_of(bytes).find(" q") == std::string::npos, "…never sent where the terminal does not take it");
+  rolltui_str_clear(&bytes);
+  RolltuiFrame* h = rolltui_frame_clone(g);
+  rolltui_render_diff(g, h, ROLLTUI_DEPTH_TRUECOLOR | ROLLTUI_RENDER_CARET, &bytes);
+  check(str_of(bytes).find(" q") == std::string::npos, "…not sent again while it stays");
+  rolltui_frame_set_cursor_shape(h, ROLLTUI_CARET_DEFAULT);
+  rolltui_render_diff(g, h, ROLLTUI_DEPTH_TRUECOLOR | ROLLTUI_RENDER_CARET, &bytes);
+  check(str_of(bytes).find("\x1b[0 q") != std::string::npos, "…and the terminal's own put back when no field asks for one");
+  rolltui_str_free(&bytes);
+  rolltui_frame_free(f);
+  rolltui_frame_free(g);
+  rolltui_frame_free(h);
+  // THE INPUT'S CARET by its mode: a bar while keys type, a block while they are actions
+  RolltuiInput* in = rolltui_input_new();
+  rolltui_input_layout(in, RolltuiRect{0, 0, 10, 1});
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiInputRoles roles{};
+  RolltuiFrame* c = rolltui_frame_new(10, 1, plain);
+  rolltui_input_draw(in, c, ds2(), styles, &roles, 1);
+  check(rolltui_frame_cursor_shape(c) == ROLLTUI_CARET_BAR, "a field that types draws a bar caret");
+  RolltuiInputOptions o;
+  rolltui_input_options_copy(&o, rolltui_input_options(in));
+  o.insert_typed = 0;
+  rolltui_input_set_options(in, &o);
+  rolltui_frame_set_cursor_shape(c, 0);
+  rolltui_input_draw(in, c, ds2(), styles, &roles, 1);
+  check(rolltui_frame_cursor_shape(c) == ROLLTUI_CARET_BLOCK, "…a field whose keys are actions, a block");
+  o.caret = ROLLTUI_CARET_UNDERLINE_BLINK;
+  rolltui_input_set_options(in, &o);
+  rolltui_input_draw(in, c, ds2(), styles, &roles, 1);
+  check(rolltui_frame_cursor_shape(c) == ROLLTUI_CARET_UNDERLINE_BLINK, "…and a host's own choice over either");
+  rolltui_frame_free(c);
+  rolltui_input_free(in);
+}
+
 // ---- a selection that dims when keys go elsewhere -----------------------------------------------------------------------------------
 
 RolltuiStyle style_at(const RolltuiFrame* f, int x, int y) {
@@ -303,6 +578,9 @@ int main() {
   test_cut();
   test_footers();
   test_strike();
+  test_attributes();
+  test_text_rules();
+  test_console_and_caret();
   test_away();
   return testkit::report("text_details_test");
 }

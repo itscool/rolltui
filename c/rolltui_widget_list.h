@@ -61,6 +61,8 @@ void rolltui_list_freeze(RolltuiList* l, int frozen);
 /* THE CLOCK, before a draw: a drag at the view's edge scrolls on it, "loading" waits for it, changed rows settle by it. Returns
  * how soon the list wants its next frame: milliseconds, or -1. */
 int rolltui_list_tick(RolltuiList* l, unsigned long long now_ms);
+/* The cursor row's shape (ROLLTUI_CURSOR_*), from the theme: CAPS and EDGES keep a cell clear at each side for its ends. */
+void rolltui_list_set_cursor_shape(RolltuiList* l, unsigned char shape);
 /* Whether `action` means something to the list as it is now: back with nothing to back out of, a visual swap outside a visual
  * range and a row move in a list that does not move rows do not, so their keys stay the program's. */
 int rolltui_list_can(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t len);

@@ -50,6 +50,7 @@ struct RolltuiTerminal {
   int last_press_x, last_press_y, last_press_button; /* the press a second one is paired with */
   unsigned long long last_press_ms;                   /* 0: none */
   RolltuiOsTty* os; /* the input, the output, the saved mode and the wake channel */
+  int shaped;       /* a frame set the cursor's shape: leaving puts the terminal's own back */
   int tty;
   int entered;
   int w, h;
@@ -526,6 +527,10 @@ static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts) {
   t->timeout_ms = 80;
   rolltui_termenv_read(&t->env);
   rolltui_termfacts_from_env(&t->env, &t->facts);
+  if (!t->env.force_console && !t->facts.console && rolltui_os_tty_is_console(t->os)) { /* the console under another TERM */
+    t->facts.console = 1;
+    if (t->facts.depth_source != ROLLTUI_FACT_FORCED && t->facts.depth > ROLLTUI_DEPTH_ANSI16) t->facts.depth = ROLLTUI_DEPTH_ANSI16;
+  }
   if (opts->images >= ROLLTUI_IMAGES_BLOCKS && opts->images <= ROLLTUI_IMAGES_SIXEL) { /* the host's word, which is the person's */
     t->facts.images = opts->images;
     t->facts.images_source = ROLLTUI_FACT_FORCED;
@@ -790,6 +795,13 @@ static unsigned char present_depth(const RolltuiTerminal* t) {
   return (unsigned char)(t->depth_override >= 0 ? t->depth_override : t->facts.depth);
 }
 
+/* What the renderer may send besides the depth: an underline's shapes and colour where the terminal draws them; the cursor's shape;
+ * the console's own glyphs in place of those its font lacks. */
+static unsigned char sgr_extras(const RolltuiTerminal* t) {
+  if (t->facts.console) return ROLLTUI_RENDER_CONSOLE;
+  return (unsigned char)((rolltui_termfacts_underline_shapes(&t->env, t->facts.name) ? ROLLTUI_SGR_EXTENDED : 0) | ROLLTUI_RENDER_CARET);
+}
+
 /* ---- the inline region ---------------------------------------------------------------------
  * Drawn in the normal screen from the row the cursor was on, `shown` rows tall: the height of the
  * frame presented. Its top is a screen row, known exactly because nothing but this program writes
@@ -898,7 +910,7 @@ void rolltui_terminal_commit(RolltuiTerminal* t, const RolltuiFrame* lines) {
     t->sync_open = 1;
   }
   put_row(&out, t->top, "\x1b[J"); /* the lines take the region's place; it is drawn again below them */
-  rows = rolltui_render_lines(lines, rolltui_termfacts_clamp_depth(present_depth(t)), t->w, 1, &out);
+  rows = rolltui_render_lines(lines, (unsigned char)(rolltui_termfacts_clamp_depth(present_depth(t)) | sgr_extras(t)), t->w, 1, &out);
   t->top += rows;
   if (t->top > t->h - 1) t->top = t->h - 1; /* past the bottom the screen scrolled */
   t->shown = 0;
@@ -1023,8 +1035,13 @@ void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* sc
   if (sync && !opened) rolltui_str_append(scratch, SYNC_BEGIN, sizeof SYNC_BEGIN - 1);
   if (t->tty) images_before(t, s, next, scratch);
   if (inl) inline_place(t, s, scratch);
+  if (next && !t->shaped && !t->facts.console && rolltui_frame_cursor_shape(next)) { /* the shape is put back when the program leaves */
+    t->shaped = 1;
+    seq_append(t->leave_seq, &t->leave_len, "\x1b[0 q");
+    publish_leave(t);
+  }
   lead = scratch->n;
-  rolltui_swap_present_at(s, depth, inl ? t->top : 0, inl, scratch);
+  rolltui_swap_present_at(s, (unsigned char)(depth | sgr_extras(t)), inl ? t->top : 0, inl, scratch);
   if (t->tty) images_after(t, next, inl ? t->top : 0, scratch); /* `next` is the frame just drawn, now the baseline */
   if (inl && scratch->n > lead) inline_park(t, s, scratch);
   if (sync && !opened && scratch->n == sizeof SYNC_BEGIN - 1) rolltui_str_clear(scratch); /* nothing changed: nothing is sent */

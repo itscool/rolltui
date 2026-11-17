@@ -78,6 +78,8 @@ void rolltui_layout_node_release(RolltuiLayoutNode* n) {
   rolltui_str_free(&n->content);
   rolltui_str_free(&n->title);
   rolltui_str_free(&n->live_title);
+  rolltui_str_free(&n->subtitle);
+  rolltui_str_free(&n->title_parts);
   rolltui_str_free(&n->footer);
   rolltui_str_free(&n->live_footer);
   rolltui_str_free(&n->tabs);

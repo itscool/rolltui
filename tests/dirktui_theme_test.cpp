@@ -90,7 +90,9 @@ void run_keys(const fs::path& cfg, const fs::path& tree, const std::vector<std::
     pump(280);
   }
   pump(400);
-  rolltui_test::end_pty_child(master, pid, 0);
+  // ASKED TO QUIT, not killed: every key before Ctrl-Q is acted on and saved first, however loaded the machine is
+  { const ssize_t w = ::write(master, "\x11", 1); (void)w; }
+  rolltui_test::end_pty_child(master, pid, 5000);
 }
 
 std::vector<std::string> rep(std::vector<std::string> v, const std::string& k, int n) {
