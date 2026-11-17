@@ -127,6 +127,8 @@ struct RolltuiSyntax {
   Ctx* ctxs;
   size_t nctxs, ctxs_cap;
   size_t memo_total;  /* after link: every rule's regex memo slots, end to end */
+  int refs;           /* its holders: 1 at new, one more each `rolltui_syntax_share`; the last free frees it */
+  RolltuiMutex refs_lock;
   int dirty;
 };
 
@@ -181,12 +183,30 @@ static void lang_release(Lang* l) {
 RolltuiSyntax* rolltui_syntax_new(void) {
   RolltuiSyntax* s = (RolltuiSyntax*)rolltui_mem_alloc(sizeof *s);
   memset(s, 0, sizeof *s);
+  s->refs = 1;
+  rolltui_mutex_init(&s->refs_lock);
+  return s;
+}
+
+static void link_all(RolltuiSyntax* s);
+RolltuiSyntax* rolltui_syntax_share(RolltuiSyntax* s) {
+  if (!s) return NULL;
+  link_all(s); /* linked here, so a reader on another thread only reads it */
+  rolltui_mutex_lock(&s->refs_lock);
+  ++s->refs;
+  rolltui_mutex_unlock(&s->refs_lock);
   return s;
 }
 
 void rolltui_syntax_free(RolltuiSyntax* s) {
   size_t i;
+  int last;
   if (!s) return;
+  rolltui_mutex_lock(&s->refs_lock);
+  last = --s->refs <= 0;
+  rolltui_mutex_unlock(&s->refs_lock);
+  if (!last) return; /* a reader still holds it */
+  rolltui_mutex_destroy(&s->refs_lock);
   for (i = 0; i < s->nctxs; ++i) ctx_release(&s->ctxs[i]);
   for (i = 0; i < s->nlangs; ++i) lang_release(&s->langs[i]);
   rolltui_mem_free(s->ctxs);

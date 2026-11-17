@@ -775,6 +775,9 @@ ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is 
 ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture it made in an `image:` window */
 ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
 ROLLTUI_API(rolltui_windows_set_tasks, PUBLIC)  /* dirktui lends the run's workers to its preview */
+ROLLTUI_API(rolltui_windows_hold, PUBLIC)  /* KEPT: input held behind a spinner while work the person waits on runs, Escape cancelling it */
+ROLLTUI_API(rolltui_windows_release, PUBLIC)  /* KEPT: a hold ended by the host when its work has no job to watch */
+ROLLTUI_API(rolltui_windows_held, PUBLIC)  /* KEPT: whether input is held, for a host routing keys of its own */
 ROLLTUI_API(rolltui_windows_tasks, INTERNAL)  /* the built-in kinds read files on them */
 ROLLTUI_API(rolltui_tasks_workers, INTERNAL)  /* the column browser waits for a folder only when there is a worker reading it */
 ROLLTUI_API(rolltui_windows_bind_changed, PUBLIC)  /* KEPT: a host filters as a person types */
@@ -886,6 +889,10 @@ ROLLTUI_API(rolltui_tasks_start, PUBLIC)  /* KEPT: a host's own job: a search, a
 ROLLTUI_API(rolltui_tasks_cancel, PUBLIC)  /* KEPT: the selection moved on, Ctrl-C */
 ROLLTUI_API(rolltui_job_cancelled, PUBLIC)  /* KEPT: a job's work asks it between steps */
 ROLLTUI_API(rolltui_tasks_post, PUBLIC)  /* KEPT: a host's own thread hands back a result */
+ROLLTUI_API(rolltui_tasks_call, PUBLIC)  /* KEPT: a job reads what only the UI thread may touch, waiting for the answer */
+ROLLTUI_API(rolltui_job_ask, PUBLIC)  /* KEPT: a job asks the person (a password mid-command) and carries on with the answer */
+ROLLTUI_API(rolltui_tasks_answer, PUBLIC)  /* KEPT: the person's answer handed to the job that asked */
+ROLLTUI_API(rolltui_tasks_running, PUBLIC)  /* KEPT: whether a job has ended, for a host showing its own spinner */
 ROLLTUI_API(rolltui_tasks_drain, PUBLIC)  /* KEPT: a host with its own loop drains each wake */
 ROLLTUI_API(rolltui_tasks_busy, PUBLIC)  /* KEPT: busy while it is not 0 */
 ROLLTUI_API(rolltui_tasks_wait_idle, PUBLIC)  /* KEPT: what a test waits on */
@@ -1587,6 +1594,7 @@ ROLLTUI_API(rolltui_cond_broadcast, INTERNAL)
 ROLLTUI_API(rolltui_thread_start, INTERNAL)  /* a host starts work through rolltui_tasks_start */
 ROLLTUI_API(rolltui_thread_join, INTERNAL)
 ROLLTUI_API(rolltui_os_sleep_ms, INTERNAL)
+ROLLTUI_API(rolltui_os_thread_self, INTERNAL)
 ROLLTUI_API(rolltui_os_child_spawn, INTERNAL)  /* a host starts a program through rolltui_child_spawn */
 ROLLTUI_API(rolltui_os_child_read, INTERNAL)
 ROLLTUI_API(rolltui_os_child_write, INTERNAL)
@@ -1795,6 +1803,7 @@ ROLLTUI_API(rolltui_syntax_find_file, INTERNAL)
 ROLLTUI_API(rolltui_syntax_find_name, INTERNAL)
 ROLLTUI_API(rolltui_syntax_flags, INTERNAL)
 ROLLTUI_API(rolltui_syntax_free, INTERNAL)
+ROLLTUI_API(rolltui_syntax_share, INTERNAL)  /* a preview read on a worker colours what it read with the languages it holds */
 ROLLTUI_API(rolltui_syntax_language_count, INTERNAL)
 ROLLTUI_API(rolltui_syntax_language_name, INTERNAL)
 ROLLTUI_API(rolltui_syntax_md_free, INTERNAL)

@@ -43,6 +43,16 @@ typedef struct Gathered {
   long long sig_read_secs;
   RolltuiPreview* pv; /* who is waiting for it; NULL once that preview went */
   unsigned int job;
+  /* MADE READY WHERE IT WAS READ (`prepared`): the lines indexed and coloured in `syn` (a hold of its own, let go with it), or the
+   * Markdown parsed. Each OWNED, swapped into the preview at adopt. */
+  RolltuiSyntax* syn;
+  int prepared;
+  size_t* line_off;
+  size_t line_n, line_cap;
+  RolltuiHighlight* hl;
+  int hl_ok, hl_lang;
+  RolltuiMdDoc* md_doc;
+  int diagram;
 } Gathered;
 
 struct RolltuiPreview {
@@ -305,23 +315,25 @@ static void scrub(const char* s, size_t n, RolltuiStr* out) {
   }
 }
 
-static void parse_markdown(RolltuiPreview* pv) {
+/* A MARKDOWN BODY MADE READY: a diagram file fenced, front matter shown as YAML, a cut file saying so, and the whole parsed into `*doc`
+ * (made when NULL). On whichever thread read it. */
+static void markdown_body(const RolltuiStr* path, RolltuiStr* body, int truncated, long long size, RolltuiMdDoc** doc, int* diagram) {
   RolltuiStr clean;
   memset(&clean, 0, sizeof clean);
-  pv->diagram = has_diagram_extension(&pv->path);
-  if (pv->diagram) {
+  *diagram = has_diagram_extension(path);
+  if (*diagram) {
     /* the file is the diagram: a document of one fenced block */
     RolltuiStr fenced;
     memset(&fenced, 0, sizeof fenced);
     rolltui_str_append(&fenced, "```mermaid\n", 11);
-    scrub(pv->body.p ? pv->body.p : "", pv->body.n, &clean);
+    scrub(body->p ? body->p : "", body->n, &clean);
     rolltui_str_append_str(&fenced, &clean);
     if (clean.n == 0 || clean.p[clean.n - 1] != '\n') rolltui_str_append(&fenced, "\n", 1);
     rolltui_str_append(&fenced, "```\n", 4);
-    rolltui_str_set(&pv->body, fenced.p, fenced.n);
+    rolltui_str_set(body, fenced.p, fenced.n);
     rolltui_str_free(&fenced);
   } else {
-    scrub(pv->body.p ? pv->body.p : "", pv->body.n, &clean);
+    scrub(body->p ? body->p : "", body->n, &clean);
     /* FRONT MATTER — the `---` block a static-site generator reads — is configuration, not prose: shown as the YAML it
      * is, in a code box, rather than as a rule, a line of words and another rule */
     if (clean.n > 8 && memcmp(clean.p, "---\n", 4) == 0) {
@@ -345,58 +357,70 @@ static void parse_markdown(RolltuiPreview* pv) {
         rolltui_str_free(&fenced);
       }
     }
-    rolltui_str_set(&pv->body, clean.p ? clean.p : "", clean.n);
+    rolltui_str_set(body, clean.p ? clean.p : "", clean.n);
   }
   rolltui_str_free(&clean);
-  if (pv->truncated) {
+  if (truncated) {
     /* said in the document itself, where the reader is reading: the last line says the file goes on */
     char note[96], sz[24];
-    human_size(pv->size, sz, sizeof sz);
+    human_size(size, sz, sizeof sz);
     snprintf(note, sizeof note, "\n\n*\xE2\x80\xA6 first %d KB of %s shown*\n", ROLLTUI_PREVIEW_TEXT_LIMIT / 1024, sz);
-    rolltui_str_append(&pv->body, note, strlen(note));
+    rolltui_str_append(body, note, strlen(note));
   }
-  if (!pv->md_doc) pv->md_doc = rolltui_md_doc_new();
-  rolltui_md_parse(pv->md_doc, pv->body.p ? pv->body.p : "", pv->body.n);
+  if (!*doc) *doc = rolltui_md_doc_new();
+  rolltui_md_parse(*doc, body->p ? body->p : "", body->n);
+}
+static void parse_markdown(RolltuiPreview* pv) {
+  markdown_body(&pv->path, &pv->body, pv->truncated, pv->size, &pv->md_doc, &pv->diagram);
   pv->md_width = 0; /* laid out at the first draw, when the width is known */
 }
 
-static void index_lines(RolltuiPreview* pv) {
-  const char* b = pv->body.p ? pv->body.p : "";
+/* WHERE EACH LINE OF `body` STARTS, into `*off` (`*n` of them, room for `*cap`). */
+static void index_body(const RolltuiStr* body, size_t** off, size_t* n, size_t* cap) {
+  const char* b = body->p ? body->p : "";
   size_t i = 0;
-  pv->line_n = 0;
-  if (pv->body.n == 0) return;
-  pv->line_off = (size_t*)rolltui_grow(pv->line_off, &pv->line_cap, 1, sizeof *pv->line_off);
-  pv->line_off[pv->line_n++] = 0;
-  while (i < pv->body.n) {
-    const char* nl = (const char*)memchr(b + i, '\n', pv->body.n - i);
+  *n = 0;
+  if (body->n == 0) return;
+  *off = (size_t*)rolltui_grow(*off, cap, 1, sizeof **off);
+  (*off)[(*n)++] = 0;
+  while (i < body->n) {
+    const char* nl = (const char*)memchr(b + i, '\n', body->n - i);
     if (!nl) break;
     i = (size_t)(nl - b) + 1;
-    if (i >= pv->body.n) break; /* a final newline ends the last line rather than starting another */
-    pv->line_off = (size_t*)rolltui_grow(pv->line_off, &pv->line_cap, pv->line_n + 1, sizeof *pv->line_off);
-    pv->line_off[pv->line_n++] = i;
+    if (i >= body->n) break; /* a final newline ends the last line rather than starting another */
+    *off = (size_t*)rolltui_grow(*off, cap, *n + 1, sizeof **off);
+    (*off)[(*n)++] = i;
   }
 }
 
 /* COLOUR: when the languages are lent and the file is in one, the whole body is run through it now, once. A file whose
  * language cannot be told, or whose runs do not line up with the lines drawn from it, is drawn plain: a wrong picture is
  * worse than a plain one. */
-static void highlight_text(RolltuiPreview* pv) {
-  const char* b = pv->body.p ? pv->body.p : "";
+static void highlight_body(RolltuiSyntax* syn, const RolltuiStr* path, const RolltuiStr* body, size_t line_n, RolltuiHighlight** hl, int* ok,
+                           int* lang_out) {
+  const char* b = body->p ? body->p : "";
   const char* nl;
   size_t first_n;
   int lang;
+  *ok = 0;
+  *lang_out = -1;
+  if (!syn || line_n == 0) return;
+  nl = (const char*)memchr(b, '\n', body->n < 256 ? body->n : 256);
+  first_n = nl ? (size_t)(nl - b) : (body->n < 256 ? body->n : 256);
+  lang = rolltui_syntax_find_file(syn, path->p ? path->p : "", path->n, b, first_n);
+  if (lang < 0) return;
+  if (!*hl) *hl = rolltui_highlight_new();
+  if (rolltui_highlight_run(*hl, syn, lang, b, body->n) != (long)line_n) return;
+  *lang_out = lang;
+  *ok = 1;
+}
+static void highlight_text(RolltuiPreview* pv) {
   pv->hl_ok = 0;
   pv->hl_lang = -1;
-  if (!pv->syn || pv->kind != ROLLTUI_PREVIEW_TEXT || pv->line_n == 0) return;
-  nl = (const char*)memchr(b, '\n', pv->body.n < 256 ? pv->body.n : 256);
-  first_n = nl ? (size_t)(nl - b) : (pv->body.n < 256 ? pv->body.n : 256);
-  lang = rolltui_syntax_find_file(pv->syn, pv->path.p ? pv->path.p : "", pv->path.n, b, first_n);
-  if (lang < 0) return;
-  if (!pv->hl) pv->hl = rolltui_highlight_new();
-  if (rolltui_highlight_run(pv->hl, pv->syn, lang, b, pv->body.n) != (long)pv->line_n) return;
-  pv->hl_lang = lang;
-  pv->hl_ok = 1;
+  if (pv->kind != ROLLTUI_PREVIEW_TEXT) return;
+  highlight_body(pv->syn, &pv->path, &pv->body, pv->line_n, &pv->hl, &pv->hl_ok, &pv->hl_lang);
 }
+static void index_lines(RolltuiPreview* pv) { index_body(&pv->body, &pv->line_off, &pv->line_n, &pv->line_cap); }
 
 
 /* ---- a file as it was ------------------------------------------------------------------------ */
@@ -438,6 +462,10 @@ static void gathered_free(Gathered* g) {
   rolltui_str_free(&g->path);
   rolltui_str_free(&g->message);
   rolltui_str_free(&g->body);
+  rolltui_mem_free(g->line_off);
+  rolltui_highlight_free(g->hl);
+  rolltui_md_doc_free(g->md_doc);
+  rolltui_syntax_free(g->syn); /* its hold */
   rolltui_mem_free(g);
 }
 
@@ -446,7 +474,10 @@ static void gather_fail(Gathered* g, const char* why) {
   rolltui_str_set(&g->message, why, strlen(why));
 }
 
-static void gather(Gathered* g) {
+static int stopped(const RolltuiJob* job) { return job && rolltui_job_cancelled(job); } /* (no job: read at once, never stopped) */
+#define READ_STEP (64 * 1024) /* a read looks for a cancel between steps this size */
+
+static void gather(Gathered* g, const RolltuiJob* job) {
   RolltuiOsStat st;
   unsigned char sniff[SNIFF_BYTES];
   size_t got;
@@ -493,6 +524,10 @@ static void gather(Gathered* g) {
       memcpy(buf, sniff, got);
       have += read_upto(fd, buf + have, (size_t)st.size - have);
       rolltui_os_close(fd);
+      if (stopped(job)) { /* the cursor left before the picture was decoded */
+        rolltui_mem_free(buf);
+        return;
+      }
       g->image = rolltui_image_decode(buf, have, &why);
       rolltui_mem_free(buf);
       if (!g->image) gather_fail(g, why.p ? why.p : "not a picture");
@@ -512,8 +547,16 @@ static void gather(Gathered* g) {
     unsigned char* buf = (unsigned char*)rolltui_mem_alloc(ROLLTUI_PREVIEW_TEXT_LIMIT + 1);
     size_t have = got, more;
     memcpy(buf, sniff, got);
-    more = read_upto(fd, buf + have, (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT - have);
-    have += more;
+    do { /* a step at a time, so a read the cursor left stops */
+      const size_t want = (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT - have < READ_STEP ? (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT - have : READ_STEP;
+      more = want ? read_upto(fd, buf + have, want) : 0;
+      have += more;
+      if (stopped(job)) {
+        rolltui_os_close(fd);
+        rolltui_mem_free(buf);
+        return;
+      }
+    } while (more > 0 && have < (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT);
     if (have == (size_t)ROLLTUI_PREVIEW_TEXT_LIMIT) {
       unsigned char probe;
       if (read_upto(fd, &probe, 1) == 1) g->truncated = 1;
@@ -534,7 +577,22 @@ static void gather(Gathered* g) {
     rolltui_mem_free(buf);
   }
   g->kind = has_markdown_extension(&g->path) || has_diagram_extension(&g->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
+  if (stopped(job)) return;
+  /* MADE READY HERE, off the drawing thread when this is a worker: the lines indexed and coloured, or the Markdown parsed */
+  if (g->kind == ROLLTUI_PREVIEW_MARKDOWN) markdown_body(&g->path, &g->body, g->truncated, g->size, &g->md_doc, &g->diagram);
+  else {
+    index_body(&g->body, &g->line_off, &g->line_n, &g->line_cap);
+    highlight_body(g->syn, &g->path, &g->body, g->line_n, &g->hl, &g->hl_ok, &g->hl_lang);
+  }
+  g->prepared = 1;
 }
+
+#define SWAP(T, a, b) \
+  do {                \
+    T swap_ = (a);    \
+    (a) = (b);        \
+    (b) = swap_;      \
+  } while (0)
 
 /* What was read becomes what the preview shows: the lines indexed and coloured, the Markdown parsed. On the preview's thread. */
 static void adopt(RolltuiPreview* pv, Gathered* g) {
@@ -549,7 +607,19 @@ static void adopt(RolltuiPreview* pv, Gathered* g) {
   pv->sig_read_secs = g->sig_read_secs;
   rolltui_str_move(&pv->message, &g->message);
   rolltui_str_move(&pv->body, &g->body);
-  if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) parse_markdown(pv);
+  if (g->prepared && pv->kind == ROLLTUI_PREVIEW_MARKDOWN) { /* what the read made, taken; the preview's own goes with the read */
+    SWAP(RolltuiMdDoc*, pv->md_doc, g->md_doc);
+    pv->diagram = g->diagram;
+    pv->md_width = 0; /* laid out at the first draw, when the width is known */
+  } else if (g->prepared && pv->kind == ROLLTUI_PREVIEW_TEXT) {
+    SWAP(size_t*, pv->line_off, g->line_off);
+    SWAP(size_t, pv->line_n, g->line_n);
+    SWAP(size_t, pv->line_cap, g->line_cap);
+    SWAP(RolltuiHighlight*, pv->hl, g->hl);
+    pv->hl_ok = g->hl_ok;
+    pv->hl_lang = g->hl_lang;
+    if (g->syn != pv->syn) highlight_text(pv); /* the languages changed while it was read */
+  } else if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) parse_markdown(pv);
   else if (pv->kind == ROLLTUI_PREVIEW_TEXT) {
     index_lines(pv);
     highlight_text(pv);
@@ -560,7 +630,8 @@ static void load(RolltuiPreview* pv) {
   Gathered* g = (Gathered*)rolltui_mem_alloc(sizeof *g);
   memset(g, 0, sizeof *g);
   rolltui_str_set(&g->path, pv->path.p, pv->path.n);
-  gather(g);
+  g->syn = rolltui_syntax_share(pv->syn);
+  gather(g, NULL);
   adopt(pv, g);
   gathered_free(g);
 }
@@ -568,7 +639,7 @@ static void load(RolltuiPreview* pv) {
 /* ---- reading off the preview's thread ----------------------------------------------------- */
 
 static void gather_work(void* ctx, const RolltuiJob* job) {
-  if (!rolltui_job_cancelled(job)) gather((Gathered*)ctx);
+  if (!rolltui_job_cancelled(job)) gather((Gathered*)ctx, job);
 }
 
 static void gather_done(void* ctx, int cancelled) {
@@ -644,6 +715,7 @@ void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) 
     memset(g, 0, sizeof *g);
     g->fd = -1;
     rolltui_str_set(&g->path, path, len);
+    g->syn = rolltui_syntax_share(pv->syn); /* held for the read, which colours what it read */
     g->pv = pv;
     pv->pending = g;
     pv->kind = ROLLTUI_PREVIEW_LOADING;

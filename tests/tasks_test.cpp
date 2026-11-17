@@ -13,14 +13,18 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_preview.h" /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_syntax.h"
 #include "rolltui_test.hpp"
 
 using testkit::check;
@@ -228,7 +232,49 @@ void test_preview_off_thread() {
   rolltui_preview_free(pv);  // freed with its read in flight
   rolltui_tasks_wait_idle(t, 5000);
   check(rolltui_tasks_busy(t) == 0, "a preview freed while its read was in flight lets it finish unseen");
+  // COLOURED WHERE IT WAS READ: a file in a known language comes back with its colours, made on the worker
+  const std::string cfile = dir + "/m.c";
+  {
+    std::ofstream out(cfile);
+    for (int i = 0; i < 4000; ++i) out << "int f" << i << "(void) { return " << i << "; } /* note */\n";
+  }
+  RolltuiSyntax* syn = rolltui_syntax_new_standard(nullptr);
+  RolltuiPreview* pc = rolltui_preview_new();
+  rolltui_preview_set_tasks(pc, t);
+  rolltui_preview_set_syntax(pc, syn);
+  rolltui_preview_set_path(pc, cfile.data(), cfile.size());
+  rolltui_tasks_wait_idle(t, static_cast<int>(5000 * rolltui_test::kClockScale));
+  {
+    RolltuiStyle st[ROLLTUI_ROLE_COUNT]{};
+    RolltuiEffectMap* fxm = rolltui_theme_builtin_fill("default-dark", 12, st, ROLLTUI_ROLE_COUNT);
+    RolltuiFrame* fc = rolltui_frame_new(60, 6, st[ROLLTUI_ROLE_BACKGROUND]);
+    rolltui_preview_draw(pc, fc, RolltuiRect{0, 0, 60, 6}, st, 0, 0);
+    int kx = -1, ky = -1;
+    for (int y = 0; y < 6 && kx < 0; ++y)
+      for (int x = 0; x + 6 < 60; ++x) { /* "return", a keyword */
+        bool word = true;
+        for (int k = 0; k < 6 && word; ++k) {
+          RolltuiCellRaw c{};
+          rolltui_frame_cell(fc, x + k, y, &c);
+          word = c.len == 1 && c.bytes[0] == "return"[k];
+        }
+        if (word) { kx = x, ky = y; break; }
+      }
+    RolltuiCellRaw kc{};
+    if (kx >= 0) rolltui_frame_cell(fc, kx, ky, &kc);
+    check(kx >= 0 && kc.style.bold, "a file read on a worker comes back coloured: its keywords bold, made where it was read");
+    rolltui_frame_free(fc);
+    rolltui_effect_map_free(fxm);
+  }
+  // FREED WITH ITS READ OUT: the read holds the languages it colours with, so the host's free leaves them until the read lets go
+  rolltui_preview_set_path(pc, a.data(), a.size());
+  rolltui_preview_set_path(pc, cfile.data(), cfile.size());
+  rolltui_preview_free(pc);
+  rolltui_syntax_free(syn);
+  rolltui_tasks_wait_idle(t, static_cast<int>(5000 * rolltui_test::kClockScale));
+  check(rolltui_tasks_busy(t) == 0, "a preview and its languages freed while a read colours with them: the read finishes on its own hold");
   rolltui_tasks_free(t);
+  std::remove(cfile.c_str());
   std::remove(a.c_str());
   std::remove(b.c_str());
   rmdir(dir.c_str());
@@ -258,8 +304,117 @@ void test_no_workers() {
   rolltui_tasks_free(t);
 }
 
+// A JOB THAT CALLS THE UI THREAD: it waits until what it handed over has run there, on that thread, and a cancel frees it
+void test_call() {
+  RolltuiTasks* t = rolltui_tasks_new(1, nullptr, nullptr);
+  struct Ctx {
+    RolltuiTasks* t;
+    std::thread::id ran_on;
+    int value = 0;
+    int got = -1;
+    bool waited = false;
+  } c;
+  c.t = t;
+  rolltui_tasks_start(t, [](void* p, const RolltuiJob* job) {
+    Ctx* x = static_cast<Ctx*>(p);
+    const int r = rolltui_tasks_call(x->t, job, [](void* q) {
+      Ctx* y = static_cast<Ctx*>(q);
+      y->ran_on = std::this_thread::get_id();
+      y->value = 42;
+    }, x);
+    x->got = r;
+    x->waited = x->value == 42; /* seen by the worker after the call returned */
+  }, [](void*, int) {}, &c);
+  const std::thread::id here = std::this_thread::get_id();
+  check(rolltui_tasks_wait_idle(t, static_cast<int>(5000 * rolltui_test::kClockScale)) == 1, "a job calling the UI thread ends once the drain ran its call");
+  check(c.got == 1 && c.waited && c.ran_on == here, "…its call ran on the draining thread, and the job saw what it did after the call returned");
+  // from the draining thread itself: at once
+  int direct = 0;
+  check(rolltui_tasks_call(t, nullptr, [](void* q) { *static_cast<int*>(q) = 7; }, &direct) == 1 && direct == 7,
+        "a call from the draining thread runs at once rather than waiting on itself");
+  // cancelled while it waits: never runs
+  struct Late {
+    RolltuiTasks* t;
+    std::atomic<int> state{0}; /* 1 posted, 2 returned */
+    int got = -1;
+    bool ran = false;
+  } l;
+  l.t = t;
+  const unsigned int id = rolltui_tasks_start(t, [](void* p, const RolltuiJob* job) {
+    Late* x = static_cast<Late*>(p);
+    x->state = 1;
+    x->got = rolltui_tasks_call(x->t, job, [](void* q) { static_cast<Late*>(q)->ran = true; }, x);
+    x->state = 2;
+  }, [](void*, int) {}, &l);
+  const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(3000 * rolltui_test::kClockScale));
+  while (l.state.load() != 1 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  std::this_thread::sleep_for(std::chrono::milliseconds(20)); /* it is waiting on its call, nothing drained */
+  rolltui_tasks_cancel(t, id);
+  while (l.state.load() != 2 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  rolltui_tasks_wait_idle(t, 2000);
+  check(l.state.load() == 2 && l.got == 0 && !l.ran, "a job cancelled while it waits on a call stops waiting, and the call never runs");
+  rolltui_tasks_free(t);
+}
+
+// A JOB THAT ASKS THE PERSON: paused until the answer, then on with it; a refusal is 0; a cancel frees it with -1
+void test_ask() {
+  RolltuiTasks* t = rolltui_tasks_new(1, nullptr, nullptr);
+  struct Ctx {
+    RolltuiTasks* t;
+    std::atomic<unsigned int> question{0};
+    int result = -2;
+    std::string answer;
+    std::atomic<bool> finished{false};
+  };
+  auto run = [&](Ctx& c) {
+    c.t = t;
+    return rolltui_tasks_start(t, [](void* p, const RolltuiJob* job) {
+      Ctx* x = static_cast<Ctx*>(p);
+      RolltuiStr out{};
+      x->result = rolltui_job_ask(x->t, job, [](void* q, unsigned int question) { static_cast<Ctx*>(q)->question = question; }, x, &out);
+      x->answer.assign(out.p ? out.p : "", out.n);
+      rolltui_str_free(&out);
+      x->finished = true;
+    }, [](void*, int) {}, &c);
+  };
+  auto wait_for = [&](const std::function<bool()>& ok) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(3000 * rolltui_test::kClockScale));
+    while (!ok() && std::chrono::steady_clock::now() < until) {
+      rolltui_tasks_drain(t);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
+  Ctx a;
+  run(a);
+  wait_for([&] { return a.question.load() != 0; });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  check(a.question.load() != 0 && !a.finished.load(), "a job asking the person puts the question on the UI thread and waits");
+  check(rolltui_tasks_answer(t, a.question.load(), "hunter2", 7, 1) == 1, "…the answer reaches the job that asked");
+  wait_for([&] { return a.finished.load(); });
+  check(a.result == 1 && a.answer == "hunter2", "…which carries on with it [" + a.answer + "]");
+  check(rolltui_tasks_answer(t, a.question.load(), "x", 1, 1) == 0, "an answer to a question no one waits on any more is refused");
+  Ctx no;
+  run(no);
+  wait_for([&] { return no.question.load() != 0; });
+  rolltui_tasks_answer(t, no.question.load(), nullptr, 0, 0);
+  wait_for([&] { return no.finished.load(); });
+  check(no.result == 0, "a refusal (No, Escape) is 0");
+  Ctx gone;
+  const unsigned int id = run(gone);
+  wait_for([&] { return gone.question.load() != 0; });
+  rolltui_tasks_cancel(t, id);
+  wait_for([&] { return gone.finished.load(); });
+  check(gone.result == -1 && rolltui_tasks_answer(t, gone.question.load(), "late", 4, 1) == 0,
+        "a job cancelled while it waits on its question stops with -1, and the late answer finds no one");
+  check(rolltui_job_ask(t, nullptr, [](void*, unsigned int) {}, nullptr, nullptr) == -1, "the draining thread cannot ask: it would wait on itself");
+  rolltui_tasks_wait_idle(t, 2000);
+  rolltui_tasks_free(t);
+}
+
 int main() {
   test_jobs();
+  test_call();
+  test_ask();
   test_no_workers();
   test_run_timers();
   test_preview_off_thread();

@@ -133,6 +133,7 @@ void rolltui_cond_destroy(RolltuiCond* c) { (void)c; }
 void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) { (void)c, (void)m; }
 void rolltui_cond_signal(RolltuiCond* c) { (void)c; }
 void rolltui_cond_broadcast(RolltuiCond* c) { (void)c; }
+unsigned long long rolltui_os_thread_self(void) { return 1; } /* one thread */
 RolltuiThread* rolltui_thread_start(void (*fn)(void* arg), void* arg) {
   (void)fn, (void)arg;
   return NULL;

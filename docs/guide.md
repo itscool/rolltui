@@ -942,6 +942,16 @@ thread.
   `rolltui_job_cancelled(job)` true and stops early if it looks. Either way `done` is told
   `cancelled`, and what it made is dropped. Cancelling an id that has ended does nothing.
 - `rolltui_tasks_post(t, fn, ctx)`, from any thread: `fn(ctx)` runs at the next drain.
+- `rolltui_tasks_call(t, job, fn, ctx)` does the same and waits until `fn` has run, so a job reads
+  what only the UI thread may touch (the selection, a store). It returns 0, and `fn` never runs,
+  when the job is cancelled or the tasks freed first. Called from the draining thread it runs `fn`
+  at once.
+- `rolltui_job_ask(t, job, ask, ctx, &answer)` pauses a job on a question for the person: `ask(ctx,
+  question)` runs on the UI thread and opens a prompt; whatever takes the answer calls
+  `rolltui_tasks_answer(t, question, text, len, yes)`. The job carries on with 1 and the text, 0
+  for a refusal, or -1 when it was cancelled first. An answer to a cancelled job's question returns
+  0, so the host closes its prompt.
+- `rolltui_tasks_running(t, id)`: the job has not ended.
 - A finished job and every post call the `wake` the tasks were made with, so a loop asleep in its
   input wait drains at once.
 - `rolltui_tasks_busy` counts jobs whose `done` has not run; `rolltui_tasks_wait_idle` drains until
@@ -965,7 +975,19 @@ text each time it changes: filtering as a person types, debounced with `rolltui_
 `rolltui_windows_set_tasks(windows, tasks)` lends the built-in kinds the workers. The column
 browser's preview then reads a file and decodes a picture on a worker while the cursor moves on,
 says "loading…" once a read has taken 100 ms, and drops a read the cursor left. Without them it
-reads on the drawing thread, which is what a frame dump does. dirktui lends it the run's.
+reads on the drawing thread, which is what a frame dump does. dirktui lends it the run's. A read the
+cursor left stops between 64 KB steps, and the lines are indexed and coloured, and Markdown parsed,
+on the worker that read them.
+
+### Holding input
+
+`rolltui_windows_hold(windows, label, len, job)` holds input while work the person waits on runs
+(a pull, a save over the network). No window gets a key or the pointer, and a box with a spinner,
+the label and "Esc cancels" sits over the screen. Escape cancels the job and lets go at once. The
+hold ends by itself when the job has ended (on the tasks lent with `rolltui_windows_set_tasks`),
+or at `rolltui_windows_release`; with `job` 0 only those two end it. The host still sees every key
+first, so its own keys, quit among them, keep working; `rolltui_windows_app_key` leaves Escape to
+the hold.
 
 ## Other programs
 
@@ -1000,7 +1022,8 @@ cannot start gives NULL and the reason ("not found: bat").
 
 `rolltui_run_program(run, argv, cwd, &status, &err)` hands the terminal to a program that takes
 it over (an editor, a pager): the app waits, ignoring the Ctrl-C the program receives, and takes
-the terminal back with the screen repainted whole. `rolltui_open_with_system` opens a file or a
+the terminal back with the screen repainted whole. A SIGTERM sent to the app meanwhile is passed on
+to the program, and once the program has ended the app ends by the same signal. `rolltui_open_with_system` opens a file or a
 URL with what the system opens it with (`open`, `xdg-open`, ShellExecuteW).
 
 ### Coloured output

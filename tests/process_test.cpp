@@ -4,7 +4,9 @@
 //
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <util.h>
@@ -23,6 +25,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_os.h" /* INTERNAL: a program handed the terminal, run directly */
 #include "rolltui/c/rolltui_screen.h" /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN, to read cells back */
 #include "rolltui_test.hpp"
 
@@ -432,7 +435,45 @@ void test_output_window() {
 
 }  // namespace
 
+// A SIGTERM TO THIS PROGRAM WHILE IT HAS HANDED A PROGRAM THE TERMINAL reaches that program, and then ends this one
+static void test_term_passed_on() {
+  char tmpl[] = "/tmp/rolltui_term_XXXXXX";
+  const std::string dir = mkdtemp(tmpl);
+  const std::string mark = dir + "/got";
+  const std::string script = "trap 'echo term > \"" + mark + "\"; exit 7' TERM; echo ready > \"" + mark + ".ready\"; while :; do sleep 0.05; done";
+  const pid_t app = fork();
+  if (app == 0) {
+    const char* argv[] = {"/bin/sh", "-c", script.c_str(), nullptr};
+    int st = -1;
+    const int devnull = open("/dev/null", O_RDWR);
+    rolltui_os_child_wait_terminal(argv, nullptr, devnull, devnull, &st, nullptr);
+    _exit(50); /* not reached: the SIGTERM is raised again once the program has ended */
+  }
+  const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(5000 * rolltui_test::kClockScale));
+  struct stat sb {};
+  while (stat((mark + ".ready").c_str(), &sb) != 0 && std::chrono::steady_clock::now() < until)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  kill(app, SIGTERM);
+  int st = 0;
+  pid_t got = 0;
+  while ((got = waitpid(app, &st, WNOHANG)) == 0 && std::chrono::steady_clock::now() < until)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  if (got == 0) {
+    kill(app, SIGKILL);
+    waitpid(app, &st, 0);
+  }
+  std::ifstream in(mark);
+  std::string word;
+  in >> word;
+  check(word == "term", "a SIGTERM while a program has the terminal is passed on to it [" + word + "]");
+  check(got == app && WIFSIGNALED(st) && WTERMSIG(st) == SIGTERM, "…and once it has ended, this program ends by the same signal");
+  std::remove(mark.c_str());
+  std::remove((mark + ".ready").c_str());
+  rmdir(dir.c_str());
+}
+
 int main() {
+  test_term_passed_on();
   rolltui_context_set_library_defaults(ctx());
   test_ansi();
   test_children();

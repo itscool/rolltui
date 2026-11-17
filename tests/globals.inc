@@ -137,6 +137,10 @@ ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_resumed", PROCESS)
 /* What handled each crash signal before the library: a crash puts the terminal back, then goes on to it. A process has one
  * disposition per signal. */
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_crash_prev", PROCESS)
+/* The program a SIGTERM is passed on to while it has the terminal, and the signal that came: a process has one SIGTERM disposition
+ * and hands its terminal to one program at a time. */
+ROLLTUI_GLOBAL("rolltui_process_posix.c", "g_term_to", PROCESS)
+ROLLTUI_GLOBAL("rolltui_process_posix.c", "g_term_got", PROCESS)
 /* The same terminal on Windows: the console handles and modes to restore, the leave sequence, whether the
  * console control handler is installed, and the performance counter's frequency, read once. */
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_in", PROCESS)

@@ -11,17 +11,19 @@
  */
 #include "rolltui/rolltui.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_os.h"
+#include "rolltui/c/rolltui_str.h"
 
 struct RolltuiJob {
   unsigned int id;
   RolltuiJobWork work;
   RolltuiJobDone done;
   void* ctx;
-  volatile int cancelled; /* read by the worker, written under the lock by the UI thread */
+  _Atomic int cancelled; /* read by the worker as it goes, written under the lock by the UI thread: atomic, so the read is never a race */
   int started, finished;
   struct RolltuiJob* next; /* the pending queue, or the finished list */
 };
@@ -31,7 +33,16 @@ typedef struct Posted {
   RolltuiPostFn fn;
   void* ctx;
   struct Posted* next;
+  int* ran; /* a call: the waiter's flag, set under the lock once `fn` has run */
 } Posted;
+
+/* A JOB'S QUESTION, on its worker's stack while it waits; answered under the lock. */
+typedef struct Question {
+  unsigned int id;
+  int answered, yes;
+  RolltuiStr text;
+  struct Question* next;
+} Question;
 
 struct RolltuiTasks {
   RolltuiMutex lock;
@@ -46,6 +57,10 @@ struct RolltuiTasks {
   Job *finished, *finished_tail;
   Posted *posted, *posted_tail;
   unsigned int next_id;
+  RolltuiCond answered;            /* a call ran, a question was answered, a job was cancelled, or the tasks are stopping */
+  unsigned long long drainer;      /* the thread that drains (made the tasks, or drained them last) */
+  Question* questions;
+  unsigned int next_question;
   void (*wake)(void*);
   void* wake_ctx;
 };
@@ -87,6 +102,8 @@ RolltuiTasks* rolltui_tasks_new(int workers, void (*wake_fn)(void* ctx), void* w
   memset(t, 0, sizeof *t);
   rolltui_mutex_init(&t->lock);
   rolltui_cond_init(&t->more);
+  rolltui_cond_init(&t->answered);
+  t->drainer = rolltui_os_thread_self();
   t->wake = wake_fn;
   t->wake_ctx = wake_ctx;
   if (workers < 0) workers = 0;
@@ -135,6 +152,9 @@ static void run_pending_here(RolltuiTasks* t) {
 size_t rolltui_tasks_drain(RolltuiTasks* t) {
   size_t ran = 0;
   if (!t) return 0;
+  rolltui_mutex_lock(&t->lock);
+  t->drainer = rolltui_os_thread_self();
+  rolltui_mutex_unlock(&t->lock);
   if (t->worker_n == 0) run_pending_here(t);
   for (;;) {
     Job* done;
@@ -151,6 +171,12 @@ size_t rolltui_tasks_drain(RolltuiTasks* t) {
       Posted* p = post;
       post = p->next;
       p->fn(p->ctx);
+      if (p->ran) { /* a call: its waiter goes on */
+        rolltui_mutex_lock(&t->lock);
+        *p->ran = 1;
+        rolltui_cond_broadcast(&t->answered);
+        rolltui_mutex_unlock(&t->lock);
+      }
       rolltui_mem_free(p);
       ++ran;
     }
@@ -186,6 +212,7 @@ void rolltui_tasks_free(RolltuiTasks* t) {
   }
   for (i = 0; (size_t)i < t->live_n; ++i) t->live[i]->cancelled = 1; /* the running ones are told */
   rolltui_cond_broadcast(&t->more);
+  rolltui_cond_broadcast(&t->answered); /* a job waiting on a call or a question stops waiting */
   rolltui_mutex_unlock(&t->lock);
   for (i = 0; i < t->worker_n; ++i) rolltui_thread_join(t->workers[i]);
   /* every worker has stopped: what they finished is delivered here, on the thread freeing the tasks */
@@ -193,6 +220,7 @@ void rolltui_tasks_free(RolltuiTasks* t) {
   rolltui_mem_free(t->workers);
   rolltui_mem_free(t->live);
   rolltui_cond_destroy(&t->more);
+  rolltui_cond_destroy(&t->answered);
   rolltui_mutex_destroy(&t->lock);
   rolltui_mem_free(t);
 }
@@ -224,6 +252,7 @@ void rolltui_tasks_cancel(RolltuiTasks* t, unsigned int id) {
   size_t i;
   if (!t || id == 0) return;
   rolltui_mutex_lock(&t->lock);
+  rolltui_cond_broadcast(&t->answered); /* a cancelled job waiting on a call or a question stops waiting */
   for (i = 0; i < t->live_n; ++i) {
     Job* j = t->live[i];
     if (j->id != id) continue;
@@ -259,12 +288,134 @@ void rolltui_tasks_post(RolltuiTasks* t, RolltuiPostFn fn, void* ctx) {
   p->fn = fn;
   p->ctx = ctx;
   p->next = NULL;
+  p->ran = NULL;
   rolltui_mutex_lock(&t->lock);
   if (t->posted_tail) t->posted_tail->next = p;
   else t->posted = p;
   t->posted_tail = p;
   rolltui_mutex_unlock(&t->lock);
   wake(t);
+}
+
+/* A post still queued, taken off (under the lock): 1 when it was there, so it never runs. */
+static int withdraw(RolltuiTasks* t, Posted* p) {
+  Posted** at = &t->posted;
+  Posted* prev = NULL;
+  while (*at && *at != p) prev = *at, at = &(*at)->next;
+  if (!*at) return 0;
+  *at = p->next;
+  if (t->posted_tail == p) t->posted_tail = prev;
+  return 1;
+}
+
+int rolltui_tasks_call(RolltuiTasks* t, const RolltuiJob* job, RolltuiPostFn fn, void* ctx) {
+  Posted* p;
+  int ran = 0;
+  if (!t || !fn) return 0;
+  rolltui_mutex_lock(&t->lock);
+  if (t->drainer == rolltui_os_thread_self()) { /* this is the thread that would run it */
+    rolltui_mutex_unlock(&t->lock);
+    fn(ctx);
+    return 1;
+  }
+  if (t->stopping || (job && job->cancelled)) {
+    rolltui_mutex_unlock(&t->lock);
+    return 0;
+  }
+  p = (Posted*)rolltui_mem_alloc(sizeof *p);
+  p->fn = fn;
+  p->ctx = ctx;
+  p->next = NULL;
+  p->ran = &ran;
+  if (t->posted_tail) t->posted_tail->next = p;
+  else t->posted = p;
+  t->posted_tail = p;
+  rolltui_mutex_unlock(&t->lock);
+  wake(t);
+  rolltui_mutex_lock(&t->lock);
+  while (!ran) {
+    if ((t->stopping || (job && job->cancelled)) && withdraw(t, p)) { /* still queued: it never runs */
+      rolltui_mutex_unlock(&t->lock);
+      rolltui_mem_free(p);
+      return 0;
+    }
+    rolltui_cond_wait(&t->answered, &t->lock); /* (taken by the drain, it runs to its end, and `ran` is set) */
+  }
+  rolltui_mutex_unlock(&t->lock);
+  return 1;
+}
+
+typedef struct AskCall {
+  RolltuiAskFn ask;
+  void* ctx;
+  unsigned int question;
+} AskCall;
+static void ask_here(void* ctx) {
+  AskCall* a = (AskCall*)ctx;
+  a->ask(a->ctx, a->question);
+}
+
+int rolltui_job_ask(RolltuiTasks* t, const RolltuiJob* job, RolltuiAskFn ask, void* ctx, RolltuiStr* out) {
+  Question q;
+  AskCall a;
+  Question** at;
+  int result;
+  if (!t || !ask) return -1;
+  memset(&q, 0, sizeof q);
+  rolltui_mutex_lock(&t->lock);
+  if (t->stopping || t->drainer == rolltui_os_thread_self() || (job && job->cancelled)) {
+    rolltui_mutex_unlock(&t->lock);
+    return -1;
+  }
+  t->next_question = t->next_question == 0xFFFFFFFFu ? 1u : t->next_question + 1u;
+  q.id = t->next_question;
+  q.next = t->questions;
+  t->questions = &q;
+  rolltui_mutex_unlock(&t->lock);
+  a.ask = ask;
+  a.ctx = ctx;
+  a.question = q.id;
+  result = rolltui_tasks_call(t, job, ask_here, &a) ? 0 : -1;
+  rolltui_mutex_lock(&t->lock);
+  while (result == 0 && !q.answered && !t->stopping && !(job && job->cancelled)) rolltui_cond_wait(&t->answered, &t->lock);
+  for (at = &t->questions; *at; at = &(*at)->next) /* off the list before it leaves the stack */
+    if (*at == &q) {
+      *at = q.next;
+      break;
+    }
+  result = q.answered ? (q.yes ? 1 : 0) : -1;
+  rolltui_mutex_unlock(&t->lock);
+  if (out && result >= 0) rolltui_str_set(out, q.text.p ? q.text.p : "", q.text.n);
+  rolltui_str_free(&q.text);
+  return result;
+}
+
+int rolltui_tasks_answer(RolltuiTasks* t, unsigned int question, const char* text, size_t len, int yes) {
+  Question* q;
+  int found = 0;
+  if (!t || question == 0) return 0;
+  rolltui_mutex_lock(&t->lock);
+  for (q = t->questions; q; q = q->next)
+    if (q->id == question && !q->answered) {
+      rolltui_str_set(&q->text, text ? text : "", text ? len : 0);
+      q->yes = yes != 0;
+      q->answered = 1;
+      found = 1;
+      rolltui_cond_broadcast(&t->answered);
+      break;
+    }
+  rolltui_mutex_unlock(&t->lock);
+  return found;
+}
+
+int rolltui_tasks_running(RolltuiTasks* t, unsigned int id) {
+  size_t i;
+  int live = 0;
+  if (!t || id == 0) return 0;
+  rolltui_mutex_lock(&t->lock);
+  for (i = 0; i < t->live_n && !live; ++i) live = t->live[i]->id == id;
+  rolltui_mutex_unlock(&t->lock);
+  return live;
 }
 
 int rolltui_tasks_workers(const RolltuiTasks* t) { return t ? t->worker_n : 0; }

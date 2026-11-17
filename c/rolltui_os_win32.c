@@ -91,6 +91,7 @@ void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) {
 }
 void rolltui_cond_signal(RolltuiCond* c) { WakeConditionVariable((PCONDITION_VARIABLE)&c->cv); }
 void rolltui_cond_broadcast(RolltuiCond* c) { WakeAllConditionVariable((PCONDITION_VARIABLE)&c->cv); }
+unsigned long long rolltui_os_thread_self(void) { return (unsigned long long)GetCurrentThreadId(); }
 
 struct RolltuiThread {
   HANDLE h;

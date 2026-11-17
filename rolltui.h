@@ -3487,6 +3487,13 @@ void rolltui_windows_bind_output(RolltuiWindows* w, const char* name, size_t len
  * reads a file and decodes a picture there while the cursor moves on, says "loading…" once a read has taken 100 ms, and drops a
  * read the cursor left. NULL (the default) reads on the drawing thread, which is what a frame dump does. */
 void rolltui_windows_set_tasks(RolltuiWindows* w, RolltuiTasks* tasks);
+/* INPUT HELD while work the person waits on runs: no window gets a key or the pointer, and a box with a spinner, `label` and
+ * "Esc cancels" sits over the screen. Escape cancels `job` and lets go at once; the hold also ends by itself when `job` (on the
+ * tasks above) has ended, or at `rolltui_windows_release`. `job` 0: only Escape or the release end it. The host still sees every
+ * key first, so its own keys (quit) keep working. A new hold replaces the one before. */
+void rolltui_windows_hold(RolltuiWindows* w, const char* label, size_t len, unsigned int job);
+void rolltui_windows_release(RolltuiWindows* w);
+int rolltui_windows_held(RolltuiWindows* w);
 
 /* image: a picture the host made, shown in an `image:<name>` window, centred, instead of the file that name would be read from.
  * `img` is a BORROW the host keeps alive while it is bound; NULL unbinds it. An `image:` window with nothing bound reads the file
@@ -4971,6 +4978,20 @@ void rolltui_tasks_cancel(RolltuiTasks* t, unsigned int id);
 int rolltui_job_cancelled(const RolltuiJob* job);
 /* `fn(ctx)` on the draining thread, from any thread: a worker of the host's own, a watcher, a callback. */
 void rolltui_tasks_post(RolltuiTasks* t, RolltuiPostFn fn, void* ctx);
+/* `fn(ctx)` on the draining thread, WAITED FOR: it returns once `fn` has run there, so a job reads what only that thread may touch
+ * (the selection, a store) or hands it something. 1 when `fn` ran; 0 when the job (`job`, may be NULL from a thread of the host's
+ * own) was cancelled or the tasks freed before it ran, and then it never runs. From the draining thread itself it runs `fn` at once. */
+int rolltui_tasks_call(RolltuiTasks* t, const RolltuiJob* job, RolltuiPostFn fn, void* ctx);
+/* A JOB ASKS THE PERSON and waits for the answer: `ask(ctx, question)` runs on the draining thread to put the question in front of
+ * them (a prompt, a confirm), and what takes the answer calls `rolltui_tasks_answer` with that `question`, from any thread. The job is
+ * paused meanwhile and carries on with the answer's text in `*out` (may be NULL): 1 for an answer given, 0 for a refusal (`yes` 0: No,
+ * Escape), -1 when the job was cancelled or the tasks freed first. Never from the draining thread, which would wait on itself: -1. */
+typedef void (*RolltuiAskFn)(void* ctx, unsigned int question);
+int rolltui_job_ask(RolltuiTasks* t, const RolltuiJob* job, RolltuiAskFn ask, void* ctx, RolltuiStr* out);
+/* The answer to `question`: 1 when a job was waiting on it, 0 when none is (it was cancelled), so the host closes its question. */
+int rolltui_tasks_answer(RolltuiTasks* t, unsigned int question, const char* text, size_t len, int yes);
+/* The job `id` started and its `done` not yet called. */
+int rolltui_tasks_running(RolltuiTasks* t, unsigned int id);
 /* Runs what has come back, on this thread; how many callbacks ran. */
 size_t rolltui_tasks_drain(RolltuiTasks* t);
 /* Jobs started whose `done` has not been called yet: busy while it is not 0. */

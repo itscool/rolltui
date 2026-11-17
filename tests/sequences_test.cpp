@@ -2,11 +2,14 @@
 // sequences_test.cpp — KEYS PRESSED ONE AFTER ANOTHER: a sequence (`g g`) and a count (`5` then Down) bound as a chord is, and the
 // panel that says what can follow a key on the way; and the shipped vim preset that stands on them.
 //
+#include <atomic>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -386,8 +389,70 @@ void test_panel_columns() {
 
 }  // namespace
 
+// INPUT HELD while work the person waits on runs: no window gets a key, a box says what is happening, Escape cancels the work
+void test_hold() {
+  std::string problems;
+  Screen s(load(R"({ "name": "t", "bindings": { "app.stop": ["escape"], "app.quit": ["ctrl+q"], "list.down": ["down"] } })", &problems));
+  RolltuiToolAction declared[2] = {{"app.stop", "Stop", nullptr}, {"app.quit", "Quit", nullptr}};
+  rolltui_bindings_declare(s.b, nullptr, 0, declared, 2);
+  RolltuiTasks* tasks = rolltui_tasks_new(1, nullptr, nullptr);
+  rolltui_windows_set_tasks(s.w, tasks);
+  s.paint();
+  const std::string before = s.cursor();
+  struct Gate {
+    std::atomic<bool> go{false};
+    std::atomic<bool> cancelled{false};
+  } gate;
+  const unsigned int job = rolltui_tasks_start(tasks, [](void* c, const RolltuiJob* j) {
+    Gate* g = static_cast<Gate*>(c);
+    while (!g->go.load() && !rolltui_job_cancelled(j)) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }, [](void* c, int cancelled) { static_cast<Gate*>(c)->cancelled = cancelled != 0; }, &gate); /* told whether or not it ran */
+  rolltui_windows_hold(s.w, "Pulling origin", 14, job);
+  std::string t = s.paint();
+  check(t.find("Pulling origin") != std::string::npos && t.find("Esc cancels") != std::string::npos,
+        "a hold puts a box over the screen naming the work and the way out");
+  s.key(0, ROLLTUI_KEY_DOWN);
+  check(s.cursor() == before, "…and a key reaches no window while it holds");
+  auto app = [&](unsigned char key, char32_t ch, bool ctrl, std::string* action) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_KEY;
+    e.key.key = key;
+    e.key.ch = ch;
+    e.key.ctrl = ctrl ? 1 : 0;
+    const char* a = nullptr;
+    std::size_t n = 0;
+    const int r = rolltui_windows_app_key(s.w, &e, "app", 3, &a, &n);
+    if (action) *action = a ? std::string(a, n) : std::string();
+    return r;
+  };
+  std::string a;
+  check(app(ROLLTUI_KEY_CHAR, 'q', true, &a) == ROLLTUI_SEQUENCE_DONE && a == "app.quit", "the program's own keys still reach it: quit is never held");
+  check(app(ROLLTUI_KEY_ESCAPE, 0, false, &a) == ROLLTUI_SEQUENCE_NONE && a.empty(), "…but Escape is the hold's, not the program's stop");
+  s.key(0, ROLLTUI_KEY_ESCAPE);
+  rolltui_tasks_wait_idle(tasks, static_cast<int>(5000 * rolltui_test::kClockScale));
+  check(!rolltui_windows_held(s.w) && gate.cancelled.load(), "Escape cancels the work and lets go at once");
+  t = s.paint();
+  check(t.find("Pulling origin") == std::string::npos, "…and the box is gone");
+  s.key(0, ROLLTUI_KEY_DOWN);
+  check(s.cursor() != before, "…and keys reach the windows again");
+  // the work ending ends the hold by itself
+  Gate quick;
+  const unsigned int job2 = rolltui_tasks_start(tasks, [](void* c, const RolltuiJob* j) {
+    Gate* g = static_cast<Gate*>(c);
+    while (!g->go.load() && !rolltui_job_cancelled(j)) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }, [](void*, int) {}, &quick);
+  rolltui_windows_hold(s.w, "Saving", 6, job2);
+  check(rolltui_windows_held(s.w), "a second hold while its work runs");
+  quick.go = true;
+  rolltui_tasks_wait_idle(tasks, static_cast<int>(5000 * rolltui_test::kClockScale));
+  check(!rolltui_windows_held(s.w) && s.paint().find("Saving") == std::string::npos, "…ends by itself when the work has ended");
+  rolltui_windows_set_tasks(s.w, nullptr);
+  rolltui_tasks_free(tasks);
+}
+
 int main() {
   test_bindings();
+  test_hold();
   test_table();
   test_app_scope();
   test_focus_first();

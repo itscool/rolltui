@@ -13,6 +13,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -58,6 +59,7 @@ void rolltui_cond_destroy(RolltuiCond* c) { pthread_cond_destroy(&c->cv); }
 void rolltui_cond_wait(RolltuiCond* c, RolltuiMutex* m) { pthread_cond_wait(&c->cv, &m->lock); }
 void rolltui_cond_signal(RolltuiCond* c) { pthread_cond_signal(&c->cv); }
 void rolltui_cond_broadcast(RolltuiCond* c) { pthread_cond_broadcast(&c->cv); }
+unsigned long long rolltui_os_thread_self(void) { return (unsigned long long)(uintptr_t)pthread_self(); }
 
 struct RolltuiThread {
   pthread_t id;

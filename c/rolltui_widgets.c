@@ -314,6 +314,11 @@ struct RolltuiWindows {
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
+  /* INPUT HELD (`rolltui_windows_hold`): while `held`, keys and the pointer reach no window; `hold_job` is cancelled by Escape and
+   * ends the hold when it ends */
+  int held;
+  unsigned int hold_job;
+  RolltuiStr hold_label;
   RolltuiMessageLog messages; /* what the app posted, and the toasts showing it */
   /* A KEY SEQUENCE ON THE WAY in one window's scope: the keys pressed so far, a count typed before them, and since when. */
   RolltuiChord seq_keys[ROLLTUI_SEQUENCE_MAX];
@@ -416,6 +421,7 @@ static void widget_destroy(RolltuiWidget* wd) {
 void rolltui_windows_free(RolltuiWindows* w) {
   size_t i;
   if (!w) return;
+  rolltui_str_free(&w->hold_label);
   for (i = 0; i < rolltui_map_count(&w->by_content); ++i)
     widget_destroy((RolltuiWidget*)rolltui_map_value_at(&w->by_content, i));
   rolltui_map_release(&w->by_content);
@@ -1078,6 +1084,57 @@ static void draw_empty_keys(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect scre
   rolltui_draw_scratch_free(ds);
 }
 
+void rolltui_windows_hold(RolltuiWindows* w, const char* label, size_t len, unsigned int job) {
+  if (!w) return;
+  w->held = 1;
+  w->hold_job = job;
+  rolltui_str_set(&w->hold_label, label ? label : "", label ? len : 0);
+}
+void rolltui_windows_release(RolltuiWindows* w) {
+  if (!w) return;
+  w->held = 0;
+  w->hold_job = 0;
+  rolltui_str_clear(&w->hold_label);
+}
+int rolltui_windows_held(RolltuiWindows* w) {
+  if (!w || !w->held) return 0;
+  if (w->hold_job && w->tasks && !rolltui_tasks_running(w->tasks, w->hold_job)) rolltui_windows_release(w); /* its work ended */
+  return w->held;
+}
+
+/* THE HOLD'S BOX, centred: a spinner and the label, and how to get out of it. */
+static void draw_hold(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles, unsigned long long now_ms) {
+  static const char kHint[] = "Esc cancels";
+  const int aw = w->cfg->env.ambiguous_wide;
+  RolltuiDrawScratch* ds = rolltui_draw_scratch_new();
+  const int label_w = rolltui_frame_text_width(ds, w->hold_label.p ? w->hold_label.p : "", w->hold_label.n, aw);
+  int bw = 2 + 2 + label_w + 2, bh = 5;
+  RolltuiRect box, fill;
+  RolltuiStyle ground = styles[ROLLTUI_ROLE_PANEL_BACKGROUND], text = styles[ROLLTUI_ROLE_TEXT], muted = styles[ROLLTUI_ROLE_TEXT_MUTED],
+               spin = styles[ROLLTUI_ROLE_ACCENT_1], line = styles[ROLLTUI_ROLE_BORDER_ACTIVE];
+  (void)now_ms;
+  if (bw < (int)sizeof kHint - 1 + 4) bw = (int)sizeof kHint - 1 + 4;
+  if (bw > screen.w) bw = screen.w;
+  if (bh > screen.h) bh = screen.h;
+  box.x = screen.x + (screen.w - bw) / 2;
+  box.y = screen.y + (screen.h - bh) / 2;
+  box.w = bw;
+  box.h = bh;
+  text.bg = muted.bg = spin.bg = line.bg = ground.bg;
+  fill = box;
+  rolltui_frame_fill(f, ds, fill, ground, NULL, 0);
+  rolltui_draw_border(f, ds, box, ROLLTUI_BORDER_ROUNDED, line, NULL, 0, text, aw);
+  if (bh >= 3 && bw >= 5) {
+    rolltui_spinner_draw(f, box.x + 2, box.y + 1, spin, 1);
+    rolltui_frame_put_text(f, ds, box.x + 4, box.y + 1, w->hold_label.p ? w->hold_label.p : "", w->hold_label.n, text, bw - 6, aw, 0);
+  }
+  if (bh >= 5) {
+    muted.italic = 1;
+    rolltui_frame_put_text(f, ds, box.x + 2, box.y + 3, kHint, sizeof kHint - 1, muted, bw - 4, aw, 0);
+  }
+  rolltui_draw_scratch_free(ds);
+}
+
 int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
                                 unsigned long long now_ms) {
   int toasts, which;
@@ -1086,6 +1143,10 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
                                            w->cfg->env.still);
   draw_empty_keys(w, f, screen, styles);
   which = draw_which_key(w, f, screen, styles, now_ms);
+  if (rolltui_windows_held(w)) {
+    draw_hold(w, f, screen, styles, now_ms);
+    if (w->hold_job && (toasts < 0 || toasts > 100)) toasts = 100; /* looked at again for its job's end */
+  }
   if (which > 0 && (toasts < 0 || which < toasts)) toasts = which;
   if (w->want_ms >= 0 && (toasts < 0 || w->want_ms < toasts)) toasts = w->want_ms; /* a window's own: the next frame it wants */
   w->want_ms = -1;
@@ -1756,6 +1817,13 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   size_t slen = 0, alen = 0;
   const char* action = NULL;
   int counts;
+  if (rolltui_windows_held(w)) { /* HELD: Escape cancels the work and lets go; nothing else reaches a window */
+    if (e->kind == ROLLTUI_EVENT_KEY && e->key.key == ROLLTUI_KEY_ESCAPE && !e->key.ctrl && !e->key.alt && !e->key.shift) {
+      if (w->hold_job && w->tasks) rolltui_tasks_cancel(w->tasks, w->hold_job);
+      rolltui_windows_release(w);
+    }
+    return 1;
+  }
   if (!wd || !wd->vt) return 0;
   if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
   if (e->kind != ROLLTUI_EVENT_KEY || !wd->vt->keys) {
@@ -1863,7 +1931,12 @@ void rolltui_windows_ask_key(RolltuiWindows* w, const char* action, size_t actio
   w->has_any = 0;
 }
 
-int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key) { return w && key && focused_takes(w, key); }
+static int hold_takes(RolltuiWindows* w, const RolltuiChord* k) { /* a hold's Escape, which cancels it, is never the program's */
+  return k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift && rolltui_windows_held(w);
+}
+int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key) {
+  return w && key && (hold_takes((RolltuiWindows*)w, key) || focused_takes(w, key));
+}
 
 int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t slen, const char** action,
                             size_t* alen) {
@@ -1877,6 +1950,7 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
   if (!w || !e || e->kind != ROLLTUI_EVENT_KEY || !scope) return ROLLTUI_SEQUENCE_NONE;
   b = rolltui_windows_bindings(w);
   k = &e->key;
+  if (hold_takes(w, k)) return ROLLTUI_SEQUENCE_NONE; /* the hold's: it goes to the window, which cancels the work */
   if (w->asking) { /* A KEY ASKED FOR: this one is the answer, or Escape lets go of the question */
     w->asking = 0;
     if (k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift) return ROLLTUI_SEQUENCE_PREFIX;

@@ -91,7 +91,10 @@ RolltuiSyntax* rolltui_syntax_new(void);
 /* The set a host wants: the shipped languages, then the person's own from `<config>/rolltui/syntax/`. A file that does
  * not load is noted in `report` (which may be NULL) and skipped: one bad file never takes the others with it. */
 RolltuiSyntax* rolltui_syntax_new_standard(RolltuiStr* report);
-void rolltui_syntax_free(RolltuiSyntax* s); /* a no-op on NULL */
+void rolltui_syntax_free(RolltuiSyntax* s); /* a no-op on NULL; with readers still holding it, it lets go of this hold only */
+/* ANOTHER HOLD on `s`, for a reader on another thread (a preview's read colouring what it read): linked now, so that reader only reads
+ * it, and freed once every hold has been let go with `rolltui_syntax_free`. A set shared is not added to after. Returns `s`. */
+RolltuiSyntax* rolltui_syntax_share(RolltuiSyntax* s);
 
 /* Adds one language from its JSON. 1 on success; 0 with the reason (and the language's name and the rule, when it can say
  * which) in `err`. A language with the name of one already there replaces it. */

@@ -410,11 +410,26 @@ void rolltui_os_child_free(RolltuiOsChild* c) {
   rolltui_mem_free(c);
 }
 
+/* A SIGTERM WHILE A PROGRAM HAS THE TERMINAL is passed on to it (async-signal-safe: a kill and a note), and once it has ended it is
+ * raised here again, so this program ends as it was asked to. */
+static volatile pid_t g_term_to = 0;
+static volatile sig_atomic_t g_term_got = 0;
+static void on_term_while_away(int sig) {
+  g_term_got = sig;
+  if (g_term_to > 0) kill(g_term_to, sig);
+}
+
 int rolltui_os_child_wait_terminal(const char* const* argv, const char* cwd, int tty_in, int tty_out, int* status,
                                    RolltuiStr* err) {
-  struct sigaction ignore, old_int, old_quit;
+  struct sigaction ignore, old_int, old_quit, pass, old_term;
   RolltuiOsChild* c;
   int st = -1;
+  memset(&pass, 0, sizeof pass);
+  pass.sa_handler = on_term_while_away;
+  sigemptyset(&pass.sa_mask);
+  g_term_to = 0;
+  g_term_got = 0;
+  sigaction(SIGTERM, &pass, &old_term);
   /* THE PROGRAM HAS ITS CTRL-C TO ITSELF: the terminal is in its ordinary mode, so the key signals the whole foreground group, this
    * process included, which ignores SIGINT and SIGQUIT while it waits. */
   memset(&ignore, 0, sizeof ignore);
@@ -423,14 +438,21 @@ int rolltui_os_child_wait_terminal(const char* const* argv, const char* cwd, int
   sigaction(SIGINT, &ignore, &old_int);
   sigaction(SIGQUIT, &ignore, &old_quit);
   c = rolltui_os_child_spawn(argv, cwd, NULL, ROLLTUI_OS_CHILD_TERMINAL, 0, 0, tty_in, tty_out, err);
-  if (c) rolltui_os_child_done(c, 1, &st);
+  if (c) {
+    g_term_to = c->pid;
+    if (g_term_got) kill(c->pid, (int)g_term_got); /* asked to end as it started */
+    rolltui_os_child_done(c, 1, &st);
+  }
+  g_term_to = 0;
   sigaction(SIGINT, &old_int, NULL);
   sigaction(SIGQUIT, &old_quit, NULL);
+  sigaction(SIGTERM, &old_term, NULL);
   if (status) *status = st;
   if (c) {
     c->exited = 1;
     rolltui_os_child_free(c);
   }
+  if (g_term_got) raise((int)g_term_got); /* this program was asked to end too: as it would have */
   return c != NULL;
 }
 

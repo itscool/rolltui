@@ -999,6 +999,7 @@ static RolltuiPreview* preview_for(RolltuiPicker* p, const char* path, size_t le
   p->cache_used[pick] = ++p->cache_tick;
   rolltui_preview_set_tasks(p->cache[pick], p->tasks);
   rolltui_preview_set_now(p->cache[pick], p->now_ms);
+  if (!p->syn && !p->opt.no_syntax) p->syn = rolltui_syntax_new_standard(NULL); /* before the read, which colours what it reads */
   if (p->syn && !p->opt.no_syntax) rolltui_preview_set_syntax(p->cache[pick], p->syn);
   rolltui_preview_set_path(p->cache[pick], path, len);
   return p->cache[pick];
