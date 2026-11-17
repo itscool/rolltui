@@ -1086,15 +1086,26 @@ as a code block and the exit status follows; Esc stops it. A frame dump runs not
 
 `rolltui_clipboard_copy(terminal, text, len)` sets the clipboard two ways at once. OSC 52 goes to
 the terminal, the one way that reaches the person's own machine over ssh; inside tmux it is
-passed through, and above 74,994 encoded bytes it is not sent. The first native tool that works
+passed through, inside GNU screen it goes in pieces screen passes on, and above 74,994 encoded
+bytes it is not sent, except to kitty, which takes any size. The first native tool that works
 gets the text too: pbcopy; wl-copy, xclip or xsel; the Windows clipboard. `$ROLLTUI_CLIPBOARD`
 names a command to feed the text to instead of the native tools.
+
+`rolltui_clipboard_paste(terminal, &out)` reads it back through the first tool that answers
+(pbpaste; wl-paste, xclip or xsel; the Windows clipboard), or the command `$ROLLTUI_CLIPBOARD_PASTE`
+names. Over ssh, where no tool can reach the person's clipboard, it gives what the program last
+copied, so a copy and a paste inside one program work there too.
 
 `rolltui_terminal_set_title` sets the window's title (OSC 2). The terminal's own title is pushed
 first and put back when the app leaves or hands the terminal to a program, and the app's is set
 again when it takes the terminal back. Only a change is written. `rolltui_terminal_report_cwd`
 reports a folder with OSC 7, so a new tab or split opens there; dirktui reports the folder it is
 browsing.
+
+`rolltui_terminal_set_window_name` names the window in tmux's list (and screen's), which the title
+does not. tmux takes the escape for it while its `allow-rename` is on; with it off, the name is set
+with `tmux rename-window` instead of being refused unsaid. Leaving the terminal puts back the name
+the window had, and tmux's naming it by itself.
 
 `rolltui_open_terminal(&in, &out)` opens the controlling terminal by name (`/dev/tty`; the
 console's CONIN$ and CONOUT$), whatever stdin and stdout are. A program whose stdout is its answer

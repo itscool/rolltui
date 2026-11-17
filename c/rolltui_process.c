@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_str.h"
@@ -149,21 +150,41 @@ static void base64(const char* text, size_t len, RolltuiStr* out) {
   }
 }
 
+#define SCREEN_CHUNK 512 /* GNU screen passes a DCS through a piece at a time; it drops one longer than its buffer */
+
 int rolltui_clipboard_copy(RolltuiTerminal* t, const char* text, size_t len) {
   int sent = 0, native;
+  const char* tmux = getenv("TMUX");
+  const char* sty = getenv("STY");
+  const int in_tmux = tmux && *tmux, in_screen = !in_tmux && sty && *sty;
+  const char* kitty = getenv("KITTY_WINDOW_ID");
+  /* kitty takes OSC 52 of any size (up to its own clipboard_max_size): drawn on directly, no cap of ours */
+  const int uncapped = kitty && *kitty && !in_tmux && !in_screen;
   if (!text) len = 0;
-  if (t && rolltui_terminal_is_tty(t) && ((len + 2) / 3) * 4 <= OSC52_MAX) {
+  if (t) rolltui_terminal_remember_copy(t, text ? text : "", len);
+  if (t && rolltui_terminal_is_tty(t) && (uncapped || ((len + 2) / 3) * 4 <= OSC52_MAX)) {
     RolltuiStr seq, b64;
-    const char* tmux = getenv("TMUX");
     memset(&seq, 0, sizeof seq);
     memset(&b64, 0, sizeof b64);
     base64(text ? text : "", len, &b64);
-    /* inside tmux, passed through to the terminal tmux is drawn on: the DCS wrapper, its ESCs doubled */
-    if (tmux && *tmux) rolltui_str_append(&seq, "\x1bPtmux;\x1b", sizeof "\x1bPtmux;\x1b" - 1);
-    rolltui_str_append(&seq, "\x1b]52;c;", sizeof "\x1b]52;c;" - 1);
-    rolltui_str_append(&seq, b64.p, b64.n);
-    rolltui_str_append(&seq, "\x07", 1);
-    if (tmux && *tmux) rolltui_str_append(&seq, "\x1b\\", sizeof "\x1b\\" - 1);
+    if (in_screen) { /* through GNU screen: in pieces, each its own DCS, which screen passes on as it comes */
+      size_t at = 0;
+      rolltui_str_append(&seq, "\x1bP\x1b]52;c;", sizeof "\x1bP\x1b]52;c;" - 1);
+      while (at < b64.n) {
+        const size_t n = b64.n - at < SCREEN_CHUNK ? b64.n - at : SCREEN_CHUNK;
+        rolltui_str_append(&seq, b64.p + at, n);
+        at += n;
+        if (at < b64.n) rolltui_str_append(&seq, "\x1b\\\x1bP", sizeof "\x1b\\\x1bP" - 1);
+      }
+      rolltui_str_append(&seq, "\x07\x1b\\", sizeof "\x07\x1b\\" - 1);
+    } else {
+      /* inside tmux, passed through to the terminal tmux is drawn on: the DCS wrapper, its ESCs doubled */
+      if (in_tmux) rolltui_str_append(&seq, "\x1bPtmux;\x1b", sizeof "\x1bPtmux;\x1b" - 1);
+      rolltui_str_append(&seq, "\x1b]52;c;", sizeof "\x1b]52;c;" - 1);
+      rolltui_str_append(&seq, b64.p, b64.n);
+      rolltui_str_append(&seq, "\x07", 1);
+      if (in_tmux) rolltui_str_append(&seq, "\x1b\\", sizeof "\x1b\\" - 1);
+    }
     rolltui_terminal_write(t, seq.p, seq.n);
     rolltui_str_free(&seq);
     rolltui_str_free(&b64);
@@ -171,6 +192,13 @@ int rolltui_clipboard_copy(RolltuiTerminal* t, const char* text, size_t len) {
   }
   native = rolltui_os_clipboard_native(text ? text : "", len);
   return sent || native;
+}
+
+int rolltui_clipboard_paste(RolltuiTerminal* t, RolltuiStr* out) {
+  if (!out) return 0;
+  rolltui_str_clear(out);
+  if (rolltui_os_clipboard_read(out)) return 1;
+  return rolltui_terminal_last_copy(t, out); /* no tool could: what this program last copied */
 }
 
 /* ---- the controlling terminal --------------------------------------------------------------- */

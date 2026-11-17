@@ -11,6 +11,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -107,6 +108,14 @@ struct RolltuiTerminal {
   /* ---- the window's title (rolltui_terminal_set_title) ---- */
   RolltuiStr title;            /* what the app set; empty: the terminal's own */
   unsigned char title_pushed;  /* the terminal's own title is on its stack, to be put back on leaving */
+  /* ---- the window's name in tmux (rolltui_terminal_set_window_name) ---- */
+  RolltuiStr wname;            /* what the app set */
+  RolltuiStr wname_was;        /* the window's name before, put back on leaving */
+  unsigned char wname_set;     /* the window carries the app's name now */
+  unsigned char wname_auto;    /* `automatic-rename` was on, and is put back */
+  unsigned char wname_known;   /* what the window was is known */
+  unsigned char wname_how;     /* how it was last set: 1 the escape, 2 the command */
+  RolltuiStr last_copy;        /* what was last copied through this terminal: the clipboard read when no tool can */
 };
 
 enum { PLAN_KEYBOARD = 0, PLAN_FULL = 1, PLAN_CACHED = 2 };
@@ -230,6 +239,12 @@ static void term_enter(RolltuiTerminal* t, int handle_signals) {
     rolltui_terminal_set_title(t, again.p, again.n);
     rolltui_str_free(&again);
   }
+  if (t->wname.n && !t->wname_set) { /* and the window's name */
+    RolltuiStr again = t->wname;
+    memset(&t->wname, 0, sizeof t->wname);
+    rolltui_terminal_set_window_name(t, again.p, again.n);
+    rolltui_str_free(&again);
+  }
 }
 
 /* SYNCHRONIZED OUTPUT: a terminal that has mode 2026 is sent each frame between its begin and end,
@@ -237,6 +252,7 @@ static void term_enter(RolltuiTerminal* t, int handle_signals) {
 #define SYNC_BEGIN "\x1b[?2026h"
 #define SYNC_END "\x1b[?2026l"
 
+static void window_name_restore(RolltuiTerminal* t);
 static void term_leave(RolltuiTerminal* t) {
   if (!t->entered) return;
   t->entered = 0;
@@ -262,6 +278,7 @@ static void term_leave(RolltuiTerminal* t) {
     rolltui_terminal_write(t, "\x1b]2;\x1b\\\x1b[23;0t", sizeof "\x1b]2;\x1b\\\x1b[23;0t" - 1);
     t->title_pushed = 0;
   }
+  window_name_restore(t);
   if (t->sync_open) { /* a commit's frame, with no present after it: the leaving is its end */
     rolltui_terminal_write(t, SYNC_END, sizeof SYNC_END - 1);
     t->sync_open = 0;
@@ -363,6 +380,9 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_key_decoder_free(t->decoder);
   rolltui_str_free(&t->cache_path);
   rolltui_str_free(&t->title);
+  rolltui_str_free(&t->wname);
+  rolltui_str_free(&t->wname_was);
+  rolltui_str_free(&t->last_copy);
   rolltui_mem_free(t->kitty);
   rolltui_mem_free(t->pics);
   rolltui_mem_free(t->queued);
@@ -398,6 +418,150 @@ void rolltui_terminal_flush_input(RolltuiTerminal* t) {
 }
 
 /* ---- the title and the working directory ---------------------------------------------------- */
+
+/* `tmux <args>`, its answer in `out` (may be NULL) without its last newline: 1 when it ran and said 0, within a second. */
+static int tmux_says(const char* const* args, RolltuiStr* out) {
+  const char* argv[12];
+  RolltuiChildOptions o;
+  RolltuiChild* c;
+  size_t i = 0;
+  int st = -1, waited = 0;
+  argv[i++] = "tmux";
+  while (args[i - 1] && i < 11) argv[i] = args[i - 1], ++i;
+  argv[i] = NULL;
+  memset(&o, 0, sizeof o);
+  o.argv = argv;
+  o.mode = ROLLTUI_CHILD_PIPES;
+  c = rolltui_child_spawn(&o, NULL);
+  if (!c) return 0;
+  rolltui_child_close_input(c);
+  if (out) rolltui_str_clear(out);
+  for (;;) {
+    char buf[256];
+    const size_t n = rolltui_child_read(c, buf, sizeof buf);
+    if (n && out) rolltui_str_append(out, buf, n);
+    if (!n && rolltui_child_drained(c) && rolltui_child_done(c, &st)) break;
+    if (!n) {
+      if (waited >= 1000) break; /* a tmux that does not answer is not waited on */
+      rolltui_os_sleep_ms(2);
+      waited += 2;
+    }
+  }
+  rolltui_child_free(c);
+  if (out)
+    while (out->n && (out->p[out->n - 1] == '\n' || out->p[out->n - 1] == '\r')) out->p[--out->n] = 0;
+  return st == 0;
+}
+
+static int in_tmux(void) {
+  const char* v = getenv("TMUX");
+  return v && *v;
+}
+
+/* THE WINDOW AS IT WAS before this app named it: its name and whether tmux names it by itself. */
+static void window_name_learn(RolltuiTerminal* t) {
+  const char* pane = getenv("TMUX_PANE");
+  RolltuiStr v;
+  if (t->wname_known || !in_tmux()) return;
+  memset(&v, 0, sizeof v);
+  {
+    const char* a[] = {"display-message", "-p", "-t", pane ? pane : "", "#W", NULL};
+    if (!pane) a[2] = "#W", a[3] = NULL;
+    if (tmux_says(a, &v)) rolltui_str_set(&t->wname_was, v.p ? v.p : "", v.n);
+  }
+  {
+    const char* a[] = {"show-window-options", "-v", "-t", pane ? pane : "", "automatic-rename", NULL};
+    if (!pane) a[2] = "automatic-rename", a[3] = NULL;
+    t->wname_auto = (unsigned char)(tmux_says(a, &v) && v.n == 2 && memcmp(v.p, "on", 2) == 0);
+  }
+  rolltui_str_free(&v);
+  t->wname_known = 1;
+}
+
+/* WHETHER TMUX TAKES THE ESCAPE: its `allow-rename`, the window's own or else the global one. */
+static int tmux_allows_rename(void) {
+  const char* pane = getenv("TMUX_PANE");
+  RolltuiStr v;
+  int on = 0;
+  memset(&v, 0, sizeof v);
+  {
+    const char* a[] = {"show-window-options", "-v", "-t", pane ? pane : "", "allow-rename", NULL};
+    if (!pane) a[2] = "allow-rename", a[3] = NULL;
+    if (!tmux_says(a, &v) || v.n == 0) {
+      const char* g[] = {"show-window-options", "-gv", "allow-rename", NULL};
+      tmux_says(g, &v);
+    }
+  }
+  on = v.n == 2 && memcmp(v.p, "on", 2) == 0;
+  rolltui_str_free(&v);
+  return on;
+}
+
+static void window_name_restore(RolltuiTerminal* t) {
+  const char* pane = getenv("TMUX_PANE");
+  if (!t->wname_set || !in_tmux() || !t->wname_known) {
+    t->wname_set = 0;
+    return;
+  }
+  {
+    const char* a[] = {"rename-window", "-t", pane ? pane : "", t->wname_was.p ? t->wname_was.p : "", NULL};
+    if (!pane) a[1] = t->wname_was.p ? t->wname_was.p : "", a[2] = NULL;
+    tmux_says(a, NULL);
+  }
+  if (t->wname_auto) { /* a rename turns it off; it was on */
+    const char* a[] = {"set-window-option", "-t", pane ? pane : "", "automatic-rename", "on", NULL};
+    if (!pane) a[1] = "automatic-rename", a[2] = "on", a[3] = NULL;
+    tmux_says(a, NULL);
+  }
+  t->wname_set = 0;
+}
+
+int rolltui_terminal_set_window_name(RolltuiTerminal* t, const char* name, size_t len) {
+  const char* sty = getenv("STY");
+  const int tmux = in_tmux();
+  RolltuiStr clean;
+  size_t i;
+  int how = 0;
+  if (!t || (!tmux && !(sty && *sty))) return 0;
+  if (!name) len = 0;
+  if (t->wname_set && rolltui_str_eq(&t->wname, name, len)) return t->wname_how; /* only what changed is set */
+  rolltui_str_set(&t->wname, name, len);
+  if (!t->tty || !t->entered) return 0; /* set when the terminal is entered */
+  memset(&clean, 0, sizeof clean);
+  for (i = 0; i < len; ++i) { /* a control character would end the escape early */
+    const unsigned char c = (unsigned char)name[i];
+    if (c >= 0x20 && c != 0x7F) rolltui_str_append(&clean, &name[i], 1);
+  }
+  if (tmux) window_name_learn(t);
+  if (!tmux || tmux_allows_rename()) { /* the escape tmux and screen take for a window's name */
+    RolltuiStr seq;
+    memset(&seq, 0, sizeof seq);
+    rolltui_str_append(&seq, "\x1bk", 2);
+    rolltui_str_append(&seq, clean.p ? clean.p : "", clean.n);
+    rolltui_str_append(&seq, "\x1b\\", 2);
+    rolltui_terminal_write(t, seq.p, seq.n);
+    rolltui_str_free(&seq);
+    how = 1;
+  } else { /* `allow-rename` is off: the escape would be refused without a word, the command is not */
+    const char* pane = getenv("TMUX_PANE");
+    const char* a[] = {"rename-window", "-t", pane ? pane : "", clean.p ? clean.p : "", NULL};
+    if (!pane) a[1] = clean.p ? clean.p : "", a[2] = NULL;
+    how = tmux_says(a, NULL) ? 2 : 0;
+  }
+  t->wname_set = how != 0 && tmux;
+  t->wname_how = (unsigned char)how;
+  rolltui_str_free(&clean);
+  return how;
+}
+
+void rolltui_terminal_remember_copy(RolltuiTerminal* t, const char* text, size_t len) {
+  if (t) rolltui_str_set(&t->last_copy, text ? text : "", text ? len : 0);
+}
+int rolltui_terminal_last_copy(const RolltuiTerminal* t, RolltuiStr* out) {
+  if (!t || !t->last_copy.n) return 0;
+  rolltui_str_set(out, t->last_copy.p, t->last_copy.n);
+  return 1;
+}
 
 void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len) {
   RolltuiStr seq;

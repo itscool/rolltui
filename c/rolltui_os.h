@@ -92,6 +92,8 @@ void rolltui_os_sleep_ms(int ms);
 unsigned long long rolltui_os_thread_self(void);
 /* SIGUSR1 heard (`on` 1) or no longer (0): it wakes the loop and `rolltui_os_take_reload` says it came. Nothing on Windows. */
 void rolltui_os_listen_reload(int on);
+/* The system clipboard's text into `out`: 1 when a tool (or `$ROLLTUI_CLIPBOARD_PASTE`) gave it. */
+int rolltui_os_clipboard_read(RolltuiStr* out);
 /* 1 once per SIGUSR1 since the last call. */
 int rolltui_os_take_reload(void);
 

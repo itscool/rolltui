@@ -544,7 +544,9 @@ int main() {
     // info, rows and drawing (PUBLIC 621); the output kind's pump, options, sources, gutter and footer, a pty refused (INTERNAL 946).
     // Then watching: a watch made, freed, added to, let go of, asked and described; three stores read again; a run watching its
     // stores (PUBLIC 631); a store's refresh and its files, SIGUSR1 heard and taken (INTERNAL 950).
-    check(totals["PUBLIC"] == 631 && totals["INTERNAL"] == 950 && totals.size() == 2,
+    // Then the terminal: the window's name in tmux, the clipboard read (PUBLIC 633); the last copy kept and read back, the system
+    // clipboard read (INTERNAL 953).
+    check(totals["PUBLIC"] == 633 && totals["INTERNAL"] == 953 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -731,10 +733,11 @@ int main() {
     // a line's info, rows and drawing.
     // Settings 97, run 240, release 17: three stores read again; a watch made, added to, let go of, asked and described, a run
     // watching its stores; a watch freed.
+    // Run 242: the window's name in tmux, the clipboard read.
     check(rt["VOCAB"] == 44 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 240 && rt["HOST_RELEASE"] == 17 &&
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 242 && rt["HOST_RELEASE"] == 17 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 84,
-          "the roles are the recorded shape — vocab 44, host load 33 / settings 97 / bind 116 / run 240 / "
+          "the roles are the recorded shape — vocab 44, host load 33 / settings 97 / bind 116 / run 242 / "
           "release 17, tool interop 0, widget 84 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

@@ -491,6 +491,33 @@ int rolltui_os_open_with_system(const char* target, RolltuiStr* err) {
 
 /* ---- the clipboard -------------------------------------------------------------------------- */
 
+int rolltui_os_clipboard_read(RolltuiStr* out) {
+  HANDLE h;
+  int ok = 0;
+  if (!OpenClipboard(NULL)) return 0;
+  h = GetClipboardData(CF_UNICODETEXT);
+  if (h) {
+    const wchar_t* w = (const wchar_t*)GlobalLock(h);
+    if (w) {
+      const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+      if (n > 1) {
+        char* b = (char*)rolltui_mem_alloc((size_t)n);
+        size_t i, k = 0;
+        WideCharToMultiByte(CP_UTF8, 0, w, -1, b, n, NULL, NULL);
+        rolltui_str_clear(out);
+        for (i = 0; i + 1 < (size_t)n; ++i) /* a line ends in \n here, as everywhere else in the library */
+          if (!(b[i] == '\r' && b[i + 1] == '\n')) b[k++] = b[i];
+        rolltui_str_set(out, b, k);
+        rolltui_mem_free(b);
+        ok = 1;
+      }
+      GlobalUnlock(h);
+    }
+  }
+  CloseClipboard();
+  return ok;
+}
+
 int rolltui_os_clipboard_native(const char* text, size_t len) {
   const char* override = getenv("ROLLTUI_CLIPBOARD");
   wchar_t* w;

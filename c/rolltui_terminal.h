@@ -139,6 +139,10 @@ unsigned char rolltui_terminal_key_protocol(const RolltuiTerminal* t);
 const char* rolltui_terminal_enter_sequence(const RolltuiTerminal* t, size_t* len);
 const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* len);
 
+/* What was last copied through `t` (`rolltui_clipboard_copy`), kept as the clipboard read where no tool can give one. */
+void rolltui_terminal_remember_copy(RolltuiTerminal* t, const char* text, size_t len);
+int rolltui_terminal_last_copy(const RolltuiTerminal* t, RolltuiStr* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

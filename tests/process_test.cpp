@@ -13,6 +13,7 @@
 #else
 #include <pty.h>
 #endif
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -359,7 +360,89 @@ void test_clipboard_title_cwd() {
   const std::string cwd = read_master(master);
   check(cwd.find("\x1b]7;file://") != std::string::npos && cwd.find("/tmp/a%20b\x1b\\") != std::string::npos,
         "OSC 7 reports the folder, percent-encoded [" + cwd.substr(0, 40) + "]");
-  rolltui_terminal_free(t);
+  // GNU SCREEN passes OSC 52 through in pieces, each its own DCS
+  setenv("STY", "1234.pts-0.host", 1);
+  rolltui_clipboard_copy(t, "hi", 2);
+  check(read_master(master).find("\x1bP\x1b]52;c;aGk=\x07\x1b\\") != std::string::npos, "inside GNU screen OSC 52 is passed through as a DCS");
+  {
+    const std::string long_text(600, 'y'); /* 800 base64 bytes: two pieces */
+    rolltui_clipboard_copy(t, long_text.data(), long_text.size());
+    const std::string seen = read_master(master);
+    check(seen.find("\x1b\\\x1bP") != std::string::npos && seen.find("\x07\x1b\\") != std::string::npos,
+          "…in pieces screen passes on as they come, the long one too");
+  }
+  unsetenv("STY");
+  // KITTY takes OSC 52 of any size
+  setenv("KITTY_WINDOW_ID", "1", 1);
+  {
+    std::string seen; /* drained as it is written: 80 KB is more than a pty holds unread */
+    std::atomic<bool> stop{false};
+    std::thread drain([&] {
+      char b[8192];
+      while (!stop.load()) {
+        pollfd pf{master, POLLIN, 0};
+        if (::poll(&pf, 1, 20) > 0) {
+          const ssize_t k = ::read(master, b, sizeof b);
+          if (k > 0) seen.append(b, static_cast<std::size_t>(k));
+        }
+      }
+    });
+    rolltui_clipboard_copy(t, big.data(), big.size());
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    stop = true;
+    drain.join();
+    check(seen.find("\x1b]52;c;") != std::string::npos && seen.size() > 80000,
+          "drawn on kitty, a copy past 74994 encoded bytes is still sent [" + std::to_string(seen.size()) + " bytes]");
+  }
+  unsetenv("KITTY_WINDOW_ID");
+  // READING the clipboard: a tool's answer, else what was last copied here
+  setenv("ROLLTUI_CLIPBOARD_PASTE", "printf 'from the tool'", 1);
+  RolltuiStr pasted{};
+  check(rolltui_clipboard_paste(t, &pasted) == 1 && std::string(pasted.p ? pasted.p : "", pasted.n) == "from the tool",
+        "the clipboard is read through the tool that answers");
+  setenv("ROLLTUI_CLIPBOARD_PASTE", "exit 1", 1);
+  rolltui_clipboard_copy(t, "copied here", 11);
+  read_master(master);
+  check(rolltui_clipboard_paste(t, &pasted) == 1 && std::string(pasted.p ? pasted.p : "", pasted.n) == "copied here",
+        "…and where no tool can (over ssh), what this program last copied");
+  rolltui_str_free(&pasted);
+  unsetenv("ROLLTUI_CLIPBOARD_PASTE");
+  // THE WINDOW'S NAME IN TMUX: the escape where tmux takes it, its command where not, the old name put back on leaving
+  const std::string fake = std::string(dir) + "/bin";
+  mkdir(fake.c_str(), 0700);
+  const std::string tlog = std::string(dir) + "/tmux.log";
+  {
+    std::ofstream sh(fake + "/tmux");
+    sh << "#!/bin/sh\necho \"$*\" >> \"$TMUX_LOG\"\ncase \"$1\" in\n  display-message) echo oldname ;;\n"
+          "  show-window-options) case \"$*\" in *allow-rename*) echo \"$FAKE_ALLOW\" ;; *automatic-rename*) echo on ;; esac ;;\nesac\nexit 0\n";
+  }
+  chmod((fake + "/tmux").c_str(), 0700);
+  const std::string old_path = getenv("PATH") ? getenv("PATH") : "";
+  setenv("PATH", (fake + ":" + old_path).c_str(), 1);
+  setenv("TMUX_LOG", tlog.c_str(), 1);
+  setenv("TMUX", "/tmp/tmux-test,1,0", 1);
+  setenv("TMUX_PANE", "%3", 1);
+  setenv("FAKE_ALLOW", "on", 1);
+  check(rolltui_terminal_set_window_name(t, "dirk", 4) == 1 && read_master(master).find("\x1bkdirk\x1b\\") != std::string::npos,
+        "inside tmux the window is named by the escape tmux takes for it");
+  setenv("FAKE_ALLOW", "off", 1);
+  check(rolltui_terminal_set_window_name(t, "dirk 2", 6) == 2, "…and with allow-rename off, by tmux's own command, not refused unsaid");
+  rolltui_terminal_free(t); /* still inside tmux, as a program leaving is */
+  unsetenv("TMUX");
+  {
+    std::ifstream in(tlog);
+    const std::string log((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    check(log.find("rename-window -t %3 dirk 2") != std::string::npos, "(the command named the window) [" + log + "]");
+    check(log.find("rename-window -t %3 oldname") != std::string::npos && log.find("set-window-option -t %3 automatic-rename on") != std::string::npos,
+          "leaving puts back the name the window had, and tmux naming it by itself");
+  }
+  setenv("PATH", old_path.c_str(), 1);
+  unsetenv("TMUX_LOG");
+  unsetenv("TMUX_PANE");
+  unsetenv("FAKE_ALLOW");
+  std::remove(tlog.c_str());
+  std::remove((fake + "/tmux").c_str());
+  rmdir(fake.c_str());
   check(read_master(master).find("\x1b[23;0t") != std::string::npos, "leaving puts the terminal's own title back");
   ::close(master);
   ::close(slave);

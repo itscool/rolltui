@@ -1591,6 +1591,8 @@ ROLLTUI_API(rolltui_mem_stats, PUBLIC)
 
 /* ---- rolltui_terminal.h — the one fd; default PUBLIC ------------------------------------- */
 ROLLTUI_API(rolltui_terminal_enter_sequence, INTERNAL)  /* an escape sequence the library writes itself */
+ROLLTUI_API(rolltui_terminal_remember_copy, INTERNAL)  /* the clipboard copy keeps what it copied on the terminal */
+ROLLTUI_API(rolltui_terminal_last_copy, INTERNAL)  /* the clipboard read falls back to it */
 ROLLTUI_API(rolltui_terminal_free, PUBLIC)
 ROLLTUI_API(rolltui_terminal_suspend, PUBLIC)  /* a host runs an editor on its own terminal and comes back: dirktui */
 ROLLTUI_API(rolltui_terminal_resume, PUBLIC)   /* the other half of that pair */
@@ -1635,6 +1637,7 @@ ROLLTUI_API(rolltui_os_child_free, INTERNAL)
 ROLLTUI_API(rolltui_os_child_wait_terminal, INTERNAL)  /* a host runs one through rolltui_run_program */
 ROLLTUI_API(rolltui_os_open_with_system, INTERNAL)
 ROLLTUI_API(rolltui_os_clipboard_native, INTERNAL)  /* a host copies through rolltui_clipboard_copy */
+ROLLTUI_API(rolltui_os_clipboard_read, INTERNAL)  /* a host reads through rolltui_clipboard_paste */
 ROLLTUI_API(rolltui_os_open_terminal, INTERNAL)
 ROLLTUI_API(rolltui_os_close_terminal, INTERNAL)
 ROLLTUI_API(rolltui_os_localtime, INTERNAL)
@@ -1681,6 +1684,7 @@ ROLLTUI_API(rolltui_terminal_wake, PUBLIC)
 ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)
 ROLLTUI_API(rolltui_terminal_set_title, PUBLIC)  /* chat names what the conversation is doing */
+ROLLTUI_API(rolltui_terminal_set_window_name, PUBLIC)  /* KEPT: a program named in tmux's window list, the old name put back on leaving */
 ROLLTUI_API(rolltui_terminal_report_cwd, PUBLIC)  /* dirktui reports the folder it is in */
 ROLLTUI_API(rolltui_child_spawn, PUBLIC)  /* chat runs an approved command; dirktui checks for an update, hands a file to an app */
 ROLLTUI_API(rolltui_child_free, PUBLIC)
@@ -1696,6 +1700,7 @@ ROLLTUI_API(rolltui_child_stop, PUBLIC)  /* chat stops a command on Escape */
 ROLLTUI_API(rolltui_child_wait_ms, PUBLIC)
 ROLLTUI_API(rolltui_open_with_system, PUBLIC)  /* dirktui's "open with the system" */
 ROLLTUI_API(rolltui_clipboard_copy, PUBLIC)  /* dirktui and the studio copy */
+ROLLTUI_API(rolltui_clipboard_paste, PUBLIC)  /* KEPT: a host's own paste key, which works over ssh from what the program copied */
 ROLLTUI_API(rolltui_open_terminal, PUBLIC)  /* dirktui draws on the terminal while its stdout is the answer */
 ROLLTUI_API(rolltui_close_terminal, PUBLIC)
 

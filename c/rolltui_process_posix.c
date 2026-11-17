@@ -566,6 +566,71 @@ static int pipe_into(const char* const* argv, const char* text, size_t len) {
   return st == 0;
 }
 
+/* `argv`'s whole answer into `out`, within two seconds: 1 when it ran and said 0. */
+static int read_from(const char* const* argv, RolltuiStr* out) {
+  RolltuiOsChild* c = rolltui_os_child_spawn(argv, NULL, NULL, ROLLTUI_OS_CHILD_PIPES, 0, 0, -1, -1, NULL);
+  int st = -1, waited = 0;
+  if (!c) return 0;
+  rolltui_os_child_close_input(c);
+  rolltui_str_clear(out);
+  for (;;) {
+    char buf[4096];
+    const long n = rolltui_os_child_read(c, buf, sizeof buf);
+    if (n > 0) {
+      rolltui_str_append(out, buf, (size_t)n);
+      continue;
+    }
+    if (n < 0) { /* its output closed: it has said all it will, and how it ended is what is waited for */
+      while (!rolltui_os_child_done(c, 0, &st) && waited < 2000) {
+        struct timespec ts = {0, 2 * 1000 * 1000};
+        nanosleep(&ts, NULL);
+        waited += 2;
+      }
+      break;
+    }
+    if (rolltui_os_child_done(c, 0, &st)) { /* ended: what is still in the pipe is the rest of its answer */
+      long m;
+      while ((m = rolltui_os_child_read(c, buf, sizeof buf)) > 0) rolltui_str_append(out, buf, (size_t)m);
+      break;
+    }
+    if (waited >= 2000) break; /* a tool that does not answer (a clipboard held by a hung program) is not waited on */
+    {
+      struct timespec ts = {0, 2 * 1000 * 1000};
+      nanosleep(&ts, NULL);
+      waited += 2;
+    }
+  }
+  if (!c->exited) st = -1;
+  rolltui_os_child_free(c);
+  return st == 0;
+}
+
+int rolltui_os_clipboard_read(RolltuiStr* out) {
+  const char* override = getenv("ROLLTUI_CLIPBOARD_PASTE");
+  if (override && *override) {
+    const char* argv[] = {"/bin/sh", "-c", override, NULL};
+    return read_from(argv, out);
+  }
+#if defined(__APPLE__)
+  {
+    const char* argv[] = {"pbpaste", NULL};
+    return read_from(argv, out);
+  }
+#else
+  if (getenv("WAYLAND_DISPLAY")) {
+    const char* argv[] = {"wl-paste", "--no-newline", NULL};
+    if (read_from(argv, out)) return 1;
+  }
+  if (getenv("DISPLAY")) {
+    const char* xclip[] = {"xclip", "-selection", "clipboard", "-o", NULL};
+    const char* xsel[] = {"xsel", "--clipboard", "--output", NULL};
+    if (read_from(xclip, out)) return 1;
+    if (read_from(xsel, out)) return 1;
+  }
+  return 0;
+#endif
+}
+
 int rolltui_os_clipboard_native(const char* text, size_t len) {
   const char* override = getenv("ROLLTUI_CLIPBOARD");
   if (override && *override) { /* a command named for the clipboard: a test's recorder, or a person's own tool */

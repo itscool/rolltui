@@ -100,6 +100,10 @@ int rolltui_os_open_with_system(const char* target, RolltuiStr* err) {
   no_programs(err);
   return 0;
 }
+int rolltui_os_clipboard_read(RolltuiStr* out) { /* a page reads nothing of the person's clipboard: what the program copied stands in */
+  (void)out;
+  return 0;
+}
 int rolltui_os_clipboard_native(const char* text, size_t len) { /* OSC 52, which xterm.js's clipboard addon takes, is the way */
   (void)text, (void)len;
   return 0;

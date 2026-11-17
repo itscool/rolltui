@@ -4832,6 +4832,11 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
  * program, and set again when it is taken back. Control characters are dropped; only a change is written. Inside tmux it names the
  * pane. */
 void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len);
+/* THE WINDOW'S NAME in tmux's list (or screen's), which the title does not set: by the escape tmux takes when its `allow-rename` is
+ * on, else by `tmux rename-window`, so it is never silently refused. Leaving the terminal puts back the name the window had and its
+ * `automatic-rename` (screen keeps no name to put back); coming back from a program that had the terminal sets this one again. 1 by
+ * the escape, 2 by the command, 0 outside tmux and screen or before the terminal is entered (it is set then). */
+int rolltui_terminal_set_window_name(RolltuiTerminal* t, const char* name, size_t len);
 /* MOUSE REPORTING ON OR OFF while the program runs (`mouse` and `hover` as in the options): off, the terminal selects text with the
  * pointer the way it does for a program that asks for nothing. Kept across a suspend and resume. */
 void rolltui_terminal_set_mouse(RolltuiTerminal* t, int mouse, int hover);
@@ -5140,6 +5145,10 @@ int rolltui_open_with_system(const char* target, size_t len, RolltuiStr* err);
  * native tool that works (pbcopy; wl-copy, xclip or xsel; the Windows clipboard), or the command `$ROLLTUI_CLIPBOARD` names, which is
  * fed the text. 1 when either took it. `t` may be NULL: the native tool alone. */
 int rolltui_clipboard_copy(RolltuiTerminal* t, const char* text, size_t len);
+/* THE CLIPBOARD READ: the first native tool that answers (pbpaste; wl-paste, xclip or xsel; the Windows clipboard), or the command
+ * `$ROLLTUI_CLIPBOARD_PASTE` names; where none can (over ssh with no display), what this program last copied through `t`. 1 with
+ * the text in `*out` (REPLACED); 0 when there is nothing to give. */
+int rolltui_clipboard_paste(RolltuiTerminal* t, RolltuiStr* out);
 
 /* THE CONTROLLING TERMINAL by name (/dev/tty; the console's CONIN$ and CONOUT$), whatever stdin and stdout are: for a program whose
  * stdout is its answer to a shell (a file chooser, cd-on-exit), which draws here and prints its answer there. 1 with the descriptors
