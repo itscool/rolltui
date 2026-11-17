@@ -125,6 +125,8 @@ int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* 
                                   const char** action, size_t* alen);
 /* WHAT CAN FOLLOW `keys[0..n)` in `scope`, one row per next chord, up to `cap`: the chord, the action it completes (NULL when it only
  * leads on), and in `more` whether a longer sequence goes on through it. Returns how many. For a panel that says what to press. */
+/* Whether `keys` finish a sequence of `scope` whose last key is `any`: the key typed there is then the host's to read. */
+int rolltui_bindings_sequence_ends_any(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen);
 size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
                                       RolltuiChord* next, const char** actions, size_t* alens, unsigned char* more, size_t cap);
 /* ---- THE LIBRARY'S CLOSED ACTION TABLE ------------------------------------------------------

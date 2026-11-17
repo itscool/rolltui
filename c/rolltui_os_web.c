@@ -279,6 +279,10 @@ void rolltui_os_tty_wake(RolltuiOsTty* t) {
   (void)t;
   g_web.woken = 1;
 }
+void rolltui_os_tty_flush_input(RolltuiOsTty* t) {
+  (void)t;
+  g_web.in_n = 0;
+}
 void rolltui_os_tty_publish(RolltuiOsTty* t, const char* leave, size_t len) { (void)t, (void)leave, (void)len; }
 void rolltui_os_tty_withdraw(void) {}
 void rolltui_os_tty_restore_now(void) {}

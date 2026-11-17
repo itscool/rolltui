@@ -8,7 +8,7 @@
 │ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│ kill_word_forward  Ctrl-Delete               ▸ │
 │ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│ kill_to_line_start  Ctrl-U                   ▸ │
 │ │ paste, mouse mode)              │             │                   │ kill_to_line_end  Ctrl-K                     ▸ │
-│ │ Key + mouse decoding            │ build       │ single header, pur│ left  Left                                   ▸ │
+│ │ Key + mouse decoding            │ build       │ single header, pur│ left  Left, Ctrl-B                           ▸ │
 │ │                                 │             │ Event, table-teste│ right  Right                                 ▸ │
 │ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│ word_left  Ctrl-Left, Alt-Left, Alt-B, Alt-D ▸ │
 │ │ colour downgrade                │             │ tested            │ word_right  Ctrl-Right, Alt-Right, Alt-F     ▸ │

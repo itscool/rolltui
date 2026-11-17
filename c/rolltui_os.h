@@ -179,6 +179,8 @@ int rolltui_os_tty_wait(RolltuiOsTty* t, int timeout_ms, int with_wake);
 long rolltui_os_tty_read(RolltuiOsTty* t, char* buf, size_t cap);
 /* Wakes a `wait` on another thread. Safe from any thread. */
 void rolltui_os_tty_wake(RolltuiOsTty* t);
+/* Drops what has been typed and not yet read: a key held down over a slow action does not run on after it. */
+void rolltui_os_tty_flush_input(RolltuiOsTty* t);
 
 /* THE PROCESS-WIDE RESTORE. `publish` names the terminal and the bytes that leave it, so a fatal
  * signal, a crash or an `exit` (Windows: also a console close or Ctrl-C) can put the terminal back; `withdraw` clears it.

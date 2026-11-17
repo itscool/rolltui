@@ -43,6 +43,7 @@ std::string event_to_string(const RolltuiEvent& e) {
       return "Paste(" + std::to_string(e.text_len) + " bytes)";
     default: {
       std::string s;
+      if (e.key.super) s += "Super+";
       if (e.key.ctrl) s += "Ctrl+";
       if (e.key.alt) s += "Alt+";
       if (e.key.shift) s += "Shift+";
@@ -179,6 +180,12 @@ int main() {
   table("\x1b[47;5u", "Ctrl+/");          // legacy has no control code for it at all
   table("\x1b[97:65;6:1u", "Ctrl+Shift+a");  // sub-parameters: shifted key, event type — ignored
   table("\x1b[57399;1u", "Unknown(\x1b[57399;1u)");  // kitty's private-use keypad range
+  // F13 TO F24 AND SUPER, which only kitty's protocol carries: F13 is 57376, Super is modifier bit 8.
+  table("\x1b[57376u", "F13");
+  table("\x1b[57387;2u", "Shift+F24");
+  table("\x1b[97;9u", "Super+a");
+  table("\x1b[97;13u", "Super+Ctrl+a");
+  table("\x1b[1;9C", "End");  // Super and an arrow is macOS's remap of End: folded into the key, no Super left on it
   // xterm modifyOtherKeys: CSI 27 ; modifier ; keycode ~, the keycode UNSHIFTED.
   // [invisible-island.net/xterm/modified-keys.html — its own examples are \e[27;5;9~
   //  control-TAB, \e[27;5;44~ control-comma, \e[27;5;47~ control-slash]
@@ -307,5 +314,24 @@ int main() {
           "…while 'space', which IS an alias for a Char chord, still round-trips");
   }
 
+  // ---- F13 to F24 and Super: spelled, shown, delivered by kitty alone ----
+  {
+    RolltuiChord f13{}, sup{};
+    check(rolltui_chord_parse("f13", 3, &f13) && f13.key == ROLLTUI_KEY_F13, "f13 is a key a bindings file spells");
+    check(rolltui_chord_parse("super+a", 7, &sup) && sup.super && sup.ch == 'a' && !sup.ctrl, "super+a is a chord");
+    RolltuiChord cmd{};
+    check(rolltui_chord_parse("cmd+a", 5, &cmd) && cmd.super, "…and cmd+a is the same chord");
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    check(std::string(buf, rolltui_chord_to_string(&sup, buf, sizeof buf)) == "super+a", "it is written back as super+a");
+    check(std::string(buf, rolltui_chord_display(&sup, buf, sizeof buf)) == "Super-A", "…and shown as Super-A");
+    check(rolltui_key_deliverable(&sup, ROLLTUI_PROTOCOL_KITTY) && !rolltui_key_deliverable(&sup, ROLLTUI_PROTOCOL_LEGACY) &&
+              !rolltui_key_deliverable(&sup, ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS),
+          "Super is delivered by kitty's protocol and by no other");
+    check(rolltui_key_deliverable(&f13, ROLLTUI_PROTOCOL_KITTY) && !rolltui_key_deliverable(&f13, ROLLTUI_PROTOCOL_LEGACY),
+          "…and so is F13, which legacy terminals send as Shift and F1");
+    char enc[ROLLTUI_KEY_ENCODE_MAX];
+    const long n = rolltui_key_encode(&f13, ROLLTUI_PROTOCOL_KITTY, enc, sizeof enc);
+    check(n > 0 && std::string(enc, static_cast<std::size_t>(n)) == "\x1b[57376u", "F13 encodes as kitty sends it");
+  }
   return report("rolltui_keys_test");
 }

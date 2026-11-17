@@ -108,6 +108,7 @@ void app_event(void* c, RolltuiRun* run, const RolltuiEvent* e) {
   const char ch = static_cast<char>(e->key.ch);
   s->typed.push_back(ch);
   if (ch == 'q') rolltui_run_stop(run);
+  else if (ch == 'f') rolltui_run_flush_input(run);  // a slow action: what was typed after it goes
   else if (ch == 'r') rolltui_run_invalidate(run);
   else if (ch == 's') {
     rolltui_run_suspend(run);
@@ -433,9 +434,25 @@ int main() {
     check((ms >= 0 && ms <= 20) || fired == 1, "a timer due sooner than the frame's wait shortens what the step answers (" + std::to_string(ms) + ")");
     step_until(run, [&] { return fired != 0; });
     check(fired == 1, "…and a step once it is due fires it, once");
+    {
+      // AN EVENT THE PROGRAM MADE reaches it at the next step, before anything typed
+      RolltuiEvent made{};
+      made.kind = ROLLTUI_EVENT_KEY;
+      made.key.key = ROLLTUI_KEY_CHAR;
+      made.key.ch = 'z';
+      rolltui_run_inject(run, &made);
+      rolltui_run_step(run);
+      check(st.typed == "abz", "an injected key reaches the program at the next step [" + st.typed + "]");
+      // A TYPEAHEAD FLUSH: f flushes, so the keys typed after it in the same batch go
+      type("fxyz");
+      ::usleep(50000);
+      step_until(run, [&] { return st.typed.find('f') != std::string::npos; });
+      rolltui_run_step(run);
+      check(st.typed == "abzf", "keys typed after a typeahead flush in the same batch are dropped [" + st.typed + "]");
+    }
     type("q");
     ms = step_until(run, [&] { return false; });
-    check(ms == ROLLTUI_RUN_STEP_STOPPED && st.typed == "abq", "the app stopping makes the step answer ROLLTUI_RUN_STEP_STOPPED");
+    check(ms == ROLLTUI_RUN_STEP_STOPPED && st.typed == "abzfq", "the app stopping makes the step answer ROLLTUI_RUN_STEP_STOPPED");
     check(rolltui_run_step(run) == ROLLTUI_RUN_STEP_STOPPED, "…and every step after it");
     const std::size_t before_finish = out.size();
     check(rolltui_run_finish(run) == ROLLTUI_RUN_STOPPED, "finish returns ROLLTUI_RUN_STOPPED");

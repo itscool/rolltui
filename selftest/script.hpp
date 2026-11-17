@@ -101,17 +101,19 @@ inline std::vector<Step> scripted_keys(rolltui::StrView spec, int w, int h) {
   };
   // A named key with an optional Shift/Ctrl/Alt prefix: "ShiftLeft", "CtrlHome", "AltEnter".
   auto named = [&](StrView name, RolltuiEvent& out_ev) {
-    bool shift = false, c = false, a = false;
+    bool shift = false, c = false, a = false, sup = false;
     for (;;) {
       if (name.starts_with("Shift")) { shift = true; name = name.drop_front(5); }
       else if (name.starts_with("Ctrl")) { c = true; name = name.drop_front(4); }
       else if (name.starts_with("Alt")) { a = true; name = name.drop_front(3); }
+      else if (name.starts_with("Super")) { sup = true; name = name.drop_front(5); }
       else break;
     }
     // The name -> Key table is `rolltui_key_from_display_name`, which reads the same
     // X-macro list the library's own `to_string` and chord parser do, case-insensitively.
     if (const int k = rolltui_key_from_display_name(name.data(), name.size()); k >= 0) {
       out_ev = key_ev(static_cast<unsigned char>(k), shift, c, a);
+      out_ev.key.super = sup ? 1 : 0;
       return true;
     }
     if (name.size() == 1 && (c || a) && name[0] >= 'A' && name[0] <= 'Z') {  // CtrlA, AltC, ...

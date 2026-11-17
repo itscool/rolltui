@@ -70,6 +70,7 @@ int rolltui_key_decoder_in_paste(const RolltuiKeyDecoder* d) { return d && d->in
 
 static RolltuiChord chord_key(unsigned char k, int ctrl, int alt, int shift) {
   RolltuiChord c;
+  memset(&c, 0, sizeof c); /* every modifier off but the ones given, Super included */
   c.key = k;
   c.ch = 0;
   c.ctrl = (unsigned char)(ctrl != 0);
@@ -134,14 +135,19 @@ static int could_complete(const char* s, size_t len, size_t pos) {
   return 1;
 }
 
-static void apply_modifier(RolltuiChord* e, int mod) { /* xterm: mod = 1 + (shift 1 | alt 2 | ctrl 4) */
+static void apply_modifier(RolltuiChord* e, int mod) { /* xterm: mod = 1 + (shift 1 | alt 2 | ctrl 4 | super 8, kitty's meaning) */
   int bits;
   if (mod < 2) return;
   bits = mod - 1;
   e->shift = (unsigned char)((bits & 1) != 0);
   e->alt = (unsigned char)((bits & 2) != 0);
   e->ctrl = (unsigned char)((bits & 4) != 0);
+  e->super = (unsigned char)((bits & 8) != 0);
 }
+
+/* F13 to F24 as kitty's keyboard protocol sends them: 57376 and up. */
+#define KITTY_F13 57376
+static int high_f(unsigned char k) { return k >= ROLLTUI_KEY_F13 && k <= ROLLTUI_KEY_F24; }
 
 /* One control byte (< 0x20 or 0x7F) as a key. 0x0A is Ctrl-J and not Enter — see Keys.hpp. */
 static RolltuiChord control(unsigned char c) {
@@ -207,6 +213,10 @@ static int enhanced_key(int code, int mod, RolltuiChord* out) {
     case 127: e.key = ROLLTUI_KEY_BACKSPACE; break;
     case 27: e.key = ROLLTUI_KEY_ESCAPE; break;
     default:
+      if (code >= KITTY_F13 && code < KITTY_F13 + 12) {
+        e.key = (unsigned char)(ROLLTUI_KEY_F13 + (code - KITTY_F13));
+        break;
+      }
       if (code >= 0xE000 || code > 0x10FFFF) return 0;
       e.key = ROLLTUI_KEY_CHAR;
       e.ch = (RolltuiCodepoint)code;
@@ -305,6 +315,7 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
     }
     if (e.key != ROLLTUI_KEY_CHAR) {
       apply_modifier(&e, mod);
+      e.super = 0; /* the Super was the remap's, folded into the key */
       emit_key(emit, ctx, e, NULL, 0);
       return 1;
     }
@@ -383,6 +394,10 @@ static long string_reply_length(const char* s, size_t len, int osc) {
     }
   }
   return len >= (size_t)kMax ? (long)kMax : 0;
+}
+
+void rolltui_key_decoder_reset(RolltuiKeyDecoder* d) {
+  if (d && !d->in_paste) d->buf_len = 0;
 }
 
 void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t len, RolltuiEventFn emit, void* ctx) {
@@ -568,7 +583,7 @@ static _Atomic unsigned char g_protocol = ROLLTUI_PROTOCOL_LEGACY;
 unsigned char rolltui_key_active_protocol(void) { return g_protocol; }
 void rolltui_key_set_active_protocol(unsigned char p) { g_protocol = p; }
 
-static int mod_bits(const RolltuiChord* k) { return (k->shift ? 1 : 0) | (k->alt ? 2 : 0) | (k->ctrl ? 4 : 0); }
+static int mod_bits(const RolltuiChord* k) { return (k->shift ? 1 : 0) | (k->alt ? 2 : 0) | (k->ctrl ? 4 : 0) | (k->super ? 8 : 0); }
 
 /* The keys legacy already parameterises. */
 static int is_functional(unsigned char k) {
@@ -702,6 +717,7 @@ static int starts_a_sequence(RolltuiCodepoint c) {
  * protocols stand on. */
 static int legacy_ok(const RolltuiChord* k) {
   const int bits = mod_bits(k);
+  if (k->super || high_f(k->key)) return 0; /* only kitty's protocol carries these */
   if (bits == 0) return 1;
   if (k->key == ROLLTUI_KEY_CHAR) {
     if (!k->ctrl && !k->alt) return 0; /* shift alone is the shifted character */
@@ -763,12 +779,24 @@ long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_
   if (cap < ROLLTUI_KEY_ENCODE_MAX) return -1;
   if (k->key == ROLLTUI_KEY_UNKNOWN) return -1;
   bits = mod_bits(k);
+  if (high_f(k->key)) { /* kitty's codes; no other protocol has these keys */
+    if (p != ROLLTUI_PROTOCOL_KITTY) return -1;
+    out[m++] = '\x1b';
+    out[m++] = '[';
+    m += put_uint(out + m, (unsigned)(KITTY_F13 + (k->key - ROLLTUI_KEY_F13)));
+    if (bits) {
+      out[m++] = ';';
+      m += put_uint(out + m, (unsigned)(1 + bits));
+    }
+    out[m++] = 'u';
+    return (long)m;
+  }
   /* Functional keys are identical in all three protocols. */
   n = legacy_functional(k, bits, out);
   if (n >= 0) return n;
   /* SHIFT AND A LETTER is its capital as text in all three: kitty sends text for a printable key with no other modifier under the
    * disambiguate flag alone, and modifyOtherKeys mode 1 leaves it as the terminal types it. */
-  if (k->key == ROLLTUI_KEY_CHAR && k->shift && !k->ctrl && !k->alt && k->ch >= 'a' && k->ch <= 'z') {
+  if (k->key == ROLLTUI_KEY_CHAR && k->shift && !k->ctrl && !k->alt && !k->super && k->ch >= 'a' && k->ch <= 'z') {
     out[0] = (char)(k->ch - 'a' + 'A');
     return 1;
   }
@@ -782,7 +810,7 @@ long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_
       return (long)m;
     }
     if (bits == 0) return legacy_other(k, bits, out);
-    if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt) return -1; /* 'P' is text, not a chord */
+    if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && !k->super) return -1; /* 'P' is text, not a chord */
     out[m++] = '\x1b';
     out[m++] = '[';
     m += put_uint(out + m, (unsigned)base_code(k));
@@ -809,7 +837,8 @@ long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_
 }
 
 int rolltui_key_deliverable(const RolltuiChord* k, unsigned char p) {
-  if (k->key == ROLLTUI_KEY_UNKNOWN) return 0;
+  if (k->key == ROLLTUI_KEY_UNKNOWN) return k->ch == ROLLTUI_CHORD_ANY; /* `any` is whatever character is typed */
+  if (k->super || high_f(k->key)) return p == ROLLTUI_PROTOCOL_KITTY; /* Super and F13 up: kitty's protocol alone */
   if (is_functional(k->key)) return 1; /* legacy already parameterises these */
   if (legacy_ok(k)) return 1;          /* the floor all three protocols stand on */
   /* SHIFT AND A LETTER is the capital every terminal sends for it, which a binding matches as shift and the letter */

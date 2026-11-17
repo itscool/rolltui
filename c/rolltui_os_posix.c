@@ -399,6 +399,10 @@ int rolltui_os_tty_wait(RolltuiOsTty* t, int timeout_ms, int with_wake) {
 
 long rolltui_os_tty_read(RolltuiOsTty* t, char* buf, size_t cap) { return rolltui_os_read(t->in_fd, buf, cap); }
 
+void rolltui_os_tty_flush_input(RolltuiOsTty* t) {
+  if (t->in_fd >= 0 && isatty(t->in_fd)) (void)tcflush(t->in_fd, TCIFLUSH);
+}
+
 void rolltui_os_tty_wake(RolltuiOsTty* t) {
   char c = 'k';
   ssize_t r;

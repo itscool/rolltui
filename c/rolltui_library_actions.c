@@ -114,8 +114,16 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(list,      down,              "list.down",                   "the row below") \
   X(list,      page_up,           "list.page_up",                "a page up") \
   X(list,      page_down,         "list.page_down",              "a page down") \
-  X(list,      first,             "list.first",                  "the first row") \
-  X(list,      last,              "list.last",                   "the last row") \
+  X(list,      first,             "list.first",                  "the first row; after a count, that row") \
+  X(list,      last,              "list.last",                   "the last row; after a count, that row") \
+  X(list,      half_up,           "list.half_up",                "half a page up") \
+  X(list,      half_down,         "list.half_down",              "half a page down") \
+  X(list,      view_top,          "list.view_top",               "the top row in view") \
+  X(list,      view_middle,       "list.view_middle",            "the middle row in view") \
+  X(list,      view_bottom,       "list.view_bottom",            "the bottom row in view") \
+  X(list,      scroll_up,         "list.scroll_up",              "scroll up a row, the cursor staying on its row while it can") \
+  X(list,      scroll_down,       "list.scroll_down",            "scroll down a row, the cursor staying on its row while it can") \
+  X(list,      percent,           "list.percent",                "after a count, that percent of the way down") \
   X(list,      activate,          "list.activate",               "act on the row (a tree's node opens or closes)") \
   X(list,      back,              "list.back",                   "clear the filter, then the marks") \
   X(list,      mark,              "list.mark",                   "mark or unmark the row, and move on") \
@@ -134,6 +142,11 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(stack,     close_popup,       "stack.close_popup",           "close the topmost popup") \
   X(stack,     focus_next,        "stack.focus_next",            "move focus to the next window") \
   X(stack,     focus_prev,        "stack.focus_prev",            "move focus to the previous window") \
+  X(stack,     focus_left,        "stack.focus_left",            "move focus to the window on the left") \
+  X(stack,     focus_right,       "stack.focus_right",           "move focus to the window on the right") \
+  X(stack,     focus_up,          "stack.focus_up",              "move focus to the window above") \
+  X(stack,     focus_down,        "stack.focus_down",            "move focus to the window below") \
+  X(stack,     focus_number,      "stack.focus_number",          "move focus to the window with that number (Alt and a digit)") \
   X(stack,     next_tab,          "stack.next_tab",              "show the focused window's next tab") \
   X(stack,     prev_tab,          "stack.prev_tab",              "show the focused window's previous tab") \
   X(stack,     maximize,          "stack.maximize",              "make the focused window fill the screen, and put it back") \

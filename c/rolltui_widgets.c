@@ -289,6 +289,11 @@ struct RolltuiWindows {
   RolltuiChord seq_keys[ROLLTUI_SEQUENCE_MAX];
   size_t seq_n;
   int seq_count;
+  int count_arg; /* a count handed to the next key as a row (`5` then `list.last`): read by the widget while it handles that key */
+  RolltuiChord any_key; /* the key an `any` slot or an ask took */
+  int has_any;
+  RolltuiStr ask_action, ask_prompt; /* a key asked for (`rolltui_windows_ask_key`); `asking` while it is awaited */
+  int asking;
   RolltuiStr seq_window;
   char seq_scope[32];
   size_t seq_scope_n;
@@ -392,6 +397,8 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
   rolltui_mem_free(w->report);
   rolltui_str_free(&w->scratch);
+  rolltui_str_free(&w->ask_action);
+  rolltui_str_free(&w->ask_prompt);
   rolltui_str_free(&w->seq_window);
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
@@ -1559,7 +1566,12 @@ static void do_action(RolltuiWindows* w, const char* window, size_t len, Rolltui
 }
 
 static int bare_digit(const RolltuiChord* k) {
-  return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && k->ch >= '0' && k->ch <= '9';
+  return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && !k->super && k->ch >= '0' && k->ch <= '9';
+}
+
+static int ends_with(const char* a, size_t n, const char* tail) {
+  const size_t t = strlen(tail);
+  return n >= t && memcmp(a + n - t, tail, t) == 0;
 }
 
 int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
@@ -1595,6 +1607,8 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
       r = rolltui_bindings_sequence_for(b, w->seq_keys, w->seq_n + 1, scope, slen, &action, &alen);
       if (r == ROLLTUI_SEQUENCE_DONE) {
         const int times = w->seq_count > 0 ? w->seq_count : 1;
+        w->has_any = rolltui_bindings_sequence_ends_any(b, w->seq_keys, w->seq_n + 1, scope, slen);
+        if (w->has_any) w->any_key = *k;
         seq_reset(w);
         do_action(w, window, len, wd, action, alen, times);
         return 1;
@@ -1618,10 +1632,17 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
       w->seq_since = rolltui_windows_env(w)->now_ms;
       return 1;
     }
-    if (w->seq_count > 0) { /* a count, then a key: the key that many times */
+    if (w->seq_count > 0) { /* a count, then a key: the key that many times, or the row it names */
       const int times = w->seq_count;
       int t, any = 0;
+      const char* act = rolltui_bindings_action_for(b, k, scope, slen, &alen);
       seq_reset(w);
+      if (act && (ends_with(act, alen, ".first") || ends_with(act, alen, ".last") || ends_with(act, alen, ".percent"))) {
+        w->count_arg = times; /* `5 G`: the fifth row, not the last row five times */
+        any = deliver(w, window, len, wd, e);
+        w->count_arg = 0;
+        return any;
+      }
       for (t = 0; t < times; ++t) any |= deliver(w, window, len, wd, e);
       return any;
     }
@@ -1642,6 +1663,22 @@ static int focused_takes(const RolltuiWindows* w, const RolltuiChord* k) {
   return scope && slen && rolltui_bindings_action_for(rolltui_windows_bindings(w), k, scope, slen, &an) != NULL;
 }
 
+int rolltui_windows_count_arg(const RolltuiWindows* w) { return w ? w->count_arg : 0; }
+
+int rolltui_windows_any_key(const RolltuiWindows* w, RolltuiChord* out) {
+  if (!w || !w->has_any) return 0;
+  if (out) *out = w->any_key;
+  return 1;
+}
+
+void rolltui_windows_ask_key(RolltuiWindows* w, const char* action, size_t action_len, const char* prompt, size_t prompt_len) {
+  if (!w) return;
+  rolltui_str_set(&w->ask_action, action ? action : "", action ? action_len : 0);
+  rolltui_str_set(&w->ask_prompt, prompt ? prompt : "", prompt ? prompt_len : 0);
+  w->asking = 1;
+  w->has_any = 0;
+}
+
 int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key) { return w && key && focused_takes(w, key); }
 
 int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char* scope, size_t slen, const char** action,
@@ -1656,6 +1693,15 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
   if (!w || !e || e->kind != ROLLTUI_EVENT_KEY || !scope) return ROLLTUI_SEQUENCE_NONE;
   b = rolltui_windows_bindings(w);
   k = &e->key;
+  if (w->asking) { /* A KEY ASKED FOR: this one is the answer, or Escape lets go of the question */
+    w->asking = 0;
+    if (k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift) return ROLLTUI_SEQUENCE_PREFIX;
+    w->any_key = *k;
+    w->has_any = 1;
+    if (action) *action = w->ask_action.p ? w->ask_action.p : "";
+    if (alen) *alen = w->ask_action.n;
+    return ROLLTUI_SEQUENCE_DONE;
+  }
   if (w->seq_n > 0 || w->seq_count > 0) {
     /* SOMETHING IS ON THE WAY. A window's is the window's; the host's own goes on here. */
     if (w->seq_window.n != 0 || w->seq_scope_n != slen || memcmp(w->seq_scope, scope, slen) != 0 || w->seq_n == 0)
@@ -1670,6 +1716,8 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
       ++w->seq_n;
       return ROLLTUI_SEQUENCE_PREFIX;
     }
+    w->has_any = rolltui_bindings_sequence_ends_any(b, w->seq_keys, w->seq_n + 1, scope, slen);
+    if (w->has_any) w->any_key = *k;
     seq_reset(w);
     if (r != ROLLTUI_SEQUENCE_DONE) return ROLLTUI_SEQUENCE_NONE; /* not a sequence after all: the key is what it is alone */
     if (action) *action = got;
@@ -1710,6 +1758,10 @@ struct RolltuiPresetStore* rolltui_windows_keys_store(const RolltuiWindows* w, i
 
 size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text) {
   size_t i;
+  if (w->asking) { /* a key asked for: the question is what is on the way */
+    if (text) rolltui_str_set(text, w->ask_prompt.p ? w->ask_prompt.p : "", w->ask_prompt.n);
+    return 1;
+  }
   if (text) {
     rolltui_str_clear(text);
     if (w->seq_count > 0) {
@@ -1745,10 +1797,12 @@ static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen
   RolltuiStyle ground, line, key, text;
   RolltuiRect box;
   RolltuiDrawScratch* draw;
-  if (w->seq_n == 0) return -1;
-  if (now < w->seq_since + WHICH_KEY_MS) return (int)(w->seq_since + WHICH_KEY_MS - now);
-  n = rolltui_bindings_sequence_next(b, w->seq_keys, w->seq_n, w->seq_scope, w->seq_scope_n, next, actions, alens, more, WHICH_KEY_ROWS);
-  if (n == 0 || screen.w < 12 || screen.h < 4) return -1;
+  if (w->seq_n == 0 && !w->asking) return -1;
+  if (!w->asking && now < w->seq_since + WHICH_KEY_MS) return (int)(w->seq_since + WHICH_KEY_MS - now);
+  n = w->asking ? 0
+                : rolltui_bindings_sequence_next(b, w->seq_keys, w->seq_n, w->seq_scope, w->seq_scope_n, next, actions, alens, more,
+                                                 WHICH_KEY_ROWS);
+  if ((n == 0 && !w->asking) || screen.w < 12 || screen.h < 4) return -1;
   draw = rolltui_draw_scratch_new();
   for (i = 0; i < n; ++i) {
     char buf[ROLLTUI_CHORD_STRING_MAX];
@@ -1761,6 +1815,10 @@ static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen
     if (dw + (more[i] ? 2 : 0) > width) width = dw + (more[i] ? 2 : 0);
   }
   width += key_w + 6;
+  if (w->asking) { /* the question is the title: room for it */
+    const int pw = rolltui_frame_text_width(draw, w->ask_prompt.p ? w->ask_prompt.p : "", w->ask_prompt.n, aw) + 6;
+    if (pw > width) width = pw;
+  }
   if (width > screen.w - 2) width = screen.w - 2;
   h = (int)n + 2;
   if (h > screen.h - 1) h = screen.h - 1;

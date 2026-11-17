@@ -532,6 +532,50 @@ void test_best_match() {
   check(s.cursor() == "kill", "a cursor moved after the query stays where it was put, through the next frame");
 }
 
+// MOTIONS IN VIEW: half a page, the view's top, middle and bottom, scrolling with the cursor kept, and a count that names a row
+// (`5` then End is the fifth row, `50` then `%` halfway), as a list's keys do in a pager.
+void test_motions() {
+  Data d;
+  for (int i = 0; i < 40; ++i) {
+    d.keys.push_back("r" + std::to_string(i));
+    d.a.push_back("row " + std::to_string(i));
+  }
+  Screen s(30, 10);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  auto press = [&](const char* spelled) {
+    RolltuiChord k{};
+    rolltui_chord_parse(spelled, std::strlen(spelled), &k);
+    s.send(k);
+    s.paint();
+  };
+  press("ctrl+d");
+  const std::string half = s.cursor();
+  check(half != "r0" && half != "r9" && half != "r1", "Ctrl-D moves half a page, not a row and not a page [" + half + "]");
+  press("alt+end");
+  const std::string bottom = s.cursor();
+  press("alt+home");
+  const std::string top = s.cursor();
+  press("alt+m");
+  const std::string middle = s.cursor();
+  check(top != bottom && middle != top && middle != bottom, "the view's top, middle and bottom rows are three rows [" + top + " " + middle + " " + bottom + "]");
+  press("home");
+  press("alt+down");
+  check(s.cursor() == "r1", "scrolling down with the cursor at the top row carries it, as the view leaves its row [" + s.cursor() + "]");
+  s.chr('5');
+  press("end");
+  check(s.cursor() == "r4", "5 then End: the fifth row, not the last [" + s.cursor() + "]");
+  s.chr('5');
+  s.chr('0');
+  press("%");
+  check(s.cursor() == "r19", "50 then %: half way down the forty rows [" + s.cursor() + "]");
+  press("end");
+  check(s.cursor() == "r39", "End with no count is still the last row (the control)");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -545,5 +589,6 @@ int main() {
   test_headings();
   test_sheet_columns();
   test_best_match();
+  test_motions();
   return testkit::report("list_test");
 }

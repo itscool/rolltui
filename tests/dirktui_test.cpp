@@ -1240,7 +1240,7 @@ int main() {
     const std::string left = "\"input.left\": [\n      \"left\"";
     const std::size_t at = table.find(left);
     check(ok && at != std::string::npos, "the shipped key table has the input.left row this test edits");
-    if (at != std::string::npos) table.replace(at, left.size(), "\"input.left\": [\n      \"left\",\n      \"ctrl+b\"");
+    if (at != std::string::npos) table.replace(at, left.size(), "\"input.left\": [\n      \"left\",\n      \"f9\"");
     write_file(own / "bindings.working.json", table);
     const std::string app = home_env + bin + " '" + tree.string() + "' --presets '" + own.string() +
                             "' --theme default-dark --frame 110x50 --keys \"F2 " + keys_down("keys");

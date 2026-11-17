@@ -612,6 +612,11 @@ void rolltui_os_tty_wake(RolltuiOsTty* t) {
   if (t->wake) SetEvent(t->wake);
 }
 
+void rolltui_os_tty_flush_input(RolltuiOsTty* t) {
+  t->pending_n = 0;
+  if (t->in && t->in != INVALID_HANDLE_VALUE) FlushConsoleInputBuffer(t->in);
+}
+
 void rolltui_os_tty_publish(RolltuiOsTty* t, const char* leave, size_t len) {
   const size_t n = len < sizeof g_leave ? len : sizeof g_leave;
   memcpy(g_leave, leave, n);

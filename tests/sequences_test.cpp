@@ -299,6 +299,45 @@ void test_focus_first() {
   check(app(ROLLTUI_KEY_CHAR, 'q', false, &a) == ROLLTUI_SEQUENCE_NONE, "what is typed into the filter is the filter's");
 }
 
+// ANY KEY AFTER A FIRST ONE: `"m any"` is m, then whichever character, which the host reads back; and a host's own question for one key.
+void test_any_and_ask() {
+  std::string problems;
+  RolltuiBindings* refused = load(R"({ "name": "t", "bindings": { "app.alone": ["any"], "app.first": ["any m"] } })", &problems);
+  check(problems.find("app.alone") != std::string::npos && problems.find("app.first") != std::string::npos,
+        "`any` alone, or first, is refused with the reason: it would take every key [" + problems + "]");
+  rolltui_bindings_free(refused);
+  Screen s(load(R"({ "name": "t", "bindings": { "app.mark": ["m any"], "app.quit": ["ctrl+q"] } })", &problems));
+  RolltuiToolAction declared[2] = {{"app.mark", "Mark", nullptr}, {"app.quit", "Quit", nullptr}};
+  rolltui_bindings_declare(s.b, nullptr, 0, declared, 2);
+  s.paint();
+  auto app = [&](unsigned char key, char32_t ch, std::string* action) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_KEY;
+    e.key.key = key;
+    e.key.ch = ch;
+    const char* a = nullptr;
+    std::size_t n = 0;
+    const int r = rolltui_windows_app_key(s.w, &e, "app", 3, &a, &n);
+    if (action) *action = a ? std::string(a, n) : std::string();
+    return r;
+  };
+  std::string a;
+  RolltuiChord got{};
+  check(app(ROLLTUI_KEY_CHAR, 'm', &a) == ROLLTUI_SEQUENCE_PREFIX, "m begins the mark");
+  check(app(ROLLTUI_KEY_CHAR, 'q', &a) == ROLLTUI_SEQUENCE_DONE && a == "app.mark", "…and any character finishes it");
+  check(rolltui_windows_any_key(s.w, &got) && got.ch == 'q', "…which the host reads back: q");
+  rolltui_windows_ask_key(s.w, "app.answer", 10, "delete it? y or n", 17);
+  RolltuiStr shown{};
+  rolltui_windows_pending_keys(s.w, &shown);
+  check(std::string(shown.p ? shown.p : "", shown.n) == "delete it? y or n", "an asked question stands where the keys on the way are shown");
+  rolltui_str_free(&shown);
+  check(app(ROLLTUI_KEY_CHAR, 'y', &a) == ROLLTUI_SEQUENCE_DONE && a == "app.answer" && rolltui_windows_any_key(s.w, &got) && got.ch == 'y',
+        "the next key is the answer: DONE with the host's action, and the key is y");
+  rolltui_windows_ask_key(s.w, "app.answer", 10, "delete it?", 10);
+  check(app(ROLLTUI_KEY_ESCAPE, 0, &a) == ROLLTUI_SEQUENCE_PREFIX && a.empty(), "Escape lets go of a question, and nothing is done");
+  check(app(ROLLTUI_KEY_CHAR, 'q', &a) == ROLLTUI_SEQUENCE_NONE, "…after which keys are ordinary again");
+}
+
 }  // namespace
 
 int main() {
@@ -306,5 +345,6 @@ int main() {
   test_table();
   test_app_scope();
   test_focus_first();
+  test_any_and_ask();
   return testkit::report("sequences_test");
 }

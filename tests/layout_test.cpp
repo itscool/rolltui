@@ -1238,6 +1238,36 @@ int main() {
     check(route_c(s.s, key_ev(ROLLTUI_KEY_TAB), scr) == RouteC{RouteC::Kind::FocusMoved, "transcript"}, "Tab cycles to the transcript");
     check(route_c(s.s, key_ev(ROLLTUI_KEY_TAB), scr) == RouteC{RouteC::Kind::FocusMoved, "input"}, "Tab wraps back to the input");
     check(route_c(s.s, key_ev(ROLLTUI_KEY_TAB, true), scr) == RouteC{RouteC::Kind::FocusMoved, "transcript"}, "Shift-Tab cycles backwards");
+    {
+      // A WINDOW BY ITS NUMBER (Alt and a digit, in focus order) AND BY DIRECTION (Alt-Shift and h, j, k, l)
+      auto alt = [](char32_t c, bool shift) {
+        RolltuiEvent e = chr_ev(c);
+        e.key.alt = 1;
+        e.key.shift = shift ? 1 : 0;
+        return e;
+      };
+      check(route_c(s.s, alt('2', false), scr) == RouteC{RouteC::Kind::FocusMoved, "input"}, "Alt-2 focuses the second window");
+      check(route_c(s.s, alt('1', false), scr) == RouteC{RouteC::Kind::FocusMoved, "transcript"}, "…and Alt-1 the first");
+      check(route_c(s.s, alt('9', false), scr).kind != RouteC::Kind::FocusMoved, "…and a number with no window moves nothing");
+      check(route_c(s.s, alt('j', true), scr) == RouteC{RouteC::Kind::FocusMoved, "input"}, "Alt-Shift-J focuses the window below");
+      check(route_c(s.s, alt('k', true), scr) == RouteC{RouteC::Kind::FocusMoved, "transcript"}, "…and Alt-Shift-K the one above");
+      check(route_c(s.s, alt('k', true), scr).kind != RouteC::Kind::FocusMoved, "…with none above it, the focus stays");
+      // NUMBERED: each window's number before its title, so the digit is there to be read
+      ThemeFixture t;
+      builtin_theme_c("default-dark", t);
+      auto top_row = [&](bool numbered) {
+        rolltui_window_stack_set_numbered(s.s, numbered ? 1 : 0);
+        FrameC f(scr.w, scr.h, t.style(ROLLTUI_ROLE_BACKGROUND));
+        s.compose(f, scr, t, [](const RolltuiResolvedNode&, FrameC&) {});
+        std::string out;
+        for (int y = 0; y < scr.h; ++y)
+          for (int x = 0; x < scr.w; ++x) out += f.glyph(x, y);
+        return out;
+      };
+      check(top_row(false).find("1 transcript") == std::string::npos, "(the control: titles carry no number by default)");
+      check(top_row(true).find("1 transcript") != std::string::npos, "numbered, the first window's title starts with 1");
+      rolltui_window_stack_set_numbered(s.s, 0);
+    }
     check(route_c(s.s, key_ev(ROLLTUI_KEY_ESCAPE), scr) == RouteC{RouteC::Kind::Deliver, "transcript"}, "Escape with no popup is delivered");
     RolltuiMouseEvent m;
     m.kind = RolltuiMouseEvent::Kind::Press;

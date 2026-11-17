@@ -787,6 +787,19 @@ ROLLTUI_API(rolltui_windows_handle, PUBLIC)
 ROLLTUI_API(rolltui_windows_pending_keys, PUBLIC)  /* a status line shows the keys on the way, as vim does */
 ROLLTUI_API(rolltui_windows_app_key, PUBLIC)  /* a host's own scope gets chords and sequences: `ctrl+x ctrl+s` in dirktui, paint, chat, the tour */
 ROLLTUI_API(rolltui_windows_focused_takes, PUBLIC)  /* a host matching keys of its own asks first whether the focused window takes one */
+ROLLTUI_API(rolltui_windows_any_key, PUBLIC)  /* the character an `any` slot or an asked key took: a mark's letter */
+ROLLTUI_API(rolltui_windows_ask_key, PUBLIC)  /* a host asks for one key (y or n, a mark) and gets it through app_key */
+ROLLTUI_API(rolltui_windows_count_arg, INTERNAL)  /* a count handed to the next key as a row, read by the list kind */
+ROLLTUI_API(rolltui_run_inject, PUBLIC)  /* an event the program makes, handed to it at the next wake */
+ROLLTUI_API(rolltui_run_flush_input, PUBLIC)  /* a typeahead flush */
+ROLLTUI_API(rolltui_terminal_flush_input, PUBLIC)
+ROLLTUI_API(rolltui_terminal_set_mouse, PUBLIC)  /* mouse reporting on or off while the program runs */
+ROLLTUI_API(rolltui_terminal_mouse, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_set_numbered, PUBLIC)  /* each window's number before its title, for Alt and that digit */
+ROLLTUI_API(rolltui_bindings_sequence_ends_any, INTERNAL)
+ROLLTUI_API(rolltui_key_decoder_reset, INTERNAL)
+ROLLTUI_API(rolltui_list_set_count, INTERNAL)
+ROLLTUI_API(rolltui_os_tty_flush_input, INTERNAL)
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */

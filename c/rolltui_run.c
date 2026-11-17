@@ -42,6 +42,11 @@ struct RolltuiRun {
   RolltuiStr text;   /* every event's text, back to back */
   RolltuiStr out;    /* the bytes of a present, kept between frames */
   int stepped;       /* `rolltui_run_step` has drawn once: each later step takes what arrived before it draws */
+  /* EVENTS A PROGRAM MADE (`rolltui_run_inject`), handed to it at the start of the next wake; their text back to back */
+  RunEvent* inj;
+  size_t inj_n, inj_cap;
+  RolltuiStr inj_text;
+  int flush;         /* `rolltui_run_flush_input`: the rest of this wake's events go */
 };
 
 static unsigned long long steady_ms(void) { return rolltui_os_monotonic_ms(); }
@@ -211,7 +216,23 @@ static void run_wake(RolltuiRun* r, int timeout) {
   size_t i;
   r->ev_n = 0;
   r->facts = 0;
+  r->flush = 0;
   rolltui_str_clear(&r->text);
+  if (r->inj_n) { /* what the program made comes first, in the order it was made */
+    RolltuiStr text;
+    const size_t n = r->inj_n;
+    RunEvent* made = r->inj;
+    memset(&text, 0, sizeof text);
+    rolltui_str_move(&text, &r->inj_text);
+    r->inj = NULL, r->inj_n = 0, r->inj_cap = 0;
+    for (i = 0; i < n && !r->stop; ++i) {
+      if (made[i].has_text) made[i].e.text = text.p ? text.p + made[i].at : "";
+      app->event(app->ctx, r, &made[i].e);
+    }
+    rolltui_mem_free(made);
+    rolltui_str_free(&text);
+    timeout = 0; /* and then whatever arrived, without waiting for more */
+  }
   rolltui_terminal_poll(r->term, timeout, collect, r);
   /* The text pointers only now: `text` growing while events were collected would have dangled every earlier one. */
   for (i = 0; i < r->ev_n; ++i)
@@ -226,6 +247,7 @@ static void run_wake(RolltuiRun* r, int timeout) {
       if (app->focus) app->focus(app->ctx, r, r->ev[i].focused);
     } else {
       app->event(app->ctx, r, &r->ev[i].e);
+      if (r->flush) break; /* a typeahead flush: what was typed after this key goes */
     }
   }
   if (r->facts && !r->stop) {
@@ -241,6 +263,8 @@ static void run_leave(RolltuiRun* r) {
   rolltui_tasks_free(r->tasks); /* the workers stopped and every job's `done` called, before the terminal goes */
   rolltui_mem_free(r->timers);
   rolltui_mem_free(r->ev);
+  rolltui_mem_free(r->inj);
+  rolltui_str_free(&r->inj_text);
   rolltui_str_free(&r->text);
   rolltui_str_free(&r->out);
   rolltui_swap_free(r->swap);
@@ -283,6 +307,28 @@ int rolltui_run_finish(RolltuiRun* r) {
   run_leave(r);
   rolltui_mem_free(r);
   return ROLLTUI_RUN_STOPPED;
+}
+
+void rolltui_run_inject(RolltuiRun* run, const RolltuiEvent* e) {
+  RunEvent* re;
+  if (!run || !e) return;
+  run->inj = (RunEvent*)rolltui_grow(run->inj, &run->inj_cap, run->inj_n + 1, sizeof *run->inj);
+  re = &run->inj[run->inj_n++];
+  memset(re, 0, sizeof *re);
+  re->e = *e;
+  re->e.text = NULL;
+  if (e->text) {
+    re->has_text = 1;
+    re->at = run->inj_text.n;
+    rolltui_str_append(&run->inj_text, e->text, e->text_len);
+  }
+  if (run->term) rolltui_terminal_wake(run->term);
+}
+
+void rolltui_run_flush_input(RolltuiRun* run) {
+  if (!run) return;
+  run->flush = 1;
+  if (run->term) rolltui_terminal_flush_input(run->term);
 }
 
 void rolltui_run_stop(RolltuiRun* run) {

@@ -185,6 +185,8 @@ const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len);
 const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len);
 /* The bindings store a host handed over for its keys (`rolltui_windows_set_bindings_store`), kept so every keys sheet of the screen,
  * `help` included, edits into it. BORROWED; NULL when none was. */
+/* A count the window table hands the key it is delivering as a row (`5` then `list.last`); 0 when the key is not given one. */
+int rolltui_windows_count_arg(const RolltuiWindows* w);
 struct RolltuiPresetStore;
 void rolltui_windows_remember_keys_store(RolltuiWindows* w, struct RolltuiPresetStore* s, int persist);
 struct RolltuiPresetStore* rolltui_windows_keys_store(const RolltuiWindows* w, int* persist);

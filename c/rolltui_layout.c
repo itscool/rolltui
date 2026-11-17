@@ -577,6 +577,9 @@ static void collect_sink(void* ctx, const RolltuiResolvedNode* rn) {
 struct RolltuiComposeScratch {
   NodeCollect nodes;        /* ONE layer's resolved nodes, reused per layer */
   RolltuiDrawScratch* draw; /* OWNED: the cluster walk a title needs */
+  const RolltuiLayoutNode* numbered[9]; /* the focus layer's windows in focus order, while the stack numbers them */
+  size_t numbered_n;
+  RolltuiStr title;         /* a numbered title, built here */
 };
 
 RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
@@ -585,11 +588,14 @@ RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
   s->nodes.n = 0;
   s->nodes.cap = 0;
   s->draw = rolltui_draw_scratch_new();
+  s->numbered_n = 0;
+  memset(&s->title, 0, sizeof s->title);
   return s;
 }
 
 void rolltui_compose_scratch_free(RolltuiComposeScratch* s) {
   if (!s) return;
+  rolltui_str_free(&s->title);
   rolltui_mem_free(s->nodes.v);
   rolltui_draw_scratch_free(s->draw);
   rolltui_mem_free(s);
@@ -620,6 +626,16 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
       if (n->border != ROLLTUI_BORDER_NONE) draw_tabs(f, scratch->draw, n, rn->outer, line, title, ambiguous_wide);
     } else {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
+      size_t k;
+      for (k = 0; k < scratch->numbered_n; ++k) /* THE WINDOW'S NUMBER, which Alt and that digit focuses */
+        if (scratch->numbered[k] == n) {
+          char d[4];
+          d[0] = (char)('1' + k), d[1] = ' ';
+          rolltui_str_set(&scratch->title, d, t->n ? 2 : 1);
+          rolltui_str_append_str(&scratch->title, t);
+          t = &scratch->title;
+          break;
+        }
       draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
     }
     if (n->border != ROLLTUI_BORDER_NONE) { /* the widget's footer this frame, else the file's, in the border's colour */
@@ -2180,7 +2196,12 @@ struct RolltuiWindowStack {
    * breakpoint is judged against when focus moves (0 until then: every breakpoint met). */
   RolltuiStr maximized;
   int screen_w, screen_h;
+  int numbered; /* each focusable window's title starts with its number (`rolltui_window_stack_set_numbered`) */
 };
+
+void rolltui_window_stack_set_numbered(RolltuiWindowStack* s, int on) {
+  if (s) s->numbered = on ? 1 : 0;
+}
 
 int rolltui_window_stack_pointer(const RolltuiWindowStack* s, int* x, int* y) {
   if (x) *x = s->pointer_known ? s->pointer_x : -1;
@@ -2644,9 +2665,62 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
      * that layer's motion onto the popup when the effects are applied to the finished frame. */
     if (i > 0) rolltui_frame_unmark_rect(f, box);
     rolltui_resolve_tree(shown_root(s, i), box, screen, i, stack_sink, &w);
+    scratch->numbered_n = s->numbered && i == rolltui_window_stack_focus_layer(s) ? focusables(s, i, scratch->numbered, 9) : 0;
+    if (scratch->numbered_n > 9) scratch->numbered_n = 9;
     rolltui_compose_layer(f, scratch->nodes.v, scratch->nodes.n, styles, roles, render, ctx, ambiguous_wide,
                           scratch);
+    scratch->numbered_n = 0;
   }
+}
+
+/* FOCUS BY DIRECTION (0 left, 1 right, 2 up, 3 down): the focusable window of the focus layer nearest the focused one that way, by
+ * how far it lies along that way, with how far it lies across counting double. 1 when the focus moved. */
+typedef struct { const RolltuiLayoutNode* node; RolltuiRect r; } FocusRect;
+typedef struct { FocusRect* v; size_t n, cap; size_t layer; } FocusRects;
+static void focus_rect_collect(void* ctx, const RolltuiResolvedNode* rn) {
+  FocusRects* fr = (FocusRects*)ctx;
+  if (rn->layer != fr->layer || !rn->node || rn->node->kind != ROLLTUI_NODE_WINDOW || !rn->node->focusable) return;
+  fr->v = (FocusRect*)rolltui_grow(fr->v, &fr->cap, fr->n + 1, sizeof *fr->v);
+  fr->v[fr->n].node = rn->node;
+  fr->v[fr->n].r = rn->outer;
+  ++fr->n;
+}
+static int focus_toward(RolltuiWindowStack* s, RolltuiRect screen, int dir, RolltuiStr* window) {
+  FocusRects fr;
+  const RolltuiLayoutNode* f = rolltui_window_stack_focused(s);
+  const FocusRect* from = NULL;
+  const FocusRect* best = NULL;
+  long best_score = 0;
+  size_t i;
+  if (!f) return 0;
+  memset(&fr, 0, sizeof fr);
+  fr.layer = rolltui_window_stack_focus_layer(s);
+  rolltui_window_stack_resolve(s, screen, focus_rect_collect, &fr);
+  for (i = 0; i < fr.n; ++i)
+    if (fr.v[i].node == f || rolltui_str_eq(&fr.v[i].node->id, f->id.p, f->id.n)) from = &fr.v[i];
+  if (from) {
+    const long fx = from->r.x * 2 + from->r.w, fy = from->r.y * 2 + from->r.h; /* centres, doubled */
+    for (i = 0; i < fr.n; ++i) {
+      const FocusRect* c = &fr.v[i];
+      const long cx = c->r.x * 2 + c->r.w, cy = c->r.y * 2 + c->r.h;
+      long along, across, score;
+      if (c == from) continue;
+      if (dir == 0) along = fx - cx, across = cy - fy;
+      else if (dir == 1) along = cx - fx, across = cy - fy;
+      else if (dir == 2) along = fy - cy, across = cx - fx;
+      else along = cy - fy, across = cx - fx;
+      if (along <= 0) continue;
+      if (across < 0) across = -across;
+      score = along + across * 2;
+      if (!best || score < best_score) best = c, best_score = score;
+    }
+  }
+  if (best) {
+    rolltui_str_set(&s->layers[fr.layer].focus, best->node->id.p, best->node->id.n);
+    rolltui_str_set(window, best->node->id.p, best->node->id.n);
+  }
+  rolltui_mem_free(fr.v);
+  return best != NULL;
 }
 
 unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEvent* e, RolltuiRect screen,
@@ -2776,6 +2850,24 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
           rolltui_str_set(window, f->id.p, f->id.n);
           return ROLLTUI_ROUTE_LAYOUT_CHANGED;
         }
+      }
+      if (actions->focus_number && alen == strlen(actions->focus_number) && memcmp(action, actions->focus_number, alen) == 0 &&
+          e->key.key == ROLLTUI_KEY_CHAR && e->key.ch >= '1' && e->key.ch <= '9') { /* THE WINDOW WITH THAT NUMBER, in focus order */
+        const RolltuiLayoutNode* list[9];
+        const size_t li = rolltui_window_stack_focus_layer(s), n = focusables(s, li, list, 9), want = (size_t)(e->key.ch - '1');
+        if (want < n && want < 9) {
+          rolltui_str_set(&s->layers[li].focus, list[want]->id.p, list[want]->id.n);
+          rolltui_str_set(window, list[want]->id.p, list[want]->id.n);
+          return ROLLTUI_ROUTE_FOCUS_MOVED;
+        }
+      }
+      {
+        const char* names[4];
+        int d;
+        names[0] = actions->focus_left, names[1] = actions->focus_right, names[2] = actions->focus_up, names[3] = actions->focus_down;
+        for (d = 0; d < 4; ++d)
+          if (names[d] && alen == strlen(names[d]) && memcmp(action, names[d], alen) == 0 && focus_toward(s, screen, d, window))
+            return ROLLTUI_ROUTE_FOCUS_MOVED;
       }
       {
         const int next = alen == strlen(actions->focus_next) && memcmp(action, actions->focus_next, alen) == 0;

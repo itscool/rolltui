@@ -28,7 +28,8 @@
       "ctrl+k"
     ],
     "input.left": [
-      "left"
+      "left",
+      "ctrl+b"
     ],
     "input.right": [
       "right"
@@ -230,6 +231,30 @@
     "list.last": [
       "end"
     ],
+    "list.half_up": [
+      "ctrl+u"
+    ],
+    "list.half_down": [
+      "ctrl+d"
+    ],
+    "list.view_top": [
+      "alt+home"
+    ],
+    "list.view_middle": [
+      "alt+m"
+    ],
+    "list.view_bottom": [
+      "alt+end"
+    ],
+    "list.scroll_up": [
+      "alt+up"
+    ],
+    "list.scroll_down": [
+      "alt+down"
+    ],
+    "list.percent": [
+      "%"
+    ],
     "list.activate": [
       "enter"
     ],
@@ -292,6 +317,29 @@
     ],
     "stack.focus_prev": [
       "shift+tab"
+    ],
+    "stack.focus_left": [
+      "alt+shift+h"
+    ],
+    "stack.focus_right": [
+      "alt+shift+l"
+    ],
+    "stack.focus_up": [
+      "alt+shift+k"
+    ],
+    "stack.focus_down": [
+      "alt+shift+j"
+    ],
+    "stack.focus_number": [
+      "alt+1",
+      "alt+2",
+      "alt+3",
+      "alt+4",
+      "alt+5",
+      "alt+6",
+      "alt+7",
+      "alt+8",
+      "alt+9"
     ],
     "sheet.remove": [
       "delete",

@@ -16,6 +16,7 @@ extern "C" {
 /* THE ACTION NAMES the list's keys are resolved against, in the `list` scope: this file knows what each does and none of the words. */
 typedef struct RolltuiListActions {
   const char *up, *down, *page_up, *page_down, *first, *last, *activate, *back;
+  const char *half_up, *half_down, *view_top, *view_middle, *view_bottom, *scroll_up, *scroll_down, *percent;
   const char *mark, *mark_up, *mark_down, *mark_all, *unmark_all, *invert_marks;
   const char *open, *close, *open_all, *close_all, *sort, *reverse, *filter;
 } RolltuiListActions;
@@ -45,6 +46,9 @@ int rolltui_list_event(RolltuiList* l, RolltuiListEvent* out);
 int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char* action, size_t n);
 /* Closes one level of its own: the filter, then the marks; 0 when neither is there. */
 int rolltui_list_back(RolltuiList* l);
+/* A COUNT typed before the next key, for the actions that read one as a row (`5` then `list.last` goes to row 5) rather than as
+ * a number of times; 0 when there is none. The window table sets it for one key and clears it after. */
+void rolltui_list_set_count(RolltuiList* l, int count);
 /* Whether `back` would close something: a filter, or marks. */
 int rolltui_list_has_back(const RolltuiList* l);
 /* 1 while the filter is being typed: a printable key is the filter's. */

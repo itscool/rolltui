@@ -452,7 +452,7 @@ int main() {
   check(parse_chord("alt+enter") == key(ROLLTUI_KEY_ENTER, false, true) && parse_chord("meta+enter") == key(ROLLTUI_KEY_ENTER, false, true) && parse_chord("option+enter") == key(ROLLTUI_KEY_ENTER, false, true), "alt, meta and option are one modifier");
   check(parse_chord("f1") == key(ROLLTUI_KEY_F1) && parse_chord("F12") == key(ROLLTUI_KEY_F12) && parse_chord("escape") == key(ROLLTUI_KEY_ESCAPE) && parse_chord("esc") == key(ROLLTUI_KEY_ESCAPE) && parse_chord("pgdn") == key(ROLLTUI_KEY_PAGEDOWN), "named keys and their short forms");
   check(parse_chord("?") == ch(U'?') && parse_chord("space") == ch(U' ') && parse_chord("+") == ch(U'+') && parse_chord("ctrl++") == ch(U'+', true), "a printable character is itself; '+' and 'ctrl++' parse");
-  check(!parse_chord("") && !parse_chord("ctrl+") && !parse_chord("hyper+x") && !parse_chord("ctrl+meta+x+y") && !parse_chord("f13"), "empty, dangling, unknown modifier, two keys, f13: not chords");
+  check(!parse_chord("") && !parse_chord("ctrl+") && !parse_chord("hyper+x") && !parse_chord("ctrl+meta+x+y") && !parse_chord("f25") && parse_chord("f13") && parse_chord("super+x"), "empty, dangling, unknown modifier, two keys, f25: not chords (f13 to f24 and super are)");
   check(chord_to_string(key(ROLLTUI_KEY_LEFT, true, false, true)) == "ctrl+shift+left" && chord_to_string(ch(U'?')) == "?" && chord_to_string(ch(U' ')) == "space" && chord_to_string(key(ROLLTUI_KEY_PAGEUP)) == "pageup",
         "chord_to_string is canonical (ctrl, alt, shift; key names)");
   {

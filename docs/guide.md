@@ -141,7 +141,15 @@ A terminal that has neither mode ignores the request.
 found, the job stops, and when the shell continues it (`fg`) the terminal is entered again and the
 screen repainted whole. A stop sent from outside (`kill -TSTP`) does the same with no app code.
 On Windows there is no job control, and it answers 0. dirktui binds it to Ctrl-Z
-(`app.suspend`) wherever nothing is being typed; in a line, Ctrl-Z is the line's undo.
+(`app.suspend`); where a line has focus, Ctrl-Z is the line's undo.
+
+`rolltui_run_inject(run, event)` hands the app an event it made itself (a key a macro replays),
+copied, at the start of the next wake and before what the terminal sent.
+`rolltui_run_flush_input(run)`, called while handling a key, drops the rest of the wake's events
+and what has been typed and not yet read, so a key held down over a slow action does not run on.
+
+`rolltui_terminal_set_mouse(term, mouse, hover)` turns mouse reporting on or off while the app
+runs; off, the terminal selects text with the pointer itself. It holds across a suspend.
 
 An app with threads of its own builds its loop from `rolltui_terminal_new`,
 `rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and
@@ -271,6 +279,10 @@ left out.
 - `rolltui_window_stack_maximize(stack, id, len)` makes one window fill its layer, and gives it the
   focus; a NULL id puts the layout back. `stack.maximize` (Alt-Z) does both for the focused window.
   `rolltui_window_stack_maximized` names the window.
+- `stack.focus_number` (Alt-1 to Alt-9) focuses the window with that number, counting the
+  focusable windows of the focus layer in order. `rolltui_window_stack_set_numbered(stack, 1)`
+  puts each one's number before its title. `stack.focus_left`, `_right`, `_up` and `_down`
+  (Alt-Shift-H, L, K, J) focus the nearest window that way.
 
 Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
 over to a new base while its window is in it.
@@ -310,9 +322,17 @@ apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x 
   uses: the shipped tables open the file picker on Alt-O and the palette on Alt-P.
 - A sequence's first chord cannot also be bound alone in the same scope, and two actions cannot
   share a sequence: the loader reports the conflict and keeps what came first.
-- A COUNT is digits typed before an action: `5` then Down moves five. Digits are a count only in a
-  window where a digit is not text or a jump: a list (unless its filter is being typed) and a
-  scrolling page count; the column browser, a menu and an input do not.
+- A COUNT is digits typed before an action: `5` then Down moves five. Before an action that names a
+  place, it is the place: `5` then `list.last` (End, or `G` in the vim keys) is the fifth row, and
+  `50` then `list.percent` (`%`) is half way down. Digits are a count only in a window where a
+  digit is not text or a jump: a list (unless its filter is being typed) and a scrolling page
+  count; the column browser, a menu and an input do not.
+- `any` as a sequence's last key takes whichever character is typed there: `"app.mark":
+  ["m any"]` is m, then a letter, and `rolltui_windows_any_key(windows, &chord)` gives the letter
+  once `rolltui_windows_app_key` answers DONE. `any` alone, or first, is refused.
+- `rolltui_windows_ask_key(windows, action, len, prompt, len)` asks for one key: the panel shows
+  the prompt, the next key makes `rolltui_windows_app_key` answer DONE with `action`, and
+  `rolltui_windows_any_key` gives the key. Escape lets go of the question.
 - After 300 ms with keys on the way, `rolltui_windows_draw_toasts` draws a panel at the screen's
   bottom left: the keys so far in its border, and a row for each key that can follow, with what
   it does or that more follows. `rolltui_windows_pending_keys` gives the keys on the way as text,
@@ -326,8 +346,12 @@ as the letter itself, and every lookup matches it as shift and the letter. The h
 letter as typed (`g`) and shift with a letter as the capital (`G`).
 
 The shipped `vim` bindings preset is the default table with j and k, h and l, `g g` and `G`,
-Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages. In the column browser
-those letters are keys rather than jumps to a name.
+Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages (half a page in a list),
+H, M and L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it.
+In the column browser those letters are keys rather than jumps to a name.
+
+F13 to F24 and Super (`super+x`, also spelled `cmd+x`) are keys a bindings file may name. Only the
+kitty keyboard protocol sends them, and on other terminals they are reported as undeliverable.
 
 ## The keys sheet
 
@@ -530,7 +554,11 @@ arrows and the mark are ASCII.
 |---|---|---|
 | `list.up`, `list.down` | Up, Down, Ctrl-P, Ctrl-N | the row above, the row below |
 | `list.page_up`, `list.page_down` | PageUp, PageDown | a page up, a page down |
-| `list.first`, `list.last` | Home, End | the first row, the last row |
+| `list.first`, `list.last` | Home, End | the first row, the last row; after a count, that row |
+| `list.half_up`, `list.half_down` | Ctrl-U, Ctrl-D | half a page up, half a page down |
+| `list.view_top`, `list.view_middle`, `list.view_bottom` | Alt-Home, Alt-M, Alt-End | the top, middle and bottom rows in view |
+| `list.scroll_up`, `list.scroll_down` | Alt-Up, Alt-Down | the view a row, the cursor staying on its row while it can |
+| `list.percent` | % | after a count, that percent of the way down |
 | `list.activate` | Enter | acts on the row; a tree's node opens or closes |
 | `list.back` | Escape | clears the filter, then the marks |
 | `list.mark` | Space | marks or unmarks the row, and moves to the next |

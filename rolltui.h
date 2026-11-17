@@ -200,7 +200,8 @@ inline RolltuiStr& RolltuiStr::operator=(RolltuiStr&& o) noexcept {
  * file name (what a bindings file spells; "" for `Char` and `Unknown`, which have no file word). Adding a key is one edit here.
  * ORDER IS ABI, same as `ROLLTUI_ROLE_LIST`: the ordinal crosses in every `RolltuiChord`. */
 /* The lowercase words are what a BINDINGS FILE spells ("ctrl+k", "alt+left", "f2"); a chord naming none of them is a bad value with a
- * reason, never a silent miss. Shipped files: `rolltui/presets/bindings/`. */
+ * reason, never a silent miss. Shipped files: `rolltui/presets/bindings/`. F13 to F24 come after Unknown, so every key before them
+ * keeps its number; only the kitty keyboard protocol tells them apart from Shift and F1 to F12. */
 #define ROLLTUI_KEY_LIST(X) \
   X(CHAR,      "Char",      "") \
   X(ENTER,     "Enter",     "enter") \
@@ -229,7 +230,19 @@ inline RolltuiStr& RolltuiStr::operator=(RolltuiStr&& o) noexcept {
   X(F10,       "F10",       "f10") \
   X(F11,       "F11",       "f11") \
   X(F12,       "F12",       "f12") \
-  X(UNKNOWN,   "Unknown",   "")
+  X(UNKNOWN,   "Unknown",   "") \
+  X(F13,       "F13",       "f13") \
+  X(F14,       "F14",       "f14") \
+  X(F15,       "F15",       "f15") \
+  X(F16,       "F16",       "f16") \
+  X(F17,       "F17",       "f17") \
+  X(F18,       "F18",       "f18") \
+  X(F19,       "F19",       "f19") \
+  X(F20,       "F20",       "f20") \
+  X(F21,       "F21",       "f21") \
+  X(F22,       "F22",       "f22") \
+  X(F23,       "F23",       "f23") \
+  X(F24,       "F24",       "f24")
 
 /* Aliases a bindings file also accepts and `chord_to_string` never prints. "space" names a CHAR chord (U+0020), so it carries its
  * codepoint rather than only an ordinal. */
@@ -247,11 +260,13 @@ typedef enum RolltuiKey {
   ROLLTUI_KEY_COUNT
 } RolltuiKey;
 
-/* One chord: a key, the character it is when the key is CHAR, and the three modifiers (never the raw bytes). */
+/* One chord: a key, the character it is when the key is CHAR, and the modifiers (never the raw bytes). Super (the Windows or Command
+ * key, `super+` in a bindings file) only the kitty keyboard protocol reports. */
 typedef struct RolltuiChord {
   unsigned char key ROLLTUI_DEFAULT(ROLLTUI_KEY_CHAR);
   RolltuiCodepoint ch ROLLTUI_DEFAULT(0);
   unsigned char ctrl ROLLTUI_DEFAULT(0), alt ROLLTUI_DEFAULT(0), shift ROLLTUI_DEFAULT(0);
+  unsigned char super ROLLTUI_DEFAULT(0);
 } RolltuiChord;
 
 /* ---- the mouse ------------------------------------------------------------------------- */
@@ -966,8 +981,10 @@ const RolltuiBindings* rolltui_bindings_shipped(RolltuiContext* c, const char* n
 /* ---- the table: parse, query, bind, declare -------------------------------------------------- */
 
 /* "ctrl+shift+left", "alt+enter", "f1", "escape", "?", "space": any modifier order, case-insensitive. 1 on success. A chord never carries
- * an Unknown key's raw bytes. */
+ * an Unknown key's raw bytes. "any" is the last key of a sequence that takes whichever character is typed: `"app.mark": ["m any"]`
+ * is m, then a letter, which `rolltui_windows_any_key` gives. It is refused alone and anywhere but last. */
 int rolltui_chord_parse(const char* text, size_t len, RolltuiChord* out);
+#define ROLLTUI_CHORD_ANY 0x10FFFEu /* the `ch` of an `any` chord, whose key is ROLLTUI_KEY_UNKNOWN */
 
 void rolltui_bindings_free(RolltuiBindings* b);
 
@@ -1530,6 +1547,11 @@ typedef struct RolltuiStackActions {
   const char* next_tab;
   const char* prev_tab;
   const char* maximize;
+  const char* focus_left;
+  const char* focus_right;
+  const char* focus_up;
+  const char* focus_down;
+  const char* focus_number;
 } RolltuiStackActions;
 
 #define ROLLTUI_ROUTE_DELIVER 0
@@ -3869,6 +3891,9 @@ int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout
                                       const char* action, size_t len);
 
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
+/* NUMBERED WINDOWS: each focusable window of the focus layer has its number before its title, the digit Alt and that digit
+ * (`stack.focus_number`) focuses it with. Off by default. */
+void rolltui_window_stack_set_numbered(RolltuiWindowStack* s, int on);
 
 /* WHERE THE POINTER RESTS, for what a host draws outside the windows (a status line's hints): 1 with its cell once the terminal has
  * reported it moving with no button held, which it does only for hover (`RolltuiTerminalOptions::hover`); 0 and (-1, -1) before. */
@@ -3977,6 +4002,13 @@ int rolltui_windows_app_key(RolltuiWindows* w, const RolltuiEvent* e, const char
 /* Whether the window with focus takes `key` itself (its plugin's `takes`, else a key bound in its own scope). A host that matches keys
  * of its own outside `rolltui_windows_app_key` asks this first, and leaves a key the focused window takes to that window. */
 int rolltui_windows_focused_takes(const RolltuiWindows* w, const RolltuiChord* key);
+/* THE KEY AN `any` TOOK: after a sequence ending in `any` is DONE (`"m any"`), or after a key asked for, the character typed there.
+ * 1 and `*out` filled while there is one; it lasts until the next sequence or ask. */
+int rolltui_windows_any_key(const RolltuiWindows* w, RolltuiChord* out);
+/* ASK FOR ONE KEY: the next key is not routed anywhere; `rolltui_windows_app_key` answers it DONE with `action`, and
+ * `rolltui_windows_any_key` gives the key (a mark's letter, y or n). Escape lets go of the question. `prompt` stands in the keys
+ * panel meanwhile, at once. Both are copied. */
+void rolltui_windows_ask_key(RolltuiWindows* w, const char* action, size_t action_len, const char* prompt, size_t prompt_len);
 
 /* ========================================================================================
  * filepicker — the column browser, and directory reading a host can use on its own
@@ -4358,6 +4390,8 @@ void rolltui_terminal_poll(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventF
 /* Makes a blocked poll() return now, with whatever events are pending (possibly none). Thread-safe and async-signal-safe (one byte on the
  * self-pipe): use it instead of a short poll timeout when the view changes on another thread. */
 void rolltui_terminal_wake(RolltuiTerminal* t);
+/* Drops what has been typed and not yet read (a TYPEAHEAD FLUSH): a key held down over a slow action does not run on after it. */
+void rolltui_terminal_flush_input(RolltuiTerminal* t);
 
 /* Writes every byte (loops on partial writes and EINTR). */
 void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
@@ -4366,6 +4400,10 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
  * program, and set again when it is taken back. Control characters are dropped; only a change is written. Inside tmux it names the
  * pane. */
 void rolltui_terminal_set_title(RolltuiTerminal* t, const char* text, size_t len);
+/* MOUSE REPORTING ON OR OFF while the program runs (`mouse` and `hover` as in the options): off, the terminal selects text with the
+ * pointer the way it does for a program that asks for nothing. Kept across a suspend and resume. */
+void rolltui_terminal_set_mouse(RolltuiTerminal* t, int mouse, int hover);
+int rolltui_terminal_mouse(const RolltuiTerminal* t);
 /* THE WORKING DIRECTORY reported (OSC 7, file://host/path, percent-encoded), so a new tab or split opens there. */
 void rolltui_terminal_report_cwd(RolltuiTerminal* t, const char* path, size_t len);
 
@@ -4518,6 +4556,12 @@ int rolltui_run_finish(RolltuiRun* run);
 /* WHAT THE CALLBACKS CALL, all no-ops on NULL. Leave the loop after this wake: the events of the batch that follow
  * are dropped, `settle` is still called once. */
 void rolltui_run_stop(RolltuiRun* run);
+/* AN EVENT THE PROGRAM MAKES (a key a macro replays, a press a script sends), copied and handed to `event` at the start of the next
+ * wake, before what the terminal sent; the loop is woken for it. */
+void rolltui_run_inject(RolltuiRun* run, const RolltuiEvent* e);
+/* A TYPEAHEAD FLUSH: the rest of this wake's events, and what has been typed and not yet read, are dropped, so a key held down over a
+ * slow action does not run on after it. */
+void rolltui_run_flush_input(RolltuiRun* run);
 /* The terminal the run entered, for `rolltui_terminal_facts` and the like. A BORROW valid for the run; the app never
  * frees it, and never calls `rolltui_terminal_poll` or `rolltui_terminal_present` on it — that is the loop's. */
 RolltuiTerminal* rolltui_run_terminal(RolltuiRun* run);

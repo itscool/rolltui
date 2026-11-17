@@ -61,7 +61,7 @@ static int keys_menu(void* ctx, const char** scope, size_t* len) {
 /* ---- WHAT A FOCUSED WIDGET TAKES before the program's own keys (`takes`) ---------------------------------------------------- */
 
 /* A character that is typed: no Ctrl or Alt with it. */
-static int takes_typed(const RolltuiChord* k) { return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt; }
+static int takes_typed(const RolltuiChord* k) { return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && !k->super; }
 /* The action `k` is bound to in `scope` of the table the windows route with, or NULL. */
 static const char* takes_action(const RolltuiBindings* b, const RolltuiChord* k, const char* scope, size_t* n) {
   *n = 0;
@@ -1177,7 +1177,12 @@ static void list_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
 static int list_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
   RolltuiList* l = list_of(lc);
-  return l ? rolltui_list_handle(l, e, rolltui_windows_bindings(lc->w), rolltui_list_default_actions()) : 0;
+  int r;
+  if (!l) return 0;
+  rolltui_list_set_count(l, rolltui_windows_count_arg(lc->w)); /* `5 G`: a count that names a row, for this key only */
+  r = rolltui_list_handle(l, e, rolltui_windows_bindings(lc->w), rolltui_list_default_actions());
+  rolltui_list_set_count(l, 0);
+  return r;
 }
 static int list_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
   RolltuiList* l = list_of((RolltuiListCtx*)ctx);
@@ -4014,7 +4019,7 @@ static KeysRow* keys_row_of(RolltuiKeysCtx* kc, const char* a, size_t al) {
 }
 
 static int chord_same(const RolltuiChord* x, const RolltuiChord* y) {
-  return x->key == y->key && x->ch == y->ch && x->ctrl == y->ctrl && x->alt == y->alt && x->shift == y->shift;
+  return x->key == y->key && x->ch == y->ch && x->ctrl == y->ctrl && x->alt == y->alt && x->shift == y->shift && x->super == y->super;
 }
 
 static void keys_problem_add(KeysRow* r, const char* text, size_t n) {

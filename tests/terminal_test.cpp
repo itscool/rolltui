@@ -1160,5 +1160,22 @@ int main() {
     const std::string rm = "rm -rf '" + d + "'";
     (void)!std::system(rm.c_str());
   }
+  // ---- MOUSE REPORTING ON AND OFF while the program runs: off writes the modes off, on again writes them on, and a no-op writes nothing
+  {
+    RolltuiTerminalOptions o;
+    o.no_cache = 1;
+    int seen_on = -1, seen_off = -1;
+    const Heard h = with_terminal(kGhostty, kGhosttyEnv, o, [&](RolltuiTerminal* t) {
+      seen_on = rolltui_terminal_mouse(t);
+      rolltui_terminal_set_mouse(t, 0, 0);
+      seen_off = rolltui_terminal_mouse(t);
+      rolltui_terminal_set_mouse(t, 0, 0);  // already off: nothing more is written
+      rolltui_terminal_set_mouse(t, 1, 0);
+    });
+    check(seen_on == 1 && seen_off == 0, "the terminal says whether it reports the mouse, before and after");
+    check(h.count("\x1b[?1006l\x1b[?1002l\x1b[?1000l") == 2, "turning it off writes the modes off once, and leaving writes them once more");
+    check(h.count("\x1b[?1000h\x1b[?1002h\x1b[?1006h") == 2, "…and on again writes them on: once at entry, once now");
+  }
+
   return report("rolltui_terminal_test");
 }

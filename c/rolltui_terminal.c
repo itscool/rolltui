@@ -53,6 +53,7 @@ struct RolltuiTerminal {
   int tty;
   int entered;
   int w, h;
+  unsigned char m_alt, m_mouse, m_hover, m_paste, m_hide; /* the modes the enter and leave sequences are built from */
   char enter_seq[TERM_SEQ_MAX];
   size_t enter_len;
   char leave_seq[TERM_SEQ_MAX];
@@ -269,6 +270,50 @@ static void term_leave(RolltuiTerminal* t) {
   rolltui_os_tty_withdraw();
 }
 
+/* ---- the modes entering turns on and leaving turns off ------------------------------------- */
+
+/* Built in the SAME final byte order the C++ `insert(0, ...)` chain produced: enter_seq appends in option order; leave_seq is
+ * attributes-off first, then each mode's "off" in the REVERSE of enter_seq's order — undo last-enabled-first, with attributes-off
+ * always leading regardless. Built again when a mode changes at run time, so a suspend and resume keep it. */
+static void build_modes(RolltuiTerminal* t) {
+  t->enter_len = 0;
+  t->leave_len = 0;
+  t->enter_seq[0] = 0;
+  t->leave_seq[0] = 0;
+  if (t->m_alt) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1049h");
+  if (t->m_mouse) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+  if (t->m_mouse && t->m_hover) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1003h");
+  if (t->m_paste) seq_append(t->enter_seq, &t->enter_len, "\x1b[?2004h");
+  if (t->m_hide) seq_append(t->enter_seq, &t->enter_len, "\x1b[?25l");
+  /* FOCUS and LIGHT-OR-DARK, reported as they change (modes 1004 and 2031). A terminal that has neither ignores the modes. */
+  seq_append(t->enter_seq, &t->enter_len, "\x1b[?1004h\x1b[?2031h");
+  seq_append(t->leave_seq, &t->leave_len, "\x1b[0m"); /* attributes off before anything else */
+  seq_append(t->leave_seq, &t->leave_len, "\x1b[?2031l\x1b[?1004l");
+  if (t->m_hide) seq_append(t->leave_seq, &t->leave_len, "\x1b[?25h");
+  if (t->m_paste) seq_append(t->leave_seq, &t->leave_len, "\x1b[?2004l");
+  if (t->m_mouse && t->m_hover) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1003l");
+  if (t->m_mouse) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+  if (t->m_alt) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1049l");
+}
+
+void rolltui_terminal_set_mouse(RolltuiTerminal* t, int mouse, int hover) {
+  if (!t) return;
+  mouse = mouse ? 1 : 0;
+  hover = hover ? 1 : 0;
+  if (mouse == t->m_mouse && hover == t->m_hover) return;
+  if (t->tty && t->entered) { /* off what was on, then on what now is */
+    if (t->m_mouse && t->m_hover && !(mouse && hover)) rolltui_os_tty_write(t->os, "\x1b[?1003l", sizeof "\x1b[?1003l" - 1);
+    if (t->m_mouse && !mouse) rolltui_os_tty_write(t->os, "\x1b[?1006l\x1b[?1002l\x1b[?1000l", sizeof "\x1b[?1006l\x1b[?1002l\x1b[?1000l" - 1);
+    if (mouse && !t->m_mouse) rolltui_os_tty_write(t->os, "\x1b[?1000h\x1b[?1002h\x1b[?1006h", sizeof "\x1b[?1000h\x1b[?1002h\x1b[?1006h" - 1);
+    if (mouse && hover && !(t->m_mouse && t->m_hover)) rolltui_os_tty_write(t->os, "\x1b[?1003h", sizeof "\x1b[?1003h" - 1);
+  }
+  t->m_mouse = (unsigned char)mouse;
+  t->m_hover = (unsigned char)hover;
+  build_modes(t);
+}
+
+int rolltui_terminal_mouse(const RolltuiTerminal* t) { return t && t->m_mouse; }
+
 /* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts) {
@@ -287,20 +332,12 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
     t->dirty = 1;
     opts.alt_screen = 0;
   }
-  if (opts.alt_screen) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1049h");
-  if (opts.mouse) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1000h\x1b[?1002h\x1b[?1006h");
-  if (opts.mouse && opts.hover) seq_append(t->enter_seq, &t->enter_len, "\x1b[?1003h");
-  if (opts.bracketed_paste) seq_append(t->enter_seq, &t->enter_len, "\x1b[?2004h");
-  if (opts.hide_cursor) seq_append(t->enter_seq, &t->enter_len, "\x1b[?25l");
-  /* FOCUS and LIGHT-OR-DARK, reported as they change (modes 1004 and 2031). A terminal that has neither ignores the modes. */
-  seq_append(t->enter_seq, &t->enter_len, "\x1b[?1004h\x1b[?2031h");
-  seq_append(t->leave_seq, &t->leave_len, "\x1b[0m"); /* attributes off before anything else */
-  seq_append(t->leave_seq, &t->leave_len, "\x1b[?2031l\x1b[?1004l");
-  if (opts.hide_cursor) seq_append(t->leave_seq, &t->leave_len, "\x1b[?25h");
-  if (opts.bracketed_paste) seq_append(t->leave_seq, &t->leave_len, "\x1b[?2004l");
-  if (opts.mouse && opts.hover) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1003l");
-  if (opts.mouse) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1006l\x1b[?1002l\x1b[?1000l");
-  if (opts.alt_screen) seq_append(t->leave_seq, &t->leave_len, "\x1b[?1049l");
+  t->m_alt = opts.alt_screen ? 1 : 0;
+  t->m_mouse = opts.mouse ? 1 : 0;
+  t->m_hover = opts.hover ? 1 : 0;
+  t->m_paste = opts.bracketed_paste ? 1 : 0;
+  t->m_hide = opts.hide_cursor ? 1 : 0;
+  build_modes(t);
   t->decoder = rolltui_key_decoder_new();
   rolltui_key_decoder_set_reply_sink(t->decoder, on_reply, t);
   init_facts(t, &opts);
@@ -352,6 +389,12 @@ void rolltui_terminal_refresh_size(RolltuiTerminal* t) {
 void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { rolltui_os_tty_write(t->os, bytes, len); }
 
 void rolltui_terminal_wake(RolltuiTerminal* t) { rolltui_os_tty_wake(t->os); }
+
+void rolltui_terminal_flush_input(RolltuiTerminal* t) {
+  if (!t) return;
+  rolltui_os_tty_flush_input(t->os);
+  rolltui_key_decoder_reset(t->decoder); /* half a sequence already read goes too */
+}
 
 /* ---- the title and the working directory ---------------------------------------------------- */
 

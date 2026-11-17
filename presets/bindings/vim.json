@@ -28,7 +28,8 @@
       "ctrl+k"
     ],
     "input.left": [
-      "left"
+      "left",
+      "ctrl+b"
     ],
     "input.right": [
       "right"
@@ -227,12 +228,10 @@
       "j"
     ],
     "list.page_up": [
-      "pageup",
-      "ctrl+u"
+      "pageup"
     ],
     "list.page_down": [
-      "pagedown",
-      "ctrl+d"
+      "pagedown"
     ],
     "list.first": [
       "home",
@@ -241,6 +240,30 @@
     "list.last": [
       "end",
       "shift+g"
+    ],
+    "list.half_up": [
+      "ctrl+u"
+    ],
+    "list.half_down": [
+      "ctrl+d"
+    ],
+    "list.view_top": [
+      "shift+h"
+    ],
+    "list.view_middle": [
+      "shift+m"
+    ],
+    "list.view_bottom": [
+      "shift+l"
+    ],
+    "list.scroll_up": [
+      "ctrl+y"
+    ],
+    "list.scroll_down": [
+      "ctrl+e"
+    ],
+    "list.percent": [
+      "%"
     ],
     "list.activate": [
       "enter"
@@ -306,6 +329,29 @@
     ],
     "stack.focus_prev": [
       "shift+tab"
+    ],
+    "stack.focus_left": [
+      "alt+shift+h"
+    ],
+    "stack.focus_right": [
+      "alt+shift+l"
+    ],
+    "stack.focus_up": [
+      "alt+shift+k"
+    ],
+    "stack.focus_down": [
+      "alt+shift+j"
+    ],
+    "stack.focus_number": [
+      "alt+1",
+      "alt+2",
+      "alt+3",
+      "alt+4",
+      "alt+5",
+      "alt+6",
+      "alt+7",
+      "alt+8",
+      "alt+9"
     ],
     "sheet.remove": [
       "delete",

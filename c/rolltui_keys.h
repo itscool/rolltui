@@ -55,6 +55,8 @@ typedef void (*RolltuiEventFn)(void* ctx, const RolltuiEvent* e);
 typedef struct RolltuiKeyDecoder RolltuiKeyDecoder;
 RolltuiKeyDecoder* rolltui_key_decoder_new(void);
 void rolltui_key_decoder_free(RolltuiKeyDecoder* d);
+/* Drops half a sequence held for its next bytes (a typeahead flush). A paste in progress is kept: it is one event. */
+void rolltui_key_decoder_reset(RolltuiKeyDecoder* d);
 
 /* Consumes as much of `bytes` as forms complete events; the rest waits in the decoder. */
 void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t len, RolltuiEventFn emit, void* ctx);

@@ -67,6 +67,7 @@ struct RolltuiList {
   RolltuiMap state; /* tree: key -> 1 opened, 2 closed, overriding `open_depth` */
   int sort_col, sort_rev;
   RolltuiStr filter;
+  int count; /* a count for this key that names a row (`rolltui_list_set_count`); 0: none */
   RolltuiStr scored; /* the filter the cursor was last put on the best match for: moving it after that is the person's */
   int filtering; /* typing the filter: printable keys go to it */
 
@@ -725,6 +726,8 @@ int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
   return 1;
 }
 
+void rolltui_list_set_count(RolltuiList* l, int count) { l->count = count > 0 ? count : 0; }
+
 int rolltui_list_has_back(const RolltuiList* l) {
   return l->filtering || l->filter.n || rolltui_map_count(&l->marks) != 0;
 }
@@ -762,8 +765,34 @@ int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char
   }
   if (is(act, n, a->page_up)) { move_to(l, (long long)l->cursor - page); return 1; }
   if (is(act, n, a->page_down)) { move_to(l, (long long)l->cursor + page); return 1; }
-  if (is(act, n, a->first)) { move_to(l, 0); return 1; }
-  if (is(act, n, a->last)) { move_to(l, (long long)count - 1); return 1; }
+  if (is(act, n, a->first) || is(act, n, a->last)) { /* after a count, that row: `5 G` is the fifth */
+    if (l->count > 0) move_to(l, (long long)l->count - 1);
+    else move_to(l, is(act, n, a->first) ? 0 : (long long)count - 1);
+    return 1;
+  }
+  if (is(act, n, a->percent)) {
+    if (l->count <= 0 || count == 0) return 0;
+    move_to(l, (long long)((count - 1) * (size_t)(l->count > 100 ? 100 : l->count) / 100));
+    return 1;
+  }
+  {
+    const long long half = l->body_h > 1 ? l->body_h / 2 : 1, h = l->body_h > 0 ? l->body_h : 1;
+    if (is(act, n, a->half_up)) { move_to(l, (long long)l->cursor - half); return 1; }
+    if (is(act, n, a->half_down)) { move_to(l, (long long)l->cursor + half); return 1; }
+    if (is(act, n, a->view_top) || is(act, n, a->view_middle) || is(act, n, a->view_bottom)) {
+      const long long last = (long long)l->top + h - 1 < (long long)count - 1 ? (long long)l->top + h - 1 : (long long)count - 1;
+      move_to(l, is(act, n, a->view_top) ? (long long)l->top : is(act, n, a->view_bottom) ? last : ((long long)l->top + last) / 2);
+      return 1;
+    }
+    if (is(act, n, a->scroll_up) || is(act, n, a->scroll_down)) { /* the view moves a row; the cursor stays while it is in view */
+      const size_t at = l->cursor;
+      if (is(act, n, a->scroll_up) && l->top == 0) return 0;
+      if (is(act, n, a->scroll_down) && l->top + (size_t)h >= count) return 0;
+      rolltui_list_scroll_to(l, is(act, n, a->scroll_up) ? l->top - 1 : l->top + 1);
+      (void)at;
+      return 1;
+    }
+  }
   if (is(act, n, a->back)) return rolltui_list_back(l);
   if (is(act, n, a->filter)) {
     l->filtering = 1;

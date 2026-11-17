@@ -95,12 +95,22 @@ static const char* canonical_key_name(unsigned char key) {
   return NULL;
 }
 
+static int is_any(const RolltuiChord* k) { return k->key == ROLLTUI_KEY_UNKNOWN && k->ch == ROLLTUI_CHORD_ANY; }
+/* What an `any` slot takes: a typed character, Shift included, no Ctrl or Alt. */
+static int any_takes(const RolltuiChord* k) { return k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && !k->super && k->ch >= ' '; }
+
 int rolltui_chord_parse(const char* text, size_t len, RolltuiChord* out) {
   /* Split on '+', but a trailing "+" alone is the plus character. Done in place, over
    * (offset, length) pairs, so there is no vector of strings to own. */
   size_t part_at[8], part_len[8], n = 0, i, cur = 0;
   RolltuiChord k;
   memset(&k, 0, sizeof k);
+  if (len == 3 && (text[0] | 0x20) == 'a' && (text[1] | 0x20) == 'n' && (text[2] | 0x20) == 'y') {
+    k.key = ROLLTUI_KEY_UNKNOWN;
+    k.ch = ROLLTUI_CHORD_ANY;
+    *out = k;
+    return 1;
+  }
   k.key = ROLLTUI_KEY_CHAR;
   for (i = 0; i < len; ++i) {
     if (text[i] == '+' && i > cur && i + 1 < len) {
@@ -122,6 +132,7 @@ int rolltui_chord_parse(const char* text, size_t len, RolltuiChord* out) {
     if (name_is(m, ml, "ctrl") || name_is(m, ml, "control") || name_is(m, ml, "c")) k.ctrl = 1;
     else if (name_is(m, ml, "alt") || name_is(m, ml, "meta") || name_is(m, ml, "option") || name_is(m, ml, "m")) k.alt = 1;
     else if (name_is(m, ml, "shift") || name_is(m, ml, "s")) k.shift = 1;
+    else if (name_is(m, ml, "super") || name_is(m, ml, "cmd") || name_is(m, ml, "win") || name_is(m, ml, "d")) k.super = 1;
     else return 0;
   }
   {
@@ -160,7 +171,9 @@ size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap) {
   size_t n = 0;
   const char* name;
   if (cap < ROLLTUI_CHORD_STRING_MAX) return 0;
+  if (is_any(k)) return put(out, 0, "any");
   if (k->key == ROLLTUI_KEY_UNKNOWN) return 0;
+  if (k->super) n = put(out, n, "super+");
   if (k->ctrl) n = put(out, n, "ctrl+");
   if (k->alt) n = put(out, n, "alt+");
   if (k->shift) n = put(out, n, "shift+");
@@ -180,7 +193,11 @@ size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap) {
   char s[ROLLTUI_CHORD_STRING_MAX];
   size_t len, i, start = 0, n = 0;
   if (cap < ROLLTUI_CHORD_STRING_MAX) return 0;
-  if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && k->ch >= 'a' && k->ch <= 'z') {
+  if (is_any(k)) {
+    memcpy(out, "any key", 7);
+    return 7;
+  }
+  if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && !k->super && k->ch >= 'a' && k->ch <= 'z') {
     out[0] = (char)(k->shift ? k->ch - 'a' + 'A' : k->ch);
     return 1;
   }
@@ -410,7 +427,8 @@ int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size
 }
 
 static int chord_eq(const RolltuiChord* a, const RolltuiChord* b) {
-  return a->key == b->key && a->ch == b->ch && a->ctrl == b->ctrl && a->alt == b->alt && a->shift == b->shift;
+  return a->key == b->key && a->ch == b->ch && a->ctrl == b->ctrl && a->alt == b->alt && a->shift == b->shift &&
+         a->super == b->super;
 }
 
 void rolltui_chord_bound_form(const RolltuiChord* k, RolltuiChord* out) {
@@ -600,7 +618,7 @@ int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* 
       if (s->n < n || !seq_deliverable(s, p)) continue;
       for (k = 0; k < n; ++k) {
         const RolltuiChord bk = as_bound(&keys[k]);
-        if (!chord_eq(&s->c[k], &bk)) break;
+        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !chord_eq(&s->c[k], &bk)) break;
       }
       if (k < n) continue;
       if (s->n == n) {
@@ -612,6 +630,24 @@ int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* 
     }
   }
   return prefix ? ROLLTUI_SEQUENCE_PREFIX : ROLLTUI_SEQUENCE_NONE;
+}
+
+int rolltui_bindings_sequence_ends_any(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen) {
+  size_t i, j, k;
+  for (i = 0; i < b->row_count; ++i) {
+    const Row* r = &b->rows[i];
+    if (!scope_row(b, r, scope, slen)) continue;
+    for (j = 0; j < r->seq_count; ++j) {
+      const Seq* s = &r->seqs[j];
+      if (s->n != n || !is_any(&s->c[n - 1])) continue;
+      for (k = 0; k + 1 < n; ++k) {
+        const RolltuiChord bk = as_bound(&keys[k]);
+        if (!chord_eq(&s->c[k], &bk)) break;
+      }
+      if (k + 1 == n && any_takes(&keys[n - 1])) return 1;
+    }
+  }
+  return 0;
 }
 
 size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiChord* keys, size_t n, const char* scope, size_t slen,
@@ -627,7 +663,7 @@ size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiCho
       if (s->n <= n || !seq_deliverable(s, p)) continue;
       for (k = 0; k < n; ++k) {
         const RolltuiChord bk = as_bound(&keys[k]);
-        if (!chord_eq(&s->c[k], &bk)) break;
+        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !chord_eq(&s->c[k], &bk)) break;
       }
       if (k < n) continue;
       for (m = 0; m < out; ++m) /* one row per next key: a longer sequence through it says there is more */
@@ -884,13 +920,15 @@ static void load_sequence(RolltuiBindings* b, const char* action, size_t action_
     else ++n;
     i = e;
   }
+  for (i = 0; ok && i + 1 < n; ++i)
+    if (is_any(&keys[i])) ok = 0; /* `any` is the last key, or it would take every key after it */
   if (!ok || n < 2) {
     RolltuiStr msg;
     memset(&msg, 0, sizeof msg);
     rolltui_str_set(&msg, action, action_len);
     rolltui_str_append(&msg, K(": '"));
     rolltui_str_append(&msg, text, len);
-    rolltui_str_append(&msg, K("' is not a sequence (two to four chords, apart by spaces)"));
+    rolltui_str_append(&msg, K("' is not a sequence (two to four chords, apart by spaces, `any` only last)"));
     rolltui_bindings_report_add_bad_chord(report, msg.p, msg.n);
     rolltui_str_free(&msg);
     return;
@@ -987,13 +1025,16 @@ static void load_one_row(RolltuiBindings* b, const char* action, size_t action_l
       load_sequence(b, action, action_len, ctext, clen, deliver, reason, reason_ctx, report);
       continue;
     }
-    if (!rolltui_chord_parse(ctext, clen, &k)) {
+    if (!rolltui_chord_parse(ctext, clen, &k) || is_any(&k)) {
       RolltuiStr msg;
       memset(&msg, 0, sizeof msg);
       rolltui_str_set(&msg, action, action_len);
       rolltui_str_append(&msg, K(": '"));
       rolltui_str_append(&msg, ctext, clen);
-      rolltui_str_append(&msg, K("' is not a chord"));
+      {
+        const char* why = is_any(&k) ? "' is not a chord: `any` follows another key, as in \"m any\"" : "' is not a chord";
+        rolltui_str_append(&msg, why, strlen(why));
+      }
       rolltui_bindings_report_add_bad_chord(report, msg.p, msg.n);
       rolltui_str_free(&msg);
       continue;
