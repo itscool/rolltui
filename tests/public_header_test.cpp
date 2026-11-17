@@ -522,7 +522,8 @@ int main() {
     // And whether the focused window takes a key, for a host matching keys of its own (PUBLIC 533).
     // Then the keys and input batch: an `any` slot's key and an asked key, injected events and a typeahead flush, mouse on and
     // off, numbered windows (PUBLIC 541); a count as a row, a decoder reset, a sequence ending in `any` (INTERNAL 916).
-    check(totals["PUBLIC"] == 541 && totals["INTERNAL"] == 916 && totals.size() == 2,
+    // Then matching: find with folding and its each-match form, the shared filter's seven calls, a hint bar from a scope (PUBLIC 551).
+    check(totals["PUBLIC"] == 551 && totals["INTERNAL"] == 916 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -696,11 +697,12 @@ int main() {
     // Bind 114, widget 46: a chart bound to a window, and a chart made, filled and drawn. Widget 48: text cut, drawn and as text.
     // Run 189: the loop begun, stepped and finished. Run 190: a host's own key sequences. Run 191: whether the focused window takes a key.
     // Run 196 and settings 94: the any key and an asked key, injected events, two flushes; mouse on and off, numbered windows.
+    // Run 197 and widget 57: a hint bar from a scope; find with folding, its each-match form, and the shared filter's seven calls.
     check(rt["VOCAB"] == 42 && rt["HOST_LOAD"] == 31 && rt["HOST_SETTINGS"] == 94 &&
-              rt["HOST_BIND"] == 114 && rt["HOST_RUN"] == 196 && rt["HOST_RELEASE"] == 16 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 48,
-          "the roles are the recorded shape — vocab 42, host load 31 / settings 94 / bind 114 / run 196 / "
-          "release 16, tool interop 0, widget 48 (got " +
+              rt["HOST_BIND"] == 114 && rt["HOST_RUN"] == 197 && rt["HOST_RELEASE"] == 16 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 57,
+          "the roles are the recorded shape — vocab 42, host load 31 / settings 94 / bind 114 / run 197 / "
+          "release 16, tool interop 0, widget 57 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

@@ -69,6 +69,9 @@ struct RolltuiList {
   RolltuiStr filter;
   int count; /* a count for this key that names a row (`rolltui_list_set_count`); 0: none */
   RolltuiStr scored; /* the filter the cursor was last put on the best match for: moving it after that is the person's */
+  RolltuiFilter* compiled; /* OWNED: `filter` made once (`compiled`) */
+  RolltuiStr kept; /* the filter as it was kept when typing into it began: Escape goes back to it first */
+  RolltuiStr compiled_for;
   int filtering; /* typing the filter: printable keys go to it */
 
   ListEvent events[EVENT_CAP];
@@ -79,9 +82,7 @@ struct RolltuiList {
   int mark_w, number_w;
   int col_x[MAX_COLS], col_w[MAX_COLS], col_on[MAX_COLS];
   RolltuiListRow tmp;
-  RolltuiStr scratch_a, scratch_b;
   RolltuiDrawScratch* draw;
-  RolltuiUnicodeScratch* u;
   int dragging;
 };
 
@@ -145,7 +146,6 @@ RolltuiList* rolltui_list_new(void) {
   l->sort_col = -1;
   l->stale = 1;
   l->draw = rolltui_draw_scratch_new();
-  l->u = rolltui_u_scratch_new();
   return l;
 }
 
@@ -163,14 +163,14 @@ void rolltui_list_free(RolltuiList* l) {
   rolltui_str_free(&l->cursor_key);
   rolltui_str_free(&l->filter);
   rolltui_str_free(&l->scored);
+  rolltui_filter_free(l->compiled);
+  rolltui_str_free(&l->kept);
+  rolltui_str_free(&l->compiled_for);
   rolltui_map_release(&l->marks);
   rolltui_map_release(&l->state);
   rolltui_str_free(&l->tmp.key);
   rolltui_str_list_release(&l->tmp.cells);
-  rolltui_str_free(&l->scratch_a);
-  rolltui_str_free(&l->scratch_b);
   rolltui_draw_scratch_free(l->draw);
-  rolltui_u_scratch_free(l->u);
   rolltui_mem_free(l);
 }
 
@@ -238,73 +238,44 @@ static int is_open(const RolltuiList* l, size_t src, const RolltuiStr* key) {
 
 /* ---- the filter -------------------------------------------------------------------------------- */
 
-static int contains(const RolltuiStr* hay, const RolltuiStr* needle) {
-  size_t i;
-  if (needle->n == 0) return 1;
-  if (hay->n < needle->n) return 0;
-  for (i = 0; i + needle->n <= hay->n; ++i)
-    if (memcmp(hay->p + i, needle->p, needle->n) == 0) return 1;
-  return 0;
-}
-
-/* Whether one term is in one of the row's cells: fuzzily, or as written (case aside). A term is matched within a cell, never across two:
- * `f1` does not find `file2` beside `10`. */
-static int term_in_row(RolltuiList* l, const RolltuiListRow* r, const char* t, size_t tn, int exact) {
-  size_t k;
-  if (exact) rolltui_u_case(l->u, t, tn, ROLLTUI_CASE_FOLD, &l->scratch_b);
-  for (k = 0; k < r->cells.n; ++k) {
-    const RolltuiStr* c = &r->cells.v[k];
-    if (exact) {
-      rolltui_u_case(l->u, sp(c), c->n, ROLLTUI_CASE_FOLD, &l->scratch_a);
-      if (contains(&l->scratch_a, &l->scratch_b)) return 1;
-    } else if (rolltui_fuzzy_match(t, tn, sp(c), c->n, NULL, NULL, 0)) {
-      return 1;
-    }
+/* THE QUERY, MADE ONCE: the library's filter (`rolltui_filter_new`), remade only when the text changes. */
+static const RolltuiFilter* compiled(RolltuiList* l, const RolltuiStr* q) {
+  if (!l->compiled || !rolltui_str_eq(&l->compiled_for, sp(q), q->n)) {
+    rolltui_filter_free(l->compiled);
+    l->compiled = rolltui_filter_new(sp(q), q->n);
+    rolltui_str_set(&l->compiled_for, sp(q), q->n);
   }
-  return 0;
+  return l->compiled;
 }
 
-/* Every term of the query matches the row: a plain term fuzzily, `'term` as written (case aside), `!term` not at all. */
+/* Every term of the query matches the row, each within one of its cells (`f1` does not find `file2` beside `10`); a `!` term in
+ * none of them. */
 static int row_matches(RolltuiList* l, const RolltuiListRow* r, const RolltuiStr* q) {
-  size_t i;
-  int ok = 1;
-  for (i = 0; i < q->n && ok;) {
-    size_t e;
-    int neg = 0, exact = 0;
-    while (i < q->n && q->p[i] == ' ') ++i;
-    if (i >= q->n) break;
-    e = i;
-    while (e < q->n && q->p[e] != ' ') ++e;
-    if (q->p[i] == '!') neg = 1, ++i;
-    if (i < e && q->p[i] == '\'') exact = 1, ++i;
-    if (i < e) {
-      const int hit = term_in_row(l, r, q->p + i, e - i, exact || neg);
-      ok = neg ? !hit : hit;
-    }
-    i = e;
+  const RolltuiFilter* f = compiled(l, q);
+  const size_t terms = rolltui_filter_terms(f);
+  size_t i, k;
+  for (i = 0; i < terms; ++i) {
+    int hit = 0;
+    for (k = 0; k < r->cells.n && !hit; ++k) hit = rolltui_filter_term(f, i, sp(&r->cells.v[k]), r->cells.v[k].n, NULL);
+    if (rolltui_filter_term_negated(f, i) ? hit : !hit) return 0;
   }
-  return ok;
+  return 1;
 }
 
-/* How well a matching row matches: each plain term's best fuzzy score over the row's cells, added up. */
+/* How well a matching row matches: each term's best score over the row's cells, added up. */
 static int row_score(RolltuiList* l, const RolltuiListRow* r, const RolltuiStr* q) {
+  const RolltuiFilter* f = compiled(l, q);
+  const size_t terms = rolltui_filter_terms(f);
   size_t i, k;
   int total = 0;
-  (void)l;
-  for (i = 0; i < q->n;) {
-    size_t e;
+  for (i = 0; i < terms; ++i) {
     int best = 0;
-    while (i < q->n && q->p[i] == ' ') ++i;
-    if (i >= q->n) break;
-    e = i;
-    while (e < q->n && q->p[e] != ' ') ++e;
-    if (q->p[i] != '!' && q->p[i] != '\'')
-      for (k = 0; k < r->cells.n; ++k) {
-        int sc = 0;
-        if (rolltui_fuzzy_match(q->p + i, e - i, sp(&r->cells.v[k]), r->cells.v[k].n, &sc, NULL, 0) && sc > best) best = sc;
-      }
+    if (rolltui_filter_term_negated(f, i)) continue;
+    for (k = 0; k < r->cells.n; ++k) {
+      int sc = 0;
+      if (rolltui_filter_term(f, i, sp(&r->cells.v[k]), r->cells.v[k].n, &sc) && sc > best) best = sc;
+    }
     total += best;
-    i = e;
   }
   return total;
 }
@@ -728,11 +699,19 @@ int rolltui_list_footer(RolltuiList* l, RolltuiStr* out) {
 
 void rolltui_list_set_count(RolltuiList* l, int count) { l->count = count > 0 ? count : 0; }
 
+static void filter_changed(RolltuiList* l);
+
 int rolltui_list_has_back(const RolltuiList* l) {
   return l->filtering || l->filter.n || rolltui_map_count(&l->marks) != 0;
 }
 
 int rolltui_list_back(RolltuiList* l) {
+  if (l->filtering && l->kept.n && !rolltui_str_eq(&l->filter, sp(&l->kept), l->kept.n)) { /* back to the filter that was kept */
+    l->filtering = 0;
+    rolltui_str_set(&l->filter, sp(&l->kept), l->kept.n);
+    filter_changed(l);
+    return 1;
+  }
   if (l->filtering || l->filter.n) { /* one level at a time: the filter, then the marks */
     l->filtering = 0;
     if (l->filter.n) {
@@ -796,6 +775,7 @@ int rolltui_list_perform(RolltuiList* l, const RolltuiListActions* a, const char
   if (is(act, n, a->back)) return rolltui_list_back(l);
   if (is(act, n, a->filter)) {
     l->filtering = 1;
+    rolltui_str_set(&l->kept, sp(&l->filter), l->filter.n); /* what Escape goes back to */
     return 1;
   }
   if (count == 0) return 0;
@@ -890,6 +870,7 @@ static void filter_changed(RolltuiList* l) {
 
 void rolltui_list_set_filter(RolltuiList* l, const char* q, size_t n) {
   if (!q) n = 0;
+  rolltui_str_set(&l->kept, q ? q : "", n); /* the host's filter is the one kept: Escape clears it */
   if (rolltui_str_eq(&l->filter, q ? q : "", n)) return;
   rolltui_str_set(&l->filter, q ? q : "", n);
   filter_changed(l);
@@ -1047,6 +1028,26 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int aw) {
 
 /* ---- drawing ------------------------------------------------------------------------------------ */
 
+/* WHAT THE FILTER MATCHED in a cell, lit bold and underlined, so it reads in every theme, the one with no colours included. */
+static void light_matches(RolltuiList* l, RolltuiFrame* f, int x, int y, const char* c, size_t cn, int max, int aw) {
+  size_t b[24], e[24], n, i;
+  RolltuiStyle lit;
+  if (!l->filter.n || max <= 0) return;
+  n = rolltui_filter_spans(compiled(l, &l->filter), c, cn, b, e, 24);
+  memset(&lit, 0, sizeof lit);
+  lit.bold = 1;
+  lit.underline = 1;
+  for (i = 0; i < n; ++i) {
+    const int x0 = rolltui_frame_text_width(l->draw, c, b[i], aw);
+    int w = rolltui_frame_text_width(l->draw, c + b[i], e[i] - b[i], aw);
+    RolltuiRect r;
+    if (x0 >= max) continue;
+    if (x0 + w > max) w = max - x0;
+    r.x = x + x0, r.y = y, r.w = w, r.h = 1;
+    rolltui_frame_tint(f, r, lit);
+  }
+}
+
 /* `s` in at most `max` cells, cut at an ellipsis where it does not fit. Returns the cells used. */
 static int put_cut(RolltuiList* l, RolltuiFrame* f, int x, int y, const char* s, size_t n, RolltuiStyle st, int max, int aw) {
   return rolltui_frame_put_text_cut(f, l->draw, x, y, s, n, st, max, ROLLTUI_CUT_END, aw, 0);
@@ -1189,6 +1190,7 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
         max -= g;
       }
       put_cut(l, f, x, y, c, cn, st, max, aw);
+      light_matches(l, f, x, y, c, cn, max, aw);
     } else {
       for (k = 0; k < (int)l->col_n; ++k) {
         size_t cn;
@@ -1227,6 +1229,7 @@ void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styl
             cw -= 3;
           }
           put_cut(l, f, cx, y, c, cn, cs, cw, aw);
+          light_matches(l, f, cx, y, c, cn, cw, aw);
         }
       }
     }

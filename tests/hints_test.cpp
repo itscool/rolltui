@@ -179,6 +179,31 @@ int main() {
   }
   rolltui_str_free(&text);
   rolltui_frame_free(g);
+  // A SCOPE AS A BAR, in one call: each action with a key this terminal can send, labelled with what it does
+  {
+    RolltuiBindings* b = rolltui_bindings_new_seeded();
+    RolltuiBindingsReport rep{};
+    const char* json = R"({"name":"t","bindings":{"app.help":["f1"],"app.menu":["f2"],"app.super":["super+x"]}})";
+    rolltui_bindings_load_json(b, json, std::strlen(json), ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, nullptr, nullptr,
+                               nullptr, &rep);
+    rolltui_bindings_report_release(&rep);
+    RolltuiToolAction declared[3] = {{"app.help", "help", nullptr}, {"app.menu", "settings", nullptr}, {"app.super", "never sent", nullptr}};
+    rolltui_bindings_declare(b, nullptr, 0, declared, 3);
+    RolltuiHintBar* hb = rolltui_hint_bar_new();
+    const std::size_t added = rolltui_hint_bar_add_scope(hb, b, "app", 3);
+    RolltuiFrame* fr = rolltui_frame_new(40, 1, RolltuiStyle{});
+    rolltui_hint_bar_draw(hb, fr, s, 0, 0, 40, RolltuiStyle{}, RolltuiStyle{}, RolltuiStyle{}, 0);
+    RolltuiStr text{};
+    rolltui_frame_to_text(fr, &text);
+    const std::string line(text.p ? text.p : "", text.n);
+    check(added == 2 && line.find("F1 help") != std::string::npos && line.find("F2 settings") != std::string::npos,
+          "a scope's actions become a bar, each its key and what it does [" + line + "]");
+    check(line.find("never sent") == std::string::npos, "…and an action whose only key this terminal cannot send is left out");
+    rolltui_str_free(&text);
+    rolltui_frame_free(fr);
+    rolltui_hint_bar_free(hb);
+    rolltui_bindings_free(b);
+  }
   rolltui_frame_free(f);
   rolltui_draw_scratch_free(s);
   rolltui_hint_bar_free(bar);

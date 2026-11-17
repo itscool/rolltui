@@ -77,6 +77,8 @@ struct Screen {
   RolltuiLayout* layout = nullptr;
   RolltuiWindows* w = nullptr;
   int width, height;
+  std::vector<RolltuiCell> cells;  // the last frame painted, a cell at a time
+  const RolltuiCell& cell(int x, int y) const { return cells[static_cast<std::size_t>(y * width + x)]; }
   Screen(int wd, int ht) : width(wd), height(ht) {
     RolltuiLayoutReport rep{};
     std::size_t nd = 0;
@@ -116,6 +118,9 @@ struct Screen {
           rolltui_windows_draw(s->w, rn, fr, s->styles, rolltui_windows_default_roles());
         },
         &slot, 0, cs);
+    cells.assign(static_cast<std::size_t>(width * height), RolltuiCell{});
+    for (int y = 0; y < height; ++y)
+      for (int x = 0; x < width; ++x) rolltui_frame_cell(f, x, y, &cells[static_cast<std::size_t>(y * width + x)]);
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     const std::string all = str_of(text);
@@ -576,6 +581,65 @@ void test_motions() {
   check(s.cursor() == "r39", "End with no count is still the last row (the control)");
 }
 
+// THE FILTER every list, menu and palette reads: its kinds of term, folding, scores, and what it says matched.
+void test_filter() {
+  auto passes = [](const char* q, const char* text) {
+    RolltuiFilter* f = rolltui_filter_new(q, std::strlen(q));
+    const bool ok = rolltui_filter_match(f, text, std::strlen(text), nullptr) != 0;
+    rolltui_filter_free(f);
+    return ok;
+  };
+  check(passes("rdm", "readme.md") && !passes("rdz", "readme.md"), "a plain term matches fuzzily");
+  check(passes("'read", "readme.md") && !passes("'rdm", "readme.md"), "'term matches as written");
+  check(passes("^read", "readme.md") && !passes("^me", "readme.md"), "^term matches at the start");
+  check(passes(".md$", "readme.md") && !passes("read$", "readme.md"), "term$ matches at the end");
+  check(passes("/re+a/", "readme.md") && !passes("/^me/", "readme.md"), "/re/ is a regular expression");
+  check(passes("!txt", "readme.md") && !passes("!read", "readme.md"), "!term must not appear");
+  check(passes("'cafe", "Caf\xC3\xA9 au lait") && passes("^CAF", "CAFE") && !passes("^CAF", "cafe"),
+        "accents aside, and case aside unless a term has a capital");
+  check(passes("re md", "readme.md") && !passes("re zz", "readme.md"), "every term must match");
+  std::size_t at = 0, len = 0;
+  check(rolltui_text_find("une caf\xC3\xA9 noire", 16, "cafe", 4, 0, &at, &len) && at == 4 && len == 5,
+        "find folds accents and answers the bytes of what it found: caf\xC3\xA9 is five");
+  check(rolltui_text_find_each("aXaXa", 5, "a", 1, nullptr, nullptr) == 3, "find each counts every match, none overlapping");
+  RolltuiFilter* f = rolltui_filter_new("rme", 3);
+  std::size_t b[8], e[8];
+  const std::size_t n = rolltui_filter_spans(f, "readme", 6, b, e, 8);
+  check(n == 3 && b[0] == 0 && b[1] == 4 && b[2] == 5, "what matched is said: r, m and e of readme");
+  rolltui_filter_free(f);
+}
+
+// WHAT MATCHED IS LIT in the rows: bold and underlined, so it reads with no colour at all.
+void test_lit_matches() {
+  Data d;
+  d.keys = {"a", "b"};
+  d.a = {"readme.md", "makefile"};
+  Screen s(30, 6);
+  rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiListOptions o{};
+  o.hide_header = 1;
+  rolltui_windows_set_list_options(s.w, "things", 6, &o);
+  s.paint();
+  s.chr('/');
+  s.chr('r');
+  s.chr('m');
+  auto rows = s.paint();
+  check(starts(rows[0], "readme.md"), "the filter keeps readme.md");
+  check(s.cell(0, 0).style.bold && s.cell(0, 0).style.underline && s.cell(4, 0).style.underline,
+        "its r and its m are lit, bold and underlined");
+  check(!s.cell(1, 0).style.underline, "…and a letter that did not match is not");
+  // ESCAPE GOES BACK TO THE FILTER THAT WAS KEPT, then clears it
+  s.key(ROLLTUI_KEY_ENTER);  // "rm" kept
+  s.chr('/');
+  s.chr('x');
+  s.key(ROLLTUI_KEY_ESCAPE);
+  rows = s.paint();
+  check(has(rows, "readme.md") && !has(rows, "makefile"), "Escape while editing a kept filter goes back to it [" + rows[0] + "]");
+  s.key(ROLLTUI_KEY_ESCAPE);
+  rows = s.paint();
+  check(has(rows, "readme.md") && has(rows, "makefile"), "…and the next Escape clears it: every row again");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -590,5 +654,7 @@ int main() {
   test_sheet_columns();
   test_best_match();
   test_motions();
+  test_filter();
+  test_lit_matches();
   return testkit::report("list_test");
 }

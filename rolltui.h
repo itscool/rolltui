@@ -3685,6 +3685,28 @@ int rolltui_natural_compare(const char* a, size_t alen, const char* b, size_t bl
  * `text`, up to `cap`. An empty pattern matches everything. */
 int rolltui_fuzzy_match(const char* pattern, size_t pattern_len, const char* text, size_t text_len, int* score, size_t* positions,
                         size_t cap);
+/* FIND AS A PERSON MEANS IT: `needle` in `hay` from byte `from`, case and accents aside unless the needle has an uppercase letter
+ * (smart case). 1 with the match's byte range in `*at` and `*len` (either may be NULL), else 0. */
+int rolltui_text_find(const char* hay, size_t hay_len, const char* needle, size_t needle_len, size_t from, size_t* at, size_t* len);
+/* Every place `needle` is in `hay`, the same way, in order and not overlapping: `fn` with each match's byte range. How many. */
+size_t rolltui_text_find_each(const char* hay, size_t hay_len, const char* needle, size_t needle_len,
+                              void (*fn)(void* ctx, size_t at, size_t len), void* ctx);
+
+/* THE FILTER every list, menu and palette reads, for a host's own rows too: terms apart by spaces, each of which must match. A plain
+ * term matches fuzzily (`rolltui_fuzzy_match`), `'term` as written, `^term` at the start, `term$` at the end, `/re/` as a regular
+ * expression, and `!term` must not appear; case and accents aside unless a term has an uppercase letter. Made once per query. */
+typedef struct RolltuiFilter RolltuiFilter;
+RolltuiFilter* rolltui_filter_new(const char* query, size_t len);
+void rolltui_filter_free(RolltuiFilter* f); /* a no-op on NULL */
+/* Whether every term matches `text`, and how well (`*score`, higher is better; may be NULL). A NULL filter matches everything. */
+int rolltui_filter_match(const RolltuiFilter* f, const char* text, size_t len, int* score);
+/* One term at a time, for rows of several cells where a term must match within one of them: how many terms, whether term `i`
+ * matches `text` (as written: a `!` term's answer is whether the text it names is there), and whether it is a `!` term. */
+size_t rolltui_filter_terms(const RolltuiFilter* f);
+int rolltui_filter_term(const RolltuiFilter* f, size_t i, const char* text, size_t len, int* score);
+int rolltui_filter_term_negated(const RolltuiFilter* f, size_t i);
+/* WHAT MATCHED, to light it: byte ranges of `text` the filter's terms matched, `begin[k]` to `end[k]`, up to `cap`. How many. */
+size_t rolltui_filter_spans(const RolltuiFilter* f, const char* text, size_t len, size_t* begin, size_t* end, size_t cap);
 
 /* ========================================================================================
  * charts — numbers drawn: a line, bars, a sparkline
@@ -4194,6 +4216,9 @@ void rolltui_hint_bar_free(RolltuiHintBar* b);
 void rolltui_hint_bar_clear(RolltuiHintBar* b);
 void rolltui_hint_bar_add(RolltuiHintBar* b, const char* chord, size_t chord_len, const char* label, size_t label_len,
                           const char* action, size_t action_len);
+/* EVERY ACTION OF A SCOPE as a hint, in the table's order: its first key this terminal can send, and what it does. How many were
+ * added. A program's own bar for its `app` scope is this one call. */
+size_t rolltui_hint_bar_add_scope(RolltuiHintBar* b, const RolltuiBindings* bindings, const char* scope, size_t len);
 /* What goes BETWEEN hints (two spaces by default; " › " makes a breadcrumb), and whether the bar keeps its TAIL when short of room (the
  * last hints drawn whole, the head replaced by an ellipsis) rather than dropping whichever hints do not fit. A breadcrumb keeps its tail:
  * the place the eye is at, and the pencil after it, must always be there to click. With the tail kept the LAST hint is the bar's own mark

@@ -338,6 +338,52 @@ void test_any_and_ask() {
   check(app(ROLLTUI_KEY_CHAR, 'q', &a) == ROLLTUI_SEQUENCE_NONE, "…after which keys are ordinary again");
 }
 
+// A LONG SUBMAP flows into columns in key order, and what still does not fit is counted, not dropped.
+void test_panel_columns() {
+  std::string json = R"({ "name": "t", "bindings": {)";
+  const std::string keys = "abcdefghijklmnopqrstuvwxyz0123456789";
+  for (std::size_t k = 0; k < keys.size(); ++k) {
+    if (k) json += ",";
+    json += std::string("\"app.go_") + keys[k] + "\": [\"g " + keys[k] + "\"]";
+  }
+  json += "} }";
+  std::string problems;
+  Screen s(load(json, &problems));
+  std::vector<RolltuiToolAction> declared;
+  std::vector<std::string> names, words;
+  for (char c : keys) {
+    names.push_back(std::string("app.go_") + c);
+    words.push_back(std::string("go to ") + c);
+  }
+  for (std::size_t i = 0; i < names.size(); ++i) declared.push_back({names[i].c_str(), words[i].c_str(), nullptr});
+  rolltui_bindings_declare(s.b, nullptr, 0, declared.data(), declared.size());
+  s.paint();
+  {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_KEY;
+    e.key.key = ROLLTUI_KEY_CHAR;
+    e.key.ch = 'g';
+    check(rolltui_windows_app_key(s.w, &e, "app", 3, nullptr, nullptr) == ROLLTUI_SEQUENCE_PREFIX, "g begins the program's sequences");
+  }
+  s.now += 400;
+  const std::string frame = s.paint();
+  check(frame.find("go to a") != std::string::npos && frame.find("go to b") != std::string::npos,
+        "the panel lists what can follow g, in key order");
+  // a 12-row screen holds 9 rows of the panel and a 40-cell one three columns: thirty-six continuations need columns, and what
+  // still does not fit is counted
+  std::size_t line_with_a = std::string::npos, line_with_j = std::string::npos, row = 0;
+  for (std::size_t at = 0; at < frame.size(); ++row) {
+    const std::size_t nl = frame.find('\n', at);
+    const std::string line = frame.substr(at, nl == std::string::npos ? std::string::npos : nl - at);
+    if (line.find("go to a") != std::string::npos) line_with_a = row;
+    if (line.find("go to j") != std::string::npos) line_with_j = row;
+    if (nl == std::string::npos) break;
+    at = nl + 1;
+  }
+  check(line_with_a != std::string::npos && line_with_a == line_with_j, "…flowing into a second column beside the first");
+  check(frame.find("more") != std::string::npos, "…and what does not fit at all says how many more there are");
+}
+
 }  // namespace
 
 int main() {
@@ -346,5 +392,6 @@ int main() {
   test_app_scope();
   test_focus_first();
   test_any_and_ask();
+  test_panel_columns();
   return testkit::report("sequences_test");
 }

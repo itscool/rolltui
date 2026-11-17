@@ -334,8 +334,9 @@ apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x 
   the prompt, the next key makes `rolltui_windows_app_key` answer DONE with `action`, and
   `rolltui_windows_any_key` gives the key. Escape lets go of the question.
 - After 300 ms with keys on the way, `rolltui_windows_draw_toasts` draws a panel at the screen's
-  bottom left: the keys so far in its border, and a row for each key that can follow, with what
-  it does or that more follows. `rolltui_windows_pending_keys` gives the keys on the way as text,
+  bottom left: the keys so far in its border, and a row for each key that can follow, in key
+  order, with what it does or that more follows. Rows that do not fit one column flow into more,
+  and what still does not fit ends in "… N more". `rolltui_windows_pending_keys` gives the keys on the way as text,
   for a status line.
 - A widget kind joins in by answering the plugin's `keys` slot with its scope and whether a digit
   is a count; a completed sequence hands it a chord bound to the same action, or calls `perform`
@@ -349,6 +350,10 @@ The shipped `vim` bindings preset is the default table with j and k, h and l, `g
 Ctrl-D and Ctrl-U added in lists, the column browser and scrolling pages (half a page in a list),
 H, M and L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it.
 In the column browser those letters are keys rather than jumps to a name.
+
+Elsewhere in the column browser a typed letter jumps to the next name starting with it, case and
+accents aside, and letters typed within a second of each other are the start of one name: `av`
+reaches `avocado.txt` past `alpha`.
 
 F13 to F24 and Super (`super+x`, also spelled `cmd+x`) are keys a bindings file may name. Only the
 kitty keyboard protocol sends them, and on other terminals they are reported as undeliverable.
@@ -421,7 +426,8 @@ The window stack learns where the pointer is from the mouse events it routes, an
 window a press there would reach: `RolltuiResolvedNode.hover`, with the pointer's cell in
 `hover_x` and `hover_y`. A host's own widget reads them in its `draw`. For what a host draws
 outside the windows, `rolltui_window_stack_pointer` gives the pointer's cell and
-`rolltui_hint_bar_hover` lights a hint bar from it.
+`rolltui_hint_bar_hover` lights a hint bar from it. `rolltui_hint_bar_add_scope(bar, bindings, "app",
+3)` fills a bar with a scope's actions, each its first key the terminal can send and what it does.
 
 - Nothing is lit until the terminal first reports the pointer moving. A click alone does not
   say where the pointer rests afterwards.
@@ -575,10 +581,14 @@ the row, and a drag marks the rows it passes over. A press on ▸ or ▾ opens o
 press on a column's title sorts by it, and a second press sorts the other way. The wheel scrolls.
 
 A filter is space-separated terms, and a row is shown when every term matches within one of its
-cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, and `!term` not at all.
-Case is ignored. Each new query puts the cursor on the row that matches it best, with the rows in
-their own order. Enter keeps the filter and gives the keys back to the list; Escape clears it. In a
-tree, a filter keeps the parents of what it matches, and shows them open.
+cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, `^term` at the start,
+`term$` at the end, `/re/` as a regular expression, and `!term` not at all. Case and accents are
+ignored unless a term has a capital. What matched is drawn bold and underlined. Each new query puts
+the cursor on the row that matches it best, with the rows in their own order. Enter keeps the
+filter and gives the keys back to the list. Escape while editing a kept filter goes back to it;
+otherwise it clears the filter. In a tree, a filter keeps the parents of what it matches, and shows
+them open. Menus filter the same way, the selection landing on the best match, and the command
+palette lists its rows best match first.
 
 A `ROLLTUI_LIST_SORT_TEXT` column sorts in natural order. A `ROLLTUI_LIST_SORT_NUMBER` column
 sorts by the number a cell starts with, reading K, M, G and T as powers of 1024 and s, m, h and d
@@ -598,6 +608,16 @@ closes the popup.
 compares by value, so `file2` comes before `file10` and `7` before `07`. The rest compares
 case-folded with accents removed, and the bytes as written break a tie. The column browser sorts
 names this way.
+
+`rolltui_text_find(hay, hlen, needle, nlen, from, &at, &len)` finds text as a person means it:
+case and accents aside unless the needle has a capital, the answer the bytes of what was found.
+`rolltui_text_find_each` reports every match. The transcript's find works this way, and takes a
+query written `/re/` as a regular expression.
+
+`rolltui_filter_new(query, len)` makes the filter lists and menus read, for a host's own rows:
+`rolltui_filter_match` tests a text and scores it, `rolltui_filter_term` tests one term (a row of
+several cells matches a term within one of them), and `rolltui_filter_spans` gives the byte
+ranges that matched, to light them.
 
 `rolltui_fuzzy_match(pattern, plen, text, tlen, &score, positions, cap)` answers whether the
 pattern's letters appear in the text in order. Case is ignored unless the pattern has an

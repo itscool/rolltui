@@ -888,6 +888,15 @@ ROLLTUI_API(rolltui_ansi_draw, PUBLIC)  /* KEPT: a host's own widget drawing out
 /* ---- the list, the table and the tree; ordering and finding text --- */
 ROLLTUI_API(rolltui_natural_compare, PUBLIC)  /* a host orders its own names as a person reads them: file2 before file10 */
 ROLLTUI_API(rolltui_fuzzy_match, PUBLIC)  /* a host ranks its own candidates and lights what matched: a command palette, a completion */
+ROLLTUI_API(rolltui_text_find, PUBLIC)  /* find as a person means it: case and accents aside, smart case */
+ROLLTUI_API(rolltui_text_find_each, PUBLIC)
+ROLLTUI_API(rolltui_filter_new, PUBLIC)  /* the filter every list, menu and palette reads, for a host's own rows too */
+ROLLTUI_API(rolltui_filter_free, PUBLIC)
+ROLLTUI_API(rolltui_filter_match, PUBLIC)
+ROLLTUI_API(rolltui_filter_terms, PUBLIC)
+ROLLTUI_API(rolltui_filter_term, PUBLIC)
+ROLLTUI_API(rolltui_filter_term_negated, PUBLIC)
+ROLLTUI_API(rolltui_filter_spans, PUBLIC)  /* what matched, to light it */
 ROLLTUI_API(rolltui_list_row_cell, PUBLIC)  /* a host's row function fills a row's cells */
 ROLLTUI_API(rolltui_list_event_release, PUBLIC)  /* KEPT: the release half of the event a host holds */
 ROLLTUI_API(rolltui_windows_bind_list, PUBLIC)  /* a host's data in a `list:` window */
@@ -957,6 +966,7 @@ ROLLTUI_API(rolltui_hint_bar_new, PUBLIC)  /* a status line's keys, clickable: d
 ROLLTUI_API(rolltui_hint_bar_free, PUBLIC)  /* KEPT: the release half of a pair a consumer holds */
 ROLLTUI_API(rolltui_hint_bar_clear, PUBLIC)  /* rebuilt when the bindings change */
 ROLLTUI_API(rolltui_hint_bar_add, PUBLIC)
+ROLLTUI_API(rolltui_hint_bar_add_scope, PUBLIC)  /* every action of a scope as a hint, in one call */
 ROLLTUI_API(rolltui_hint_bar_draw, PUBLIC)
 ROLLTUI_API(rolltui_hint_bar_hit, PUBLIC)
 ROLLTUI_API(rolltui_hint_bar_set_separator, PUBLIC)  /* a breadcrumb: dirktui */

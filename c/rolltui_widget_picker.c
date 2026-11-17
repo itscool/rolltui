@@ -57,6 +57,8 @@ struct RolltuiPicker {
   int scrolling;
   int anchored_once;             /* a real anchor has run against a known window */
   unsigned long long now_ms;     /* 0 = headless, nothing moves */
+  RolltuiStr jump;               /* the letters typed in quick succession: a name's start to jump to */
+  unsigned long long jump_ms;    /* when the last of them was typed */
   size_t faded_cells;
   long long drag_col;            /* a drag on a divider's thumb: which column; -1 = none */
   int drag_grab;                 /* where on the thumb the press landed */
@@ -759,6 +761,7 @@ void rolltui_picker_free(RolltuiPicker* p) {
   }
   rolltui_map_release(&p->remembered);
   rolltui_str_free(&p->root);
+  rolltui_str_free(&p->jump);
   rolltui_str_free(&p->event_path);
   rolltui_preview_free(p->pv);
   rolltui_syntax_free(p->syn);
@@ -1332,30 +1335,52 @@ static void accept(RolltuiPicker* p) {
   take(p);
 }
 
-/* The code point of a name a typed key is matched against, ASCII case folded: the first — or,
- * for a dotfile, the one after the dot, so `g` reaches `.gitignore` among the g's — unless the
- * key IS the dot, which cycles the dotfiles themselves. */
-static RolltuiCodepoint name_head(const RolltuiStr* name, RolltuiCodepoint want) {
-  RolltuiDecodedChar d;
-  size_t at = 0;
-  if (name->n == 0 || !name->p) return 0;
-  if (want != '.' && name->p[0] == '.' && name->n > 1) at = 1;
-  rolltui_u_decode_one(name->p, name->n, at, &d);
-  return d.cp >= 'A' && d.cp <= 'Z' ? d.cp - 'A' + 'a' : d.cp;
+/* WHETHER A NAME STARTS WITH `pre`, case and accents aside: the name itself, or for a dotfile what follows the dot, so `g` reaches
+ * `.gitignore` among the g's, unless `pre` starts with the dot, which goes through the dotfiles themselves. */
+static int name_starts(const RolltuiStr* name, const char* pre, size_t pn) {
+  size_t at = 0, len = 0, skip = 0;
+  if (name->n == 0 || !name->p || pn == 0) return 0;
+  if (pre[0] != '.' && name->p[0] == '.' && name->n > 1) skip = 1;
+  return rolltui_text_find(name->p + skip, name->n - skip, pre, pn, 0, &at, &len) && at == 0;
 }
+
+#define JUMP_MS 1000 /* letters typed within this of each other are one name's start */
+
+/* TYPE TO JUMP. Letters typed in quick succession are the start of a name, and the cursor goes to the first name from here that
+ * begins with them; a letter typed alone, or the same letter again, goes through the names beginning with it, Shift backwards. */
 static int type_to_jump(RolltuiPicker* p, RolltuiCodepoint ch, int reverse) {
   Column* c = focused(p);
-  size_t n, k, start;
-  const RolltuiCodepoint want = ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch;
-  int on_one;
+  size_t n, k, start, i, cps = 0;
+  char buf[8];
+  int same = 1, on_one;
+  const RolltuiCodepoint want = rolltui_u_fold(ch);
+  const size_t bl = rolltui_u_append_utf8(want, buf);
   if (!c || (n = c->entries.n) == 0) return 1;
-  on_one = c->sel < n && name_head(&c->entries.v[c->sel].name, want) == want;
+  if (!(p->now_ms && p->jump.n && p->now_ms - p->jump_ms <= JUMP_MS && !reverse)) rolltui_str_clear(&p->jump);
+  rolltui_str_append(&p->jump, buf, bl);
+  p->jump_ms = p->now_ms;
+  for (i = 0; i < p->jump.n; ++i) { /* one letter, or the same letter over again */
+    if ((p->jump.p[i] & 0xC0) != 0x80) ++cps;
+    if (i + bl <= p->jump.n && (i % bl) == 0 && memcmp(p->jump.p + i, buf, bl) != 0) same = 0;
+  }
+  if (p->jump.n % bl) same = 0;
+  if (cps > 1 && !same) { /* a name's start: the first from here that begins with it */
+    for (k = 0; k < n; ++k) {
+      i = (c->sel + k) % n;
+      if (name_starts(&c->entries.v[i].name, p->jump.p, p->jump.n)) {
+        select_row(p, i);
+        return 1;
+      }
+    }
+    return 1;
+  }
+  on_one = c->sel < n && name_starts(&c->entries.v[c->sel].name, buf, bl);
   if (!reverse) {
     start = on_one ? c->sel + 1 : 0;
-    for (k = 0; k < n; ++k) { const size_t i = (start + k) % n; if (name_head(&c->entries.v[i].name, want) == want) { select_row(p, i); return 1; } }
+    for (k = 0; k < n; ++k) { i = (start + k) % n; if (name_starts(&c->entries.v[i].name, buf, bl)) { select_row(p, i); return 1; } }
   } else {
     start = on_one ? (c->sel + n - 1) % n : n - 1;
-    for (k = 0; k < n; ++k) { const size_t i = (start + n - k) % n; if (name_head(&c->entries.v[i].name, want) == want) { select_row(p, i); return 1; } }
+    for (k = 0; k < n; ++k) { i = (start + n - k) % n; if (name_starts(&c->entries.v[i].name, buf, bl)) { select_row(p, i); return 1; } }
   }
   return 1;
 }

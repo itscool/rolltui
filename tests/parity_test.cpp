@@ -136,21 +136,15 @@ RolltuiMenuItem* level_of(HostMenu* m) {
 bool has_back(const HostMenu* m) { return !m->path.empty(); }
 std::size_t first_child_row(const HostMenu* m) { return has_back(m) ? 1 : 0; }
 
-bool contains_ci(const char* hay, std::size_t hn, const std::string& needle) {
-  if (needle.empty()) return true;
-  if (needle.size() > hn) return false;
-  for (std::size_t i = 0; i + needle.size() <= hn; ++i) {
-    std::size_t j = 0;
-    for (; j < needle.size(); ++j) {
-      const unsigned char a = static_cast<unsigned char>(hay[i + j]);
-      const unsigned char b = static_cast<unsigned char>(needle[j]);
-      const unsigned char la = (a >= 'A' && a <= 'Z') ? static_cast<unsigned char>(a + 32) : a;
-      const unsigned char lb = (b >= 'A' && b <= 'Z') ? static_cast<unsigned char>(b + 32) : b;
-      if (la != lb) break;
-    }
-    if (j == needle.size()) return true;
-  }
-  return false;
+
+// A label against the filter, through the library's PUBLIC filter: the same terms, folding and scores every list reads.
+bool label_matches(const HostMenu* m, const RolltuiStr& label, int* score) {
+  if (score) *score = 0;
+  if (m->filter.empty()) return true;
+  RolltuiFilter* f = rolltui_filter_new(m->filter.data(), m->filter.size());
+  const bool hit = rolltui_filter_match(f, label.p ? label.p : "", label.n, score) != 0;
+  rolltui_filter_free(f);
+  return hit;
 }
 
 // The visible list: the way back first and unfiltered, then whatever the filter keeps.
@@ -159,7 +153,7 @@ std::size_t build_visible(HostMenu* m) {
   if (has_back(m)) m->vis.push_back(kBackRow);
   const RolltuiMenuItem* lv = level_of(m);
   for (std::size_t i = 0; i < lv->children.size(); ++i)
-    if (contains_ci(lv->children[i].label.p, lv->children[i].label.n, m->filter)) m->vis.push_back(i);
+    if (label_matches(m, lv->children[i].label, nullptr)) m->vis.push_back(i);
   return m->vis.size();
 }
 
@@ -189,6 +183,22 @@ void ensure_visible(HostMenu* m) {
   const int hi = imax(0, n - rows);
   if (m->top < 0) m->top = 0;
   if (m->top > hi) m->top = hi;
+}
+
+// The best-matching usable row, the first of equals, as the library's menu puts it.
+void select_best(HostMenu* m) {
+  const std::size_t n = build_visible(m);
+  std::size_t best = first_child_row(m);
+  int best_s = -1;
+  for (std::size_t i = first_child_row(m); i < n; ++i) {
+    const RolltuiMenuItem* it = item_at(m, i);
+    int sc = 0;
+    const unsigned char kind = it ? static_cast<unsigned char>(it->kind) : 0;
+    if (!it || !it->enabled || kind == ROLLTUI_MENU_SECTION || kind == ROLLTUI_MENU_SEPARATOR || !label_matches(m, it->label, &sc))
+      continue;
+    if (sc > best_s) best_s = sc, best = i;
+  }
+  m->sel = best;
 }
 
 void clamp_selection(HostMenu* m) {
@@ -611,9 +621,9 @@ void handle_key(HostMenu* m, const RolltuiChord& k, Outcome* out) {
   const bool text = k.key == ROLLTUI_KEY_CHAR && !k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F;
   if (text) {
     m->filter += utf8_of(k.ch);
-    // The first MATCH, not the first row: typing is looking for something, and the way out is
+    // The best MATCH, not the first row: typing is looking for something, and the way out is
     // not one of the things being looked for.
-    m->sel = first_child_row(m);
+    select_best(m);
     m->top = 0;
     clamp_selection(m);
     return;
@@ -671,6 +681,7 @@ void handle_key(HostMenu* m, const RolltuiChord& k, Outcome* out) {
                                           : rolltui_u_fit(m->u, m->filter.data(), m->filter.size(), whole - 1,
                                                           m->ambiguous, &cells);
       m->filter.resize(keep);
+      if (!m->filter.empty()) select_best(m);
       clamp_selection(m);
     }
     return;

@@ -7,7 +7,7 @@
 │ │ (roles →    │   │ menu › …  /mono                      │ yes               │
 │ │ styles,     │   │ Appearance › Theme › mono            │ truecolor         │
 │ │ JSON        │   │ Appearance › Colour depth › mono     │ menu              │
-│ │ loader,     │   │                                      │                   │
+│ │ loader,     │   │ Commands › Open a document or a pre… │                   │
 │ │ built-ins)  │   │                                      │                   │
 │ └─────────────┴───│                                      │                   │
 │                   │                                      │                   │

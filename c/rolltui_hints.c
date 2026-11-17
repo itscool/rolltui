@@ -9,6 +9,8 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_unicode.h"
 
 typedef struct Hint {
@@ -161,4 +163,31 @@ const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* 
   }
   if (len) *len = 0;
   return NULL;
+}
+
+size_t rolltui_hint_bar_add_scope(RolltuiHintBar* b, const RolltuiBindings* bindings, const char* scope, size_t len) {
+  const unsigned char proto = rolltui_key_active_protocol();
+  const size_t n = rolltui_bindings_action_count(bindings);
+  size_t i, added = 0;
+  if (!b || !bindings || !scope) return 0;
+  for (i = 0; i < n; ++i) {
+    size_t al = 0, sl = 0, dl = 0, c, chords;
+    const char* a = rolltui_bindings_action_at(bindings, i, &al);
+    const char* s = rolltui_bindings_scope_of(a, al, &sl);
+    const char* d;
+    if (sl != len || memcmp(s, scope, len) != 0) continue;
+    chords = rolltui_bindings_chord_count(bindings, a, al);
+    for (c = 0; c < chords; ++c) { /* its first key this terminal can send */
+      RolltuiChord k;
+      char disp[ROLLTUI_CHORD_STRING_MAX];
+      memset(&k, 0, sizeof k);
+      if (!rolltui_bindings_chord_at(bindings, a, al, c, &k) || !rolltui_key_deliverable(&k, proto)) continue;
+      d = rolltui_bindings_description(bindings, a, al, &dl);
+      if (!d || !dl) d = a + sl + 1, dl = al - sl - 1;
+      rolltui_hint_bar_add(b, disp, rolltui_chord_display(&k, disp, sizeof disp), d, dl, a, al);
+      ++added;
+      break;
+    }
+  }
+  return added;
 }

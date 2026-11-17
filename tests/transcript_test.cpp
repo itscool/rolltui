@@ -878,10 +878,19 @@ int main() {
                 std::to_string(cur.size()) + "/" + std::to_string(oth.size()) + ")");
     }
 
-    // (d) ASCII-case-insensitive, and non-overlapping.
+    // (d) SMART CASE, accents aside, a regular expression, and non-overlapping.
     set_query(tr, "NEEDLE");
     layout(tr, doc, {0, 0, 40, 8}, opt);
-    check(match_count(tr) == 4, "the search is ASCII-case-insensitive (Transcript.hpp states it rather than inferring it)");
+    check(match_count(tr) == 0, "a capital in the query makes case matter: NEEDLE is not in a lowercase document");
+    set_query(tr, "n\xC3\xA9\xC3\xA9" "dle");
+    layout(tr, doc, {0, 0, 40, 8}, opt);
+    check(match_count(tr) == 4, "accents aside: n\xC3\xA9\xC3\xA9" "dle finds every needle");
+    set_query(tr, "/ne+dle/");
+    layout(tr, doc, {0, 0, 40, 8}, opt);
+    check(match_count(tr) == 4, "a query written /re/ is a regular expression: /ne+dle/ finds them too");
+    set_query(tr, "needle");
+    layout(tr, doc, {0, 0, 40, 8}, opt);
+    check(match_count(tr) == 4, "a lowercase query finds every needle, whatever its case");
     RolltuiDocument aaa;
     aaa.push_back(verbatim("r", "aaaa"));
     TranscriptHandle tr2;

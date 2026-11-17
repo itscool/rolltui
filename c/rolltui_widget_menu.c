@@ -665,6 +665,10 @@ struct RolltuiMenu {
   /* the visible list, rebuilt on demand and LENT to a caller */
   size_t* vis;
   size_t vis_n, vis_cap;
+  int* vis_score; /* the palette's rows' scores, beside `vis`, for ordering by how well each matches */
+  size_t vis_score_cap;
+  RolltuiFilter* compiled; /* OWNED: `filter` made once, remade when it changes */
+  RolltuiStr compiled_for;
 
   RolltuiStr probe;         /* what `try_insert` judges a keystroke in */
   RolltuiValidatorFn vfn;
@@ -833,16 +837,19 @@ const char* rolltui_menu_flat_label(const RolltuiMenu* m, size_t i, size_t* len)
 
 /* ---- the visible list -------------------------------------------------------------------- */
 
-static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn) {
-  size_t i, j;
-  if (nn == 0) return 1;
-  if (nn > hn) return 0;
-  for (i = 0; i + nn <= hn; ++i) {
-    for (j = 0; j < nn; ++j)
-      if (tolower((unsigned char)hay[i + j]) != tolower((unsigned char)needle[j])) break;
-    if (j == nn) return 1;
+/* THE FILTER, as every list reads one (`rolltui_filter_new`): made once, remade when the text changes. */
+static const RolltuiFilter* menu_filter(RolltuiMenu* m) {
+  if (!m->compiled || !rolltui_str_eq(&m->compiled_for, m->filter.p ? m->filter.p : "", m->filter.n)) {
+    rolltui_filter_free(m->compiled);
+    m->compiled = rolltui_filter_new(m->filter.p ? m->filter.p : "", m->filter.n);
+    rolltui_str_set(&m->compiled_for, m->filter.p ? m->filter.p : "", m->filter.n);
   }
-  return 0;
+  return m->compiled;
+}
+static int label_matches(RolltuiMenu* m, const RolltuiStr* label, int* score) {
+  if (score) *score = 0;
+  if (m->filter.n == 0) return 1;
+  return rolltui_filter_match(menu_filter(m), label->p ? label->p : "", label->n, score);
 }
 
 /* THE WAY BACK IS THE WIDGET'S, NOT EVERY MENU FILE'S. A level below the root that offers no
@@ -893,9 +900,26 @@ static void vis_push(RolltuiMenu* m, size_t i) {
 static size_t build_visible(RolltuiMenu* m) {
   size_t i;
   m->vis_n = 0;
-  if (m->palette) {
-    for (i = 0; i < m->flat_n; ++i)
-      if (contains_ci(m->flat[i].label.p, m->flat[i].label.n, m->filter.p, m->filter.n)) vis_push(m, i);
+  if (m->palette) { /* the commands, the best match first; equal ones keep the menu's order */
+    size_t k;
+    for (i = 0; i < m->flat_n; ++i) {
+      int sc = 0;
+      if (!label_matches(m, &m->flat[i].label, &sc)) continue;
+      vis_push(m, i);
+      m->vis_score = (int*)rolltui_grow(m->vis_score, &m->vis_score_cap, m->vis_n, sizeof *m->vis_score);
+      m->vis_score[m->vis_n - 1] = sc;
+    }
+    if (m->filter.n)
+      for (i = 1; i < m->vis_n; ++i) { /* stable: a row moves up only past a worse one */
+        const size_t v = m->vis[i];
+        const int sc = m->vis_score[i];
+        for (k = i; k > 0 && m->vis_score[k - 1] < sc; --k) {
+          m->vis[k] = m->vis[k - 1];
+          m->vis_score[k] = m->vis_score[k - 1];
+        }
+        m->vis[k] = v;
+        m->vis_score[k] = sc;
+      }
     return m->vis_n;
   }
   {
@@ -907,7 +931,7 @@ static size_t build_visible(RolltuiMenu* m) {
     for (i = 0; i < lv->children.n; ++i) {
       /* A filtered level is a list of hits; a heading over none of them would be a lie. */
       if (m->filter.n && divider(lv->children.v[i])) continue;
-      if (contains_ci(lv->children.v[i]->label.p, lv->children.v[i]->label.n, m->filter.p, m->filter.n)) {
+      if (label_matches(m, &lv->children.v[i]->label, NULL)) {
         if (lv->children.v[i]->kind == ROLLTUI_MENU_SECTION && m->vis_n > first_child_row(m)) vis_push(m, GAP_ROW);
         vis_push(m, i);
       }
@@ -982,6 +1006,23 @@ static void ensure_visible(RolltuiMenu* m) {
   if ((int)m->sel >= m->top + rows) m->top = (int)m->sel - rows + 1;
   n = (int)build_visible(m);
   m->top = iclamp(m->top, 0, imax(0, n - rows));
+}
+
+/* A NEW QUERY PUTS THE SELECTION ON ITS BEST MATCH, as a list's does: the row whose label matches it best (the first of equals),
+ * not merely the first that matches at all. */
+static void select_best(RolltuiMenu* m) {
+  const size_t n = build_visible(m);
+  size_t i, best = first_child_row(m);
+  int best_s = -1;
+  for (i = first_child_row(m); i < n; ++i) {
+    const RolltuiMenuItem* it;
+    int sc = 0;
+    if (!selectable_row(m, i) || m->vis[i] == BACK_ROW) continue;
+    it = item_at(m, i);
+    if (!it || !label_matches(m, &it->label, &sc)) continue;
+    if (sc > best_s) best_s = sc, best = i;
+  }
+  m->sel = best;
 }
 
 static void clamp_selection(RolltuiMenu* m) {
@@ -1067,6 +1108,9 @@ void rolltui_menu_free(RolltuiMenu* m) {
   rolltui_menu_item_release(&m->root);
   rolltui_mem_free(m->path);
   rolltui_str_free(&m->filter);
+  rolltui_filter_free(m->compiled);
+  rolltui_str_free(&m->compiled_for);
+  rolltui_mem_free(m->vis_score);
   rolltui_str_free(&m->edit_reason);
   rolltui_str_free(&m->probe);
   flat_release(m);
@@ -1852,10 +1896,10 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
     char buf[4];
     const size_t bn = rolltui_u_append_utf8(k->ch, buf);
     rolltui_str_append(&m->filter, buf, bn);
-    /* The first MATCH, not the first row: typing is looking for something, and landing on the
+    /* The best MATCH, not the first row: typing is looking for something, and landing on the
      * way out would make Enter after a filter leave the level instead of choosing the one hit. */
-    m->sel = first_child_row(m);
     m->top = 0;
+    select_best(m);
     clamp_selection(m);
     return;
   }
@@ -1947,6 +1991,7 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
         m->filter.p[m->filter.n] = '\0';
       }
       rolltui_mem_free(g);
+      if (m->filter.n) select_best(m);
       clamp_selection(m);
     }
     return;

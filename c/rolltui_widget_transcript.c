@@ -3,6 +3,7 @@
 #include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_os.h"
+#include "rolltui/c/rolltui_regex.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -634,15 +635,6 @@ static void build(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width
 
 /* ---- find -------------------------------------------------------------------------------- */
 
-static char lower_ascii(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
-
-static int matches_at(const char* hay, size_t hn, size_t at, const char* needle, size_t nn) {
-  size_t k;
-  if (at + nn > hn) return 0;
-  for (k = 0; k < nn; ++k)
-    if (lower_ascii(hay[at + k]) != lower_ascii(needle[k])) return 0;
-  return 1;
-}
 
 int rolltui_transcript_set_query(RolltuiTranscript* t, const char* q, size_t len) {
   if (rolltui_str_eq(&t->query_, q, len)) return 0;
@@ -704,27 +696,58 @@ static void match_push(RolltuiTranscript* t, size_t entry, size_t offset, size_t
   ++t->matches_n;
 }
 
+typedef struct FindPush {
+  RolltuiTranscript* t;
+  size_t entry;
+} FindPush;
+static void match_push(RolltuiTranscript* t, size_t entry, size_t offset, size_t length);
+static void find_push(void* ctx, size_t at, size_t len) {
+  FindPush* fp = (FindPush*)ctx;
+  match_push(fp->t, fp->entry, at, len);
+}
+
 static void recompute_matches(RolltuiTranscript* t, const RolltuiDocumentRaw* doc, int width) {
   RolltuiFindMatch was = {0, 0, 0}; /* read only when `had` */
   const int had = current_match(t) != NULL;
   size_t i, top, pick = 0;
+  RolltuiRegex* re = NULL;
   if (had) was = *current_match(t);
   t->matches_n = 0;
   t->has_current_ = 0;
   if (t->query_.n == 0) return;
+  if (t->query_.n > 2 && t->query_.p[0] == '/' && t->query_.p[t->query_.n - 1] == '/') { /* a regular expression, smart case */
+    size_t c;
+    int upper = 0;
+    for (c = 1; c + 1 < t->query_.n; ++c) upper |= t->query_.p[c] >= 'A' && t->query_.p[c] <= 'Z';
+    re = rolltui_regex_compile(t->query_.p + 1, t->query_.n - 2, !upper, NULL);
+  }
   for (i = 0; i < rolltui_document_count(doc); ++i) {
     const char* hay = "";
     size_t hn = 0, at = 0;
     searchable_text(t, rolltui_document_at(doc, i), i, width, &hay, &hn);
-    while (at + t->query_.n <= hn) {
-      if (matches_at(hay, hn, at, t->query_.p, t->query_.n)) {
-        match_push(t, i, at, t->query_.n);
-        at += zmax(t->query_.n, 1);
-      } else {
-        ++at;
+    if (re) { /* `/re/`: the pattern, a line at a time */
+      while (at < hn) {
+        const char* nl = (const char*)memchr(hay + at, '\n', hn - at);
+        const size_t end = nl ? (size_t)(nl - hay) : hn;
+        size_t k = 0;
+        while (k <= end - at) {
+          RolltuiRegexMatch m;
+          if (rolltui_regex_match_at(re, hay + at, end - at, k, NULL, &m) && m.end[0] > m.start[0]) {
+            match_push(t, i, at + (size_t)m.start[0], (size_t)(m.end[0] - m.start[0]));
+            k = (size_t)m.end[0];
+          } else {
+            ++k;
+          }
+        }
+        at = end + 1;
       }
+    } else {
+      FindPush fp;
+      fp.t = t, fp.entry = i;
+      rolltui_text_find_each(hay, hn, t->query_.p, t->query_.n, find_push, &fp); /* case and accents aside unless the query has a capital */
     }
   }
+  rolltui_regex_free(re);
   if (t->matches_n == 0) return;
   if (had) {
     size_t k;

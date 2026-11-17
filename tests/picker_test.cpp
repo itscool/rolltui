@@ -251,6 +251,14 @@ int main() {
     check(typed('a', false) == "alpha" && typed('a', false) != "alpha", "a: alpha, then the next a — the cursor moves on when already on one");
     check(typed('A', false) == "alpha", "Shift-A goes back");
     check(typed('q', false) == "alpha", "a key no name starts with moves nothing");
+    // LETTERS TYPED IN QUICK SUCCESSION are a name's start: "av" is avocado.txt, past alpha; slowly, each starts again
+    rolltui_picker_set_now(p, 5000);
+    typed('a', false);
+    rolltui_picker_set_now(p, 5200);
+    check(typed('v', false) == "avocado.txt", "a then v within a second: the name starting av");
+    rolltui_picker_set_now(p, 9000);
+    check(typed('z', false) == "zeta.txt", "…and a letter typed later starts again: z");
+    rolltui_picker_set_now(p, 0);
     fs::remove(root / ".hidden");
     fs::remove(root / "avocado.txt");
     rolltui_picker_go_to(p, top.data(), top.size());

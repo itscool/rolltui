@@ -1137,6 +1137,23 @@ int main() {
           "Enter on a palette row acts on the leaf as navigation would (a choice option chooses)");
     m.set_palette(false);
     check(!m.palette() && m.path().empty() && m.filter().empty(), "leaving palette mode returns to the top level");
+    // THE BEST MATCH FIRST: a palette filtered by "e" lists its rows by how well each matches, best first
+    m.set_palette(true);
+    m.handle(ch('e'));
+    {
+      const std::vector<std::size_t> v = m.visible();
+      bool ordered = v.size() > 2;
+      int last = 1 << 30;
+      for (std::size_t i : v) {
+        const std::string label(m.flat_label(i));
+        int sc = 0;
+        rolltui_fuzzy_match("e", 1, label.data(), label.size(), &sc, nullptr, 0);
+        if (sc > last) ordered = false;
+        last = sc;
+      }
+      check(ordered, "a filtered palette lists the best match first (" + std::to_string(v.size()) + " rows)");
+    }
+    m.set_palette(false);
   }
   // ---- JSON ----
   {

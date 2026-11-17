@@ -1780,7 +1780,7 @@ size_t rolltui_windows_pending_keys(const RolltuiWindows* w, RolltuiStr* text) {
 }
 
 #define WHICH_KEY_MS 300 /* a sequence typed quickly is not interrupted by a panel */
-#define WHICH_KEY_ROWS 24
+#define WHICH_KEY_ROWS 96
 
 /* The panel, at the screen's bottom left: the keys pressed so far in its border, and a row for each key that can follow, with what it
  * does (or that more follows). Returns how long until it appears, 0 when it is up or nothing is on the way, -1 for nothing. */
@@ -1804,59 +1804,105 @@ static int draw_which_key(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen
                                                  WHICH_KEY_ROWS);
   if ((n == 0 && !w->asking) || screen.w < 12 || screen.h < 4) return -1;
   draw = rolltui_draw_scratch_new();
-  for (i = 0; i < n; ++i) {
-    char buf[ROLLTUI_CHORD_STRING_MAX];
-    size_t dl = 0;
-    const size_t kl = rolltui_chord_display(&next[i], buf, sizeof buf);
-    const char* d = actions[i] ? rolltui_bindings_description(b, actions[i], alens[i], &dl) : NULL;
-    const int kw = rolltui_frame_text_width(draw, buf, kl, aw);
-    const int dw = d ? rolltui_frame_text_width(draw, d, dl, aw) : 0;
-    if (kw > key_w) key_w = kw;
-    if (dw + (more[i] ? 2 : 0) > width) width = dw + (more[i] ? 2 : 0);
-  }
-  width += key_w + 6;
-  if (w->asking) { /* the question is the title: room for it */
-    const int pw = rolltui_frame_text_width(draw, w->ask_prompt.p ? w->ask_prompt.p : "", w->ask_prompt.n, aw) + 6;
-    if (pw > width) width = pw;
-  }
-  if (width > screen.w - 2) width = screen.w - 2;
-  h = (int)n + 2;
-  if (h > screen.h - 1) h = screen.h - 1;
-  box.x = screen.x + 1;
-  box.y = screen.y + screen.h - h - 1;
-  box.w = width;
-  box.h = h;
-  ground = styles[r->panel];
-  line = styles[r->border];
-  line.bg = ground.bg;
-  key = styles[r->info];
-  key.bg = ground.bg;
-  key.bold = 1; /* the key reads as one in every theme */
-  text = styles[r->text];
-  text.bg = ground.bg;
-  rolltui_frame_fill(f, draw, box, ground, NULL, 0);
   {
-    RolltuiStr title;
-    memset(&title, 0, sizeof title);
-    rolltui_windows_pending_keys(w, &title);
-    unsigned char rounded = 1;
-    rolltui_border_from_name("rounded", 7, &rounded);
-    rolltui_draw_border(f, draw, box, rounded, line, title.p ? title.p : "", title.n, key, aw);
-    rolltui_str_free(&title);
-  }
-  for (i = 0, y = box.y + 1; i < n && y < box.y + box.h - 1; ++i, ++y) {
-    char buf[ROLLTUI_CHORD_STRING_MAX];
-    size_t dl = 0;
-    const size_t kl = rolltui_chord_display(&next[i], buf, sizeof buf);
-    const char* d = actions[i] ? rolltui_bindings_description(b, actions[i], alens[i], &dl) : "";
-    x = box.x + 2;
-    rolltui_frame_put_text(f, draw, x, y, buf, kl, key, key_w, aw, 0);
-    x += key_w + 2;
-    x += rolltui_frame_put_text(f, draw, x, y, d ? d : "", d ? dl : 0, text, box.x + box.w - 1 - x, aw, 0);
-    if (more[i]) {
+    /* IN KEY ORDER, and in COLUMNS when one would not fit: a long submap flows across, and what still does not fit ends in
+     * "… N more" rather than being dropped without a word. */
+    size_t ord[WHICH_KEY_ROWS], shown, k, rows, ncol, max_cols, col;
+    char kb[ROLLTUI_CHORD_STRING_MAX], ob[ROLLTUI_CHORD_STRING_MAX];
+    int desc_w = 0, colw;
+    for (i = 0; i < n; ++i) { /* stable insertion by the key as shown */
+      const size_t kl = rolltui_chord_display(&next[i], kb, sizeof kb);
+      k = i;
+      while (k > 0) {
+        const size_t ol = rolltui_chord_display(&next[ord[k - 1]], ob, sizeof ob);
+        const int c = memcmp(ob, kb, ol < kl ? ol : kl);
+        if (c < 0 || (c == 0 && ol <= kl)) break;
+        ord[k] = ord[k - 1];
+        --k;
+      }
+      ord[k] = i;
+    }
+    for (i = 0; i < n; ++i) {
+      size_t dl = 0;
+      const size_t kl = rolltui_chord_display(&next[i], kb, sizeof kb);
+      const char* d = actions[i] ? rolltui_bindings_description(b, actions[i], alens[i], &dl) : NULL;
+      const int kw = rolltui_frame_text_width(draw, kb, kl, aw);
+      const int dw = (d ? rolltui_frame_text_width(draw, d, dl, aw) : 0) + (more[i] ? 2 : 0);
+      if (kw > key_w) key_w = kw;
+      if (dw > desc_w) desc_w = dw;
+    }
+    if (desc_w > 40) desc_w = 40;
+    colw = key_w + 2 + desc_w;
+    rows = (size_t)(screen.h - 3 > 1 ? screen.h - 3 : 1);
+    max_cols = (size_t)((screen.w - 4) / (colw + 2) > 0 ? (screen.w - 4) / (colw + 2) : 1);
+    ncol = n ? (n + rows - 1) / rows : 1;
+    shown = n;
+    if (ncol > max_cols) { /* the last place says how many more */
+      ncol = max_cols;
+      shown = ncol * rows - 1;
+    }
+    if (n && ncol > 1) rows = (shown + (shown < n ? 1 : 0) + ncol - 1) / ncol;
+    else rows = shown + (shown < n ? 1 : 0);
+    width = (int)ncol * (colw + 2) + 2;
+    if (w->asking) { /* the question is the title: room for it */
+      const int pw = rolltui_frame_text_width(draw, w->ask_prompt.p ? w->ask_prompt.p : "", w->ask_prompt.n, aw) + 6;
+      if (pw > width) width = pw;
+    }
+    if (width > screen.w - 2) width = screen.w - 2;
+    h = (int)rows + 2;
+    if (h > screen.h - 1) h = screen.h - 1;
+    box.x = screen.x + 1;
+    box.y = screen.y + screen.h - h - 1;
+    box.w = width;
+    box.h = h;
+    ground = styles[r->panel];
+    line = styles[r->border];
+    line.bg = ground.bg;
+    key = styles[r->info];
+    key.bg = ground.bg;
+    key.bold = 1; /* the key reads as one in every theme */
+    text = styles[r->text];
+    text.bg = ground.bg;
+    rolltui_frame_fill(f, draw, box, ground, NULL, 0);
+    {
+      RolltuiStr title;
+      unsigned char rounded = 1;
+      memset(&title, 0, sizeof title);
+      rolltui_windows_pending_keys(w, &title);
+      rolltui_border_from_name("rounded", 7, &rounded);
+      rolltui_draw_border(f, draw, box, rounded, line, title.p ? title.p : "", title.n, key, aw);
+      rolltui_str_free(&title);
+    }
+    for (k = 0; k < shown; ++k) {
+      size_t dl = 0;
+      const size_t e = ord[k];
+      const size_t kl = rolltui_chord_display(&next[e], kb, sizeof kb);
+      const char* d = actions[e] ? rolltui_bindings_description(b, actions[e], alens[e], &dl) : "";
+      int right;
+      col = rows ? k / rows : 0;
+      y = box.y + 1 + (int)(rows ? k % rows : 0);
+      x = box.x + 2 + (int)col * (colw + 2);
+      right = x + colw < box.x + box.w - 1 ? x + colw : box.x + box.w - 1;
+      if (y >= box.y + box.h - 1) continue;
+      rolltui_frame_put_text(f, draw, x, y, kb, kl, key, key_w, aw, 0);
+      x += key_w + 2;
+      x += rolltui_frame_put_text_cut(f, draw, x, y, d ? d : "", d ? dl : 0, text, right - x - (more[e] ? 2 : 0),
+                                      ROLLTUI_CUT_END, aw, 0);
+      if (more[e]) {
+        RolltuiStyle m = styles[r->text_muted];
+        m.bg = ground.bg;
+        rolltui_frame_put_text(f, draw, x + (d && dl ? 1 : 0), y, aw ? "..." : "\xe2\x80\xa6", 3, m, right - x, aw, 0);
+      }
+    }
+    if (shown < n) {
+      char tail[48];
       RolltuiStyle m = styles[r->text_muted];
+      const int tn = snprintf(tail, sizeof tail, "%s %zu more", aw ? "..." : "\xe2\x80\xa6", n - shown);
       m.bg = ground.bg;
-      rolltui_frame_put_text(f, draw, x + (d && dl ? 1 : 0), y, aw ? "..." : "\xe2\x80\xa6", aw ? 3 : 3, m, box.x + box.w - 1 - x, aw, 0);
+      col = rows ? shown / rows : 0;
+      y = box.y + 1 + (int)(rows ? shown % rows : 0);
+      x = box.x + 2 + (int)col * (colw + 2);
+      if (tn > 0 && y < box.y + box.h - 1) rolltui_frame_put_text(f, draw, x, y, tail, (size_t)tn, m, box.x + box.w - 1 - x, aw, 0);
     }
   }
   rolltui_draw_scratch_free(draw);
