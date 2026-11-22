@@ -522,6 +522,17 @@
       "escape",
       "v"
     ],
+    "view.wrap": [
+      "alt+w"
+    ],
+    "view.left": [
+      "left",
+      "h"
+    ],
+    "view.right": [
+      "right",
+      "l"
+    ],
     "dialog.next": [
       "tab",
       "right"

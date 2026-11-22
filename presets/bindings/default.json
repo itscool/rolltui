@@ -387,6 +387,15 @@
     "theme.fix": [
       "ctrl+f"
     ],
+    "view.wrap": [
+      "alt+w"
+    ],
+    "view.left": [
+      "left"
+    ],
+    "view.right": [
+      "right"
+    ],
     "dialog.next": [
       "tab",
       "right"

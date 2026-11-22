@@ -69,6 +69,12 @@ static const char* takes_action(const RolltuiBindings* b, const RolltuiChord* k,
   return b ? rolltui_bindings_action_for(b, k, scope, strlen(scope), n) : NULL;
 }
 static int takes_is(const char* a, size_t n, const char* want) { return a && n == strlen(want) && memcmp(a, want, n) == 0; }
+static int takes_bound(const RolltuiBindings* b, const RolltuiChord* k, const char* scope);
+/* A PAGE'S KEYS: its scrolling (the `transcript` scope) and its wrap and sideways scrolling (the `view` scope) */
+static int takes_viewer(const RolltuiWindows* w, const RolltuiChord* k) {
+  const RolltuiBindings* b = rolltui_windows_bindings(w);
+  return takes_bound(b, k, "transcript") || takes_bound(b, k, "view");
+}
 static int takes_bound(const RolltuiBindings* b, const RolltuiChord* k, const char* scope) {
   size_t n = 0;
   return takes_action(b, k, scope, &n) != NULL;
@@ -97,7 +103,14 @@ typedef struct RolltuiScrollTextBase {
   RolltuiDrawScratch* draw;       /* OWNED */
   RolltuiBuiltinRoles roles;
   RolltuiScrollTextActions actions;
+  /* `view.wrap` off: each line whole, `left` cells scrolled off the left, as far as the widest line's end */
+  unsigned char nowrap;
+  int left, widest;
 } RolltuiScrollTextBase;
+
+/* Lines kept whole are wrapped at a width no line reaches. */
+#define SCROLL_TEXT_WHOLE (1 << 20)
+#define SCROLL_TEXT_STEP 4 /* the cells `view.left`, `view.right` and the wheel's sideways turns move */
 
 static void scroll_text_base_init(RolltuiScrollTextBase* b, RolltuiWindows* w) {
   memset(b, 0, sizeof *b);
@@ -124,12 +137,46 @@ static void scroll_text_base_layout(RolltuiScrollTextBase* b, const RolltuiResol
   wo.ambiguous_wide = env->ambiguous_wide;
   wo.tab_width = 8;
   rolltui_content_rect(rn, &b->area);
-  rolltui_wrap(b->wrap, text, text_len, b->area.w > 0 ? b->area.w : 1, wo);
+  rolltui_wrap(b->wrap, text, text_len, b->nowrap ? SCROLL_TEXT_WHOLE : b->area.w > 0 ? b->area.w : 1, wo);
   b->total = (int)rolltui_wrap_line_count(b->wrap);
   max_top = b->total - (b->area.h > 0 ? b->area.h : 1);
   if (max_top < 0) max_top = 0;
   if (b->top < 0) b->top = 0;
   if (b->top > max_top) b->top = max_top;
+  b->widest = 0;
+  if (b->nowrap) {
+    size_t i;
+    for (i = 0; i < (size_t)b->total; ++i) {
+      const char* lt;
+      size_t ll, gn;
+      const RolltuiWrapGrapheme* g;
+      int w, ind, hard;
+      rolltui_wrap_line(b->wrap, i, &lt, &ll, &g, &gn, &w, &ind, &hard);
+      if (w + ind > b->widest) b->widest = w + ind;
+    }
+  }
+  {
+    const int most = b->widest > b->area.w ? b->widest - b->area.w : 0;
+    if (b->left > most) b->left = most;
+    if (b->left < 0 || !b->nowrap) b->left = 0;
+  }
+}
+
+/* A LINE KEPT WHOLE, scrolled sideways: the part from `left` cells in, and the blank a wide glyph cut at the edge leaves */
+static const char* scroll_text_shift(const RolltuiScrollTextBase* b, const char* text, size_t* len, const RolltuiWrapGrapheme* g, size_t gn,
+                                     int* pad) {
+  size_t gi = 0;
+  int skipped = 0;
+  *pad = 0;
+  if (!b->nowrap || b->left <= 0) return text;
+  while (gi < gn && skipped + g[gi].width <= b->left) skipped += g[gi].width, ++gi;
+  if (gi < gn && skipped < b->left) *pad = skipped + g[gi].width - b->left, ++gi;
+  if (gi >= gn) {
+    *len = 0;
+    return text;
+  }
+  *len -= g[gi].offset;
+  return text + g[gi].offset;
 }
 
 /* A KIND THAT PAINTS ITS OWN LINES — the help window, whose chords and headings are not the description's style. It
@@ -171,7 +218,7 @@ static int scroll_text_base_draw_with(RolltuiScrollTextBase* b, const RolltuiRes
   memset(&wo, 0, sizeof wo);
   wo.ambiguous_wide = env->ambiguous_wide;
   wo.tab_width = 8;
-  rolltui_wrap(b->wrap, text, text_len, r.w > 0 ? r.w : 1, wo);
+  rolltui_wrap(b->wrap, text, text_len, b->nowrap ? SCROLL_TEXT_WHOLE : r.w > 0 ? r.w : 1, wo);
   n = rolltui_wrap_line_count(b->wrap);
   total = (int)n;
   if (r.w <= 0 || r.h <= 0) return total;
@@ -203,7 +250,10 @@ static int scroll_text_base_draw_with(RolltuiScrollTextBase* b, const RolltuiRes
       int width, indent, hard;
       RolltuiStyle plain = styles[b->roles.text];
       const RolltuiStyleColorRaw ground = scroll_text_ground(f, r.x, y);
+      int pad = 0;
       rolltui_wrap_line(b->wrap, i, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
+      ltext = scroll_text_shift(b, ltext, &ltext_len, g, gn, &pad);
+      indent += pad;
       plain.bg = ground;
       if (paint)
         paint(paint_ctx, f, b->draw, r.x + indent, y, ltext, ltext_len, r.w - indent > 0 ? r.w - indent : 0, src, first,
@@ -282,6 +332,26 @@ static int scroll_text_marker_hit(RolltuiScrollTextBase* b, int x, int y) {
   return x >= left && x < b->area.x + b->area.w;
 }
 
+/* `view.wrap` turns wrapping off and on; `view.left` and `view.right` scroll lines kept whole sideways. */
+static int scroll_text_view(RolltuiScrollTextBase* b, const RolltuiChord* k) {
+  size_t n = 0;
+  const char* a = rolltui_bindings_action_for(rolltui_windows_bindings(b->w), k, "view", 4, &n);
+  const int most = b->widest > b->area.w ? b->widest - b->area.w : 0;
+  if (!a) return 0;
+  if (str_eq_lit(a, n, "view.wrap")) {
+    b->nowrap = (unsigned char)!b->nowrap;
+    b->left = 0;
+    return 1;
+  }
+  if (str_eq_lit(a, n, "view.left") || str_eq_lit(a, n, "view.right")) {
+    b->left += str_eq_lit(a, n, "view.left") ? -SCROLL_TEXT_STEP : SCROLL_TEXT_STEP;
+    if (b->widest > 0 && b->left > most) b->left = most; /* not measured yet (wrapping was just turned off): the next layout clamps */
+    if (b->left < 0 || !b->nowrap) b->left = 0;
+    return 1;
+  }
+  return 0;
+}
+
 static int scroll_text_base_handle(RolltuiScrollTextBase* b, const RolltuiEvent* e) {
   if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* press */ &&
       scroll_text_marker_hit(b, e->mouse.x, e->mouse.y)) {
@@ -289,7 +359,15 @@ static int scroll_text_base_handle(RolltuiScrollTextBase* b, const RolltuiEvent*
     b->top = max_top > 0 ? max_top : 0;
     return 1;
   }
+  if (e->kind == ROLLTUI_EVENT_MOUSE && b->nowrap && (e->mouse.kind == 6 || e->mouse.kind == 7)) { /* the wheel's sideways turns */
+    const int most = b->widest > b->area.w ? b->widest - b->area.w : 0;
+    b->left += e->mouse.kind == 6 ? -SCROLL_TEXT_STEP : SCROLL_TEXT_STEP;
+    if (b->left < 0) b->left = 0;
+    if (b->left > most) b->left = most;
+    return 1;
+  }
   if (e->kind != ROLLTUI_EVENT_KEY) return 0;
+  if (scroll_text_view(b, &e->key)) return 1;
   return rolltui_scroll_by_action(&b->actions, rolltui_windows_bindings(b->w), &e->key, b->area.h, b->total,
                                       &b->top);
 }
@@ -345,13 +423,15 @@ static int text_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
   return scroll_text_base_scroll_to(&((RolltuiTextCtx*)ctx)->base, axis, first);
 }
 
+static int text_ctx_takes(void* ctx, const RolltuiChord* k) { return takes_viewer(((RolltuiTextCtx*)ctx)->base.w, k); }
+
 static const RolltuiWidgetPlugin kTextPlugin = {
     text_ctx_destroy, text_ctx_layout, text_ctx_draw, NULL, NULL, NULL, text_ctx_handle, text_ctx_scroll_extent,
     text_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
     NULL,
-    NULL /* takes: the keys scope's */
+    text_ctx_takes /* its scrolling keys and the `view` scope's */
 };
 
 /* ============================================================================================
@@ -465,13 +545,15 @@ static void file_ctx_destroy(void* ctx) {
   rolltui_mem_free(fc);
 }
 
+static int file_ctx_takes(void* ctx, const RolltuiChord* k) { return takes_viewer(((RolltuiFileCtx*)ctx)->base.w, k); }
+
 static const RolltuiWidgetPlugin kFilePlugin = {
     file_ctx_destroy, file_ctx_layout, file_ctx_draw, file_ctx_problem, NULL, NULL, file_ctx_handle,
     file_ctx_scroll_extent, file_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
     NULL,
-    NULL /* takes: the keys scope's */
+    file_ctx_takes /* its scrolling keys and the `view` scope's */
 };
 
 /* ============================================================================================
@@ -1177,6 +1259,21 @@ static int output_ctx_handle(void* ctx, const RolltuiEvent* e) {
   }
   if (e->kind == ROLLTUI_EVENT_KEY) {
     int top = (int)o->top;
+    size_t n = 0;
+    const char* a = rolltui_bindings_action_for(rolltui_windows_bindings(o->w), &e->key, "view", 4, &n);
+    if (a && str_eq_lit(a, n, "view.wrap")) { /* the binding's, so the host's call and the key agree */
+      rolltui_windows_set_output_wrap(o->w, o->source.p ? o->source.p : "", o->source.n, !o->wrap);
+      o->wrap = !o->wrap;
+      o->left = 0;
+      return 1;
+    }
+    if (a && (str_eq_lit(a, n, "view.left") || str_eq_lit(a, n, "view.right"))) {
+      const int max_left = !o->wrap && o->width > o->text_area.w ? o->width - o->text_area.w : 0;
+      o->left += str_eq_lit(a, n, "view.left") ? -SCROLL_TEXT_STEP : SCROLL_TEXT_STEP;
+      if (o->left < 0) o->left = 0;
+      if (o->left > max_left) o->left = max_left;
+      return 1;
+    }
     if (rolltui_scroll_by_action(&o->actions, rolltui_windows_bindings(o->w), &e->key, o->area.h, (int)o->total, &top)) {
       o->top = (size_t)top;
       o->follow = o->top >= output_max_top(o);
@@ -1235,13 +1332,15 @@ static void output_ctx_destroy(void* ctx) {
   rolltui_mem_free(o);
 }
 
+static int output_ctx_takes(void* ctx, const RolltuiChord* k) { return takes_viewer(((RolltuiOutputCtx*)ctx)->w, k); }
+
 static const RolltuiWidgetPlugin kOutputPlugin = {
     output_ctx_destroy, output_ctx_layout, output_ctx_draw, output_ctx_problem, NULL, NULL, output_ctx_handle,
     output_ctx_scroll_extent, output_ctx_scroll_to, NULL /* title: the layout's */, NULL /* back: no levels */,
     keys_transcript,
     NULL,
     output_ctx_footer,
-    NULL /* takes: the keys scope's */
+    output_ctx_takes /* its scrolling keys and the `view` scope's */
 };
 
 

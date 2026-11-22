@@ -1128,9 +1128,18 @@ A `RolltuiAnsiText` reads what a program wrote to a terminal as lines to draw: `
 An `output:<source>` window shows one. The host binds it with `rolltui_windows_bind_output`.
 The window follows the end as the text grows; scrolled back, it holds still until it is scrolled
 to the end again. Lines wrap at its edge; `rolltui_windows_set_output_wrap(w, name, len, 0)`
-clips them instead, and the wheel's left and right scroll sideways. A cell with no colour of its
-own takes the window's text colour and ground, so the program's defaults are the theme's.
-`rolltui_ansi_draw` draws the same text inside a host's own widget.
+keeps them whole instead. A cell with no colour of its own takes the window's text colour and
+ground, so the program's defaults are the theme's. `rolltui_ansi_draw` draws the same text
+inside a host's own widget.
+
+### Wrapping and scrolling sideways
+
+The `text`, `file` and `output` windows wrap long lines at their edge. `view.wrap` (Alt-W)
+keeps each line whole instead, cut at the edge, and turns wrapping back on; `view.left` and
+`view.right` (Left and Right, and h and l in the vim preset) and the wheel's sideways turns
+scroll lines kept whole four cells at a time, as far as the widest line's end. A wide glyph the
+edge would cut in half is drawn as a blank. In an `output` window the key sets the binding's
+wrap, so it and `rolltui_windows_set_output_wrap` agree.
 
 `rolltui_windows_set_output_options` sets an output window's ways:
 

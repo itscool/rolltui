@@ -221,7 +221,10 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(visual,    yank,              "visual.yank",                   "copy the selection") \
   X(visual,    del,               "visual.delete",                 "erase the selection") \
   X(visual,    change,            "visual.change",                 "replace the selection, typing") \
-  X(visual,    normal,            "visual.normal",                 "back to normal mode")
+  X(visual,    normal,            "visual.normal",                 "back to normal mode") \
+  X(view,      wrap,              "view.wrap",                   "wrap long lines, or keep each whole and scroll sideways") \
+  X(view,      left,              "view.left",                   "scroll left, where lines are kept whole") \
+  X(view,      right,             "view.right",                  "scroll right, where lines are kept whole")
 
 static const LibAction kLibraryActions[] = {
 #define ROLLTUI_LA_ROW_(group, field, name, desc) {name, desc},
@@ -276,6 +279,7 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_dialog(field, name)
 #define ROLLTUI_LA_normal(field, name)
 #define ROLLTUI_LA_visual(field, name)
+#define ROLLTUI_LA_view(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input
