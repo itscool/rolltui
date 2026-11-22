@@ -387,6 +387,32 @@
     "theme.fix": [
       "ctrl+f"
     ],
+    "dialog.next": [
+      "tab",
+      "right"
+    ],
+    "dialog.prev": [
+      "shift+tab",
+      "left"
+    ],
+    "dialog.answer": [
+      "enter"
+    ],
+    "dialog.up": [
+      "up"
+    ],
+    "dialog.down": [
+      "down"
+    ],
+    "dialog.page_up": [
+      "pageup"
+    ],
+    "dialog.page_down": [
+      "pagedown"
+    ],
+    "dialog.copy": [
+      "alt+c"
+    ],
     "app.help": [
       "f1",
       "?"

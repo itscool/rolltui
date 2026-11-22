@@ -1770,13 +1770,13 @@ int main() {
                 ROLLTUI_REGISTER_IS_LIBRARY,
             std::string("…and a host is REFUSED when it tries to shadow ") + n);
     }
-    check(lib == 16 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has sixteen kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
+    check(lib == 17 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has seventeen kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
     for (std::size_t i = 0; i < lib; ++i) {
       int rung = ROLLTUI_KIND_UNKNOWN;
       check(widget_kind_row_c(widget_kind_name_c(i), &rung) == i && rung == ROLLTUI_KIND_LIBRARY,
             "kind '" + std::string(widget_kind_name_c(i)) + "' round-trips to row " + std::to_string(i) + " at rung 1");
     }
-    check(!widget_kind_row_c("dialog") && !widget_kind_row_c("") && !widget_kind_row_c("Transcript"),
+    check(!widget_kind_row_c("wizard") && !widget_kind_row_c("") && !widget_kind_row_c("Transcript"),
           "an unknown kind name is not in the table (and it is case-sensitive)");
     // The per-kind rules are the ROW's, as data. The source SHAPE was the one rule the retired
     // enum had been carrying silently (the design editor compared `Text || File`).
@@ -1830,7 +1830,7 @@ int main() {
     std::string kind_why;
     check(register_widget_kind_c("modal", ROLLTUI_SOURCE_FORBIDDEN, "", &kind_why), "a host kind that takes no source registers [" + kind_why + "]");
     struct Bad { const char* text; const char* names; };
-    for (const Bad& b : {Bad{"dialog:x", "'dialog' is not a widget kind"},
+    for (const Bad& b : {Bad{"wizard:x", "'wizard' is not a widget kind"},
                          Bad{"rows", "'rows' needs a source"},
                          Bad{"modal:x", "'modal' takes no source"},
                          Bad{"", "'' is not a widget kind"}}) {
@@ -1873,7 +1873,7 @@ int main() {
     std::string modal_why;
     register_widget_kind_c("modal", ROLLTUI_SOURCE_FORBIDDEN, "", &modal_why);  // see the parse block above
     const std::optional<RolltuiLayout> l2 = load_layout_c(R"({"name":"bad","root":{"column":[
-        {"content":"dialog:x","id":"a"},{"content":"modal:x","id":"b"},{"content":"transcript","id":"c"}]}})", rep2);
+        {"content":"wizard:x","id":"a"},{"content":"modal:x","id":"b"},{"content":"transcript","id":"c"}]}})", rep2);
     check(l2 && !rep2.clean() && rep2.bad_values_n == 1 &&
               view_of(rep2.bad_values[0]).find("root.column[2].content: 'transcript' needs a source") !=
                   std::string::npos,
@@ -1881,7 +1881,7 @@ int main() {
               (rep2.bad_values_n == 0 ? std::string() : str_of(rep2.bad_values[0])) + "]");
 
     // …AND THE HOST KIND'S RULE IS NOT LOST, it is reported where the registry actually is.
-    // `modal:x` and the unknown `dialog:x` both reach `sync` and both get named there.
+    // `modal:x` and the unknown `wizard:x` both reach `sync` and both get named there.
     {
       WindowsC windows;
       windows.set_dir("");
@@ -1891,14 +1891,14 @@ int main() {
       for (const std::string& b : wrep.bad_values) all += b + " | ";
       check(!wrep.clean() && all.find("'modal' takes no source") != std::string::npos,
             "…and the host kind's forbidden source is named at sync, by the session that has the registry [" + all + "]");
-      check(all.find("'dialog' is not a widget kind") != std::string::npos,
+      check(all.find("'wizard' is not a widget kind") != std::string::npos,
             "…alongside the unknown kind Phase 11 m3 moved here, so one stage names both");
     }
     clear_registered_widget_kinds_c();
     std::string dwhy;
     unsigned char dwhat = ROLLTUI_CONTENT_PROBLEM_NONE;
-    check(!parse_content_c("dialog:x", &dwhy, &dwhat) && dwhat == ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND &&
-              dwhy.find("'dialog' is not a widget kind") != std::string::npos,
+    check(!parse_content_c("wizard:x", &dwhy, &dwhat) && dwhat == ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND &&
+              dwhy.find("'wizard' is not a widget kind") != std::string::npos,
           "…and the unknown kind is still parse_content's named refusal, tagged so the loader can leave it to the host");
   }
   {
@@ -2179,7 +2179,7 @@ int main() {
         {"id":"d","content":"input:nope","size":1},
         {"id":"e","content":"menu:nope","size":1},
         {"id":"f","content":"file:/nope/nothing.md","size":1},
-        {"id":"g","content":"dialog:x","size":1}]}})", lr);
+        {"id":"g","content":"wizard:x","size":1}]}})", lr);
     check(lay && lr.clean(), "no bad value from the LOADER: an unbound source and an unknown kind are both host facts (Phase 11 m3)");
     StackC s(*lay);
     const RolltuiRect box{0, 0, 60, 7};
@@ -2195,7 +2195,7 @@ int main() {
                               "'nope' is not a widget kind",
                               "window 'd' (content 'input:nope'): nothing is bound to 'nope'",
                               "window 'e' (content 'menu:nope'): no menu file 'nope'",
-                              "cannot read '/nope/nothing.md'", "'dialog' is not a widget kind"})
+                              "cannot read '/nope/nothing.md'", "'wizard' is not a widget kind"})
       check(all.find(named) != std::string::npos, std::string("reported by name: ") + named);
 
     FrameC f(60, 7, dark.style(ROLLTUI_ROLE_BACKGROUND));

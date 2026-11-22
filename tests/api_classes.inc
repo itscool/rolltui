@@ -628,6 +628,8 @@ ROLLTUI_API(rolltui_widget_kind_rule, INTERNAL)  /* a step of loading, saving or
 ROLLTUI_API(rolltui_widget_kind_source_is, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_widget_kind_source_shape, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_base, INTERNAL)
+ROLLTUI_API(rolltui_window_stack_layer_mut, INTERNAL)  /* the window table sizes a popup to what it holds */
+ROLLTUI_API(rolltui_window_stack_remove_layer, INTERNAL)  /* a dialog answered goes, wherever it is in the stack */
 ROLLTUI_API(rolltui_window_stack_captured, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_window_stack_compose, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_cycle_focus, INTERNAL)  /* what the stack does on its own action */
@@ -790,6 +792,9 @@ ROLLTUI_API(rolltui_windows_output_label_width, INTERNAL)  /* the output kind si
 ROLLTUI_API(rolltui_windows_output_ran, INTERNAL)  /* the output kind's footer says how a program ended */
 ROLLTUI_API(rolltui_windows_bind_image, PUBLIC)  /* KEPT: a host shows a picture it made in an `image:` window */
 ROLLTUI_API(rolltui_windows_image, INTERNAL)  /* the image kind reads what is bound */
+ROLLTUI_API(rolltui_windows_dialog, INTERNAL)  /* the dialog kind reads the dialog asked */
+ROLLTUI_API(rolltui_windows_put_dialog, INTERNAL)  /* asking and answering keep it */
+ROLLTUI_API(rolltui_dialog_widget_factory, INTERNAL)  /* the library's kinds register it */
 ROLLTUI_API(rolltui_windows_set_tasks, PUBLIC)  /* dirktui lends the run's workers to its preview */
 ROLLTUI_API(rolltui_windows_hold, PUBLIC)  /* KEPT: input held behind a spinner while work the person waits on runs, Escape cancelling it */
 ROLLTUI_API(rolltui_windows_release, PUBLIC)  /* KEPT: a hold ended by the host when its work has no job to watch */
@@ -806,6 +811,13 @@ ROLLTUI_API(rolltui_windows_message_at, PUBLIC)  /* KEPT: a host that shows the 
 ROLLTUI_API(rolltui_windows_draw_toasts, PUBLIC)  /* every host here draws them last */
 ROLLTUI_API(rolltui_windows_toast_event, PUBLIC)  /* every host here asks it first */
 ROLLTUI_API(rolltui_windows_dismiss_toasts, PUBLIC)  /* KEPT: a host clears them on a key of its own ("dismiss all") */
+ROLLTUI_API(rolltui_dialog_new, PUBLIC)  /* KEPT: a host asks a question: a confirmation, an error page */
+ROLLTUI_API(rolltui_dialog_add_item, PUBLIC)  /* KEPT: what a question is about, listed under it */
+ROLLTUI_API(rolltui_dialog_add_button, PUBLIC)  /* KEPT: the answers a host offers */
+ROLLTUI_API(rolltui_dialog_set_phrase, PUBLIC)  /* KEPT: a confirmation typed before a destructive answer */
+ROLLTUI_API(rolltui_dialog_free, PUBLIC)  /* KEPT: a dialog built and never asked */
+ROLLTUI_API(rolltui_windows_ask, PUBLIC)  /* KEPT: a host opens the question it built */
+ROLLTUI_API(rolltui_windows_answer, PUBLIC)  /* KEPT: a host collects the answer after each event */
 ROLLTUI_API(rolltui_windows_messages, INTERNAL)  /* the messages kind reads the table's log */
 ROLLTUI_API(rolltui_windows_bind_sample_document, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_submit, PUBLIC)

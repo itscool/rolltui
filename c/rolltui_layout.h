@@ -193,6 +193,12 @@ void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayo
 void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* from);
 
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
+/* PUSHES `popup`, moved in (left empty): a layer the library built itself (a dialog). */
+void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup);
+/* Layer `i`, to change (a popup sized to what it holds), or NULL past the top. */
+RolltuiLayer* rolltui_window_stack_layer_mut(RolltuiWindowStack* s, size_t i);
+/* The popup of that id gone from wherever it is in the stack, those above it kept: 1, or 0 when none has it. */
+int rolltui_window_stack_remove_layer(RolltuiWindowStack* s, const char* id, size_t len);
 
 /* ---- the loader's own carrier and the value lifecycle --------------------------------------
  * `rolltui/rolltui.h` publishes `rolltui_load_layout_text` returning an OWNED `RolltuiLayout*`

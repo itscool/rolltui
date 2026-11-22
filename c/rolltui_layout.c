@@ -886,6 +886,8 @@ static const KindRow kKinds[] = {
     {"image", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_TEXT, "a picture's path, or a picture the host binds"},
     {"list", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a list the host binds"},
     {"chart", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "numbers the host binds"},
+    /* the dialog `rolltui_windows_ask` opened under that id: a host asks rather than naming one in a file */
+    {"dialog", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a dialog the host asks"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
@@ -2849,6 +2851,20 @@ size_t rolltui_window_stack_tab(const RolltuiWindowStack* s, const char* id, siz
 }
 
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s) { return &s->layers[0]; }
+RolltuiLayer* rolltui_window_stack_layer_mut(RolltuiWindowStack* s, size_t i) { return s && i < s->n ? &s->layers[i] : NULL; }
+int rolltui_window_stack_remove_layer(RolltuiWindowStack* s, const char* id, size_t len) {
+  size_t i;
+  if (!s || !id) return 0;
+  for (i = 1; i < s->n; ++i)
+    if (rolltui_str_eq(&s->layers[i].id, id, len)) {
+      rolltui_layer_release(&s->layers[i]);
+      memmove(&s->layers[i], &s->layers[i + 1], (s->n - i - 1) * sizeof *s->layers);
+      --s->n;
+      rolltui_layer_init(&s->layers[s->n]);
+      return 1;
+    }
+  return 0;
+}
 
 void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup) {
   s->layers = (RolltuiLayer*)rolltui_grow_zeroed(s->layers, &s->cap, s->n + 1, sizeof *s->layers);

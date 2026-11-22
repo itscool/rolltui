@@ -8,6 +8,7 @@
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_widget_list.h"
+#include "rolltui/c/rolltui_widget_dialog.h"
 #include "rolltui/c/rolltui_chart.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_widget_picker.h"
@@ -2130,6 +2131,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "image", 5, image_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "list", 4, list_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "chart", 5, chart_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "dialog", 6, rolltui_dialog_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }

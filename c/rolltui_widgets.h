@@ -178,6 +178,10 @@ RolltuiTasks* rolltui_windows_tasks(const RolltuiWindows* w);
 int rolltui_tasks_workers(const RolltuiTasks* t);
 /* The picture an `image:<name>` window shows instead of reading the file; NULL when none is bound. */
 const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* name, size_t len);
+/* The dialog asked under `id` and not yet answered, or NULL; `_put_dialog` OWNS `d` from the call, freeing what it replaces (NULL
+ * removes it). */
+RolltuiDialog* rolltui_windows_dialog(const RolltuiWindows* w, const char* id, size_t len);
+void rolltui_windows_put_dialog(RolltuiWindows* w, const char* id, size_t len, RolltuiDialog* d);
 /* The table's message log, which its `messages` kind reads. */
 const struct RolltuiMessageLog* rolltui_windows_messages(const RolltuiWindows* w);
 

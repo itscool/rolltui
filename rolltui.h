@@ -3561,6 +3561,39 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
 int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e);
 void rolltui_windows_dismiss_toasts(RolltuiWindows* w);
 
+/* ---- dialogs: a question the app asks the person ------------------------------------------------
+ * A DIALOG, modal over the screen: the title in its border after its level's glyph (ROLLTUI_MESSAGE_*; the border and title in the
+ * level's role), a body wrapped to its width, the items it is about (one line each, scrolling), and a row of framed buttons. A
+ * button is chosen by `dialog.next` and `dialog.prev` (Tab, Shift-Tab, Right and Left) and answered by `dialog.answer` (Enter), by
+ * its letter (the first letter of its label no button before it has, underlined) or by a press on it; the close key answers the
+ * cancel button. `dialog.up`, `dialog.down`, `dialog.page_up` and `dialog.page_down` scroll the items, and `dialog.copy` hands the
+ * host its text. With a PHRASE, a field under the body takes what is typed, and every button but the cancel one answers only once the
+ * field holds the phrase exactly; until then they are drawn inert and letters are typed, not answers. It is as tall as what it holds,
+ * at most nine tenths of the screen; FULL_SCREEN fills the screen, as an error page. */
+typedef struct RolltuiDialog RolltuiDialog;
+#define ROLLTUI_DIALOG_FULL_SCREEN 1u /* the dialog's: it fills the screen */
+#define ROLLTUI_DIALOG_DEFAULT 1u     /* a button's: chosen when the dialog opens (else the first) */
+#define ROLLTUI_DIALOG_CANCEL 2u      /* a button's: what the close key answers (else the last) */
+/* OWNED: freed by `rolltui_dialog_free`, unless it is handed to `rolltui_windows_ask`. */
+RolltuiDialog* rolltui_dialog_new(int level, unsigned flags, const char* title, size_t title_len, const char* body, size_t body_len);
+void rolltui_dialog_add_item(RolltuiDialog* d, const char* text, size_t len);
+void rolltui_dialog_add_button(RolltuiDialog* d, const char* label, size_t len, unsigned flags);
+void rolltui_dialog_set_phrase(RolltuiDialog* d, const char* phrase, size_t len);
+void rolltui_dialog_free(RolltuiDialog* d); /* a no-op on NULL */
+/* OPENS `d`, OWNED by the table from the call, as a popup on `s` under `id`, focused, replacing an open dialog of that id. With no
+ * buttons it has one, "OK". Sync the table straight after, as after `rolltui_window_stack_push_popup`. 1, or 0 when an argument is
+ * missing (`d` is freed). */
+int rolltui_windows_ask(RolltuiWindows* w, RolltuiWindowStack* s, const char* id, size_t len, RolltuiDialog* d);
+/* WHAT THE DIALOG `id` SAYS, asked after each event is routed and delivered:
+ *   ROLLTUI_DIALOG_ANSWERED  answered: the button's index in `*button` (may be NULL), the cancel button's when the close key or the
+ *                            host closed it; the dialog is closed and gone. Told once.
+ *   ROLLTUI_DIALOG_COPY      `dialog.copy` was pressed: its title, body and items in `*copy` (REPLACED; may be NULL), for
+ *                            `rolltui_clipboard_copy`. The dialog stays open.
+ *   0                        open and unanswered, or no dialog of that id. */
+#define ROLLTUI_DIALOG_ANSWERED 1
+#define ROLLTUI_DIALOG_COPY 2
+int rolltui_windows_answer(RolltuiWindows* w, RolltuiWindowStack* s, const char* id, size_t len, int* button, RolltuiStr* copy);
+
 /* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
  * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
 void rolltui_context_set_dir(RolltuiContext* ctx, const char* dir, size_t len);

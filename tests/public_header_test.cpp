@@ -137,7 +137,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 47; /* +rolltui_chart.h; +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 48; /* +rolltui_widget_dialog.h; +rolltui_chart.h; +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -549,7 +549,8 @@ int main() {
     // Then pictures: a picture's filter, a cell's pixels set, a held picture's wait (PUBLIC 636); a temp file written (INTERNAL 954).
     // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638); what tmux says of the
     // terminal outside it (INTERNAL 955).
-    check(totals["PUBLIC"] == 638 && totals["INTERNAL"] == 955 && totals.size() == 2,
+    // A dialog built, asked and answered (PUBLIC 645); kept, sized and taken out of the stack, and its kind (INTERNAL 960).
+    check(totals["PUBLIC"] == 645 && totals["INTERNAL"] == 960 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -738,11 +739,12 @@ int main() {
     // watching its stores; a watch freed.
     // Run 242: the window's name in tmux, the clipboard read. Vocab 45: a picture's filter. Run 244: a cell's pixels, a held picture.
     // Run 245, widget 85: the host told of an outside program's picture; its cells held in a frame.
+    // Run 251, release 18: a dialog built, asked and answered; one never asked, freed.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 245 && rt["HOST_RELEASE"] == 17 &&
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 251 && rt["HOST_RELEASE"] == 18 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 85,
-          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 245 / "
-          "release 17, tool interop 0, widget 85 (got " +
+          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 251 / "
+          "release 18, tool interop 0, widget 85 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

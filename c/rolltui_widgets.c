@@ -364,6 +364,7 @@ struct RolltuiWindows {
   RolltuiMap charts;     /* name -> ChartBinding*, OWNED: the fill and the chart it fills */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
+  RolltuiMap dialogs;    /* id -> RolltuiDialog*, OWNED: asked and not yet answered */
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
   /* INPUT HELD (`rolltui_windows_hold`): while `held`, keys and the pointer reach no window; `hold_job` is cancelled by Escape and
@@ -521,6 +522,11 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < rolltui_map_count(&w->outputs); ++i) output_binding_free((OutputBinding*)rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
   rolltui_map_release(&w->images);
+  {
+    size_t i;
+    for (i = 0; i < rolltui_map_count(&w->dialogs); ++i) rolltui_dialog_free((RolltuiDialog*)rolltui_map_value_at(&w->dialogs, i));
+    rolltui_map_release(&w->dialogs);
+  }
   for (i = 0; i < rolltui_map_count(&w->lists); ++i) rolltui_list_free((RolltuiList*)rolltui_map_value_at(&w->lists, i));
   rolltui_map_release(&w->lists);
   rolltui_message_log_release(&w->messages);
@@ -1241,6 +1247,15 @@ const RolltuiImage* rolltui_windows_image(const RolltuiWindows* w, const char* n
   return (const RolltuiImage*)rolltui_map_get(&w->images, name, len);
 }
 
+RolltuiDialog* rolltui_windows_dialog(const RolltuiWindows* w, const char* id, size_t len) {
+  return w ? (RolltuiDialog*)rolltui_map_get(&w->dialogs, id, len) : NULL;
+}
+void rolltui_windows_put_dialog(RolltuiWindows* w, const char* id, size_t len, RolltuiDialog* d) {
+  RolltuiDialog* was = (RolltuiDialog*)rolltui_map_take(&w->dialogs, id, len);
+  if (was != d) rolltui_dialog_free(was);
+  if (d) rolltui_map_put(&w->dialogs, id, len, d);
+}
+
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap) {
   const OutputBinding* b = (const OutputBinding*)rolltui_map_get(&w->outputs, name, len);
   if (wrap) *wrap = b ? b->wrap : 1;
@@ -1766,10 +1781,19 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
     const RolltuiResolvedNode* rn = &w->nodes[i];
     RolltuiWidget* wd;
     const RolltuiResolvedNode* parent = NULL;
-    int row, extent, border, want = 0;
+    int row, extent, border, want = 0, sized;
     if (rn->node->kind != 0) continue;
     wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
     if (!wd || !wd->vt) continue;
+    sized = 0;
+    if (rn->layer > 0 && rn->node->fit && wd->vt->desired_outer) { /* A POPUP AS TALL AS WHAT IT HOLDS: its root window says so */
+      RolltuiLayer* l = rolltui_window_stack_layer_mut(stack, rn->layer);
+      if (l && &l->root == rn->node && wd->vt->desired_outer(wd->ctx, rn->inner.w, box.h, rn->node->border != 0 ? 2 : 0, &want)) {
+        l->placement.h.fraction = 0;
+        l->placement.h.cells = want;
+        sized = 1; /* before its title and footer are asked, which may say what fits */
+      }
+    }
     {
       /* Into the node's own buffers, reused frame to frame. A widget answering 0, or one with no say (a tab shown in place of a
        * widget that had one), hands the title and the footer back to the layout. */
@@ -1791,6 +1815,7 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
       }
       if (nd && !(wd->vt->footer && wd->vt->footer(wd->ctx, &nd->live_footer))) rolltui_str_clear(&nd->live_footer);
     }
+    if (sized) continue;
     if (rn->node->fit && wd->vt->scroll_extent) { /* AS TALL AS WHAT IT HOLDS, and a line, within its own bounds */
       RolltuiScrollExtent ext;
       memset(&ext, 0, sizeof ext);

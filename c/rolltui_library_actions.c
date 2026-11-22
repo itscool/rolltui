@@ -175,7 +175,15 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(sheet,     reset,             "sheet.reset",                 "go back to the preset loaded") \
   X(theme,     variant,           "theme.variant",               "edit the other variant, light or dark") \
   X(theme,     generate,          "theme.generate",              "make a theme from the next seed") \
-  X(theme,     fix,               "theme.fix",                   "fix the problem on the role's row")
+  X(theme,     fix,               "theme.fix",                   "fix the problem on the role's row") \
+  X(dialog,    next,              "dialog.next",                 "choose the next button") \
+  X(dialog,    prev,              "dialog.prev",                 "choose the previous button") \
+  X(dialog,    answer,            "dialog.answer",               "answer with the button chosen") \
+  X(dialog,    up,                "dialog.up",                   "scroll the items up a row") \
+  X(dialog,    down,              "dialog.down",                 "scroll the items down a row") \
+  X(dialog,    page_up,           "dialog.page_up",              "scroll the items up a page") \
+  X(dialog,    page_down,         "dialog.page_down",            "scroll the items down a page") \
+  X(dialog,    copy,              "dialog.copy",                 "copy the dialog's text")
 
 static const LibAction kLibraryActions[] = {
 #define ROLLTUI_LA_ROW_(group, field, name, desc) {name, desc},
@@ -227,6 +235,7 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_list(field, name)
 #define ROLLTUI_LA_sheet(field, name)
 #define ROLLTUI_LA_theme(field, name)
+#define ROLLTUI_LA_dialog(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input

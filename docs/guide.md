@@ -929,6 +929,55 @@ sets it from its motion setting.
 dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
 note for what went right.
 
+## Dialogs
+
+A dialog asks the person something and waits for the answer. It opens modal over the screen,
+focused, and is as tall as what it holds, up to nine tenths of the screen.
+
+```c
+RolltuiDialog* d = rolltui_dialog_new(ROLLTUI_MESSAGE_WARNING, 0, "Delete 3 files?", 15,
+                                      "They go to the Trash.", 21);
+rolltui_dialog_add_item(d, "notes.txt", 9);
+rolltui_dialog_add_button(d, "Delete", 6, 0);
+rolltui_dialog_add_button(d, "Cancel", 6, ROLLTUI_DIALOG_DEFAULT | ROLLTUI_DIALOG_CANCEL);
+rolltui_windows_ask(windows, stack, "delete", 6, d); /* the table owns it now */
+rolltui_windows_sync(windows, stack);
+```
+
+- The title sits in the border after the level's glyph, the border and title in the level's role.
+- The body wraps to the dialog's width. The items it is about follow, one line each; when they do
+  not fit they scroll, and the bottom border says which are shown ("3–8 of 40").
+- The buttons sit in a row at the bottom, framed. `ROLLTUI_DIALOG_DEFAULT` marks the one chosen
+  when it opens (else the first), `ROLLTUI_DIALOG_CANCEL` the one the close key answers (else the
+  last). A dialog given no buttons has one, OK.
+- `ROLLTUI_DIALOG_FULL_SCREEN` fills the screen: an error page.
+- `rolltui_dialog_set_phrase` adds a field under the body. Every button but the cancel one is
+  drawn inert and answers nothing until the field holds the phrase exactly, and letters are typed
+  into the field rather than answering.
+
+| Action | Keys | What it does |
+|---|---|---|
+| `dialog.next`, `dialog.prev` | Tab, Right; Shift-Tab, Left | the next button, the previous one |
+| `dialog.answer` | Enter | answer with the button chosen |
+| `dialog.up`, `dialog.down` | Up, Down | scroll the items a row |
+| `dialog.page_up`, `dialog.page_down` | PageUp, PageDown | scroll the items a page |
+| `dialog.copy` | Alt-C | hand the host the dialog's text |
+
+A button's letter answers it: the first letter of its label that no button before it has,
+underlined. A press on a button answers it too, and the close key answers the cancel button.
+
+After each event is routed and delivered, the host asks `rolltui_windows_answer(windows, stack,
+id, len, &button, &copy)`:
+
+- `ROLLTUI_DIALOG_ANSWERED`: the button's index, and the dialog is closed. A dialog closed some
+  other way (the close key, the host popping it) answers its cancel button. Told once.
+- `ROLLTUI_DIALOG_COPY`: `dialog.copy` was pressed; `copy` holds the title, the body and the
+  items, for `rolltui_clipboard_copy`. The dialog stays open.
+- 0: still open, or no dialog of that id.
+
+Asking again under an open dialog's id replaces it. A layout file that names `dialog:<id>` with
+no dialog asked under it shows that as a problem, as an unbound source does.
+
 ## Work off the UI thread
 
 A `RolltuiTasks` is a few worker threads, the jobs they run, and the queue of what comes back.
