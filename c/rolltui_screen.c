@@ -170,6 +170,27 @@ void rolltui_frame_add_image(RolltuiFrame* f, const RolltuiImage* img, RolltuiRe
   p->px_w = px_w;
   p->px_h = px_h;
   p->ground = ground;
+  p->outside = 0;
+}
+void rolltui_frame_outside_picture(RolltuiFrame* f, unsigned int id, RolltuiRect cells, RolltuiStyle ground) {
+  RolltuiFrameImage* p;
+  int x, y, x1, y1;
+  if (!f || id == 0) return;
+  x1 = cells.x + cells.w < f->w ? cells.x + cells.w : f->w;
+  y1 = cells.y + cells.h < f->h ? cells.y + cells.h : f->h;
+  if (cells.x < 0) cells.x = 0;
+  if (cells.y < 0) cells.y = 0;
+  cells.w = x1 - cells.x;
+  cells.h = y1 - cells.y;
+  if (cells.w <= 0 || cells.h <= 0) return;
+  for (y = cells.y; y < y1; ++y)
+    for (x = cells.x; x < x1; ++x) rolltui_frame_put(f, x, y, " ", 1, 1, ground, 0);
+  f->images = (RolltuiFrameImage*)rolltui_grow(f->images, &f->image_cap, f->image_count + 1, sizeof *f->images);
+  p = &f->images[f->image_count++];
+  memset(p, 0, sizeof *p);
+  p->cells = cells;
+  p->ground = ground;
+  p->outside = id;
 }
 size_t rolltui_frame_image_count(const RolltuiFrame* f) { return f ? f->image_count : 0; }
 const RolltuiFrameImage* rolltui_frame_image_at(const RolltuiFrame* f, size_t i) {

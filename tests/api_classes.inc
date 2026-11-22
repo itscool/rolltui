@@ -922,6 +922,7 @@ ROLLTUI_API(rolltui_image_set_filter, PUBLIC)  /* KEPT: pixel art or a screensho
 ROLLTUI_API(rolltui_image_rgba, PUBLIC)  /* paint reads the pixels it turns into glyphs */
 ROLLTUI_API(rolltui_frame_image, PUBLIC)  /* KEPT: a host's own widget draws a picture (the preview and the `image:` kind draw it for a window) */
 ROLLTUI_API(rolltui_image_cells, PUBLIC)  /* KEPT: a host sizes or centres a picture before drawing it */
+ROLLTUI_API(rolltui_frame_outside_picture, PUBLIC)  /* KEPT: a host whose pictures an outside program draws (icat, chafa, an overlay) */
 ROLLTUI_API(rolltui_image_id, INTERNAL)  /* kitty's id, for the cells and the terminal */
 ROLLTUI_API(rolltui_image_fit, INTERNAL)
 ROLLTUI_API(rolltui_image_scale, INTERNAL)
@@ -1689,6 +1690,7 @@ ROLLTUI_API(rolltui_terminal_set_title, PUBLIC)  /* chat names what the conversa
 ROLLTUI_API(rolltui_terminal_set_window_name, PUBLIC)  /* KEPT: a program named in tmux's window list, the old name put back on leaving */
 ROLLTUI_API(rolltui_terminal_set_cell_pixels, PUBLIC)  /* KEPT: a host that measured the font itself, where the terminal's size is wrong */
 ROLLTUI_API(rolltui_terminal_pending_ms, PUBLIC)  /* KEPT: a host's own loop waking when a held picture is due (rolltui_run does it itself) */
+ROLLTUI_API(rolltui_terminal_set_outside_pictures, PUBLIC)  /* KEPT: the host told when to draw and clear an outside program's picture */
 ROLLTUI_API(rolltui_terminal_report_cwd, PUBLIC)  /* dirktui reports the folder it is in */
 ROLLTUI_API(rolltui_child_spawn, PUBLIC)  /* chat runs an approved command; dirktui checks for an update, hands a file to an app */
 ROLLTUI_API(rolltui_child_free, PUBLIC)

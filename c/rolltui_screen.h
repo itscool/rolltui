@@ -68,6 +68,7 @@ typedef struct RolltuiFrameImage {
   int protocol;    /* ROLLTUI_IMAGES_* */
   int px_w, px_h;  /* the pixel box it fills */
   RolltuiStyle ground; /* the blanks under an out-of-grid picture: while every cell is one, nothing is drawn over it */
+  unsigned int outside; /* an outside program's picture (`rolltui_frame_outside_picture`): the host's id, `img` NULL; else 0 */
 } RolltuiFrameImage;
 void rolltui_frame_add_image(RolltuiFrame* f, const RolltuiImage* img, RolltuiRect cells, int protocol, int px_w, int px_h,
                              RolltuiStyle ground);

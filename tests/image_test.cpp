@@ -559,6 +559,141 @@ void test_orientation_png_palette_filter() {
   rolltui_image_free(st);
 }
 
+// AN OUTSIDE PROGRAM'S PICTURE: the host is told to draw it once its cells are blank on the screen, after the frame is written, and
+// to clear it before the frame that writes over it; the cursor is put back after a draw. The host's function writes a mark of what
+// it was told into the terminal's stream, so the order against the frame's own bytes is seen.
+struct OutsideLog {
+  RolltuiTerminal* t = nullptr;
+  std::vector<std::string> told;
+};
+void outside_told(void* user, int what, unsigned int id, RolltuiRect r) {
+  auto* log = static_cast<OutsideLog*>(user);
+  const std::string e = std::string(what == ROLLTUI_OUTSIDE_DRAW ? "draw " : what == ROLLTUI_OUTSIDE_CLEAR ? "clear " : "? ") +
+                        std::to_string(id) + " " + std::to_string(r.x) + "," + std::to_string(r.y) + " " + std::to_string(r.w) + "x" +
+                        std::to_string(r.h);
+  log->told.push_back(e);
+  const std::string mark = "<" + e + ">";
+  rolltui_terminal_write(log->t, mark.data(), mark.size());
+}
+std::string told_since(const OutsideLog& log, std::size_t from) {
+  std::string out;
+  for (std::size_t i = from; i < log.told.size(); ++i) out += (out.empty() ? "" : " | ") + log.told[i];
+  return out;
+}
+
+void test_outside_pictures() {
+  const RolltuiRect at{2, 1, 5, 3};
+  const RolltuiRect moved{3, 1, 5, 3};
+  struct Shot { RolltuiRect r; unsigned int id; };
+  auto frame = [](Pty& k, std::vector<Shot> shots, const char* cover_at = nullptr) {
+    RolltuiFrame* f = rolltui_swap_begin(k.swap, 40, 12, RolltuiStyle{});
+    for (const Shot& s : shots) rolltui_frame_outside_picture(f, s.id, s.r, RolltuiStyle{});
+    if (cover_at) rolltui_frame_put(f, 3, 2, cover_at, 1, 1, RolltuiStyle{}, 0);
+    RolltuiStr scratch;
+    rolltui_terminal_present(k.t, k.swap, &scratch);
+    return k.read();
+  };
+  {
+    Pty k("sixel");
+    OutsideLog log;
+    log.t = k.t;
+    rolltui_terminal_set_outside_pictures(k.t, outside_told, &log);
+    std::size_t n = 0;
+    std::string out = frame(k, {{at, 7}});
+    check(told_since(log, n) == "draw 7 2,1 5x3", "a picture an outside program draws is the host's to draw once its cells are blank [" + told_since(log, n) + "]");
+    {
+      const std::size_t m = out.find("<draw 7");
+      const std::size_t after = out.find('>', m) + 1;
+      check(m != std::string::npos && m > 0 && out.compare(after, std::string::npos, "\x1b[0m\x1b[?25l\x1b[1;1H") == 0,
+            "…told after the frame is written, and the cursor put back where the frame left it, hidden");
+    }
+    n = log.told.size();
+    out = frame(k, {{at, 7}});
+    check(log.told.size() == n && !has(out, "<"), "the same picture in the same cells is not told again");
+    out = frame(k, {{at, 7}}, "X");
+    check(told_since(log, n) == "clear 7 2,1 5x3" && out.find("<clear") < out.find('X'),
+          "something drawn over it: the host clears it before the frame that writes over it [" + told_since(log, n) + "]");
+    n = log.told.size();
+    frame(k, {{at, 7}});
+    check(told_since(log, n) == "draw 7 2,1 5x3", "…and draws it again once that has gone");
+    n = log.told.size();
+    frame(k, {{moved, 7}});
+    check(told_since(log, n) == "clear 7 2,1 5x3 | draw 7 3,1 5x3", "moved: cleared where it was, drawn where it is [" + told_since(log, n) + "]");
+    n = log.told.size();
+    frame(k, {});
+    check(told_since(log, n) == "clear 7 3,1 5x3", "gone from the frame: cleared");
+    frame(k, {{at, 7}});
+    n = log.told.size();
+    rolltui_swap_invalidate(k.swap);
+    out = frame(k, {{at, 7}});
+    check(told_since(log, n) == "clear 7 2,1 5x3 | draw 7 2,1 5x3" && out.find("<clear") < out.find("<draw"),
+          "the screen written whole: cleared before, drawn after [" + told_since(log, n) + "]");
+    n = log.told.size();
+    rolltui_terminal_suspend(k.t);
+    check(told_since(log, n) == "clear 7 2,1 5x3", "the terminal left (a program handed it, a suspend): cleared while its screen is up");
+    rolltui_terminal_resume(k.t);
+    rolltui_swap_invalidate(k.swap);
+    n = log.told.size();
+    frame(k, {{at, 7}});
+    check(told_since(log, n) == "draw 7 2,1 5x3", "…and drawn again when the program has the terminal back");
+    n = log.told.size();
+    frame(k, {{RolltuiRect{37, 10, 5, 3}, 8}, {RolltuiRect{1, 1, 2, 2}, 0}});
+    check(told_since(log, n) == "clear 7 2,1 5x3 | draw 8 37,10 3x2", "cells past the frame's edge are clipped, and an id of 0 is no picture [" + told_since(log, n) + "]");
+    n = log.told.size();
+    rolltui_terminal_free(k.t);
+    k.t = nullptr;
+    check(told_since(log, n) == "clear 8 37,10 3x2", "the terminal freed: what is still drawn is cleared");
+  }
+  {
+    // A LIBRARY PICTURE BESIDE ONE: each is kept by its own rules.
+    const std::vector<unsigned char> px(20 * 20 * 3, 90);
+    RolltuiImage* img = decode(ppm(20, 20, px));
+    Pty k("sixel");
+    OutsideLog log;
+    log.t = k.t;
+    rolltui_terminal_set_outside_pictures(k.t, outside_told, &log);
+    auto both = [&](bool with_outside) {
+      RolltuiFrame* f = rolltui_swap_begin(k.swap, 40, 12, RolltuiStyle{});
+      rolltui_frame_image(f, RolltuiRect{20, 1, 10, 4}, img, RolltuiStyle{}, nullptr);
+      if (with_outside) rolltui_frame_outside_picture(f, 7, at, RolltuiStyle{});
+      RolltuiStr scratch;
+      rolltui_terminal_present(k.t, k.swap, &scratch);
+      return k.read();
+    };
+    const std::string first = both(true);
+    check(has(first, "\x1bP0;1;0q") && told_since(log, 0) == "draw 7 2,1 5x3", "a sixel picture and an outside program's in one frame: each drawn");
+    const std::string second = both(false);
+    check(!has(second, "\x1bP0;1;0q") && told_since(log, 1) == "clear 7 2,1 5x3", "…and the outside one gone clears only it");
+    rolltui_terminal_free(k.t);
+    k.t = nullptr;
+    rolltui_image_free(img);
+  }
+  {
+    // HELD LIKE THE LIBRARY'S OWN: a cursor passing over files does not start the host's program for each.
+    Pty k("sixel", false, 60);
+    OutsideLog log;
+    log.t = k.t;
+    rolltui_terminal_set_outside_pictures(k.t, outside_told, &log);
+    auto one = [&](RolltuiRect r) {
+      RolltuiFrame* f = rolltui_swap_begin(k.swap, 40, 12, RolltuiStyle{});
+      rolltui_frame_outside_picture(f, 7, r, RolltuiStyle{});
+      RolltuiStr scratch;
+      rolltui_terminal_present(k.t, k.swap, &scratch);
+    };
+    one(at);
+    const int pending = rolltui_terminal_pending_ms(k.t);
+    one(moved);
+    check(log.told.empty() && pending > 0 && pending <= 60, "held: not told while it has not stayed in place (" + std::to_string(pending) + " ms to go)");
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    one(moved);
+    check(told_since(log, 0) == "draw 7 3,1 5x3", "…told once it has stayed, and never for the cells it passed through [" + told_since(log, 0) + "]");
+    rolltui_terminal_set_outside_pictures(k.t, nullptr, nullptr);
+    rolltui_terminal_free(k.t);
+    k.t = nullptr;
+    check(log.told.size() == 1, "a host that stops listening is told nothing more, not even on free");
+  }
+}
+
 int main() {
   test_orientation_png_palette_filter();
   test_decode();
@@ -567,6 +702,7 @@ int main() {
   test_kitty_cells();
   test_detection();
   test_present();
+  test_outside_pictures();
   test_preview_and_window();
   return testkit::report("image_test");
 }

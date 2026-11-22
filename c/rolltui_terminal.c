@@ -109,16 +109,25 @@ struct RolltuiTerminal {
   unsigned long long presents;
   struct ShownImage { unsigned int id; RolltuiRect r; } * pics;   /* drawn outside the grid, and still there */
   size_t pics_n, pics_cap;
-  /* A CELL'S PIXELS: as the host set them (0 not set), and as the terminal reported them at the start (CSI 16 t), which is trusted
-   * over the window's size for the session when the two disagreed */
-  /* PICTURES HELD before they are sent (`picture_delay_ms`): each one's id and cells, since when, and the present that last saw it */
+  /* AN OUTSIDE PROGRAM'S PICTURES (`rolltui_frame_outside_picture`): those the host was told to draw and has not been told to clear,
+   * each with its cells in the frame and on the screen; those to be told to draw once this present's bytes are written; the host's
+   * function */
+  struct OutsidePicture { unsigned int id; RolltuiRect r, screen; } * outs, *outs_due;
+  size_t outs_n, outs_cap, due_n, due_cap;
+  RolltuiOutsidePictureFn outside_fn;
+  void* outside_user;
+  /* PICTURES HELD before they are sent (`picture_delay_ms`): each one's id and cells, whether it is an outside program's, since
+   * when, and the present that last saw it */
   struct HeldPicture {
     unsigned int id;
     RolltuiRect r;
+    unsigned char outside;
     unsigned long long since, seen;
   } * held;
   size_t held_n, held_cap;
   int hold_ms;
+  /* A CELL'S PIXELS: as the host set them (0 not set), and as the terminal reported them at the start (CSI 16 t), which is trusted
+   * over the window's size for the session when the two disagreed */
   int cell_set_w, cell_set_h;
   int cell_report_w, cell_report_h;
   unsigned char cell_report_trusted;
@@ -270,8 +279,10 @@ static void term_enter(RolltuiTerminal* t, int handle_signals) {
 #define SYNC_END "\x1b[?2026l"
 
 static void window_name_restore(RolltuiTerminal* t);
+static void outside_clear_all(RolltuiTerminal* t);
 static void term_leave(RolltuiTerminal* t) {
   if (!t->entered) return;
+  outside_clear_all(t); /* an outside program's picture goes with the screen: the host clears it while that screen is still up */
   t->entered = 0;
   if (t->inl && t->tty) { /* the region goes; the cursor waits where it began, for the prompt */
     char b[32];
@@ -415,6 +426,8 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_str_free(&t->last_copy);
   rolltui_mem_free(t->kitty);
   rolltui_mem_free(t->pics);
+  rolltui_mem_free(t->outs);
+  rolltui_mem_free(t->outs_due);
   rolltui_mem_free(t->queued);
   rolltui_mem_free(t->queued_text);
   rolltui_mem_free(t->extent);
@@ -1210,12 +1223,12 @@ static int rect_same(RolltuiRect a, RolltuiRect b) { return a.x == b.x && a.y ==
 #define KITTY_KEEP 8
 
 /* A PICTURE DUE: it has stayed in the same cells for the hold (or there is none). The first sight of it starts the clock. */
-static int picture_due(RolltuiTerminal* t, unsigned int id, RolltuiRect r) {
+static int picture_due(RolltuiTerminal* t, unsigned int id, RolltuiRect r, int outside) {
   const unsigned long long now = rolltui_os_monotonic_ms();
   size_t k;
   if (t->hold_ms <= 0) return 1;
   for (k = 0; k < t->held_n; ++k)
-    if (t->held[k].id == id && rect_same(t->held[k].r, r)) {
+    if (t->held[k].id == id && t->held[k].outside == outside && rect_same(t->held[k].r, r)) {
       if (now < t->held[k].since + (unsigned long long)t->hold_ms) {
         t->held[k].seen = t->presents;
         return 0;
@@ -1226,6 +1239,7 @@ static int picture_due(RolltuiTerminal* t, unsigned int id, RolltuiRect r) {
   t->held = (struct HeldPicture*)rolltui_grow(t->held, &t->held_cap, t->held_n + 1, sizeof *t->held);
   t->held[t->held_n].id = id;
   t->held[t->held_n].r = r;
+  t->held[t->held_n].outside = (unsigned char)(outside != 0);
   t->held[t->held_n].since = now;
   t->held[t->held_n].seen = t->presents;
   ++t->held_n;
@@ -1262,7 +1276,7 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
     if (p->protocol != ROLLTUI_IMAGES_KITTY) continue;
     for (k = 0; k < t->kitty_n && t->kitty[k].id != id; ++k) {
     }
-    if (k == t->kitty_n && !picture_due(t, id, p->cells)) continue; /* held: its cells say nothing until its pixels go */
+    if (k == t->kitty_n && !picture_due(t, id, p->cells, 0)) continue; /* held: its cells say nothing until its pixels go */
     if (k == t->kitty_n) {
       t->kitty = (struct KittyImage*)rolltui_grow(t->kitty, &t->kitty_cap, t->kitty_n + 1, sizeof *t->kitty);
       t->kitty[k].id = id;
@@ -1293,13 +1307,31 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
   }
   if (!rolltui_swap_front(s)) { /* drawn whole: nothing drawn outside the grid survives it */
     t->pics_n = 0;
+    outside_clear_all(t);
     return;
+  }
+  for (k = 0; k < t->outs_n;) { /* an outside program's picture no longer where it was drawn: the host clears it, then its cells */
+    int kept = 0;
+    for (i = 0; i < n && !kept; ++i) {
+      const RolltuiFrameImage* p = rolltui_frame_image_at(next, i);
+      kept = p->outside == t->outs[k].id && rect_same(p->cells, t->outs[k].r) && image_intact(next, p);
+    }
+    if (kept) {
+      ++k;
+      continue;
+    }
+    {
+      const struct OutsidePicture gone = t->outs[k];
+      t->outs[k] = t->outs[--t->outs_n];
+      rolltui_swap_forget_rect(s, gone.r);
+      if (t->outside_fn) t->outside_fn(t->outside_user, ROLLTUI_OUTSIDE_CLEAR, gone.id, gone.screen);
+    }
   }
   for (k = 0; k < t->pics_n;) {
     int kept = 0;
     for (i = 0; i < n && !kept; ++i) {
       const RolltuiFrameImage* p = rolltui_frame_image_at(next, i);
-      kept = rolltui_image_id(p->img) == t->pics[k].id && rect_same(p->cells, t->pics[k].r) && image_intact(next, p);
+      kept = !p->outside && rolltui_image_id(p->img) == t->pics[k].id && rect_same(p->cells, t->pics[k].r) && image_intact(next, p);
     }
     if (kept) {
       ++k;
@@ -1308,6 +1340,53 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
     rolltui_swap_forget_rect(s, t->pics[k].r);
     t->pics[k] = t->pics[--t->pics_n];
   }
+}
+
+/* AN OUTSIDE PROGRAM'S PICTURE whose cells are whole, that the host has not been told to draw where it is, and that has stayed
+ * there for the hold: told once this present's bytes are written (`outside_tell_due`). */
+static void outside_after(RolltuiTerminal* t, const RolltuiFrame* drawn, const RolltuiFrameImage* p, int origin) {
+  struct OutsidePicture o;
+  size_t k;
+  if (!t->outside_fn || !image_intact(drawn, p)) return;
+  for (k = 0; k < t->outs_n; ++k)
+    if (t->outs[k].id == p->outside && rect_same(t->outs[k].r, p->cells)) return;
+  if (!picture_due(t, p->outside, p->cells, 1)) return;
+  o.id = p->outside;
+  o.r = p->cells;
+  o.screen = p->cells;
+  o.screen.y += origin;
+  t->outs = (struct OutsidePicture*)rolltui_grow(t->outs, &t->outs_cap, t->outs_n + 1, sizeof *t->outs);
+  t->outs[t->outs_n++] = o;
+  t->outs_due = (struct OutsidePicture*)rolltui_grow(t->outs_due, &t->due_cap, t->due_n + 1, sizeof *t->outs_due);
+  t->outs_due[t->due_n++] = o;
+}
+/* The host told to draw, after the frame is on the screen; then the cursor, which the drawing moved, is put back as the frame left
+ * it, with the colours reset. */
+static void outside_tell_due(RolltuiTerminal* t, const RolltuiFrame* drawn, int origin) {
+  size_t k;
+  int cx = 0, cy = 0, vis = 0, len;
+  char back[48];
+  if (!t->due_n) return;
+  for (k = 0; k < t->due_n; ++k)
+    if (t->outside_fn) t->outside_fn(t->outside_user, ROLLTUI_OUTSIDE_DRAW, t->outs_due[k].id, t->outs_due[k].screen);
+  t->due_n = 0;
+  rolltui_frame_cursor(drawn, &cx, &cy, &vis);
+  len = snprintf(back, sizeof back, "\x1b[0m\x1b[?25l\x1b[%d;%dH%s", origin + cy + 1, cx + 1, vis ? "\x1b[?25h" : "");
+  if (len > 0) rolltui_terminal_write(t, back, (size_t)len);
+}
+/* Every outside program's picture drawn is told to clear: the screen is about to be written whole, or left. */
+static void outside_clear_all(RolltuiTerminal* t) {
+  while (t->outs_n) {
+    const struct OutsidePicture gone = t->outs[--t->outs_n];
+    if (t->outside_fn) t->outside_fn(t->outside_user, ROLLTUI_OUTSIDE_CLEAR, gone.id, gone.screen);
+  }
+  t->due_n = 0;
+}
+void rolltui_terminal_set_outside_pictures(RolltuiTerminal* t, RolltuiOutsidePictureFn fn, void* user) {
+  if (!t) return;
+  t->outside_fn = fn;
+  t->outside_user = user;
+  if (!fn) t->outs_n = t->due_n = 0;
 }
 
 /* AFTER THE DIFF: an outside-the-grid picture whose cells are whole and that is not on the screen already is drawn, the cursor kept
@@ -1320,12 +1399,16 @@ static void images_after(RolltuiTerminal* t, const RolltuiFrame* drawn, int orig
     const unsigned int id = rolltui_image_id(p->img);
     char at[32];
     int len;
+    if (p->outside) {
+      outside_after(t, drawn, p, origin);
+      continue;
+    }
     if (p->protocol != ROLLTUI_IMAGES_ITERM2 && p->protocol != ROLLTUI_IMAGES_SIXEL) continue;
     if (!image_intact(drawn, p)) continue; /* something is drawn over it: it waits until that goes */
     for (k = 0; k < t->pics_n && !(t->pics[k].id == id && rect_same(t->pics[k].r, p->cells)); ++k) {
     }
     if (k < t->pics_n) continue;
-    if (!picture_due(t, id, p->cells)) continue; /* held: sent once it has stayed */
+    if (!picture_due(t, id, p->cells, 0)) continue; /* held: sent once it has stayed */
     len = snprintf(at, sizeof at, "\x1b" "7\x1b[%d;%dH", origin + p->cells.y + 1, p->cells.x + 1);
     if (len > 0) rolltui_str_append(out, at, (size_t)len);
     if (p->protocol == ROLLTUI_IMAGES_ITERM2) rolltui_image_iterm2(p->img, p->cells.w, p->cells.h, t->multiplexed, out);
@@ -1367,6 +1450,7 @@ void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* sc
   else if (sync) rolltui_str_append(scratch, SYNC_END, sizeof SYNC_END - 1);
   t->sync_open = 0;
   if (scratch->n) rolltui_terminal_write(t, scratch->p, scratch->n);
+  if (t->tty) outside_tell_due(t, next, inl ? t->top : 0);
 }
 
 int rolltui_terminal_reprobe(RolltuiTerminal* t, int timeout_ms) {

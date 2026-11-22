@@ -547,7 +547,8 @@ int main() {
     // Then the terminal: the window's name in tmux, the clipboard read (PUBLIC 633); the last copy kept and read back, the system
     // clipboard read (INTERNAL 953).
     // Then pictures: a picture's filter, a cell's pixels set, a held picture's wait (PUBLIC 636); a temp file written (INTERNAL 954).
-    check(totals["PUBLIC"] == 636 && totals["INTERNAL"] == 954 && totals.size() == 2,
+    // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638).
+    check(totals["PUBLIC"] == 638 && totals["INTERNAL"] == 954 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -735,11 +736,12 @@ int main() {
     // Settings 97, run 240, release 17: three stores read again; a watch made, added to, let go of, asked and described, a run
     // watching its stores; a watch freed.
     // Run 242: the window's name in tmux, the clipboard read. Vocab 45: a picture's filter. Run 244: a cell's pixels, a held picture.
+    // Run 245, widget 85: the host told of an outside program's picture; its cells held in a frame.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 244 && rt["HOST_RELEASE"] == 17 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 84,
-          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 244 / "
-          "release 17, tool interop 0, widget 84 (got " +
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 245 && rt["HOST_RELEASE"] == 17 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 85,
+          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 245 / "
+          "release 17, tool interop 0, widget 85 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

@@ -4069,6 +4069,10 @@ const unsigned char* rolltui_image_rgba(const RolltuiImage* img, int* w, int* h)
 void rolltui_frame_image(RolltuiFrame* f, RolltuiRect area, const RolltuiImage* img, RolltuiStyle ground, RolltuiRect* used);
 /* The cells `rolltui_frame_image` would take for `img` in a `cols` x `rows` area, now: what a host centres a picture with. */
 void rolltui_image_cells(const RolltuiImage* img, int cols, int rows, int* used_cols, int* used_rows);
+/* A PICTURE AN OUTSIDE PROGRAM DRAWS (`kitten icat --place`, chafa's sixel, a window over the terminal such as Überzug++): `cells`,
+ * clipped to the frame, are held blank in `ground` under the host's `id` (not 0), and the terminal tells the host when to draw the
+ * picture and when to clear it (`rolltui_terminal_set_outside_pictures`). */
+void rolltui_frame_outside_picture(RolltuiFrame* f, unsigned int id, RolltuiRect cells, RolltuiStyle ground);
 
 /* ========================================================================================
  * marker — the "N more" rule
@@ -4851,6 +4855,21 @@ void rolltui_terminal_set_cell_pixels(RolltuiTerminal* t, int w, int h);
 /* The milliseconds until a picture held back (`picture_delay_ms`) is due to be sent, so the frame after that sends it; -1 none.
  * `rolltui_run` waits on it itself. */
 int rolltui_terminal_pending_ms(const RolltuiTerminal* t);
+/* AN OUTSIDE PROGRAM'S PICTURE (`rolltui_frame_outside_picture`), told to the host by `fn`:
+ *   ROLLTUI_OUTSIDE_DRAW   its cells are blank on the screen and have stayed in place for `picture_delay_ms`: draw it at `screen`, the
+ *                          cells in the terminal's rows and columns from 0. Told after the frame is written; the cursor is put back
+ *                          when `fn` returns. Told again after anything removed it: a resize or repaint, something drawn over it
+ *                          that has gone, the terminal entered again.
+ *   ROLLTUI_OUTSIDE_CLEAR  it is no longer where it was drawn: gone from the frame, moved, drawn over, the screen about to be written
+ *                          whole, or the terminal being left or handed to a program. Told before the frame is written, which writes
+ *                          its cells again; the host removes what text does not cover (a kitty placement, a window over the terminal).
+ * A stop sent from outside (Ctrl-Z in the shell) leaves from a signal handler, which tells nothing: CLEAR comes when the program
+ * continues, then DRAW. `fn` may write to the terminal, itself or through a program it runs, and never presents. `user` is a BORROW
+ * kept alive until the terminal is freed, which tells CLEAR for what is still drawn. NULL `fn` tells nothing. */
+#define ROLLTUI_OUTSIDE_DRAW 1
+#define ROLLTUI_OUTSIDE_CLEAR 2
+typedef void (*RolltuiOutsidePictureFn)(void* user, int what, unsigned int id, RolltuiRect screen);
+void rolltui_terminal_set_outside_pictures(RolltuiTerminal* t, RolltuiOutsidePictureFn fn, void* user);
 /* MOUSE REPORTING ON OR OFF while the program runs (`mouse` and `hover` as in the options): off, the terminal selects text with the
  * pointer the way it does for a program that asks for nothing. Kept across a suspend and resume. */
 void rolltui_terminal_set_mouse(RolltuiTerminal* t, int mouse, int hover);

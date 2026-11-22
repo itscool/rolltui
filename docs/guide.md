@@ -1168,6 +1168,24 @@ none of the pictures it passes. `rolltui_terminal_pending_ms` says when a held o
 - iTerm2 is sent a PNG, JPEG or GIF file as it was read. A picture with none (a host's pixels, a
   BMP, a TGA) is sent as a PNG made for it, its transparency kept.
 
+A picture another program draws (`kitten icat --place`, chafa's sixel, a window over the
+terminal such as Überzug++) is the host's to draw and clear; the library says when.
+`rolltui_frame_outside_picture(frame, id, cells, ground)` holds the cells blank under the host's
+id, and `rolltui_terminal_set_outside_pictures(term, fn, user)` gives the function told:
+
+- `ROLLTUI_OUTSIDE_DRAW` once the cells are blank on the screen and have stayed in place for
+  `picture_delay_ms`, after the frame is written, with the rectangle in the terminal's rows and
+  columns. The cursor is put back when `fn` returns. It is told again after anything removed the
+  picture: a resize or repaint, something drawn over it that has gone, the terminal entered again.
+- `ROLLTUI_OUTSIDE_CLEAR` when the picture is no longer where it was drawn: gone from the frame,
+  moved, drawn over, the screen about to be written whole, or the terminal left or handed to a
+  program. It comes before the frame that writes the cells again; the host removes what text does
+  not cover, such as a kitty placement or a window over the terminal. Freeing the terminal clears
+  what is still drawn.
+
+A stop sent from the shell (Ctrl-Z) leaves from a signal handler, which tells nothing; the clear
+comes when the program continues, then the draw.
+
 An `image:<path>` window shows a picture, centred: the one `rolltui_windows_bind_image` bound
 under that name, or the file the path names (relative to the preset directory, as `file:` is),
 read again when it changes. With workers lent (`rolltui_windows_set_tasks`) the file is read and
