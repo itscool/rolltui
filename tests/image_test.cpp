@@ -190,6 +190,53 @@ void test_detection() {
     rolltui_termfacts_from_env(&e, &f);
     return static_cast<int>(f.images);
   };
+  // BEHIND TMUX, BY WHAT TMUX SAYS (`rolltui_termfacts_apply_tmux`): the terminal outside it, and whether the pane lets escapes
+  // through (`allow-passthrough`, read and never set)
+  auto behind = [](const char* answer, const char* kitty_env = nullptr, const char* force = nullptr, bool da1_sixel = false) {
+    RolltuiTermEnv e{};
+    e.term = "tmux-256color";
+    e.tmux = "/tmp/tmux,1,0";
+    e.kitty_window_id = kitty_env;
+    e.force_images = force;
+    RolltuiTermFacts f{};
+    rolltui_termfacts_from_env(&e, &f);
+    rolltui_termfacts_apply_tmux(&f, answer, std::strlen(answer));
+    if (da1_sixel) {
+      RolltuiTermReplies r{};
+      char da[] = "\x1b[?1;2;4c";
+      rolltui_termreplies_take(da, std::strlen(da), 0, &r);
+      rolltui_termfacts_apply_replies(&f, &r, ROLLTUI_TERMQ_ALL);
+    }
+    return f;
+  };
+  {
+    RolltuiTermFacts f = behind("xterm-kitty|kitty 0.43.1|256,RGB,clipboard|on\n");
+    check(f.images == ROLLTUI_IMAGES_KITTY && std::string(f.outer) == "kitty 0.43.1" && f.passthrough == 1,
+          "behind tmux in kitty with passthrough on: kitty's placeholders, the outer terminal named [" + std::string(f.outer) + "]");
+    f = behind("xterm-kitty|kitty 0.43.1|256,RGB|off");
+    check(f.images == ROLLTUI_IMAGES_BLOCKS && f.passthrough == 0, "…with it off, blocks: never pictures that cannot arrive");
+    check(behind("xterm-kitty|kitty 0.43.1|256,RGB|all").images == ROLLTUI_IMAGES_KITTY, "…`all` passes them too");
+    f = behind("xterm-ghostty||256,RGB|");
+    check(f.images == ROLLTUI_IMAGES_KITTY && std::string(f.outer) == "xterm-ghostty" && f.passthrough == -1,
+          "a tmux before 3.3 (no terminal type, no such option) passes every escape: placeholders, named by its TERM");
+    f = behind("xterm-256color|iTerm2 3.5.0|256,RGB|on", "3");
+    check(f.images == ROLLTUI_IMAGES_BLOCKS && f.images_source == ROLLTUI_FACT_ENV,
+          "a kitty window's variable kept from before is not believed when tmux names another terminal");
+    f = behind("foot|foot(1.16.2)|256,RGB,sixel,sync|off", nullptr, nullptr, true);
+    check(f.images == ROLLTUI_IMAGES_SIXEL, "an outer terminal that draws sixel, and a tmux that says it does: tmux's own sixel, sent to tmux");
+    f = behind("xterm-kitty|kitty 0.43.1|256,RGB|off", nullptr, nullptr, true);
+    check(f.images == ROLLTUI_IMAGES_BLOCKS, "…never where the outer terminal cannot draw it, whatever tmux says of itself");
+    f = behind("oldname");
+    check(f.images == ROLLTUI_IMAGES_BLOCKS && f.outer[0] == 0 && f.passthrough == -1, "an answer not in tmux's shape changes nothing");
+    f = behind("xterm-kitty|kitty 0.43.1|256|off", nullptr, "kitty");
+    check(f.images == ROLLTUI_IMAGES_KITTY && f.images_source == ROLLTUI_FACT_FORCED && std::string(f.outer) == "kitty 0.43.1",
+          "a way chosen outright stays chosen; the outer terminal is still named");
+    RolltuiTermEnv bare{};
+    bare.term = "xterm-kitty";
+    RolltuiTermFacts g{};
+    rolltui_termfacts_from_env(&bare, &g);
+    check(g.outer[0] == 0 && g.passthrough == -1, "outside tmux there is no outer terminal, and passthrough is not known");
+  }
   check(pick_in("1234.pts-0.host", nullptr, nullptr) == ROLLTUI_IMAGES_BLOCKS, "inside GNU screen in a kitty window, blocks: screen passes no tmux wrapper");
   check(pick_in(nullptr, "0", nullptr) == ROLLTUI_IMAGES_BLOCKS, "…inside Zellij, blocks");
   check(pick_in(nullptr, nullptr, "/tmp/nvim.sock") == ROLLTUI_IMAGES_BLOCKS, "…and inside Neovim's terminal, blocks, whatever it inherited");

@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -815,13 +816,48 @@ int main() {
     // Behind tmux the answers are used but never remembered or trusted.
     RolltuiTerminalOptions o3;
     o3.cache_dir = dir.c_str();
-    const std::vector<std::pair<const char*, const char*>> tmux_env = {{"TERM", "tmux-256color"}, {"TMUX", "/tmp/tmux-501/default,1,0"}};
+    const std::vector<std::pair<const char*, const char*>> tmux_env = {{"TERM", "tmux-256color"}, {"TMUX", "/tmp/rolltui-no-tmux/default,1,0"}};
     RolltuiTermFacts f{};
     h = with_terminal(kGhostty, tmux_env, o3, [&](RolltuiTerminal* t) { f = facts_of(t); });
     check(f.depth == ROLLTUI_DEPTH_TRUECOLOR && f.depth_source == ROLLTUI_FACT_PROBE, "behind tmux the terminal's answers are used");
     check(!file_exists(dir + "/terminal-facts.json"), "…but not remembered: the terminal it is attached to can change without the environment changing");
     h = with_terminal(kGhostty, tmux_env, o3, [](RolltuiTerminal*) {});
     check(h.asked_da(), "…so it asks again next time");
+
+    // BEHIND TMUX, TMUX IS ASKED what terminal is outside it and whether the pane passes escapes; the person's tmux is never set.
+    {
+      const std::string bin = make_dir("faketmux");
+      const std::string tlog = bin + "/tmux.log";
+      {
+        FILE* sh = std::fopen((bin + "/tmux").c_str(), "w");
+        std::fputs("#!/bin/sh\necho \"$*\" >> \"$FAKE_TMUX_LOG\"\n"
+                   "case \"$1\" in display-message) echo 'xterm-kitty|kitty 0.43.1|256,RGB,clipboard|off' ;; esac\nexit 0\n", sh);
+        std::fclose(sh);
+      }
+      ::chmod((bin + "/tmux").c_str(), 0700);
+      const std::string old_path = std::getenv("PATH") ? std::getenv("PATH") : "";
+      const std::string fake_path = bin + ":" + old_path;
+      const std::vector<std::pair<const char*, const char*>> fake_env = {
+          {"TERM", "tmux-256color"}, {"TMUX", "/tmp/rolltui-no-tmux/default,1,0"}, {"TMUX_PANE", "%5"},
+          {"FAKE_TMUX_LOG", tlog.c_str()}, {"PATH", fake_path.c_str()}};
+      RolltuiTermFacts tf{};
+      with_terminal(kGhostty, fake_env, o3, [&](RolltuiTerminal* t) { tf = facts_of(t); });
+      ::setenv("PATH", old_path.c_str(), 1);
+      ::unsetenv("TMUX_PANE");
+      ::unsetenv("FAKE_TMUX_LOG");
+      std::string log;
+      if (FILE* in = std::fopen(tlog.c_str(), "r")) {
+        char b[512];
+        std::size_t k;
+        while ((k = std::fread(b, 1, sizeof b, in)) > 0) log.append(b, k);
+        std::fclose(in);
+      }
+      check(log.find("display-message -p -t %5 #{client_termname}|#{client_termtype}|#{client_termfeatures}|#{allow-passthrough}") != std::string::npos,
+            "behind tmux, tmux is asked for this pane's outer terminal and passthrough [" + log + "]");
+      check(log.find("set") == std::string::npos, "…and nothing of tmux's is set");
+      check(std::string(tf.outer) == "kitty 0.43.1" && tf.passthrough == 0 && tf.images == ROLLTUI_IMAGES_BLOCKS,
+            "…its answer kept: the outer terminal named, passthrough off, so blocks [" + std::string(tf.outer) + "]");
+    }
   }
 
   // ---- PICTURES AND PIXELS FOR A TERMINAL NO NAME TELLS OF: kitty's query, a cell's report, remembered; a host's own cell size ----

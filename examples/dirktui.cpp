@@ -2962,6 +2962,12 @@ int check_terminal_command() {
                                         "iTerm2's protocol", "sixel"}; /* by ROLLTUI_IMAGES_*, 0 not yet decided */
     const char* way = f.images <= ROLLTUI_IMAGES_SIXEL ? kWays[f.images] : kWays[0];
     std::printf("  pictures     %s   (%s)\n", way, fact_source(f.images_source));
+    if (f.outer[0]) { /* behind tmux: the terminal outside it, as tmux says, and whether escapes reach it */
+      std::printf("  tmux         inside it, on %s; escapes passed through: %s\n", f.outer,
+                  f.passthrough == 1 ? "on" : f.passthrough == 0 ? "off (tmux's allow-passthrough)" : "yes (a tmux before the option)");
+      const bool kitty_out = std::strstr(f.outer, "kitty") || std::strstr(f.outer, "ghostty");
+      if (f.passthrough == 0 && kitty_out) std::printf("               kitty's pictures need it on:  tmux set -g allow-passthrough on\n");
+    }
     if (f.cell_w && f.cell_h) std::printf("  cell         %d x %d pixels\n", f.cell_w, f.cell_h);
     else std::printf("  cell         (its size in pixels was not given: taken as about twice as tall as wide)\n");
   }

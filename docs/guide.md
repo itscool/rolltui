@@ -1139,8 +1139,11 @@ would take, for centring.
 The way is chosen by the terminal's name (`TERM`, `TERM_PROGRAM`, then its XTVERSION answer). A
 terminal no name tells of is asked: kitty's protocol where it answers kitty's picture query, then
 sixel where its Primary DA names it, then blocks. What it said is remembered with the rest of its
-answers. Inside tmux, pictures are drawn in blocks unless the window is kitty's, when
-the placeholders and their pixels are passed through. `ROLLTUI_IMAGES` (`blocks`, `kitty`,
+answers. Inside tmux, tmux is asked what terminal is outside it and whether the pane passes
+escapes through (`allow-passthrough`, read and never set): kitty's placeholders and their pixels
+are passed through to kitty or Ghostty where it does; tmux draws sixel itself where the outer
+terminal draws sixel and tmux's Primary DA names it; anything else is drawn in blocks. Inside
+GNU screen, Zellij and Neovim's terminal, pictures are drawn in blocks. `ROLLTUI_IMAGES` (`blocks`, `kitty`,
 `iterm2`, `sixel`) or `RolltuiTerminalOptions.images` chooses outright, and
 `RolltuiTermFacts.images` says what was chosen, and `dirktui check-terminal` prints it. A cell's
 size in pixels (`cell_w`, `cell_h`) is the terminal's own report (`CSI 16 t`) where its window

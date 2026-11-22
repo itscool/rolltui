@@ -135,6 +135,7 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
   int forced, m;
   memset(f, 0, sizeof *f);
   f->keyboard = ROLLTUI_PROTOCOL_LEGACY;
+  f->passthrough = -1;
 
   /* DEPTH */
   f->depth = rolltui_detect_color_depth(e->colorterm, e->term, NULL);
@@ -165,7 +166,8 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
 
   /* PICTURES: by what the terminal is called, then (rolltui_termfacts_apply_replies) by whether its Primary DA names sixel.
    * Behind tmux only kitty's placeholders get through (passed through in tmux's wrapper, and they are cells), and only when the window
-   * it runs in is kitty's. GNU screen passes no such wrapper, and Zellij and Neovim's terminal draw none of the outer terminal's
+   * it runs in is kitty's; what tmux says of the terminal outside it then decides (`rolltui_termfacts_apply_tmux`), and tmux's own
+   * sixel is its Primary DA's to name. GNU screen passes no such wrapper, and Zellij and Neovim's terminal draw none of the outer terminal's
    * pictures, so all three get blocks whatever names they inherited. */
   {
     const char* fi = e->force_images;
@@ -648,6 +650,48 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
         f->images = ROLLTUI_IMAGES_SIXEL, f->images_source = ROLLTUI_FACT_PROBE;
     }
   }
+}
+
+void rolltui_termfacts_apply_tmux(RolltuiTermFacts* f, const char* answer, size_t len) {
+  char field[4][128];
+  size_t i, k = 0, at = 0;
+  int outer_kitty, sixel = 0;
+  if (!f || !answer) return;
+  memset(field, 0, sizeof field);
+  for (i = 0; i < len && answer[i] != '\n'; ++i) {
+    if (answer[i] == '|') {
+      if (++k == 4) return; /* more fields than asked for: not tmux's answer */
+      at = 0;
+    } else if (at + 1 < sizeof field[0]) {
+      field[k][at++] = answer[i];
+    }
+  }
+  if (k != 3 || !field[0][0]) return; /* not the four fields, or no outer terminal named: not tmux's answer */
+  {
+    const char* name = field[1][0] ? field[1] : field[0];
+    size_t n = strlen(name);
+    if (n >= sizeof f->outer) n = sizeof f->outer - 1; /* a name past 63 bytes is cut: it is for a person to read */
+    memcpy(f->outer, name, n);
+    f->outer[n] = 0;
+  }
+  /* no such option: a tmux before 3.3, which passes every escape through */
+  f->passthrough = !field[3][0] ? (signed char)-1
+                                : (signed char)(strcmp(field[3], "on") == 0 || strcmp(field[3], "all") == 0 || strcmp(field[3], "1") == 0);
+  {
+    const char* feat = field[2];
+    while (*feat) { /* a comma list: "256,RGB,bpaste,clipboard,sixel,sync" */
+      const char* end = strchr(feat, ',');
+      const size_t n = end ? (size_t)(end - feat) : strlen(feat);
+      if (n == 5 && memcmp(feat, "sixel", 5) == 0) sixel = 1;
+      feat += n + (end ? 1 : 0);
+    }
+  }
+  if (f->images_source == ROLLTUI_FACT_FORCED) return;
+  outer_kitty = strstr(field[0], "kitty") || strstr(field[0], "ghostty") || starts_ci(field[1], "kitty") || starts_ci(field[1], "ghostty");
+  outer_kitty = outer_kitty && f->passthrough != 0;
+  f->images = outer_kitty ? ROLLTUI_IMAGES_KITTY : ROLLTUI_IMAGES_BLOCKS;
+  /* kitty's by passthrough, decided; otherwise tmux's Primary DA says whether it draws sixel, where the outer terminal can */
+  f->images_source = outer_kitty || !sixel ? ROLLTUI_FACT_ENV : ROLLTUI_FACT_DEFAULT;
 }
 
 /* ---- remembered answers --------------------------------------------------------------------- */

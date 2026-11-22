@@ -547,8 +547,9 @@ int main() {
     // Then the terminal: the window's name in tmux, the clipboard read (PUBLIC 633); the last copy kept and read back, the system
     // clipboard read (INTERNAL 953).
     // Then pictures: a picture's filter, a cell's pixels set, a held picture's wait (PUBLIC 636); a temp file written (INTERNAL 954).
-    // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638).
-    check(totals["PUBLIC"] == 638 && totals["INTERNAL"] == 954 && totals.size() == 2,
+    // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638); what tmux says of the
+    // terminal outside it (INTERNAL 955).
+    check(totals["PUBLIC"] == 638 && totals["INTERNAL"] == 955 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

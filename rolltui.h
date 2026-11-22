@@ -4788,6 +4788,10 @@ typedef struct RolltuiTermFacts {
    * the PC's glyphs only, so braille, quadrants, eighths, rounded and heavy lines and a few symbols are drawn as the nearest it has,
    * and the cursor's shape is not sent. */
   unsigned char console;
+  /* BEHIND TMUX, what tmux says of the terminal outside it: its name ("kitty 0.43.1", else its TERM), and whether the pane lets an
+   * escape through to it (tmux's `allow-passthrough`, read and never set): 1 on or all, 0 off, -1 not known. "" and -1 elsewhere. */
+  char outer[64];
+  signed char passthrough;
 } RolltuiTermFacts;
 
 /* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.

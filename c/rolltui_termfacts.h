@@ -210,6 +210,12 @@ size_t rolltui_termreplies_take(char* buf, size_t len, int expect_cpr, RolltuiTe
 /* Folds what the terminal answered into the facts, for the questions `asked`. A FORCED fact is
  * never touched; everything else takes the terminal's word over the environment's. */
 void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermReplies* r, unsigned asked);
+/* BEHIND TMUX: the question its answer comes from, `tmux display-message -p` with this format, and what the answer says of pictures
+ * (`RolltuiTermFacts.outer`, `.passthrough`). Kitty's placeholders where the outer terminal is kitty's or Ghostty's and the pane
+ * passes escapes through; otherwise tmux's own sixel where the outer terminal draws sixel (its Primary DA then decides, as tmux
+ * answers it), else blocks. A FORCED way, and an answer not in this shape, change nothing. */
+#define ROLLTUI_TMUX_FACTS_FORMAT "#{client_termname}|#{client_termtype}|#{client_termfeatures}|#{allow-passthrough}"
+void rolltui_termfacts_apply_tmux(RolltuiTermFacts* f, const char* answer, size_t len);
 
 /* ---- remembered answers ---------------------------------------------------------------------- */
 typedef struct RolltuiTermCacheEntry {

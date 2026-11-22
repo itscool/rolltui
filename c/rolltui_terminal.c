@@ -782,6 +782,15 @@ static void init_facts(RolltuiTerminal* t, const RolltuiTerminalOptions* opts) {
     t->facts.images_source = ROLLTUI_FACT_FORCED;
   }
   t->multiplexed = rolltui_termenv_multiplexed(&t->env);
+  if (t->env.tmux && t->tty) { /* BEHIND TMUX: the terminal outside it and whether escapes reach it, as tmux says */
+    const char* pane = getenv("TMUX_PANE");
+    const char* a[] = {"display-message", "-p", "-t", pane && *pane ? pane : "", ROLLTUI_TMUX_FACTS_FORMAT, NULL};
+    const char* b[] = {"display-message", "-p", ROLLTUI_TMUX_FACTS_FORMAT, NULL};
+    RolltuiStr said;
+    memset(&said, 0, sizeof said);
+    if (tmux_says(pane && *pane ? a : b, &said)) rolltui_termfacts_apply_tmux(&t->facts, said.p, said.n);
+    rolltui_str_free(&said);
+  }
   /* Over ssh a reply takes a network round trip, and 80 ms is a timeout that a working terminal
    * across a slow link would miss — after which the keyboard is judged Legacy and the answers
    * remembered as "silent". Wait for the wire when there is one. */
