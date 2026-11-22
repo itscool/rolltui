@@ -23,6 +23,7 @@
 //
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <unistd.h>
 #include <cstdint>
 #include <functional>
@@ -1370,8 +1371,183 @@ void test_line_numbers_and_highlighting() {
 
 }  // namespace
 
+// ---- VIM'S MODES: with the vim preset, Escape leaves typing for normal mode --------------------------------------------------
+const RolltuiBindings* vim_keys() { return rolltui_bindings_shipped(rolltui_test::test_context(), "vim", 3); }
+InputAction vhandle(RolltuiInput* in, const RolltuiEvent& e) {
+  return static_cast<InputAction>(rolltui_input_handle(in, &e, vim_keys(), &kActions_ref(), 0));
+}
+void vkeys(RolltuiInput* in, std::string_view s) {
+  for (char c : s) vhandle(in, chr(static_cast<unsigned char>(c)));
+}
+InputAction vmodal(RolltuiInput* in, const char* action) { return static_cast<InputAction>(rolltui_input_perform_modal(in, action, std::strlen(action))); }
+int caret_shape(RolltuiInput* in) {
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiFrame* f = rolltui_frame_new(40, 1, styles[0]);
+  rolltui_input_draw(in, f, draw_scratch(), styles, &kRoles, 1);
+  const int shape = rolltui_frame_cursor_shape(f);
+  rolltui_frame_free(f);
+  return shape;
+}
+
+void test_vim_modes() {
+  check(vim_keys() != nullptr, "the vim preset is shipped");
+  {
+    InputPtr in = fresh();
+    set_text(in.get(), "hello world");
+    handle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+    check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_INSERT, "with the default keys Escape leaves nothing: there are no modes");
+  }
+  InputPtr in = fresh();
+  set_text(in.get(), "hello world");
+  check(caret_shape(in.get()) == ROLLTUI_CARET_BAR, "typing: a bar");
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_NORMAL && rolltui_input_caret(in.get()) == 10,
+        "Escape: normal mode, the caret back onto the last character [" + std::to_string(rolltui_input_caret(in.get())) + "]");
+  check(caret_shape(in.get()) == ROLLTUI_CARET_BLOCK, "…a block");
+  vkeys(in.get(), "z");
+  check(text_of(in.get()) == "hello world", "a key normal mode does not bind types nothing");
+  vkeys(in.get(), "x");
+  check(text_of(in.get()) == "hello worl" && rolltui_input_caret(in.get()) == 9, "x deletes under the caret, which stays on a character");
+  vkeys(in.get(), "0");
+  check(rolltui_input_caret(in.get()) == 0, "0: the line's start");
+  vkeys(in.get(), "w");
+  check(rolltui_input_caret(in.get()) == 6, "w: the start of the next word");
+  vkeys(in.get(), "e");
+  check(rolltui_input_caret(in.get()) == 9, "e: the end of the word");
+  vkeys(in.get(), "b");
+  check(rolltui_input_caret(in.get()) == 6, "b: back to its start");
+  vkeys(in.get(), "i");
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_INSERT, "i: typing again");
+  vkeys(in.get(), "big ");
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(text_of(in.get()) == "hello big worl" && rolltui_input_caret(in.get()) == 9, "typed before the caret; Escape steps back onto it");
+  vkeys(in.get(), "A");
+  vkeys(in.get(), "d");
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(text_of(in.get()) == "hello big world", "A: typing at the line's end");
+  vkeys(in.get(), "0");
+  check(vmodal(in.get(), "normal.delete_word") == InputAction::Handled && text_of(in.get()) == "big world",
+        "`d w` deletes to the next word's start [" + std::string(text_of(in.get())) + "]");
+  vkeys(in.get(), "P");
+  check(text_of(in.get()) == "hello big world", "P puts back what was deleted, before the caret");
+  vkeys(in.get(), "u");
+  check(text_of(in.get()) == "big world", "u undoes");
+  RolltuiEvent ctrl_r = chr('r');
+  ctrl_r.key.ctrl = 1;
+  vhandle(in.get(), ctrl_r);
+  check(text_of(in.get()) == "hello big world", "Ctrl-R does it again");
+  vkeys(in.get(), "$");
+  check(rolltui_input_caret(in.get()) == 14, "$: the last character");
+  vkeys(in.get(), "rD");
+  check(text_of(in.get()) == "hello big worlD" && rolltui_input_mode(in.get()) == ROLLTUI_INPUT_NORMAL, "r and a character replaces the one under the caret");
+  vkeys(in.get(), "0R");
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_REPLACE && caret_shape(in.get()) == ROLLTUI_CARET_UNDERLINE, "R: replace mode, an underline");
+  vkeys(in.get(), "J");
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(text_of(in.get()) == "Jello big worlD", "…typing over what is there");
+  vkeys(in.get(), "wv");
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_VISUAL && sel_of(in.get()) == "b", "v: visual, the character under the caret selected");
+  vkeys(in.get(), "e");
+  check(sel_of(in.get()) == "big", "…a motion grows it, both ends included");
+  vkeys(in.get(), "y");
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_NORMAL && rolltui_input_caret(in.get()) == 6, "y copies it and goes back to normal, the caret at its start");
+  vkeys(in.get(), "$p");
+  check(text_of(in.get()) == "Jello big worlDbig", "p puts it after the caret");
+  vkeys(in.get(), "0vlld");
+  check(text_of(in.get()) == "lo big worlDbig", "visual d deletes the selection");
+  vkeys(in.get(), "vl");
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(rolltui_input_mode(in.get()) == ROLLTUI_INPUT_NORMAL && sel_of(in.get()).empty(), "Escape in visual: back to normal, nothing selected");
+  vkeys(in.get(), "0C");
+  check(text_of(in.get()).empty() && rolltui_input_mode(in.get()) == ROLLTUI_INPUT_INSERT, "C: deletes to the end and types");
+  set_text(in.get(), "one\ntwo\nthree");
+  set_caret(in.get(), 5);
+  vhandle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(vmodal(in.get(), "normal.delete_line") == InputAction::Handled && text_of(in.get()) == "one\nthree", "`d d` deletes the line and its newline");
+  vkeys(in.get(), "i");
+  check(vmodal(in.get(), "normal.delete_line") == InputAction::Ignored && text_of(in.get()) == "one\nthree", "a normal command while typing is nothing");
+}
+
+// …AND IN A WINDOW, as a host has it: a sequence (`d w`) and a count (`2 w`) resolve in normal mode's scope, Escape is typing's to
+// leave and normal mode's to give up, so a second one closes the popup the field is in, and the bottom border names the mode.
+void test_vim_modes_in_a_window() {
+  RolltuiContext* c = rolltui_context_new();
+  rolltui_context_set_library_defaults(c);
+  rolltui_context_set_bindings(c, rolltui_bindings_shipped(c, "vim", 3));
+  constexpr std::string_view screen = R"({ "name": "v", "root": { "content": "text:the app" },
+    "popups": [ { "id": "ask", "x": "50%", "y": 2, "w": 30, "h": 3, "anchor": "top",
+                  "root": { "id": "field", "content": "input:q", "border": "rounded", "focusable": true } } ] })";
+  RolltuiLayoutReport rep{};
+  std::size_t nd = 0;
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(c, &nd);
+  RolltuiLayout* l = rolltui_load_layout_text(screen.data(), screen.size(), defaults, nd, rolltui_layout_default_hooks(), &rep);
+  rolltui_layout_report_release(&rep);
+  RolltuiWindows* w = rolltui_windows_new(c);
+  RolltuiWindowStack* st = rolltui_window_stack_new();
+  rolltui_window_stack_set_base(st, rolltui_layout_base(l));
+  rolltui_window_stack_set_level_fn(st, rolltui_windows_back, w); /* Escape closes one level, as every host wires it */
+  rolltui_window_stack_push_popup(st, l, "ask", 3);
+  rolltui_window_stack_focus(st, "field", 5);
+  rolltui_windows_bind_submit(w, "q", 1, [](void*, const char*, std::size_t) {}, nullptr, nullptr, 1); /* a field with somewhere to go */
+  rolltui_windows_sync(w, st);
+  RolltuiInput* in = rolltui_windows_input(w, "q", 1);
+  rolltui_input_set_text(in, "one two three", 13);
+  auto send = [&](const RolltuiEvent& e) {
+    RolltuiStr window{};
+    const unsigned char kind = rolltui_window_stack_route(st, &e, RolltuiRect{0, 0, 40, 10}, rolltui_bindings_shipped(c, "vim", 3),
+                                                          rolltui_stack_default_actions(), &window);
+    if (kind == ROLLTUI_ROUTE_DELIVER) rolltui_windows_handle(w, window.p ? window.p : "", window.n, &e);
+    rolltui_str_free(&window);
+    rolltui_windows_sync(w, st);
+    return kind;
+  };
+  auto keys = [&](std::string_view k) {
+    for (char ch : k) send(chr(static_cast<unsigned char>(ch)));
+  };
+  auto footer = [&]() {
+    RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+    rolltui_windows_autosize(w, st, RolltuiRect{0, 0, 40, 10});
+    rolltui_windows_layout(w, st, RolltuiRect{0, 0, 40, 10});
+    RolltuiFrame* f = rolltui_frame_new(40, 10, styles[0]);
+    RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
+    struct Slot { RolltuiWindows* w; RolltuiStyle* styles; } slot{w, styles};
+    rolltui_window_stack_compose(
+        st, f, RolltuiRect{0, 0, 40, 10}, styles, rolltui_layout_default_roles(),
+        [](void* cx, const RolltuiResolvedNode* rn, RolltuiFrame* fr) {
+          Slot* sl = static_cast<Slot*>(cx);
+          rolltui_windows_draw(sl->w, rn, fr, sl->styles, rolltui_windows_default_roles());
+        },
+        &slot, 0, cs);
+    RolltuiStr text{};
+    rolltui_frame_to_text(f, &text);
+    const std::string all = str_of(text);
+    rolltui_str_free(&text);
+    rolltui_compose_scratch_free(cs);
+    rolltui_frame_free(f);
+    return all;
+  };
+  check(send(key(ROLLTUI_KEY_ESCAPE)) == ROLLTUI_ROUTE_CLOSED_LEVEL && rolltui_input_mode(in) == ROLLTUI_INPUT_NORMAL &&
+            rolltui_window_stack_depth(st) == 2,
+        "Escape while typing in a popup closes a level: normal mode, the popup still open");
+  check(footer().find("NORMAL") != std::string::npos, "…the bottom border says NORMAL");
+  keys("0dw");
+  check(text_of(in) == "two three", "`d w` resolves as a sequence in normal mode's scope [" + std::string(text_of(in)) + "]");
+  keys("02w");
+  check(rolltui_input_caret(in) == 8, "…the caret two words on [" + std::to_string(rolltui_input_caret(in)) + "]");
+  keys("q");
+  check(text_of(in) == "two three" && rolltui_window_stack_depth(st) == 2, "a key normal mode does not bind is the field's, and reaches nothing else");
+  const unsigned char kind = send(key(ROLLTUI_KEY_ESCAPE));
+  check(kind == ROLLTUI_ROUTE_CLOSED_POPUP && rolltui_window_stack_depth(st) == 1, "a second Escape is not the field's: the popup closes");
+  rolltui_windows_free(w);
+  rolltui_window_stack_free(st);
+  rolltui_layout_free(l);
+  rolltui_context_free(c);
+}
+
 int main() {
   test_typing_and_grapheme_boundaries();
+  test_vim_modes();
+  test_vim_modes_in_a_window();
   test_control_characters_never_enter();
   test_word_motions();
   test_logical_line_keys();

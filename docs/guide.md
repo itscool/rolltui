@@ -494,6 +494,39 @@ Ctrl-D and Ctrl-U added in scrolling pages (both tables move half a page with th
 H, M and L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it.
 In the column browser those letters are keys rather than jumps to a name.
 
+### Vim's modes in a text field
+
+The `vim` preset gives every text field vim's modes. It binds `input.normal_mode` to Escape; the
+default preset binds it to nothing, so a field there has no modes.
+
+- Typing (insert mode) is as in any field, the caret a bar. Escape leaves for normal mode and puts
+  the caret back onto the character before it.
+- In normal mode a printable key types nothing: it is a command of the `normal` scope, or nothing,
+  and never reaches the program around the field. The caret is a block and sits on a character.
+  Key sequences (`d w`) and counts (`3 w`) resolve in this scope. The arrows, Enter and the
+  field's Ctrl keys work as they do while typing.
+- Escape in normal mode is not the field's: a popup the field is in closes, so a second Escape
+  closes what the first left in normal mode.
+- `v` starts visual mode, which selects from where it began to the caret, both characters
+  included; the motions grow it, and `y`, `d` (or `x`) and `c` act on it. Escape or `v` goes back
+  to normal mode.
+- `R` types over what is there (replace mode, the caret an underline); `r` and a character
+  replaces the one under the caret.
+- What `x`, `d` and `c` take, and what `y` copies, goes to the field's register, which `p` puts
+  after the caret and `P` before it.
+- A bordered field names its mode in the bottom border outside typing: NORMAL, VISUAL or REPLACE.
+  `rolltui_input_mode` gives it to a host.
+
+| Keys | What they do |
+|---|---|
+| `i`, `a`, `I`, `A` | type before the caret, after it, at the line's start, at its end |
+| `h`, `l`, `w`, `b`, `e`, `0` or `^`, `$`, `j`, `k` | move: a character, a word's start, back, a word's end, the line's ends, a line |
+| `x`, `X`, `d w`, `d b`, `d d`, `D` or `d $`, `d 0` | erase: the character, the one before, to the next word, back to this word's start, the line, to its end, to its start |
+| `c w`, `c c` or `S`, `C` or `c $`, `s` | erase and type: to the word's end, the line, to its end, the character |
+| `y y` or `Y`, `y w`, `p`, `P` | copy the line, to the next word; put after the caret, before it |
+| `u`, Ctrl-R | undo, redo |
+| `v`, `r`, `R` | visual mode, replace one character, replace mode |
+
 Elsewhere in the column browser a typed letter jumps to the next name starting with it, case and
 accents aside, and letters typed within a second of each other are the start of one name: `av`
 reaches `avocado.txt` past `alpha`.

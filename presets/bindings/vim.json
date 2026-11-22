@@ -87,7 +87,8 @@
     "input.select_all": [
       "alt+shift+a"
     ],
-    "input.clear_selection": [
+    "input.clear_selection": [],
+    "input.normal_mode": [
       "escape"
     ],
     "input.copy": [
@@ -402,6 +403,124 @@
     ],
     "theme.fix": [
       "ctrl+f"
+    ],
+    "normal.insert": [
+      "i"
+    ],
+    "normal.append": [
+      "a"
+    ],
+    "normal.insert_start": [
+      "shift+i"
+    ],
+    "normal.append_end": [
+      "shift+a"
+    ],
+    "normal.visual": [
+      "v"
+    ],
+    "normal.replace_char": [
+      "r"
+    ],
+    "normal.replace": [
+      "shift+r"
+    ],
+    "normal.left": [
+      "h"
+    ],
+    "normal.right": [
+      "l"
+    ],
+    "normal.word_right": [
+      "w"
+    ],
+    "normal.word_left": [
+      "b"
+    ],
+    "normal.word_end": [
+      "e"
+    ],
+    "normal.line_start": [
+      "0",
+      "^"
+    ],
+    "normal.line_end": [
+      "$"
+    ],
+    "normal.up": [
+      "k"
+    ],
+    "normal.down": [
+      "j"
+    ],
+    "normal.delete": [
+      "x"
+    ],
+    "normal.backspace": [
+      "shift+x"
+    ],
+    "normal.delete_word": [
+      "d w"
+    ],
+    "normal.delete_word_back": [
+      "d b"
+    ],
+    "normal.delete_line": [
+      "d d"
+    ],
+    "normal.delete_to_end": [
+      "shift+d",
+      "d $"
+    ],
+    "normal.delete_to_start": [
+      "d 0"
+    ],
+    "normal.change_word": [
+      "c w"
+    ],
+    "normal.change_line": [
+      "c c",
+      "shift+s"
+    ],
+    "normal.change_to_end": [
+      "shift+c",
+      "c $"
+    ],
+    "normal.substitute": [
+      "s"
+    ],
+    "normal.yank_line": [
+      "y y",
+      "shift+y"
+    ],
+    "normal.yank_word": [
+      "y w"
+    ],
+    "normal.paste_after": [
+      "p"
+    ],
+    "normal.paste_before": [
+      "shift+p"
+    ],
+    "normal.undo": [
+      "u"
+    ],
+    "normal.redo": [
+      "ctrl+r"
+    ],
+    "visual.yank": [
+      "y"
+    ],
+    "visual.delete": [
+      "d",
+      "x"
+    ],
+    "visual.change": [
+      "c"
+    ],
+    "visual.normal": [
+      "escape",
+      "v"
     ],
     "dialog.next": [
       "tab",

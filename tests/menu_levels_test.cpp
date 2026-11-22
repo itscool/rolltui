@@ -38,13 +38,13 @@ int main() {
   }
 
   // These hold NO menu: a text page, a file, a rows list, an error, the column browser (its levels are columns, which Left steps
-  // through), a single-line input, the transcript, a gauge and the message history. Help is the keys sheet, below.
-  const std::set<std::string> flat = {"Text", "File", "Rows", "Error", "Picker", "Input", "Transcript", "Gauge", "Messages", "Output", "Image", "Chart"};
+  // through), the transcript, a gauge and the message history. Help is the keys sheet, below.
+  const std::set<std::string> flat = {"Text", "File", "Rows", "Error", "Picker", "Transcript", "Gauge", "Messages", "Output", "Image", "Chart"};
   // These hold levels of their own, so each closes one before the popup closes: the menu and the theme editor, the keys sheet (a
-  // key being taken, a load or a save, then its list's filter) that `help` and `keys` both are, and the list (its filter, then its
-  // marks).
-  const std::set<std::string> menus = {"Menu", "Theme", "Keys", "List"};
+  // key being taken, a load or a save, then its list's filter) that `help` and `keys` both are, the list (its filter, then its
+  // marks), and the input where the keys preset has vim's modes (typing and visual mode, then normal mode).
+  const std::set<std::string> menus = {"Menu", "Theme", "Keys", "List", "Input"};
   check(no_levels == flat, "the kinds that declare `no levels` are exactly the ones that hold no menu: adding one, or giving one a menu, means deciding here [" + std::to_string(no_levels.size()) + " found]");
-  check(has_back == menus, "the kinds with levels each have a `back`: Menu, Theme, Keys and List [" + std::to_string(has_back.size()) + " found]");
+  check(has_back == menus, "the kinds with levels each have a `back`: Menu, Theme, Keys, List and Input [" + std::to_string(has_back.size()) + " found]");
   return testkit::report("rolltui_menu_levels_test");
 }

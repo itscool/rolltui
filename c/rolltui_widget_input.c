@@ -67,6 +67,11 @@ struct RolltuiInput {
   RolltuiStr kill;
   int last_kill; /* 1 after a forward kill, -1 after a backward one, 0 after anything else */
   int overwrite;
+  /* VIM'S MODES (`input.normal_mode` bound): ROLLTUI_INPUT_*; where visual began; a character awaited to replace the one under the
+   * caret (`normal.replace_char`) */
+  int mode;
+  size_t visual_from;
+  int awaiting_replace;
 
   /* the highlighted runs, rebuilt when the text or the language changes */
   RolltuiSyntax* syntax; /* BORROWED */
@@ -1426,8 +1431,9 @@ enum {
   CMD_LINE_START, CMD_LINE_END, CMD_UP, CMD_DOWN, CMD_SEL_LEFT, CMD_SEL_RIGHT, CMD_SEL_WORD_LEFT,
   CMD_SEL_WORD_RIGHT, CMD_SEL_LINE_START, CMD_SEL_LINE_END, CMD_SEL_UP, CMD_SEL_DOWN, CMD_SELECT_ALL,
   CMD_CLEAR_SEL, CMD_COPY, CMD_EOF, CMD_UNDO, CMD_REDO, CMD_YANK, CMD_TRANSPOSE_CHARS, CMD_TRANSPOSE_WORDS,
-  CMD_UPCASE_WORD, CMD_DOWNCASE_WORD, CMD_CAPITALIZE_WORD, CMD_OVERWRITE
+  CMD_UPCASE_WORD, CMD_DOWNCASE_WORD, CMD_CAPITALIZE_WORD, CMD_OVERWRITE, CMD_NORMAL_MODE
 };
+static void enter_normal(RolltuiInput* in);
 
 /* Only spaces, tabs and newlines: what `refuse_empty` will not submit. */
 static int blank(const RolltuiInput* in) {
@@ -1521,6 +1527,7 @@ static unsigned char run_command(RolltuiInput* in, int cmd) {
     case CMD_DOWNCASE_WORD: rolltui_input_change_case(in, ROLLTUI_CASE_LOWER); return ROLLTUI_INPUT_HANDLED;
     case CMD_CAPITALIZE_WORD: rolltui_input_change_case(in, ROLLTUI_CASE_TITLE); return ROLLTUI_INPUT_HANDLED;
     case CMD_OVERWRITE: in->overwrite = !in->overwrite; return ROLLTUI_INPUT_HANDLED;
+    case CMD_NORMAL_MODE: enter_normal(in); return ROLLTUI_INPUT_HANDLED;
     default: return ROLLTUI_INPUT_IGNORED;
   }
 }
@@ -1532,11 +1539,211 @@ int rolltui_input_perform(RolltuiInput* in, const RolltuiInputActions* actions, 
   return cmd < 0 ? ROLLTUI_INPUT_IGNORED : run_command(in, cmd);
 }
 
+/* ---- vim's modes ------------------------------------------------------------------------------
+ * NORMAL MODE exists where the keys preset binds `input.normal_mode` (vim's, on Escape): from typing, that key leaves for normal
+ * mode, where a printable key is a command of the `normal` scope and types nothing, and visual mode adds the `visual` scope's
+ * operators on what it selects. Escape in normal mode is not the field's, so a popup it sits in closes. The caret sits ON a
+ * character in normal and visual mode, as vim's does. */
+static void clamp_normal(RolltuiInput* in) {
+  const size_t ls = line_start(in, in->caret), le = line_end(in, in->caret);
+  if (in->caret >= le && le > ls) rolltui_input_set_caret(in, prev_boundary(in, le), 0);
+}
+/* visual's selection: from where it began to the caret, both characters included */
+static void visual_select(RolltuiInput* in) {
+  const size_t a = in->visual_from < in->caret ? in->visual_from : in->caret;
+  const size_t e = in->visual_from < in->caret ? in->caret : in->visual_from;
+  in->sel.anchor = a;
+  in->sel.head = e < in->text.n && in->text.p[e] != '\n' ? next_boundary(in, e) : e;
+  in->sel.active = 1;
+}
+static void enter_normal(RolltuiInput* in) {
+  const int from_typing = in->mode == ROLLTUI_INPUT_INSERT || in->mode == ROLLTUI_INPUT_REPLACE;
+  in->mode = ROLLTUI_INPUT_NORMAL;
+  in->overwrite = 0;
+  in->awaiting_replace = 0;
+  memset(&in->sel, 0, sizeof in->sel);
+  if (from_typing && in->caret > line_start(in, in->caret)) rolltui_input_set_caret(in, prev_boundary(in, in->caret), 0);
+  clamp_normal(in);
+}
+static void enter_insert(RolltuiInput* in, int replace) {
+  in->mode = replace ? ROLLTUI_INPUT_REPLACE : ROLLTUI_INPUT_INSERT;
+  in->overwrite = replace;
+  memset(&in->sel, 0, sizeof in->sel);
+}
+/* vim's `w`: the start of the next word */
+static size_t next_word_start(const RolltuiInput* in, size_t p) {
+  if (!is_space_at(in, p)) p = rolltui_input_word_right_of(in, p);
+  while (p < in->text.n && is_space_at(in, p) && in->text.p[p] != '\n') p = next_boundary(in, p);
+  return p;
+}
+/* vim's `e`: the last character of this word, or of the next one when the caret is already at the end of this one */
+static size_t word_end_char(const RolltuiInput* in, size_t p) {
+  const size_t e = rolltui_input_word_right_of(in, p < in->text.n ? next_boundary(in, p) : p);
+  return e > 0 ? prev_boundary(in, e) : 0;
+}
+/* what a deletion takes goes to the register (the kill buffer), replacing what was there: vim's unnamed register */
+static void cut(RolltuiInput* in, size_t b, size_t e) {
+  WITH_PRE(in, {
+    in->last_kill = 0;
+    kill_range(in, b, e, 1);
+    in->last_kill = 0;
+    note_edit(in, EDIT_ATOMIC, &pre);
+  });
+}
+static void copy_range(RolltuiInput* in, size_t b, size_t e) {
+  if (b < e && !in->opt.secret) rolltui_str_set(&in->kill, in->text.p + b, e - b);
+  in->last_kill = 0;
+}
+
+int rolltui_input_mode(const RolltuiInput* in) { return in ? in->mode : ROLLTUI_INPUT_INSERT; }
+
+unsigned char rolltui_input_perform_modal(RolltuiInput* in, const char* action, size_t len) {
+  const size_t ls = line_start(in, in->caret), le = line_end(in, in->caret);
+  size_t b = 0, e = 0;
+#define IS(name) (len == sizeof name - 1 && memcmp(action, name, len) == 0)
+#define MOVE(expr)                                  \
+  do {                                              \
+    rolltui_input_set_caret(in, (expr), 0);         \
+    clamp_normal(in);                               \
+    if (in->mode == ROLLTUI_INPUT_VISUAL) visual_select(in); \
+  } while (0)
+  if (!in || !action) return ROLLTUI_INPUT_IGNORED;
+  in->has_goal = in->has_goal && (IS("normal.up") || IS("normal.down"));
+  if (in->mode == ROLLTUI_INPUT_VISUAL && len > 7 && memcmp(action, "visual.", 7) == 0) {
+    visual_select(in);
+    b = in->sel.anchor, e = in->sel.head;
+    if (IS("visual.yank")) {
+      copy_range(in, b, e);
+      enter_normal(in);
+      rolltui_input_set_caret(in, b, 0);
+    } else if (IS("visual.delete")) {
+      cut(in, b, e);
+      enter_normal(in);
+    } else if (IS("visual.change")) {
+      cut(in, b, e);
+      enter_insert(in, 0);
+    } else if (IS("visual.normal")) {
+      enter_normal(in);
+    } else {
+      return ROLLTUI_INPUT_IGNORED;
+    }
+    return ROLLTUI_INPUT_HANDLED;
+  }
+  if (in->mode != ROLLTUI_INPUT_NORMAL && in->mode != ROLLTUI_INPUT_VISUAL) return ROLLTUI_INPUT_IGNORED;
+  if (IS("normal.left")) MOVE(in->caret > ls ? prev_boundary(in, in->caret) : in->caret);
+  else if (IS("normal.right")) MOVE(in->caret < le ? next_boundary(in, in->caret) : in->caret);
+  else if (IS("normal.word_right")) MOVE(next_word_start(in, in->caret));
+  else if (IS("normal.word_left")) MOVE(rolltui_input_word_left_of(in, in->caret));
+  else if (IS("normal.word_end")) MOVE(word_end_char(in, in->caret));
+  else if (IS("normal.line_start")) MOVE(ls);
+  else if (IS("normal.line_end")) MOVE(le);
+  else if (IS("normal.up") || IS("normal.down")) {
+    if (IS("normal.up")) rolltui_input_move_up(in, 0);
+    else rolltui_input_move_down(in, 0);
+    clamp_normal(in);
+    if (in->mode == ROLLTUI_INPUT_VISUAL) visual_select(in);
+  } else if (in->mode == ROLLTUI_INPUT_VISUAL) {
+    return ROLLTUI_INPUT_IGNORED; /* in visual mode only the motions above, and the `visual` scope */
+  } else if (IS("normal.insert")) enter_insert(in, 0);
+  else if (IS("normal.append")) {
+    if (in->caret < le) rolltui_input_set_caret(in, next_boundary(in, in->caret), 0);
+    enter_insert(in, 0);
+  } else if (IS("normal.insert_start")) {
+    rolltui_input_set_caret(in, ls, 0);
+    enter_insert(in, 0);
+  } else if (IS("normal.append_end")) {
+    rolltui_input_set_caret(in, le, 0);
+    enter_insert(in, 0);
+  } else if (IS("normal.visual")) {
+    in->mode = ROLLTUI_INPUT_VISUAL;
+    in->visual_from = in->caret;
+    visual_select(in);
+  } else if (IS("normal.replace_char")) in->awaiting_replace = 1;
+  else if (IS("normal.replace")) enter_insert(in, 1);
+  else if (IS("normal.delete")) {
+    if (in->caret < le) cut(in, in->caret, next_boundary(in, in->caret));
+    clamp_normal(in);
+  } else if (IS("normal.backspace")) {
+    if (in->caret > ls) cut(in, prev_boundary(in, in->caret), in->caret);
+  } else if (IS("normal.delete_word")) {
+    cut(in, in->caret, next_word_start(in, in->caret));
+    clamp_normal(in);
+  } else if (IS("normal.delete_word_back")) {
+    cut(in, rolltui_input_word_left_of(in, in->caret), in->caret);
+  } else if (IS("normal.delete_line")) {
+    /* the line and its newline: the one before it when it is the last line */
+    e = le < in->text.n ? le + 1 : le;
+    b = le >= in->text.n && ls > 0 ? ls - 1 : ls;
+    cut(in, b, e);
+    clamp_normal(in);
+  } else if (IS("normal.delete_to_end")) {
+    cut(in, in->caret, le);
+    clamp_normal(in);
+  } else if (IS("normal.delete_to_start")) cut(in, ls, in->caret);
+  else if (IS("normal.change_word")) {
+    cut(in, in->caret, is_space_at(in, in->caret) ? next_word_start(in, in->caret) : rolltui_input_word_right_of(in, in->caret));
+    enter_insert(in, 0);
+  } else if (IS("normal.change_line")) {
+    cut(in, ls, le);
+    enter_insert(in, 0);
+  } else if (IS("normal.change_to_end")) {
+    cut(in, in->caret, le);
+    enter_insert(in, 0);
+  } else if (IS("normal.substitute")) {
+    if (in->caret < le) cut(in, in->caret, next_boundary(in, in->caret));
+    enter_insert(in, 0);
+  } else if (IS("normal.yank_line")) copy_range(in, ls, le);
+  else if (IS("normal.yank_word")) copy_range(in, in->caret, next_word_start(in, in->caret));
+  else if (IS("normal.paste_after") || IS("normal.paste_before")) {
+    size_t at;
+    if (!in->kill.n) return ROLLTUI_INPUT_IGNORED;
+    if (IS("normal.paste_after") && in->caret < le) rolltui_input_set_caret(in, next_boundary(in, in->caret), 0);
+    at = in->caret;
+    rolltui_input_yank(in);
+    rolltui_input_set_caret(in, in->caret > at ? prev_boundary(in, in->caret) : in->caret, 0); /* on what was put, its last character */
+  } else if (IS("normal.undo")) {
+    if (!rolltui_input_undo(in)) return ROLLTUI_INPUT_IGNORED;
+    clamp_normal(in);
+  } else if (IS("normal.redo")) {
+    if (!rolltui_input_redo(in)) return ROLLTUI_INPUT_IGNORED;
+    clamp_normal(in);
+  } else {
+    return ROLLTUI_INPUT_IGNORED;
+  }
+#undef MOVE
+#undef IS
+  return ROLLTUI_INPUT_HANDLED;
+}
+
 static unsigned char handle_key(RolltuiInput* in, const RolltuiChord* k, const RolltuiBindings* b,
                                 const RolltuiInputActions* actions) {
   size_t alen = 0;
   const char* action;
   int cmd;
+  const int plain_char = k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt;
+  if (in->awaiting_replace) { /* `r` and a character: it takes the place of the one under the caret */
+    in->awaiting_replace = 0;
+    if (plain_char && k->ch >= 0x20 && k->ch != 0x7F && in->caret < line_end(in, in->caret)) {
+      char buf[4];
+      const size_t n = rolltui_u_append_utf8(k->ch, buf);
+      const int was = in->overwrite;
+      in->overwrite = 1;
+      typed(in, buf, n);
+      in->overwrite = was;
+      rolltui_input_set_caret(in, prev_boundary(in, in->caret), 0);
+    }
+    return ROLLTUI_INPUT_HANDLED;
+  }
+  if (in->mode == ROLLTUI_INPUT_NORMAL || in->mode == ROLLTUI_INPUT_VISUAL) {
+    if (in->mode == ROLLTUI_INPUT_VISUAL) {
+      action = rolltui_bindings_action_for(b, k, "visual", 6, &alen);
+      if (action && rolltui_input_perform_modal(in, action, alen) == ROLLTUI_INPUT_HANDLED) return ROLLTUI_INPUT_HANDLED;
+    }
+    action = rolltui_bindings_action_for(b, k, "normal", 6, &alen);
+    if (action) return rolltui_input_perform_modal(in, action, alen);
+    if (plain_char) return ROLLTUI_INPUT_HANDLED; /* typing types nothing in normal mode */
+    /* the rest (the arrows, Enter, Ctrl's keys) as they are in the field */
+  }
   /* Text is text: a printable character without Ctrl or Alt inserts and is never an action — unless typing is off (`insert_typed`),
    * when it is looked up like any other key and does nothing unbound. */
   if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && in->opt.insert_typed) {
@@ -1708,9 +1915,10 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
     int row, col;
     rolltui_input_cell_of(in, in->caret, &row, &col);
     if (VISIBLE(row)) rolltui_frame_set_cursor(f, a.x + imin(col - shift, imax(a.w - 1, 0)), a.y + (row - in->top), 1);
-    rolltui_frame_set_cursor_shape(f, in->opt.caret                                    ? in->opt.caret
-                                      : in->opt.insert_typed                           ? ROLLTUI_CARET_BAR
-                                                                                       : ROLLTUI_CARET_BLOCK);
+    rolltui_frame_set_cursor_shape(f, in->opt.caret                                     ? in->opt.caret
+                                      : in->mode == ROLLTUI_INPUT_REPLACE               ? ROLLTUI_CARET_UNDERLINE
+                                      : in->mode != ROLLTUI_INPUT_INSERT || !in->opt.insert_typed ? ROLLTUI_CARET_BLOCK
+                                                                                        : ROLLTUI_CARET_BAR);
   }
 #undef VISIBLE
 }

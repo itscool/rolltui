@@ -1218,7 +1218,9 @@ ROLLTUI_API(rolltui_input_set_text, PUBLIC)  /* a host prefills: dirktui's path 
 ROLLTUI_API(rolltui_input_text, PUBLIC)
 ROLLTUI_API(rolltui_input_top_row, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_wrapped_text, PUBLIC)  /* KEPT: a commit message typed at 72 columns is read back with its breaks */
-ROLLTUI_API(rolltui_input_perform, PUBLIC)  /* KEPT: a modal editor's normal mode runs the input's commands by name */
+ROLLTUI_API(rolltui_input_perform, PUBLIC)  /* KEPT: a host runs one of the input's commands by name */
+ROLLTUI_API(rolltui_input_mode, PUBLIC)  /* KEPT: a host shows which of vim's modes the field is in (a status line's "-- INSERT --") */
+ROLLTUI_API(rolltui_input_perform_modal, PUBLIC)  /* KEPT: a host that drives the field itself resolves `d w` to one command */
 ROLLTUI_API(rolltui_input_history_clear, PUBLIC)  /* KEPT: a host forgets what was typed ("clear history") */
 ROLLTUI_API(rolltui_input_history_load, PUBLIC)
 ROLLTUI_API(rolltui_input_history_save, PUBLIC)

@@ -2187,7 +2187,9 @@ struct App {
       // the path put back as it was — the way it closes a popup: the same chord, read from the
       // stack's own table, so a rebinding moves both.
       const RolltuiStr fc = rolltui::own(focused_content());
-      if (rolltui_window_stack_depth(stack) == 1 && (fc == "input:path" || fc == "input:find")) {
+      /* …unless the field takes the key itself (a selection to clear, vim's typing to leave): the focused window's keys are its own */
+      if (rolltui_window_stack_depth(stack) == 1 && (fc == "input:path" || fc == "input:find") &&
+          !rolltui_windows_focused_takes(windows, &e.key)) {
         std::size_t al = 0;
         const char* a = rolltui_bindings_action_for(bindings, &e.key, "stack", 5, &al);
         const char* close = rolltui_stack_default_actions()->close_popup;

@@ -2288,6 +2288,7 @@ typedef struct RolltuiInputActions {
   const char* downcase_word;
   const char* capitalize_word; /* each word's first letter titled and the rest lowered */
   const char* overwrite;       /* typing replaces the grapheme at the caret, until pressed again */
+  const char* normal_mode;     /* from typing to vim's normal mode (`rolltui_input_mode`): bound by the vim preset, not the default */
 } RolltuiInputActions;
 
 /* THE FOUR ROLES A DRAW NEEDS, handed in as bytes. `prompt` is the OPTIONS' role, which is
@@ -2337,10 +2338,22 @@ void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
 void rolltui_input_wrapped_text(RolltuiInput* in, int column, RolltuiStr* out);
 
 /* RUNS ONE COMMAND BY ITS ACTION NAME, as a bound key would: one of the `RolltuiInputActions` names in `actions`. Returns what
- * `rolltui_input_handle` would (ROLLTUI_INPUT_IGNORED for a name that is not one of them). A modal editor's normal mode is a host's
- * bindings table over these, with `insert_typed` off. */
+ * `rolltui_input_handle` would (ROLLTUI_INPUT_IGNORED for a name that is not one of them). */
 int rolltui_input_perform(RolltuiInput* in, const RolltuiInputActions* actions, const char* action, size_t len,
                           unsigned long long now_ms);
+/* VIM'S MODES, where the keys preset binds `input.normal_mode` (the vim preset binds it to Escape): that key leaves typing for NORMAL
+ * mode, where a printable key types nothing and is a command of the `normal` scope (motions, operators, `i`, `a`, `v`, `r`, `R`, `p`,
+ * `u`), and Escape is no longer the field's, so the popup the field is in closes on a second one. VISUAL selects from where it began to
+ * the caret, both characters included, for the `visual` scope's operators; REPLACE types over what is there. The caret is a block in
+ * normal and visual mode, an underline in replace mode and a bar while typing; it sits on a character outside typing, as vim's does. */
+#define ROLLTUI_INPUT_INSERT 0
+#define ROLLTUI_INPUT_NORMAL 1
+#define ROLLTUI_INPUT_VISUAL 2
+#define ROLLTUI_INPUT_REPLACE 3
+int rolltui_input_mode(const RolltuiInput* in);
+/* ONE `normal.*` OR `visual.*` COMMAND BY NAME, as its bound key runs it in that mode (what a key sequence such as `d w` resolves to);
+ * ROLLTUI_INPUT_IGNORED outside its mode or for a name that is not one. */
+unsigned char rolltui_input_perform_modal(RolltuiInput* in, const char* action, size_t len);
 
 /* ---- history ---------------------------------------------------------------------------------- */
 /* What Submit keeps: the newest last, a run of the same entry kept once, at most `history_limit` (the oldest go). A secret is never

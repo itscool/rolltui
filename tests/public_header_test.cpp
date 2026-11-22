@@ -550,7 +550,8 @@ int main() {
     // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638); what tmux says of the
     // terminal outside it (INTERNAL 955).
     // A dialog built, asked and answered (PUBLIC 645); kept, sized and taken out of the stack, and its kind (INTERNAL 960).
-    check(totals["PUBLIC"] == 645 && totals["INTERNAL"] == 960 && totals.size() == 2,
+    // The input's mode, and a normal or visual command by name (PUBLIC 647).
+    check(totals["PUBLIC"] == 647 && totals["INTERNAL"] == 960 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -739,11 +740,11 @@ int main() {
     // watching its stores; a watch freed.
     // Run 242: the window's name in tmux, the clipboard read. Vocab 45: a picture's filter. Run 244: a cell's pixels, a held picture.
     // Run 245, widget 85: the host told of an outside program's picture; its cells held in a frame.
-    // Run 251, release 18: a dialog built, asked and answered; one never asked, freed.
+    // Run 251, release 18: a dialog built, asked and answered; one never asked, freed. Run 253: the input's mode, a modal command.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 251 && rt["HOST_RELEASE"] == 18 &&
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 253 && rt["HOST_RELEASE"] == 18 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 85,
-          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 251 / "
+          "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 253 / "
           "release 18, tool interop 0, widget 85 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

@@ -2402,22 +2402,67 @@ static void input_ctx_destroy(void* ctx) {
   rolltui_mem_free(ic);
 }
 
-/* Typing is the input's, and so is every key its scope binds (Ctrl-E the end of the line, Ctrl-Z its undo). */
+/* Typing is the input's, and so is every key its scope binds (Ctrl-E the end of the line, Ctrl-Z its undo). In normal and visual
+ * mode a printable key is still the field's, as a command or nothing, so none reaches the program around it; Escape is visual's
+ * (back to normal) and not normal's (the popup closes). */
 static int input_ctx_takes(void* ctx, const RolltuiChord* k) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
   size_t n = 0, sl = 0;
-  const char* a = takes_action(rolltui_windows_bindings(ic->w), k, "input", &n);
+  const int mode = rolltui_input_mode(ic->ed);
+  const char* a;
+  if (mode == ROLLTUI_INPUT_NORMAL || mode == ROLLTUI_INPUT_VISUAL) {
+    const RolltuiBindings* b = rolltui_windows_bindings(ic->w);
+    if (takes_typed(k)) return 1;
+    if (mode == ROLLTUI_INPUT_VISUAL && takes_action(b, k, "visual", &n)) return 1;
+    if (takes_action(b, k, "normal", &n)) return 1;
+    if (k->key == ROLLTUI_KEY_ESCAPE) return 0;
+  }
+  a = takes_action(rolltui_windows_bindings(ic->w), k, "input", &n);
   if (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE || k->key == ROLLTUI_KEY_DELETE) return 1;
   if (takes_is(a, n, "input.clear_selection")) return rolltui_input_selected_text(ic->ed, &sl) && sl != 0; /* nothing selected: not its */
   return a != NULL;
 }
 
+/* THE CLOSE KEY CLOSES ONE LEVEL (the stack asks this first): typing and visual mode are levels above normal mode where the keys preset
+ * has the modes, so Escape leaves them and a second one closes the popup; without the modes the field has no levels. */
+static int input_ctx_back(void* ctx) {
+  RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
+  const int mode = rolltui_input_mode(ic->ed);
+  const char* name = rolltui_input_default_actions()->normal_mode;
+  if (mode == ROLLTUI_INPUT_NORMAL) return 0;
+  if (mode == ROLLTUI_INPUT_INSERT && !rolltui_bindings_chord_count(rolltui_windows_bindings(ic->w), name, strlen(name))) return 0;
+  return rolltui_input_perform(ic->ed, rolltui_input_default_actions(), name, strlen(name), 0) != ROLLTUI_INPUT_IGNORED ||
+         (mode == ROLLTUI_INPUT_VISUAL && rolltui_input_perform_modal(ic->ed, "visual.normal", 13) == ROLLTUI_INPUT_HANDLED);
+}
+/* The scope the field's keys resolve in, which is its mode's: a key sequence (`d w`) and a count (`3 w`) are normal mode's. */
+static int input_ctx_keys(void* ctx, const char** scope, size_t* len) {
+  const int mode = rolltui_input_mode(((RolltuiInputCtx*)ctx)->ed);
+  if (mode == ROLLTUI_INPUT_NORMAL) return *scope = "normal", *len = 6, 1;
+  if (mode == ROLLTUI_INPUT_VISUAL) return *scope = "visual", *len = 6, 0;
+  return keys_input(ctx, scope, len);
+}
+/* What a key sequence resolves to, in the mode's scope. */
+static int input_ctx_perform(void* ctx, const char* action, size_t len) {
+  RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
+  if (rolltui_input_perform_modal(ic->ed, action, len) == ROLLTUI_INPUT_HANDLED) return 1;
+  return rolltui_input_perform(ic->ed, rolltui_input_default_actions(), action, len, rolltui_windows_env(ic->w)->now_ms) !=
+         ROLLTUI_INPUT_IGNORED;
+}
+/* THE MODE, in the bottom border, while it is not typing: the caret's shape says it too, and this says it in words. */
+static int input_ctx_footer(void* ctx, RolltuiStr* out) {
+  const int mode = rolltui_input_mode(((RolltuiInputCtx*)ctx)->ed);
+  const char* name = mode == ROLLTUI_INPUT_NORMAL ? "NORMAL" : mode == ROLLTUI_INPUT_VISUAL ? "VISUAL" : mode == ROLLTUI_INPUT_REPLACE ? "REPLACE" : NULL;
+  if (!name) return 0;
+  rolltui_str_set(out, name, strlen(name));
+  return 1;
+}
+
 static const RolltuiWidgetPlugin kInputPlugin = {
     input_ctx_destroy,  input_ctx_layout, input_ctx_draw, input_ctx_problem, NULL,
-    input_ctx_desired_outer, input_ctx_handle, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
-    keys_input,
-    NULL,
-    NULL,
+    input_ctx_desired_outer, input_ctx_handle, NULL, NULL, NULL /* title: the layout's */, input_ctx_back /* vim's modes */,
+    input_ctx_keys,
+    input_ctx_perform,
+    input_ctx_footer,
     input_ctx_takes
 };
 

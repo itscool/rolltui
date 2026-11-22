@@ -72,6 +72,7 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(input,     downcase_word,     "input.downcase_word",         "lowercase to the end of the word") \
   X(input,     capitalize_word,   "input.capitalize_word",       "capitalise to the end of the word") \
   X(input,     overwrite,         "input.overwrite",             "typing replaces what is under the caret, or inserts again") \
+  X(input,     normal_mode,       "input.normal_mode",           "from typing to normal mode, where the keys preset has one") \
   X(transcript, page_up,           "transcript.page_up",          "scroll a page up") \
   X(transcript, page_down,         "transcript.page_down",        "scroll a page down") \
   X(transcript, top,               "transcript.top",              "scroll to the top") \
@@ -183,7 +184,44 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(dialog,    down,              "dialog.down",                 "scroll the items down a row") \
   X(dialog,    page_up,           "dialog.page_up",              "scroll the items up a page") \
   X(dialog,    page_down,         "dialog.page_down",            "scroll the items down a page") \
-  X(dialog,    copy,              "dialog.copy",                 "copy the dialog's text")
+  X(dialog,    copy,              "dialog.copy",                 "copy the dialog's text") \
+  X(normal,    insert,            "normal.insert",                 "type before the caret") \
+  X(normal,    append,            "normal.append",                 "type after the caret") \
+  X(normal,    insert_start,      "normal.insert_start",           "type at the start of the line") \
+  X(normal,    append_end,        "normal.append_end",             "type at the end of the line") \
+  X(normal,    visual,            "normal.visual",                 "select from here, for an operator") \
+  X(normal,    replace_char,      "normal.replace_char",           "replace the character under the caret with the next one typed") \
+  X(normal,    replace,           "normal.replace",                "type over what is there") \
+  X(normal,    left,              "normal.left",                   "the character to the left") \
+  X(normal,    right,             "normal.right",                  "the character to the right") \
+  X(normal,    word_right,        "normal.word_right",             "the start of the next word") \
+  X(normal,    word_left,         "normal.word_left",              "the start of this word, or the one before") \
+  X(normal,    word_end,          "normal.word_end",               "the end of this word, or the next one") \
+  X(normal,    line_start,        "normal.line_start",             "the start of the line") \
+  X(normal,    line_end,          "normal.line_end",               "the last character of the line") \
+  X(normal,    up,                "normal.up",                     "the line above") \
+  X(normal,    down,              "normal.down",                   "the line below") \
+  X(normal,    del,               "normal.delete",                 "erase the character under the caret") \
+  X(normal,    backspace,         "normal.backspace",              "erase the character before the caret") \
+  X(normal,    delete_word,       "normal.delete_word",            "erase to the start of the next word") \
+  X(normal,    delete_word_back,  "normal.delete_word_back",       "erase to the start of this word") \
+  X(normal,    delete_line,       "normal.delete_line",            "erase the line") \
+  X(normal,    delete_to_end,     "normal.delete_to_end",          "erase to the end of the line") \
+  X(normal,    delete_to_start,   "normal.delete_to_start",        "erase to the start of the line") \
+  X(normal,    change_word,       "normal.change_word",            "replace to the end of the word, typing") \
+  X(normal,    change_line,       "normal.change_line",            "replace the line, typing") \
+  X(normal,    change_to_end,     "normal.change_to_end",          "replace to the end of the line, typing") \
+  X(normal,    substitute,        "normal.substitute",             "replace the character under the caret, typing") \
+  X(normal,    yank_line,         "normal.yank_line",              "copy the line") \
+  X(normal,    yank_word,         "normal.yank_word",              "copy to the start of the next word") \
+  X(normal,    paste_after,       "normal.paste_after",            "put what was copied or erased after the caret") \
+  X(normal,    paste_before,      "normal.paste_before",           "put what was copied or erased before the caret") \
+  X(normal,    undo,              "normal.undo",                   "undo the last change") \
+  X(normal,    redo,              "normal.redo",                   "do it again") \
+  X(visual,    yank,              "visual.yank",                   "copy the selection") \
+  X(visual,    del,               "visual.delete",                 "erase the selection") \
+  X(visual,    change,            "visual.change",                 "replace the selection, typing") \
+  X(visual,    normal,            "visual.normal",                 "back to normal mode")
 
 static const LibAction kLibraryActions[] = {
 #define ROLLTUI_LA_ROW_(group, field, name, desc) {name, desc},
@@ -236,6 +274,8 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_sheet(field, name)
 #define ROLLTUI_LA_theme(field, name)
 #define ROLLTUI_LA_dialog(field, name)
+#define ROLLTUI_LA_normal(field, name)
+#define ROLLTUI_LA_visual(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input

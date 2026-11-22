@@ -512,9 +512,19 @@ int main() {
     check(d && rep.clean(), "the shipped default loads clean [" + rep.summary() + "]");
     bool every_bound = true;
     std::string unbound;
-    for (const std::string& a : bindings_actions(d))
+    // VIM'S MODES ARE THE VIM PRESET'S: the default binds `input.normal_mode` to nothing, so it has no modes, and the `normal` and
+    // `visual` scopes, which only those modes reach, to nothing either. Every other action has a chord.
+    auto vim_only = [](const std::string& a) { return a == "input.normal_mode" || a.rfind("normal.", 0) == 0 || a.rfind("visual.", 0) == 0; };
+    std::size_t vim_n = 0;
+    for (const std::string& a : bindings_actions(d)) {
+      if (vim_only(a)) {
+        ++vim_n;
+        if (!bindings_chords_for(d, a).empty()) { every_bound = false; unbound += " (bound, and vim's only) " + a; }
+        continue;
+      }
       if (bindings_chords_for(d, a).empty()) { every_bound = false; unbound += " " + a; }
-    check(every_bound, "every library action has at least one chord in the default" + unbound);
+    }
+    check(every_bound && vim_n > 30, "every library action has at least one chord in the default but vim's modes, which it leaves unbound" + unbound);
     check(bindings_actions(d).size() == library_actions().size(), "the table lists exactly the library's actions (" + std::to_string(bindings_actions(d).size()) + ")");
     rolltui_bindings_free(d);
     RolltuiBindings* b = default_bindings();
@@ -871,7 +881,7 @@ int main() {
     scan(menu_fields, menu_n);
     scan(trans_fields, trans_n);
     scan(scroll_fields, scroll_n);
-    check(input_n == 37 && menu_n == 15 && trans_n == 11 && scroll_n == 6,
+    check(input_n == 38 && menu_n == 15 && trans_n == 11 && scroll_n == 6,
           "the four tables are the sizes the headers declare [" + std::to_string(input_n) + "/" +
               std::to_string(menu_n) + "/" + std::to_string(trans_n) + "/" + std::to_string(scroll_n) + "]");
     check(missing == 0, "…every member is filled by the expansion [" + std::to_string(missing) + " NULL]");
