@@ -192,6 +192,30 @@ void test_output() {
   rolltui_ansi_free(t);
 }
 
+// THE WHEEL'S STEP IS THE PERSON'S (`RolltuiWidgetEnv.wheel_lines`): three lines a notch, or what it says, in every window that
+// scrolls by lines.
+void test_wheel_step() {
+  std::string lines;
+  for (int i = 1; i <= 30; ++i) lines += std::string(i < 10 ? "l0" : "l") + std::to_string(i) + "\\n";
+  const std::string screen = R"({ "name": "t", "root": { "id": "page", "content": "text:)" + lines + R"(", "focusable": true } })";
+  Screen s(screen, 10, 5);
+  s.paint();
+  RolltuiEvent down{};
+  down.kind = ROLLTUI_EVENT_MOUSE;
+  down.mouse.kind = static_cast<RolltuiMouseEvent::Kind>(5);
+  rolltui_windows_handle(s.w, "page", 4, &down);
+  s.paint();
+  check(s.row(0) == "l04", "a notch of the wheel: three lines [" + s.row(0) + "]");
+  RolltuiWidgetEnv env{};
+  env.wheel_lines = 1;
+  rolltui_context_set_env(ctx(), &env);
+  rolltui_windows_handle(s.w, "page", 4, &down);
+  s.paint();
+  check(s.row(0) == "l05", "…or the person's step: one [" + s.row(0) + "]");
+  env.wheel_lines = 0;
+  rolltui_context_set_env(ctx(), &env);
+}
+
 }  // namespace
 
 int main() {
@@ -200,5 +224,6 @@ int main() {
   test_file();
   test_wide_glyph_at_the_edge();
   test_output();
+  test_wheel_step();
   return report("viewer_test");
 }

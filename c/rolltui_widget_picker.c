@@ -61,6 +61,7 @@ struct RolltuiPicker {
   int scrolling;
   int anchored_once;             /* a real anchor has run against a known window */
   unsigned long long now_ms;     /* 0 = headless, nothing moves */
+  int wheel;                     /* the lines a wheel's notch scrolls (`RolltuiWidgetEnv.wheel_lines`) */
   RolltuiStr jump;               /* the letters typed in quick succession: a name's start to jump to */
   unsigned long long jump_ms;    /* when the last of them was typed */
   size_t faded_cells;
@@ -1243,6 +1244,9 @@ void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o)
   sync_preview(p);
 }
 const RolltuiPickerOptions* rolltui_picker_options(const RolltuiPicker* p) { return &p->opt; }
+void rolltui_picker_set_wheel_lines(RolltuiPicker* p, int lines) {
+  if (p) p->wheel = lines > 0 ? lines : 3;
+}
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms) {
   size_t i;
   p->now_ms = now_ms;
@@ -1914,8 +1918,8 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
     /* THE PREVIEW IS A PLACE THE POINTER CAN BE: the wheel over it scrolls the file, a press in it puts the keys there. */
     if (preview_shown(p) && m->x >= p->pv_rect.x && m->x < p->pv_rect.x + p->pv_rect.w && m->y >= p->pv_rect.y &&
         m->y < p->pv_rect.y + p->pv_rect.h) {
-      if (k == 4) { preview_scroll(p, -3, 0); return 1; }
-      if (k == 5) { preview_scroll(p, 3, 0); return 1; }
+      if (k == 4) { preview_scroll(p, -(p->wheel > 0 ? p->wheel : 3), 0); return 1; }
+      if (k == 5) { preview_scroll(p, p->wheel > 0 ? p->wheel : 3, 0); return 1; }
       if (k == 6 || k == 7) {
         if (!p->host_on) rolltui_preview_scroll_sideways(p->pv, k == 6 ? -4 : 4, p->aw);
         return 1;
@@ -1929,7 +1933,7 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
       long long top;
       if (at < 0) at = focused(p) ? (long long)p->focus_col : -1;
       if (at < 0) return 0;
-      top = (long long)p->cols[(size_t)at].top + (k == 4 ? -3 : 3);
+      top = (long long)p->cols[(size_t)at].top + (k == 4 ? -1 : 1) * (p->wheel > 0 ? p->wheel : 3);
       scroll_column(p, (size_t)at, (size_t)(top < 0 ? 0 : top));
       return 1;
     }
@@ -2002,6 +2006,12 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
      * always is — Enter still takes the file — and typing a letter is the list's again. */
     if (act && len && preview_shown(p) && !p->host_on && (action_is(act, len, a->preview_left) || action_is(act, len, a->preview_right)))
       return rolltui_preview_scroll_sideways(p->pv, action_is(act, len, a->preview_left) ? -8 : 8, p->aw) || 1;
+    /* THE PREVIEW SCROLLED FROM THE COLUMNS: a notch of the wheel, and the focus does not move */
+    if (act && len && preview_shown(p) && (action_is(act, len, a->preview_up) || action_is(act, len, a->preview_down))) {
+      const int step = p->wheel > 0 ? p->wheel : 3;
+      preview_scroll(p, action_is(act, len, a->preview_up) ? -step : step, 0);
+      return 1;
+    }
     if (p->pv_focus && preview_shown(p)) {
       if (act && len) {
         const long long page = p->host_on && p->host_bound ? 1 : imax(1, p->pv_rect.h - 1); /* a place of its own pages one at a time */

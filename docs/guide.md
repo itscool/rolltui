@@ -969,6 +969,10 @@ next change, which the render's wait takes into account. A press on a toast dism
 is placed where it ends. A frame dump is one moment, and the hosts here draw it still. dirktui
 sets it from its motion setting.
 
+`RolltuiWidgetEnv.wheel_lines` is how many lines a notch of the wheel scrolls, in every window
+that scrolls by lines and in the column browser's columns and preview (3 when 0). A menu moves
+a row a notch.
+
 dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
 note for what went right.
 
@@ -1408,7 +1412,9 @@ Control characters are drawn as their symbols (`␛`) and invalid bytes as `�`
 next stop of `RolltuiPickerOptions.preview_tab` columns (4 when 0). With `preview_wrap`, a line
 wider than the preview carries on in the rows below; without it, the line ends in an ellipsis, and
 Shift-Left and Shift-Right (from the list or in the preview) and the wheel's sideways turns scroll a
-text file's lines sideways, as far as the widest line's end.
+text file's lines sideways, as far as the widest line's end. Alt-Up and Alt-Down (`picker.preview_up`,
+`picker.preview_down`; also K and J in the vim preset) scroll the preview a wheel's notch from the
+columns, the focus staying where it is.
 
 With workers lent (`rolltui_windows_set_tasks`; `rolltui_run_tasks` gives the run's own), a file is
 read off the UI thread and the files above and below the cursor are read ahead, unless a host's

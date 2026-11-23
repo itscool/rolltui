@@ -56,6 +56,8 @@ int rolltui_picker_refresh(RolltuiPicker* p);
 
 /* The frame clock, set before layout and before an event: 0 means headless, nothing moves. */
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms);
+/* The lines a wheel's notch, and `picker.preview_up` and `_down`, scroll; 0 or less: 3. */
+void rolltui_picker_set_wheel_lines(RolltuiPicker* p, int lines);
 /* The workers the preview reads a file on (BORROWED); NULL reads on this thread. */
 void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks);
 void rolltui_picker_set_previewer(RolltuiPicker* p, RolltuiPreviewerFn fn, void* ctx);

@@ -514,6 +514,12 @@
     "picker.preview_right": [
       "shift+right"
     ],
+    "picker.preview_up": [
+      "alt+up"
+    ],
+    "picker.preview_down": [
+      "alt+down"
+    ],
     "picker.take": [
       "enter"
     ],

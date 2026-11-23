@@ -122,6 +122,8 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(picker,    unmark_all,        "picker.unmark_all",           "clear every mark") \
   X(picker,    preview_left,      "picker.preview_left",         "scroll the preview's lines left") \
   X(picker,    preview_right,     "picker.preview_right",        "scroll the preview's lines right") \
+  X(picker,    preview_up,        "picker.preview_up",           "scroll the preview up, the focus staying in the columns") \
+  X(picker,    preview_down,      "picker.preview_down",         "scroll the preview down, the focus staying in the columns") \
   X(list,      up,                "list.up",                     "the row above") \
   X(list,      down,              "list.down",                   "the row below") \
   X(list,      page_up,           "list.page_up",                "a page up") \

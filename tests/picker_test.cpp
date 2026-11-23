@@ -1386,6 +1386,37 @@ int main() {
       sl.key.key = ROLLTUI_KEY_LEFT;
       for (int i = 0; i < 30; ++i) rolltui_picker_handle(q, &sl, b, A);
       check(has(draw_q(100, 12), "a       b x"), "Shift-Left scrolls back to the lines' start");
+      // UP AND DOWN FROM THE COLUMNS: Alt-Up and Alt-Down scroll the preview a wheel's notch, and the focus stays where it is
+      {
+        std::string rows;
+        for (int i = 1; i <= 40; ++i) rows += (i < 10 ? "row-0" : "row-") + std::to_string(i) + "\n";
+        write_file(root / "prev" / "rows.txt", rows);
+        const std::string rowsp = (root / "prev" / "rows.txt").string();
+        rolltui_picker_go_to(q, rowsp.data(), rowsp.size());
+        draw_q(100, 12);
+        RolltuiEvent ad{};
+        ad.kind = ROLLTUI_EVENT_KEY;
+        ad.key.key = ROLLTUI_KEY_DOWN;
+        ad.key.alt = 1;
+        rolltui_picker_handle(q, &ad, b, A);
+        t = draw_q(100, 12);
+        RolltuiStr sel{};
+        int is_dir = 0;
+        rolltui_picker_selected(q, &sel, &is_dir);
+        check(!has(t, "row-01") && !has(t, "row-03") && has(t, "row-04") && str_of(sel) == rowsp,
+              "Alt-Down scrolls the preview three lines, the cursor still on the file in the columns");
+        rolltui_str_free(&sel);
+        rolltui_picker_set_wheel_lines(q, 1);
+        rolltui_picker_handle(q, &ad, b, A);
+        t = draw_q(100, 12);
+        check(!has(t, "row-04") && has(t, "row-05"), "…a notch is the person's wheel step: one line");
+        RolltuiEvent au = ad;
+        au.key.key = ROLLTUI_KEY_UP;
+        for (int i = 0; i < 10; ++i) rolltui_picker_handle(q, &au, b, A);
+        check(has(draw_q(100, 12), "row-01"), "Alt-Up scrolls it back to the top");
+        rolltui_picker_set_wheel_lines(q, 0);
+        rolltui_picker_go_to(q, longp.data(), longp.size());
+      }
       // CODE: its colours move with its text
       write_file(root / "prev" / "wide.c", "int a = 1; /* " + std::string(80, 'y') + " */\n");
       const std::string widec = (root / "prev" / "wide.c").string();

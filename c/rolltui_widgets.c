@@ -2025,13 +2025,13 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
  * Requires `scroll_to` as well as `scroll_extent`, the same rule the scrollbar track uses: a
  * widget that only REPORTS gets an accurate bar that is not a handle, and the wheel must not
  * pretend otherwise. */
-static int handle_wheel(RolltuiWidget* wd, const RolltuiEvent* e) {
+static int handle_wheel(const RolltuiWindows* w, RolltuiWidget* wd, const RolltuiEvent* e) {
   RolltuiScrollExtent ex;
   long long first, max_first;
   int dir;
-  /* One notch, the same distance `RolltuiTranscriptOptions::wheel_lines` defaults to, so the
+  /* One notch, the person's (`RolltuiWidgetEnv.wheel_lines`), the distance the transcript and the column browser take too, so the
    * wheel does not travel two different distances in two windows of one screen. */
-  const int lines = 3;
+  const int lines = rolltui_windows_env(w)->wheel_lines ? rolltui_windows_env(w)->wheel_lines : 3;
   if (!wd->vt || e->kind != ROLLTUI_EVENT_MOUSE) return 0;
   if (e->mouse.kind == 4) dir = -1;        /* wheel up scrolls toward the start */
   else if (e->mouse.kind == 5) dir = 1;
@@ -2050,7 +2050,7 @@ static int handle_wheel(RolltuiWidget* wd, const RolltuiEvent* e) {
 static int deliver(RolltuiWindows* w, const char* window, size_t len, RolltuiWidget* wd, const RolltuiEvent* e) {
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
   if (wd->vt->handle && wd->vt->handle(wd->ctx, e)) return 1;
-  return handle_wheel(wd, e);
+  return handle_wheel(w, wd, e);
 }
 
 static void seq_reset(RolltuiWindows* w) {

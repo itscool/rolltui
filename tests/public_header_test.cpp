@@ -550,8 +550,8 @@ int main() {
     // An outside program's picture held in a frame, and the host told when to draw and clear it (PUBLIC 638); what tmux says of the
     // terminal outside it (INTERNAL 955).
     // A dialog built, asked and answered (PUBLIC 645); kept, sized and taken out of the stack, and its kind (INTERNAL 960).
-    // The input's mode, and a normal or visual command by name (PUBLIC 647).
-    check(totals["PUBLIC"] == 647 && totals["INTERNAL"] == 960 && totals.size() == 2,
+    // The input's mode, and a normal or visual command by name (PUBLIC 647). The column browser's wheel step (INTERNAL 961).
+    check(totals["PUBLIC"] == 647 && totals["INTERNAL"] == 961 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

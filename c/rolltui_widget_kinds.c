@@ -2096,6 +2096,7 @@ static int picker_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiPickerCtx* c = (RolltuiPickerCtx*)ctx;
   rolltui_picker_set_tasks(c->p, rolltui_windows_tasks(c->w));
   rolltui_picker_set_now(c->p, rolltui_windows_env(c->w)->now_ms);
+  rolltui_picker_set_wheel_lines(c->p, rolltui_windows_env(c->w)->wheel_lines);
   return rolltui_picker_handle(c->p, e, rolltui_windows_bindings(c->w), rolltui_picker_default_actions());
 }
 static int picker_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
@@ -2626,7 +2627,7 @@ static void transcript_ctx_options(const RolltuiTranscriptCtx* tc, const Rolltui
   out->tab_width = 8;
   out->gap = 1;
   out->inset = rn->node->border != 0 ? 1 : 0;
-  out->wheel_lines = 3;
+  out->wheel_lines = env->wheel_lines ? env->wheel_lines : 3; /* the person's, as every window's */
   out->code_fold_over_lines = cf->fold_over_lines;
   out->code_cap_lines = cf->cap_lines;
   out->multi_click_ms = 400;

@@ -3440,6 +3440,8 @@ typedef struct RolltuiWidgetEnv {
   unsigned long long now_ms ROLLTUI_DEFAULT(0);
   /* THE PERSON ASKED FOR NO MOTION: what the library moves by itself (a toast sliding in) is placed where it ends at once. */
   unsigned char still ROLLTUI_DEFAULT(0);
+  /* THE WHEEL'S STEP: the lines a notch scrolls in every window that scrolls by lines (a menu moves a row); 0: 3. The person's. */
+  unsigned char wheel_lines ROLLTUI_DEFAULT(0);
 } RolltuiWidgetEnv;
 
 /* THE TWO ROLES THE WINDOW ITSELF DRAWS WITH: the scrollbar's track and thumb, which live in the window's border column and which a
@@ -4662,6 +4664,9 @@ typedef struct RolltuiPickerActions {
   const char* unmark_all;
   const char* preview_left;
   const char* preview_right;
+  /* the preview scrolled a wheel's notch while the focus stays in the columns */
+  const char* preview_up;
+  const char* preview_down;
 } RolltuiPickerActions;
 
 /* ---- a hint bar: the keys a status line names, clickable ---------------------------------

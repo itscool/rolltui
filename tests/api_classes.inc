@@ -667,6 +667,7 @@ ROLLTUI_API(rolltui_picker_go_to, INTERNAL)
 ROLLTUI_API(rolltui_picker_focus_column, INTERNAL)
 ROLLTUI_API(rolltui_picker_reload, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
+ROLLTUI_API(rolltui_picker_set_wheel_lines, INTERNAL)  /* the kind hands the column browser the person's wheel step */
 ROLLTUI_API(rolltui_picker_set_tasks, INTERNAL)  /* the picker kind lends it the table's workers */
 ROLLTUI_API(rolltui_picker_set_previewer, INTERNAL)  /* the picker kind passes on the host's previewer */
 ROLLTUI_API(rolltui_picker_set_preview_command, INTERNAL)  /* the picker kind passes on the host's command */
