@@ -1121,9 +1121,7 @@ size_t rolltui_md_code_block_summary(const char* lang, size_t lang_n, size_t lin
     lang = "code";
     lang_n = 4;
   }
-  if (bytes < 1024) snprintf(size_buf, sizeof size_buf, "%zu B", bytes);
-  else if (bytes < 1024 * 1024) snprintf(size_buf, sizeof size_buf, "%.1f kB", (double)bytes / 1024.0);
-  else snprintf(size_buf, sizeof size_buf, "%.1f MB", (double)bytes / (1024.0 * 1024.0));
+  rolltui_format_size((double)bytes, ROLLTUI_SIZE_BYTE_UNIT, size_buf, sizeof size_buf); /* as every size the library writes */
   n = snprintf(out, cap, "%.*s \xC2\xB7 %zu %s \xC2\xB7 %s", (int)lang_n, lang, lines,
                lines == 1 ? "line" : "lines", size_buf);
   if (n < 0) return 0;

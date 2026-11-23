@@ -45,6 +45,14 @@ the head. `rolltui_path_shorten` shortens each folder of a path from the left to
 letter until it fits ("~/g/r/c/frame.c", a leading dot kept: ".c" for ".config"), then cuts the
 name in its middle with its extension kept.
 
+`rolltui_format_size(n, flags, out, cap)` writes a size the way the column browser, the preview
+and a code block's head do: steps of 1024 (K, M, G, T, P, E), one decimal under 10 and none from
+10 ("1.5K", "12M", "512"), and a value that rounds up written in the next step ("1.0M"). Its
+flags: `ROLLTUI_SIZE_DECIMAL` for steps of 1000 (k, M, G…), `_BITS` for a count of bytes written
+as bits ("12Mb"), `_RATE` for "/s", `_BYTE_UNIT` for the unit under the first step ("512 B").
+`rolltui_format_count(n, sep, len, out, cap)` groups a count's thousands, by a comma unless
+`sep` says otherwise ("12,345,678").
+
 `rolltui_frame_put_spans(frame, scratch, rect, spans, n, align, overflow, ambiguous_wide)` lays a
 line of `RolltuiTextSpan`s, each its own style, into a rect: at its left, centre or right
 (`ROLLTUI_ALIGN_*`), and where it is wider, cut at the edge, cut with an ellipsis in the style

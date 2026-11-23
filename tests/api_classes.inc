@@ -450,6 +450,8 @@ ROLLTUI_API(rolltui_list_has_back, INTERNAL)  /* a focused list takes its back k
 ROLLTUI_API(rolltui_list_footer, INTERNAL)  /* the list kind's footer */
 ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a name with an ellipsis, at its end, middle or start */
 ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
+ROLLTUI_API(rolltui_format_size, PUBLIC)  /* KEPT: a host writes a size or a rate as the library's views do (a status line's free space) */
+ROLLTUI_API(rolltui_format_count, PUBLIC)  /* KEPT: a host writes a count with its thousands grouped (k9s's pod counts, btop's) */
 ROLLTUI_API(rolltui_text_cut_with, PUBLIC)  /* KEPT: a cut with a marker, a split and an extension kept, for a host's own line */
 ROLLTUI_API(rolltui_frame_put_text_cut_with, PUBLIC)  /* KEPT: the same cut, drawn */
 ROLLTUI_API(rolltui_path_shorten, PUBLIC)  /* KEPT: a path in a status line or a title, each folder to a letter */

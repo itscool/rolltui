@@ -793,8 +793,8 @@ int main() {
     {
       check(summary("", 1, 5) == "code \xC2\xB7 1 line \xC2\xB7 5 B",
             "a bare fence has no language to name, so the summary calls it code, and 1 line is singular");
-      check(summary("diff", 42, 1229).find("1.2 kB") != std::string::npos,
-            "…and a size over 1024 reads in kB [" + summary("diff", 42, 1229) + "]");
+      check(summary("diff", 42, 1229).find("1.2K") != std::string::npos,
+            "…and a size over 1024 as every size the library writes, 1024 a K [" + summary("diff", 42, 1229) + "]");
     }
   }
   // ---- the diff colouriser ----------------

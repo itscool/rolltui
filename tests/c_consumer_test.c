@@ -923,5 +923,13 @@ int main(void) {
     check(b == 0 && n == 0, "AFTER shutdown() THE LIBRARY HOLDS NOTHING, for a C consumer too");
   }
 
+  /* ---- NUMBERS FOR A PERSON, from C: a size and a count ------------------------------------------------------------------------- */
+  {
+    char b[32];
+    const size_t n = rolltui_format_size(1536.0, 0, b, sizeof b);
+    char c[32];
+    const size_t m = rolltui_format_count(1234567, NULL, 0, c, sizeof c);
+    check(n == 4 && strcmp(b, "1.5K") == 0 && m == 9 && strcmp(c, "1,234,567") == 0, "a C host formats a size and a count");
+  }
   return report("c_consumer_test");
 }

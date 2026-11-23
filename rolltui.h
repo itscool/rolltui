@@ -647,6 +647,21 @@ int rolltui_frame_put_text_cut(RolltuiFrame* f, RolltuiDrawScratch* s, int x, in
                                int max_cells, int where, int ambiguous_wide, unsigned int link);
 /* The same cut, as text: REPLACES `*out` with `utf8` cut to `max_cells`; returns the cells it takes. */
 int rolltui_text_cut(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, int where, int ambiguous_wide, RolltuiStr* out);
+
+/* ---- numbers for a person ---------------------------------------------------------------------
+ * A SIZE, as a column of them reads: steps of 1024 (K, M, G, T, P, E) or, with DECIMAL, of 1000 (k, M, G, T, P, E), one decimal under
+ * 10 and none from 10 ("1.5K", "12M", "512"), the letter straight after; a value that rounds up to the next step is written in it
+ * ("1.0M", never "1024K"). BITS writes a count of bytes as bits, eight a byte, with `b` after ("12Mb"); RATE adds "/s"; BYTE_UNIT
+ * writes a size under the first step with its unit ("512 B", "512 b"). Into `out` (`cap` bytes, always terminated); returns the bytes
+ * written. */
+#define ROLLTUI_SIZE_DECIMAL 1u
+#define ROLLTUI_SIZE_BITS 2u
+#define ROLLTUI_SIZE_RATE 4u
+#define ROLLTUI_SIZE_BYTE_UNIT 8u
+size_t rolltui_format_size(double n, unsigned flags, char* out, size_t cap);
+/* A COUNT WITH ITS THOUSANDS GROUPED by `sep` ("12,345,678"; NULL or "": a comma, the one an English reader expects; a thin space
+ * U+2009 or a period for another). Into `out` (`cap` bytes, always terminated); returns the bytes written. */
+size_t rolltui_format_count(long long n, const char* sep, size_t sep_len, char* out, size_t cap);
 /* Every cell of `r` patched with `style` (`rolltui_style_patch`): a row dimmed, a match lit. */
 void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
 

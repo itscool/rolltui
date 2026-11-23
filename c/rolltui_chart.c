@@ -286,9 +286,11 @@ static void range_of(const RolltuiChart* c, int w, double* lo, double* hi) {
   if (*hi <= *lo) *hi = *lo + 1;
 }
 
-/* A number short enough for an axis: three significant figures, a k, M or G for thousands up. */
+/* A number short enough for an axis: three significant figures, a k, M, G, T or P for thousands up. */
 static int axis_label(double v, char* out, size_t cap) {
   const double a = fabs(v);
+  if (a >= 1e15) return snprintf(out, cap, "%.3gP", v / 1e15);
+  if (a >= 1e12) return snprintf(out, cap, "%.3gT", v / 1e12);
   if (a >= 1e9) return snprintf(out, cap, "%.3gG", v / 1e9);
   if (a >= 1e6) return snprintf(out, cap, "%.3gM", v / 1e6);
   if (a >= 1e4) return snprintf(out, cap, "%.3gk", v / 1e3);

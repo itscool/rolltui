@@ -573,6 +573,37 @@ void test_away() {
 
 }  // namespace
 
+// NUMBERS FOR A PERSON: a size in steps of 1024 or 1000, bits, a rate; a count with its thousands grouped
+void test_numbers() {
+  auto size = [](double n, unsigned flags) {
+    char b[32];
+    const std::size_t len = rolltui_format_size(n, flags, b, sizeof b);
+    return std::string(b, len);
+  };
+  check(size(0, 0) == "0" && size(512, 0) == "512" && size(512, ROLLTUI_SIZE_BYTE_UNIT) == "512 B",
+        "under the first step, the number, with its unit where asked [" + size(512, ROLLTUI_SIZE_BYTE_UNIT) + "]");
+  check(size(1536, 0) == "1.5K" && size(10 * 1024, 0) == "10K" && size(5.0 * 1099511627776.0, 0) == "5.0T" &&
+            size(3.0 * 1152921504606846976.0, 0) == "3.0E",
+        "steps of 1024: one decimal under 10, none from 10, as far as E [" + size(1536, 0) + " " + size(10 * 1024, 0) + "]");
+  check(size(10199, 0) == "10K" && size(1024.0 * 1023.9, 0) == "1.0M", "a value that rounds up is written in the step it rounds to [" + size(10199, 0) + " " + size(1024.0 * 1023.9, 0) + "]");
+  check(size(1500, ROLLTUI_SIZE_DECIMAL) == "1.5k" && size(2.5e9, ROLLTUI_SIZE_DECIMAL) == "2.5G", "DECIMAL: steps of 1000, a lower-case k");
+  check(size(125000, ROLLTUI_SIZE_DECIMAL | ROLLTUI_SIZE_BITS | ROLLTUI_SIZE_RATE) == "1.0Mb/s" && size(1500, ROLLTUI_SIZE_BITS) == "12Kb",
+        "BITS: eight a byte, b after; RATE: /s [" + size(125000, ROLLTUI_SIZE_DECIMAL | ROLLTUI_SIZE_BITS | ROLLTUI_SIZE_RATE) + "]");
+  check(size(0.5, ROLLTUI_SIZE_RATE | ROLLTUI_SIZE_BYTE_UNIT) == "0.5 B/s" && size(-1536, 0) == "-1.5K", "a fraction under the first step, and a negative");
+  char tiny[4];
+  check(rolltui_format_size(123456789, 0, tiny, sizeof tiny) == 3 && tiny[3] == 0, "a small buffer is cut and still terminated");
+  auto count = [](long long n, const char* sep) {
+    char b[48];
+    const std::size_t len = rolltui_format_count(n, sep, sep ? std::strlen(sep) : 0, b, sizeof b);
+    return std::string(b, len);
+  };
+  check(count(0, nullptr) == "0" && count(999, nullptr) == "999" && count(1000, nullptr) == "1,000" && count(12345678, nullptr) == "12,345,678",
+        "a count's thousands grouped by a comma [" + count(12345678, nullptr) + "]");
+  check(count(-1234567, nullptr) == "-1,234,567" && count(1234, "\xE2\x80\x89") == "1\xE2\x80\x89" "234" &&
+            count(-9223372036854775807LL - 1, ".") == "-9.223.372.036.854.775.808",
+        "…a negative, another separator, and the smallest there is");
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_cut();
@@ -582,5 +613,6 @@ int main() {
   test_text_rules();
   test_console_and_caret();
   test_away();
+  test_numbers();
   return testkit::report("text_details_test");
 }

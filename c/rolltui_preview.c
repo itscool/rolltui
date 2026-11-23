@@ -165,16 +165,7 @@ const char* rolltui_preview_message(const RolltuiPreview* pv, size_t* len) {
   return pv && pv->message.p ? pv->message.p : "";
 }
 
-static void human_size(long long n, char* out, size_t cap) {
-  const char* unit = "";
-  double v = (double)n;
-  if (v >= 1024.0) { v /= 1024.0; unit = "K"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "M"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "G"; }
-  if (!*unit) snprintf(out, cap, "%lld B", n);
-  else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
-  else snprintf(out, cap, "%.0f%s", v, unit);
-}
+static void human_size(long long n, char* out, size_t cap) { rolltui_format_size((double)n, ROLLTUI_SIZE_BYTE_UNIT, out, cap); }
 
 void rolltui_fileinfo_size_text(long long bytes, char* out, size_t cap) { human_size(bytes, out, cap); }
 

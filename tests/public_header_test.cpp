@@ -551,7 +551,8 @@ int main() {
     // terminal outside it (INTERNAL 955).
     // A dialog built, asked and answered (PUBLIC 645); kept, sized and taken out of the stack, and its kind (INTERNAL 960).
     // The input's mode, and a normal or visual command by name (PUBLIC 647). The column browser's wheel step (INTERNAL 961).
-    check(totals["PUBLIC"] == 647 && totals["INTERNAL"] == 961 && totals.size() == 2,
+    // A size and a count for a person (PUBLIC 649).
+    check(totals["PUBLIC"] == 649 && totals["INTERNAL"] == 961 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -741,11 +742,12 @@ int main() {
     // Run 242: the window's name in tmux, the clipboard read. Vocab 45: a picture's filter. Run 244: a cell's pixels, a held picture.
     // Run 245, widget 85: the host told of an outside program's picture; its cells held in a frame.
     // Run 251, release 18: a dialog built, asked and answered; one never asked, freed. Run 253: the input's mode, a modal command.
+    // Widget 87: a size and a count for a person.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 33 && rt["HOST_SETTINGS"] == 97 &&
               rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 253 && rt["HOST_RELEASE"] == 18 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 85,
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 87,
           "the roles are the recorded shape — vocab 45, host load 33 / settings 97 / bind 116 / run 253 / "
-          "release 18, tool interop 0, widget 85 (got " +
+          "release 18, tool interop 0, widget 87 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

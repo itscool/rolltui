@@ -4,6 +4,7 @@
  * things that can disagree about what a name is. The flag chooses ALGORITHMS. */
 #include "rolltui/c/rolltui_str.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -173,4 +174,61 @@ void rolltui_labelf(char* buf, size_t cap, const char* fmt, ...) {
   } else {
     buf[whole_chars(buf, cap - 1)] = '\0';
   }
+}
+
+/* ---- numbers for a person ---------------------------------------------------------------------- */
+
+static size_t put_out(char* out, size_t cap, int n) {
+  if (!out || !cap) return 0;
+  if (n < 0) {
+    out[0] = 0;
+    return 0;
+  }
+  return (size_t)n < cap ? (size_t)n : cap - 1;
+}
+
+size_t rolltui_format_size(double n, unsigned flags, char* out, size_t cap) {
+  static const char kBinary[] = "KMGTPE", kDecimal[] = "kMGTPE";
+  const double step = (flags & ROLLTUI_SIZE_DECIMAL) ? 1000.0 : 1024.0;
+  const char* sign = n < 0 ? "-" : "";
+  const char* rate = (flags & ROLLTUI_SIZE_RATE) ? "/s" : "";
+  const char* bit = (flags & ROLLTUI_SIZE_BITS) ? "b" : "";
+  double v = fabs((flags & ROLLTUI_SIZE_BITS) ? n * 8.0 : n);
+  int u = -1;
+  if (!out || !cap) return 0;
+  if (v != v) v = 0; /* not a number: nothing */
+  while (v >= step && u < 5) v /= step, ++u;
+  if (u >= 0 && v < 10.0 && floor(v * 10.0 + 0.5) >= 100.0) v = 10.0;            /* 9.96 is 10, written as one */
+  if (u >= 0 && u < 5 && floor(v + 0.5) >= step) v /= step, ++u;                /* 1023.6K is 1.0M */
+  if (u < 0) { /* under the first step: the number itself */
+    const int whole = v == floor(v) || v >= 10.0;
+    const char* unit = (flags & ROLLTUI_SIZE_BYTE_UNIT) ? ((flags & ROLLTUI_SIZE_BITS) ? " b" : " B") : bit;
+    return put_out(out, cap, whole ? snprintf(out, cap, "%s%.0f%s%s", sign, v, unit, rate)
+                                   : snprintf(out, cap, "%s%.1f%s%s", sign, v, unit, rate));
+  }
+  {
+    const char letter = (flags & ROLLTUI_SIZE_DECIMAL) ? kDecimal[u] : kBinary[u];
+    return put_out(out, cap, v < 10.0 ? snprintf(out, cap, "%s%.1f%c%s%s", sign, v, letter, bit, rate)
+                                      : snprintf(out, cap, "%s%.0f%c%s%s", sign, v, letter, bit, rate));
+  }
+}
+
+size_t rolltui_format_count(long long n, const char* sep, size_t sep_len, char* out, size_t cap) {
+  char digits[32];
+  size_t nd, i, k = 0;
+  const unsigned long long a = n < 0 ? 0ull - (unsigned long long)n : (unsigned long long)n;
+  if (!out || !cap) return 0;
+  if (!sep || !sep_len) sep = ",", sep_len = 1;
+  nd = (size_t)snprintf(digits, sizeof digits, "%llu", a);
+  if (n < 0 && k + 1 < cap) out[k++] = '-';
+  for (i = 0; i < nd && k + 1 < cap; ++i) {
+    if (i && (nd - i) % 3 == 0) {
+      if (k + sep_len >= cap) break;
+      memcpy(out + k, sep, sep_len);
+      k += sep_len;
+    }
+    out[k++] = digits[i];
+  }
+  out[k] = 0;
+  return k;
 }

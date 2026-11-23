@@ -286,16 +286,7 @@ static int extras_width(const RolltuiPicker* p) {
   const int w = (show_size(p) ? 1 + SIZE_CELLS : 0) + (show_modified(p) ? 1 + MODIFIED_CELLS : 0);
   return w ? w + 1 : 0;
 }
-static void size_text(long long n, char* out, size_t cap) {
-  const char* unit = "";
-  double v = (double)n;
-  if (v >= 1024.0) { v /= 1024.0; unit = "K"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "M"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "G"; }
-  if (!*unit) snprintf(out, cap, "%lld", n);
-  else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
-  else snprintf(out, cap, "%.0f%s", v, unit);
-}
+static void size_text(long long n, char* out, size_t cap) { rolltui_format_size((double)n, 0, out, cap); }
 static void modified_text(long long when, char* out, size_t cap) {
   struct tm tm_when, tm_now;
   if (when <= 0 || !rolltui_os_localtime(when, &tm_when) || !rolltui_os_localtime((long long)time(NULL), &tm_now)) {
