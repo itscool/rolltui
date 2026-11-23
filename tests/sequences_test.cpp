@@ -450,8 +450,38 @@ void test_hold() {
   rolltui_tasks_free(tasks);
 }
 
+// A KEY ON ANOTHER LAYOUT: kitty's alternate keys report the key's place on a US layout (`base`), and a chord no binding matches
+// is matched again on it, so Ctrl and the key that is C on a US keyboard is `ctrl+c` on a Cyrillic one, alone and in a sequence.
+void test_other_layouts() {
+  std::string problems;
+  RolltuiBindings* b = load(R"({ "name": "t", "bindings": { "list.up": ["ctrl+c"], "list.sort": ["ctrl+x s"] } })", &problems);
+  RolltuiChord es{};
+  es.key = ROLLTUI_KEY_CHAR;
+  es.ch = 0x0441; /* с */
+  es.ctrl = 1;
+  std::size_t n = 0;
+  check(rolltui_bindings_action_for(b, &es, "list", 4, &n) == nullptr, "Ctrl-с with no US-layout key reported matches nothing");
+  es.base = 'c';
+  const char* a = rolltui_bindings_action_for(b, &es, "list", 4, &n);
+  check(a && std::string(a, n) == "list.up", "…with it reported (`c`), Ctrl-с is ctrl+c");
+  RolltuiChord che = es;
+  che.ch = 0x0447; /* ч */
+  che.base = 'x';
+  RolltuiChord ss{};
+  ss.key = ROLLTUI_KEY_CHAR;
+  ss.ch = 's';
+  const RolltuiChord seq[2] = {che, ss};
+  const char* sa = nullptr;
+  std::size_t sl = 0;
+  check(rolltui_bindings_sequence_for(b, seq, 1, "list", 4, nullptr, nullptr) == ROLLTUI_SEQUENCE_PREFIX &&
+            rolltui_bindings_sequence_for(b, seq, 2, "list", 4, &sa, &sl) == ROLLTUI_SEQUENCE_DONE && std::string(sa, sl) == "list.sort",
+        "…and in a sequence, Ctrl-ч then s is `ctrl+x s`");
+  rolltui_bindings_free(b);
+}
+
 int main() {
   test_bindings();
+  test_other_layouts();
   test_hold();
   test_table();
   test_app_scope();

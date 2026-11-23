@@ -442,6 +442,18 @@ static RolltuiChord as_bound(const RolltuiChord* k) {
   return n;
 }
 
+/* A KEY OF A SEQUENCE as a row's chord: as typed, or on its US-layout character (`base`) */
+static int key_matches(const RolltuiChord* row, const RolltuiChord* key) {
+  RolltuiChord k = as_bound(key);
+  if (chord_eq(row, &k)) return 1;
+  if (key->key != ROLLTUI_KEY_CHAR || !key->base) return 0;
+  k = *key;
+  k.ch = k.base;
+  k.base = 0;
+  k = as_bound(&k);
+  return chord_eq(row, &k);
+}
+
 static int scope_eq(const char* a, size_t alen, const char* b, size_t blen) {
   size_t as = 0, bs = 0;
   const char* ap = rolltui_bindings_scope_of(a, alen, &as);
@@ -449,8 +461,22 @@ static int scope_eq(const char* a, size_t alen, const char* b, size_t blen) {
   return as == bs && (as == 0 || memcmp(ap, bp, as) == 0);
 }
 
+static const char* action_for_one(const RolltuiBindings* b, const RolltuiChord* key, const char* scope, size_t scope_len,
+                                  size_t* out_len);
+/* A CHORD NO BINDING MATCHES is matched again on its key's US-layout character, where the terminal reported one (`base`). */
 const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiChord* key, const char* scope,
                                         size_t scope_len, size_t* out_len) {
+  const char* a = action_for_one(b, key, scope, scope_len, out_len);
+  if (!a && key && key->key == ROLLTUI_KEY_CHAR && key->base) {
+    RolltuiChord us = *key;
+    us.ch = us.base;
+    us.base = 0;
+    a = action_for_one(b, &us, scope, scope_len, out_len);
+  }
+  return a;
+}
+static const char* action_for_one(const RolltuiBindings* b, const RolltuiChord* key, const char* scope, size_t scope_len,
+                                  size_t* out_len) {
   const unsigned char p = rolltui_key_active_protocol();
   const RolltuiChord bound = as_bound(key);
   const RolltuiChord* k = &bound;
@@ -617,8 +643,7 @@ int rolltui_bindings_sequence_for(const RolltuiBindings* b, const RolltuiChord* 
       const Seq* s = &r->seqs[j];
       if (s->n < n || !seq_deliverable(s, p)) continue;
       for (k = 0; k < n; ++k) {
-        const RolltuiChord bk = as_bound(&keys[k]);
-        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !chord_eq(&s->c[k], &bk)) break;
+        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !key_matches(&s->c[k], &keys[k])) break;
       }
       if (k < n) continue;
       if (s->n == n) {
@@ -641,8 +666,7 @@ int rolltui_bindings_sequence_ends_any(const RolltuiBindings* b, const RolltuiCh
       const Seq* s = &r->seqs[j];
       if (s->n != n || !is_any(&s->c[n - 1])) continue;
       for (k = 0; k + 1 < n; ++k) {
-        const RolltuiChord bk = as_bound(&keys[k]);
-        if (!chord_eq(&s->c[k], &bk)) break;
+        if (!key_matches(&s->c[k], &keys[k])) break;
       }
       if (k + 1 == n && any_takes(&keys[n - 1])) return 1;
     }
@@ -662,8 +686,7 @@ size_t rolltui_bindings_sequence_next(const RolltuiBindings* b, const RolltuiCho
       int dup = 0;
       if (s->n <= n || !seq_deliverable(s, p)) continue;
       for (k = 0; k < n; ++k) {
-        const RolltuiChord bk = as_bound(&keys[k]);
-        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !chord_eq(&s->c[k], &bk)) break;
+        if (is_any(&s->c[k]) ? !any_takes(&keys[k]) : !key_matches(&s->c[k], &keys[k])) break;
       }
       if (k < n) continue;
       for (m = 0; m < out; ++m) /* one row per next key: a longer sequence through it says there is more */

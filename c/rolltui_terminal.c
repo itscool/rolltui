@@ -1007,7 +1007,9 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
    * Enabled once per entry, and popped once for the life of the handle: a second exchange
    * (a reprobe) must not push a second flag the leave sequence never pops. */
   if (t->tty && !t->protocol_on && t->protocol == ROLLTUI_PROTOCOL_KITTY) {
-    rolltui_terminal_write(t, "\x1b[>1u", 5); /* push the disambiguate flag */
+    /* push disambiguate (1) and alternate keys (4): each chord whole, and the key's place on a US layout, which matches a binding a
+     * chord on another layout would not; every key as an escape (8) is not asked, so typed text stays text */
+    rolltui_terminal_write(t, "\x1b[>5u", 5);
     if (!(t->pops & 1)) seq_append(t->leave_seq, &t->leave_len, "\x1b[<1u"); /* pop it */
     t->pops |= 1;
     t->protocol_on = 1;

@@ -226,6 +226,10 @@ void test_detection() {
     check(f.images == ROLLTUI_IMAGES_SIXEL, "an outer terminal that draws sixel, and a tmux that says it does: tmux's own sixel, sent to tmux");
     f = behind("xterm-kitty|kitty 0.43.1|256,RGB|off", nullptr, nullptr, true);
     check(f.images == ROLLTUI_IMAGES_BLOCKS, "…never where the outer terminal cannot draw it, whatever tmux says of itself");
+    f = behind("xterm-kitty|kitty 0.43.1|256,RGB|on|off");
+    check(f.images == ROLLTUI_IMAGES_KITTY && f.extended_keys == 0, "tmux's extended-keys is read too: off, said");
+    check(behind("xterm-kitty|kitty|256|on|always").extended_keys == 1 && behind("xterm-kitty|kitty|256|on").extended_keys == -1,
+          "…`always` is on, and an answer without the field says nothing of keys");
     f = behind("oldname");
     check(f.images == ROLLTUI_IMAGES_BLOCKS && f.outer[0] == 0 && f.passthrough == -1, "an answer not in tmux's shape changes nothing");
     f = behind("xterm-kitty|kitty 0.43.1|256|off", nullptr, "kitty");

@@ -2969,6 +2969,9 @@ int check_terminal_command() {
                   f.passthrough == 1 ? "on" : f.passthrough == 0 ? "off (tmux's allow-passthrough)" : "yes (a tmux before the option)");
       const bool kitty_out = std::strstr(f.outer, "kitty") || std::strstr(f.outer, "ghostty");
       if (f.passthrough == 0 && kitty_out) std::printf("               kitty's pictures need it on:  tmux set -g allow-passthrough on\n");
+      if (f.extended_keys >= 0)
+        std::printf("               keys with modifiers passed through: %s\n",
+                    f.extended_keys ? "on" : "off; Ctrl-Enter and the like need it:  tmux set -g extended-keys on");
     }
     if (f.cell_w && f.cell_h) std::printf("  cell         %d x %d pixels\n", f.cell_w, f.cell_h);
     else std::printf("  cell         (its size in pixels was not given: taken as about twice as tall as wide)\n");

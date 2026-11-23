@@ -55,6 +55,11 @@ std::string event_to_string(const RolltuiEvent& e) {
         s += rolltui_key_display_name(static_cast<unsigned char>(e.key.key), nullptr);
       }
       if (e.key.key == ROLLTUI_KEY_UNKNOWN) s += "(" + std::string(e.text ? e.text : "", e.text ? e.text_len : 0) + ")";
+      if (e.key.base) { /* the key on a US layout, as kitty's alternate keys report it */
+        char buf[4];
+        const std::size_t n = rolltui_u_append_utf8(e.key.base, buf);
+        s += " [us " + std::string(buf, n) + "]";
+      }
       return s;
     }
   }
@@ -172,6 +177,10 @@ int main() {
   table("\x1b[112;6u", "Ctrl+Shift+p");   // the chord the whole milestone is named for
   table("\x1b[97;6u", "Ctrl+Shift+a");    // the spec's own example: 97, never 65
   table("\x1b[13;5u", "Ctrl+Enter");
+  // ALTERNATE KEYS (flag 4): `code:shifted:base`, the third the key on a US layout, kept where it differs
+  table("\x1b[1089::99;5u", "Ctrl+\xd1\x81 [us c]");
+  table("\x1b[97:65;6u", "Ctrl+Shift+a");
+  table("\x1b[99::99;5u", "Ctrl+c");
   table("\x1b[13;2u", "Shift+Enter");     // "your terminal can't tell Shift+Enter from Enter"
   table("\x1b[9;5u", "Ctrl+Tab");
   table("\x1b[127;5u", "Ctrl+Backspace");

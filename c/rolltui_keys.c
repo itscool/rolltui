@@ -284,6 +284,15 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
   /* The two ENHANCED forms — see Keys.hpp for both specs. */
   if (final == 'u' && np >= 1) {
     if (enhanced_key(p[0], mod, &e)) {
+      /* ALTERNATE KEYS (flag 4): `code:shifted:base`, the third the key on a US layout */
+      size_t i = 0, colons = 0;
+      int base = 0;
+      while (i < body_len && body[i] != ';') {
+        if (body[i] == ':') ++colons;
+        else if (colons == 2 && body[i] >= '0' && body[i] <= '9' && base < 0x110000) base = base * 10 + (body[i] - '0');
+        ++i;
+      }
+      if (e.key == ROLLTUI_KEY_CHAR && base > 0 && base < 0xE000 && (RolltuiCodepoint)base != e.ch) e.base = (RolltuiCodepoint)base;
       emit_key(emit, ctx, e, NULL, 0);
       return 1;
     }

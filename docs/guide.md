@@ -534,6 +534,16 @@ reaches `avocado.txt` past `alpha`.
 F13 to F24 and Super (`super+x`, also spelled `cmd+x`) are keys a bindings file may name. Only the
 kitty keyboard protocol sends them, and on other terminals they are reported as undeliverable.
 
+On a terminal with the kitty keyboard protocol the library asks for each chord whole
+(disambiguate) and for the key's place on a US layout (alternate keys). A chord no binding
+matches is matched again on that key, so Ctrl and the key that is C on a US keyboard is
+`ctrl+c` on a Cyrillic or Greek layout too, alone and in a sequence. Typed text is still sent as
+text: the library does not ask for every key as an escape. The flags are put back when the
+program leaves, is suspended or is stopped.
+
+Inside tmux, keys with modifiers reach the program only where tmux's `extended-keys` is on;
+the library reads it and never sets it, and `dirktui check-terminal` says when it is off.
+
 ## The keys sheet
 
 A `keys` window and a `help` window are one sheet: every key the program has, under a heading for

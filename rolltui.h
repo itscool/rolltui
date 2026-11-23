@@ -267,6 +267,10 @@ typedef struct RolltuiChord {
   RolltuiCodepoint ch ROLLTUI_DEFAULT(0);
   unsigned char ctrl ROLLTUI_DEFAULT(0), alt ROLLTUI_DEFAULT(0), shift ROLLTUI_DEFAULT(0);
   unsigned char super ROLLTUI_DEFAULT(0);
+  /* THE KEY ON A US LAYOUT, where the kitty keyboard protocol reports it and it differs from `ch` (Ctrl and the key that is C on a US
+   * keyboard, on a Cyrillic one): a binding no chord matches is matched again on this, so `ctrl+c` is Ctrl-C on every layout. 0 when
+   * not reported. Never in a bindings file. */
+  RolltuiCodepoint base ROLLTUI_DEFAULT(0);
 } RolltuiChord;
 
 /* ---- the mouse ------------------------------------------------------------------------- */
@@ -4838,6 +4842,9 @@ typedef struct RolltuiTermFacts {
    * escape through to it (tmux's `allow-passthrough`, read and never set): 1 on or all, 0 off, -1 not known. "" and -1 elsewhere. */
   char outer[64];
   signed char passthrough;
+  /* BEHIND TMUX, whether it passes keys with modifiers through (`extended-keys`, read and never set): 1 on or always, 0 off, -1 not
+   * known. Off, a chord such as Ctrl-Enter or Ctrl-I apart from Tab never arrives. */
+  signed char extended_keys;
 } RolltuiTermFacts;
 
 /* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's raw bytes or a paste's contents; NULL otherwise.

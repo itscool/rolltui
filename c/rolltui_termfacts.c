@@ -136,6 +136,7 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
   memset(f, 0, sizeof *f);
   f->keyboard = ROLLTUI_PROTOCOL_LEGACY;
   f->passthrough = -1;
+  f->extended_keys = -1;
 
   /* DEPTH */
   f->depth = rolltui_detect_color_depth(e->colorterm, e->term, NULL);
@@ -653,20 +654,22 @@ void rolltui_termfacts_apply_replies(RolltuiTermFacts* f, const RolltuiTermRepli
 }
 
 void rolltui_termfacts_apply_tmux(RolltuiTermFacts* f, const char* answer, size_t len) {
-  char field[4][128];
+  char field[5][128];
   size_t i, k = 0, at = 0;
   int outer_kitty, sixel = 0;
   if (!f || !answer) return;
   memset(field, 0, sizeof field);
   for (i = 0; i < len && answer[i] != '\n'; ++i) {
     if (answer[i] == '|') {
-      if (++k == 4) return; /* more fields than asked for: not tmux's answer */
+      if (++k == 5) return; /* more fields than asked for: not tmux's answer */
       at = 0;
     } else if (at + 1 < sizeof field[0]) {
       field[k][at++] = answer[i];
     }
   }
-  if (k != 3 || !field[0][0]) return; /* not the four fields, or no outer terminal named: not tmux's answer */
+  if (k < 3 || !field[0][0]) return; /* not the four or five fields, or no outer terminal named: not tmux's answer */
+  if (k == 4 && field[4][0]) /* on, always; off */
+    f->extended_keys = (signed char)(strcmp(field[4], "on") == 0 || strcmp(field[4], "always") == 0 || strcmp(field[4], "1") == 0);
   {
     const char* name = field[1][0] ? field[1] : field[0];
     size_t n = strlen(name);

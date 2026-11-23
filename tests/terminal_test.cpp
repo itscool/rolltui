@@ -632,7 +632,7 @@ int main() {
     std::printf("  [time] terminal_new against a terminal that answers: fresh %.2f ms (one exchange), remembered %.2f ms\n", full_ms, cached_ms);
     check(!hb.asked_da() && !hb.asked("\x1bP$qm") && !hb.asked("\x1b[6n"), "a remembered terminal is asked NOTHING at entry");
     check(cached_ms < 40 * rolltui_test::kClockScale, "…so entering it costs no wait at all (" + std::to_string(cached_ms) + " ms)");
-    check(hb.asked("\x1b[>1u"), "…yet its keyboard protocol is enabled (it was remembered too)");
+    check(hb.asked("\x1b[>5u"), "…yet its keyboard protocol is enabled (it was remembered too)");
     check(hb.count("\x1b]11;?") == 1, "…and its background is re-checked once, at the first poll, after the first frame");
     check(b.remembered == 1 && b.depth == ROLLTUI_DEPTH_TRUECOLOR && b.depth_source == ROLLTUI_FACT_CACHE && b.keyboard == ROLLTUI_PROTOCOL_KITTY &&
               b.mode == ROLLTUI_MODE_DARK && b.mode_source == ROLLTUI_FACT_CACHE && b.responsive && b.ambiguous_source == ROLLTUI_FACT_CACHE,
@@ -852,7 +852,7 @@ int main() {
         while ((k = std::fread(b, 1, sizeof b, in)) > 0) log.append(b, k);
         std::fclose(in);
       }
-      check(log.find("display-message -p -t %5 #{client_termname}|#{client_termtype}|#{client_termfeatures}|#{allow-passthrough}") != std::string::npos,
+      check(log.find("display-message -p -t %5 #{client_termname}|#{client_termtype}|#{client_termfeatures}|#{allow-passthrough}|#{extended-keys}") != std::string::npos,
             "behind tmux, tmux is asked for this pane's outer terminal and passthrough [" + log + "]");
       check(log.find("set") == std::string::npos, "…and nothing of tmux's is set");
       check(std::string(tf.outer) == "kitty 0.43.1" && tf.passthrough == 0 && tf.images == ROLLTUI_IMAGES_BLOCKS,
@@ -1210,7 +1210,7 @@ int main() {
     });
     check(answered == 1 && f.responsive && f.depth == ROLLTUI_DEPTH_TRUECOLOR, "reprobe asks again and the terminal answers");
     check(h.count("\x1b[c") == 2, "…as a second exchange");
-    check(h.count("\x1b[>1u") == 1 && h.count("\x1b[<1u") == 1,
+    check(h.count("\x1b[>5u") == 1 && h.count("\x1b[<1u") == 1,
           "…which does NOT push the keyboard protocol a second time (one push, one pop)");
     check(!h.bytes.substr(h.bytes.find("\x1b[c") + 3).empty() && h.count("\x1b[?u") == 1,
           "…and does not ask the keyboard question again");
