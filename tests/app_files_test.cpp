@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -96,6 +97,59 @@ int main() {
   f = find("rel/dir/probe", nullptr, 0);
   check(f.tried.find("  missing rel/dir/probe.layout.json\n") != std::string::npos,
         "a relative argv0 keeps its directory [" + f.tried + "]");
+
+  // ---- 4. what an app keeps between runs: its state directory, and a state file two instances share ----------------------
+  {
+    auto dir = [](const char* app) {
+      RolltuiStr d{};
+      rolltui_state_dir(app, std::strlen(app), &d);
+      const std::string out = str(d);
+      rolltui_str_free(&d);
+      return out;
+    };
+    check(dir("dirk") == (cfg / "state" / "dirk").string(), "under a scratch home, the state is kept beside what is configured [" + dir("dirk") + "]");
+    ::setenv("ROLL_STATE_DIR", (root / "st").c_str(), 1);
+    check(dir("dirk") == (root / "st" / "dirk").string(), "ROLL_STATE_DIR says where outright");
+    ::unsetenv("ROLL_STATE_DIR");
+    ::unsetenv("ROLL_CONFIG_DIR");
+    ::setenv("XDG_STATE_HOME", (root / "xs").c_str(), 1);
+    check(dir("dirk") == (root / "xs" / "roll" / "dirk").string(), "…else XDG_STATE_HOME/roll [" + dir("dirk") + "]");
+    ::unsetenv("XDG_STATE_HOME");
+    const char* home = std::getenv("HOME");
+    check(home && dir("dirk") == std::string(home) + "/.local/state/roll/dirk", "…else ~/.local/state/roll [" + dir("dirk") + "]");
+    ::setenv("ROLL_CONFIG_DIR", cfg.c_str(), 1);
+
+    const std::string path = (root / "state" / "dirk" / "marks.json").string();
+    RolltuiStr err{};
+    RolltuiStateFile* a = rolltui_state_file_open(path.data(), path.size(), &err);
+    RolltuiStateFile* b = rolltui_state_file_open(path.data(), path.size(), &err);
+    check(a && b && rolltui_state_file_count(a) == 0 && err.n == 0, "a state file not there yet is an empty one");
+    auto get = [](RolltuiStateFile* sf, const char* name) {
+      std::size_t n = 0;
+      const char* v = rolltui_state_file_get(sf, name, std::strlen(name), &n);
+      return v ? std::string(v, n) : std::string("(none)");
+    };
+    rolltui_state_file_set(a, "a", 1, "/home/a", 7);
+    rolltui_state_file_set(a, "both", 4, "from a", 6);
+    check(rolltui_state_file_save(a, &err) == 1 && fs::exists(path), "saved, its folders made [" + str(err) + "]");
+    rolltui_state_file_set(b, "b", 1, "/home/b", 7);
+    rolltui_state_file_set(b, "both", 4, "from b", 6);
+    check(rolltui_state_file_save(b, &err) == 1 && get(b, "a") == "/home/a" && get(b, "b") == "/home/b" && get(b, "both") == "from b",
+          "two instances saving in turn keep each other's names; one both changed keeps the one saved last");
+    rolltui_state_file_set(a, "a", 1, nullptr, 0);
+    check(rolltui_state_file_save(a, &err) == 1 && get(a, "a") == "(none)" && get(a, "b") == "/home/b" && rolltui_state_file_count(a) == 2,
+          "a name removed goes; the handle holds what the file holds, another's names too");
+    rolltui_state_file_free(a);
+    rolltui_state_file_free(b);
+    write_file(path, "[1, 2]");
+    RolltuiStateFile* c = rolltui_state_file_open(path.data(), path.size(), &err);
+    check(c && rolltui_state_file_count(c) == 0 && str(err).find("not a state file") != std::string::npos,
+          "a file that is not a state file is said so, and the handle starts empty [" + str(err) + "]");
+    rolltui_state_file_set(c, "x", 1, "y", 1);
+    check(rolltui_state_file_save(c, &err) == 0, "…and saving refuses to write over it");
+    rolltui_state_file_free(c);
+    rolltui_str_free(&err);
+  }
 
   fs::remove_all(root, ec);
   return testkit::report("app_files_test");

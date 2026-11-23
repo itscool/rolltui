@@ -136,6 +136,8 @@ int rolltui_os_pid(void);
 /* Where a person's configuration lives when no variable names it: `$HOME/.config` on macOS and
  * Linux, `%APPDATA%` on Windows. 0 on success. */
 int rolltui_os_config_home(char* buf, size_t cap);
+/* Where the system keeps what programs remember (~/.local/state; %LOCALAPPDATA%); 0 on success. */
+int rolltui_os_state_home(char* buf, size_t cap);
 /* The operating system's release ("24.1.0", "10.0.22631") and this machine's name; 0 on success. */
 int rolltui_os_release(char* buf, size_t cap);
 int rolltui_os_host_name(char* buf, size_t cap);

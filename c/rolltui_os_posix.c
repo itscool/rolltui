@@ -166,6 +166,12 @@ int rolltui_os_config_home(char* buf, size_t cap) {
   return n > 0 && (size_t)n < cap ? 0 : -1;
 }
 
+int rolltui_os_state_home(char* buf, size_t cap) {
+  const char* home = getenv("HOME");
+  const int n = snprintf(buf, cap, "%s/.local/state", home && *home ? home : ".");
+  return n > 0 && (size_t)n < cap ? 0 : -1;
+}
+
 int rolltui_os_release(char* buf, size_t cap) {
   struct utsname u;
   if (!cap || uname(&u) != 0) return -1;

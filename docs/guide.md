@@ -701,7 +701,23 @@ matches.
 array of strings. A save reads the file again first and writes its entries followed by the ones
 this input gained since it last loaded or saved, through a temporary file and a rename. Two
 instances saving in turn keep both their entries, and a reader never sees half a file.
-`rolltui-chat` keeps its prompt's history in `<config>/rolltui/chat/history.json`.
+`rolltui-chat` keeps its prompt's history in its state directory, `<state>/chat/history.json`.
+
+### What an app keeps between runs
+
+`rolltui_state_dir(app, len, &out)` is where an app keeps what it remembers rather than what a
+person configures: `ROLL_STATE_DIR/<app>`; under a scratch home, `ROLL_CONFIG_DIR/state/<app>`;
+else `XDG_STATE_HOME/roll/<app>`, else `~/.local/state/roll/<app>` (Windows:
+`%LOCALAPPDATA%\roll\<app>`). Nothing is made there until something is saved.
+
+A state file keeps names and their text values in a JSON object: marks, tags, the tabs that were
+open, the folder last visited. `rolltui_state_file_open(path, len, &err)` reads it (a file not
+there yet is an empty one), `_get` and `_set` read and change a name (a NULL value removes it),
+`_count` and `_name_at` walk them, and `rolltui_state_file_save(file, &err)` reads the file again
+and lays this handle's changes over what is there, through a temporary file and a rename. Two
+instances saving in turn keep each other's names; a name both changed keeps the one saved last.
+After a save the handle holds what the file holds. A file that is not a state file is reported
+and never written over. dirktui keeps its update check's last answer in its state directory.
 
 ## Lists, tables and trees
 

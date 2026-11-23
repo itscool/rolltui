@@ -1299,7 +1299,14 @@ struct App {
   bool update_available() const {
     return kSelfUpdates && !latest.empty() && compare_versions(StrView(DIRKTUI_VERSION), StrView(latest)) < 0;
   }
-  static RolltuiStr update_cache_file() { return settings_dir() + "/update.json"; }
+  /* WHAT THE UPDATE CHECK LEARNED is remembered, not configured: the state directory's */
+  static RolltuiStr state_dir() {
+    RolltuiStr d{};
+    rolltui_state_dir("dirktui", 7, &d);
+    if (d.empty()) return settings_dir();
+    return d;
+  }
+  static RolltuiStr update_cache_file() { return state_dir() + "/update.json"; }
   void load_update_state() {
     RolltuiStr text{};
     FILE* f = open_file(update_cache_file().c_str(), "rb");
@@ -1322,7 +1329,7 @@ struct App {
     }
   }
   void save_update_state() {
-    const RolltuiStr dir = settings_dir();
+    const RolltuiStr dir = state_dir();
     mkdirs(dir);
     RolltuiStr out;
     rolltui::appendf(out, "{ \"latest\": \"%.*s\", \"checked_ms\": %llu, \"update_since_ms\": %llu }\n",

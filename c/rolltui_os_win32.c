@@ -273,6 +273,18 @@ int rolltui_os_config_home(char* buf, size_t cap) {
   return -1;
 }
 
+int rolltui_os_state_home(char* buf, size_t cap) {
+  wchar_t w[MAX_PATH * 4];
+  DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", w, (DWORD)(sizeof w / sizeof *w));
+  if (n > 0 && n < sizeof w / sizeof *w) return narrow(w, buf, cap);
+  n = GetEnvironmentVariableW(L"USERPROFILE", w, (DWORD)(sizeof w / sizeof *w));
+  if (n > 0 && n + 16 < sizeof w / sizeof *w) {
+    wcscat(w, L"\\AppData\\Local");
+    return narrow(w, buf, cap);
+  }
+  return -1;
+}
+
 typedef LONG(WINAPI* RtlGetVersionFn)(OSVERSIONINFOW*);
 
 int rolltui_os_release(char* buf, size_t cap) {

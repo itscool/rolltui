@@ -601,6 +601,14 @@ ROLLTUI_API(rolltui_layout_to_json_value, INTERNAL)  /* a step of loading, savin
 ROLLTUI_API(rolltui_load_layout, INTERNAL)  /* the loader over a parsed tree; the text form is the entry point */
 ROLLTUI_API(rolltui_load_layout_text, PUBLIC)
 ROLLTUI_API(rolltui_app_file, PUBLIC)
+ROLLTUI_API(rolltui_state_dir, PUBLIC)  /* dirktui's update check and the chat's history are kept there */
+ROLLTUI_API(rolltui_state_file_open, PUBLIC)  /* KEPT: a host's marks, tags or tabs, kept between runs and shared by its instances */
+ROLLTUI_API(rolltui_state_file_get, PUBLIC)  /* KEPT: (a state file's value) */
+ROLLTUI_API(rolltui_state_file_set, PUBLIC)  /* KEPT: (a state file's value set or removed) */
+ROLLTUI_API(rolltui_state_file_count, PUBLIC)  /* KEPT: (a state file's names, counted) */
+ROLLTUI_API(rolltui_state_file_name_at, PUBLIC)  /* KEPT: (a state file's names, walked) */
+ROLLTUI_API(rolltui_state_file_save, PUBLIC)  /* KEPT: (merged with another instance's, written atomically) */
+ROLLTUI_API(rolltui_state_file_free, PUBLIC)  /* KEPT: (a state file let go of) */
 ROLLTUI_API(rolltui_dir_read, PUBLIC)  /* the aligned probe needs it: a host writing a rich browser needs the same four things the picker does, and must not re-implement them */
 ROLLTUI_API(rolltui_dir_list_release, PUBLIC)  /* release half of the pair */  /* an app that keeps its screen in files cannot start until it knows where its own files are; every host built that way needs this and three of them were building the path themselves */
 ROLLTUI_API(rolltui_watch_new, PUBLIC)  /* KEPT: a host watching files of its own (a project's sources, a log it tails) */
@@ -1629,6 +1637,7 @@ ROLLTUI_API(rolltui_terminal_restore_now, INTERNAL)  /* a step of leave */
 /* the operating system, behind rolltui_os.h: no host reaches it */
 ROLLTUI_API(rolltui_os_monotonic_us, INTERNAL)
 ROLLTUI_API(rolltui_os_config_home, INTERNAL)
+ROLLTUI_API(rolltui_os_state_home, INTERNAL)
 ROLLTUI_API(rolltui_os_release, INTERNAL)
 ROLLTUI_API(rolltui_os_host_name, INTERNAL)
 ROLLTUI_API(rolltui_os_pread, INTERNAL)

@@ -184,6 +184,10 @@ int rolltui_os_config_home(char* buf, size_t cap) {
   (void)buf, (void)cap;
   return -1;
 }
+int rolltui_os_state_home(char* buf, size_t cap) {
+  (void)buf, (void)cap;
+  return -1;
+}
 static int put_name(char* buf, size_t cap, const char* name) {
   const size_t n = strlen(name);
   if (n + 1 > cap) return -1;

@@ -96,7 +96,8 @@ int main() {
   fs::create_directories(cfg / "rolltui" / "dirktui");
   std::ofstream(cfg / "rolltui" / "dirktui" / "settings.json") << "{ \"motion\": false }";
   // An update check already made: the run reaches no network.
-  std::ofstream(cfg / "rolltui" / "dirktui" / "update.json") << "{ \"latest\": \"\", \"checked_ms\": 1000000000000000, \"update_since_ms\": 0 }\n";
+  fs::create_directories(cfg / "state" / "dirktui"); /* the update check's state, under the scratch home */
+  std::ofstream(cfg / "state" / "dirktui" / "update.json") << "{ \"latest\": \"\", \"checked_ms\": 1000000000000000, \"update_since_ms\": 0 }\n";
   for (const char* name : {"alpha.txt", "beta.txt", "gamma.txt"}) std::ofstream(tree / name) << name << "\n";
 
   winsize ws{};

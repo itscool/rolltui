@@ -1764,7 +1764,24 @@ int main(int argc, char** argv) {
   app.apply_environment();
   app.mount();
   if (!headless) {
-    app.history_path = user_presets_dir() + "/chat/history.json";
+    { /* WHAT WAS TYPED is remembered, not configured: the state directory's, read once from where it was kept before */
+      RolltuiStr dir{};
+      rolltui_state_dir("chat", 4, &dir);
+      RolltuiStr base = dir.empty() ? user_presets_dir() + "/chat" : std::move(dir);
+      app.history_path = base + "/history.json";
+      const RolltuiStr was = user_presets_dir() + "/chat/history.json";
+      if (FILE* f = std::fopen(app.history_path.c_str(), "rb")) std::fclose(f);
+      else if (FILE* g = std::fopen(was.c_str(), "rb")) { /* the file moved whole, so nothing typed before is lost */
+        RolltuiStr bytes{};
+        char buf[4096];
+        std::size_t n;
+        while ((n = std::fread(buf, 1, sizeof buf, g)) > 0) bytes.append(buf, n);
+        std::fclose(g);
+        RolltuiStr err{};
+        if (rolltui_preset_write_file_atomic(app.history_path.data(), app.history_path.size(), bytes.data(), bytes.size(), &err))
+          std::remove(was.c_str());
+      }
+    }
     app.load_history();
   }
   {

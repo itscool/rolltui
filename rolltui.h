@@ -1817,6 +1817,28 @@ int rolltui_app_file(const char* argv0, const char* app, const char* kind,
                      const RolltuiEmbeddedFile* embedded, size_t embedded_n,
                      RolltuiStr* out, RolltuiStr* tried);
 
+/* ---- what an app keeps between runs --------------------------------------------------------------
+ * THE STATE DIRECTORY, for what an app remembers rather than what a person configures (a history, marks, the folder it was in):
+ * `ROLL_STATE_DIR`/<app>, else under a scratch home the config's own override names (`ROLL_CONFIG_DIR`/state/<app>), else
+ * `XDG_STATE_HOME`/roll/<app>, else ~/.local/state/roll/<app> (Windows: %LOCALAPPDATA%\roll\<app>). Into `*out` (REPLACED), not made
+ * until something is saved there; 0 where there is no file system (a web page). */
+int rolltui_state_dir(const char* app, size_t len, RolltuiStr* out);
+/* A STATE FILE: names and their values, as text, in a JSON object. Saving reads the file again and lays this handle's changes over
+ * what is there, through a temporary file and a rename, so two instances saving in turn keep each other's names, and a name both
+ * changed keeps the one saved last. After a save the handle holds what the file holds. OWNED; `_free` releases it. A file that does
+ * not exist yet is an empty one; one that is not a state file is reported in `*err` (may be NULL), and the handle starts empty. */
+typedef struct RolltuiStateFile RolltuiStateFile;
+RolltuiStateFile* rolltui_state_file_open(const char* path, size_t len, RolltuiStr* err);
+/* A BORROW valid until the next change or save; NULL when the name has no value. */
+const char* rolltui_state_file_get(const RolltuiStateFile* s, const char* name, size_t len, size_t* value_len);
+/* A NULL `value` removes the name. */
+void rolltui_state_file_set(RolltuiStateFile* s, const char* name, size_t len, const char* value, size_t value_len);
+size_t rolltui_state_file_count(const RolltuiStateFile* s);
+const char* rolltui_state_file_name_at(const RolltuiStateFile* s, size_t i, size_t* len);
+/* 1 when written; 0 with the reason in `*err` (may be NULL), the changes kept for the next try. */
+int rolltui_state_file_save(RolltuiStateFile* s, RolltuiStr* err);
+void rolltui_state_file_free(RolltuiStateFile* s); /* a no-op on NULL */
+
 /* Parses TEXT into a layout. A JSON syntax error becomes `report->error` (NULL returned). OWNED: the caller frees the result with
  * `rolltui_layout_free`. */
 RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
