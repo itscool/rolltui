@@ -1103,6 +1103,12 @@ window's draw time in its top border (" 0.4 ms "), muted, and bold in the warnin
 of a frame at 60 a second. `rolltui_mem_stats` gives the library's live and peak bytes; a CPU
 profile is the system profiler's (Instruments, `perf`).
 
+`tools/bench/frame_times.py` times a real program's frames from that log: dirktui on a
+pseudo-terminal at 200x50, the cursor walked down a folder. On an M5 Max a frame is drawn in a
+median 0.6 ms and diffed and written in 0.2 ms, about 500 bytes. Every window is drawn every
+frame: at that cost a spinner turning ten times a second takes under 1% of a core, and a window
+that drew only when it said it had changed would show stale contents the one time it did not say.
+
 ## Work off the UI thread
 
 A `RolltuiTasks` is a few worker threads, the jobs they run, and the queue of what comes back.
