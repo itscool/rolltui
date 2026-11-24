@@ -130,7 +130,8 @@ and compares the screen with the frame, cell by cell. `tools/bench/run.sh` build
 ## What's in the repository
 
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under
-  `c/` is internal. `rolltui_cpp.h` is the C++ API over it.
+  `c/` is internal. `rolltui_cpp.h` is the C++ API over it. Every pointer is OWNED, BORROWED or a
+  plain VALUE, and there is no `shared_ptr`.
 - **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell. `dirk` browses, prints
   the chosen path, and a shell function does the rest. `brew install itscool/tap/dirktui`; on
   Windows, `dirktui install` puts `dirk` into PowerShell's profile.
