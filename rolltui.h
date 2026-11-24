@@ -5115,6 +5115,11 @@ int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, in
  * the operating system, ssh or a multiplexer, the program's own version), so a new terminal, release or operating system asks again, and
  * a remembered answer is re-checked in the background and corrected at the next `ROLLTUI_TERM_EVENT_FACTS` if it has gone stale.
  * Reading marks the facts as seen: a later change is what a FACTS event reports. */
+/* WHETHER THE LOCALE SAYS UTF-8: the first of LC_ALL, LC_CTYPE and LANG that is set decides, as POSIX has it, and with none set the
+ * locale is POSIX's own, which is not. 1 when it names UTF-8 (`UTF-8` or `utf8`, case aside); `*name` and `*value` (either may be
+ * NULL) are the variable that decided and what it says, NULL when none is set. Entering a terminal whose locale is not UTF-8 leaves a
+ * warning that the first window table to draw its toasts shows, since the library writes UTF-8 whatever the locale says. */
+int rolltui_locale_utf8(const char** name, const char** value);
 void rolltui_terminal_facts(RolltuiTerminal* t, RolltuiTermFacts* out);
 
 /* SAYS THE DEPTH OUTRIGHT, over whatever was detected: a theme file's `depth` other than "auto", or a person who knows better than the

@@ -415,6 +415,21 @@ RolltuiTerminal* rolltui_terminal_new_sized(int in_fd, int out_fd, RolltuiTermin
   }
   term_enter(t, opts.handle_signals);
   rolltui_terminal_refresh_size(t);
+#if !defined(_WIN32) && !defined(__wasi__) /* Windows' console is set to UTF-8 by the library, and a page speaks it */
+  if (t->tty) { /* A LOCALE THAT IS NOT UTF-8: the library writes UTF-8 whatever it says, so the person is told the terminal may not show it */
+    const char *name, *value;
+    if (!rolltui_locale_utf8(&name, &value)) {
+      char note[256];
+      if (name)
+        snprintf(note, sizeof note, "The locale isn't UTF-8 (%s=%s), so the terminal may not show some characters. Set %s to a UTF-8 locale such as en_US.UTF-8.",
+                 name, value, name);
+      else
+        snprintf(note, sizeof note, "No locale is set (LANG, LC_CTYPE and LC_ALL are empty), so the terminal may not show some characters. Set LANG to a UTF-8 locale such as en_US.UTF-8.");
+      rolltui_logf(ROLLTUI_LOG_WARN, "locale: %s", note);
+      rolltui_termfacts_set_note(note);
+    }
+  }
+#endif
   if (rolltui_log_wants(ROLLTUI_LOG_INFO)) { /* WHAT WAS ENTERED, for whoever reads the log: what `dirktui check-terminal` prints, in a line */
     static const char* const kKeys[] = {"legacy", "modifyOtherKeys", "kitty"};
     static const char* const kWays[] = {"blocks", "blocks", "kitty", "iterm2", "sixel"};

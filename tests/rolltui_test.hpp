@@ -134,8 +134,9 @@ inline void set_terminal_env(std::initializer_list<std::pair<const char*, const 
   for (const char* name : {"COLORTERM", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "LC_TERMINAL", "LC_TERMINAL_VERSION",
                            "COLORFGBG", "ROLL_COLOR_DEPTH", "ROLL_AMBIGUOUS_WIDE", "ROLL_TERM_PROBE", "TMUX", "TMUX_PANE", "STY",
                            "SSH_CONNECTION", "KITTY_WINDOW_ID", "KONSOLE_VERSION", "WT_SESSION", "VTE_VERSION", "ZELLIJ", "NVIM",
-                           "ROLLTUI_IMAGES", "ROLLTUI_CONSOLE"})
+                           "ROLLTUI_IMAGES", "ROLLTUI_CONSOLE", "LC_ALL", "LC_CTYPE"})
     ::unsetenv(name);
+  ::setenv("LANG", "en_US.UTF-8", 1); /* the encoding is the terminal's too: UTF-8, as a terminal a person uses speaks, unless `vars` says */
   for (const auto& v : vars) ::setenv(v.first, v.second, 1);
 }
 

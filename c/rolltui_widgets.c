@@ -11,6 +11,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_termfacts.h" /* a note from entering the terminal */
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_markdown.h"
@@ -1465,6 +1466,10 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
   int toasts, which;
   if (!w || !f || !styles) return -1;
   draw_completions(w, f, screen, styles);
+  { /* WHAT ENTERING THE TERMINAL HAS TO SAY (a locale that is not UTF-8), once, as a warning */
+    char note[256];
+    if (rolltui_termfacts_take_note(note, sizeof note)) rolltui_message_log_post(&w->messages, ROLLTUI_MESSAGE_WARNING, note, strlen(note), now_ms);
+  }
   if (w->flash_on) { /* a press through a popup, acknowledged on the row it reached */
     if (!w->flash_since) w->flash_since = now_ms ? now_ms : 1;
     if (now_ms < w->flash_since + PEEK_FLASH_MS) {

@@ -2974,6 +2974,17 @@ int check_terminal_command() {
   std::printf("  environment  TERM=%s  COLORTERM=%s  TERM_PROGRAM=%s %s\n", env("TERM"), env("COLORTERM"), env("TERM_PROGRAM"),
               std::getenv("TERM_PROGRAM_VERSION") ? std::getenv("TERM_PROGRAM_VERSION") : "");
   std::printf("  answered     %s\n", answered ? "yes: it replied to the questions" : "no: it did not reply, so everything below is the environment's guess");
+#ifndef _WIN32 /* the console speaks UTF-8 there whatever the locale says: the library sets it */
+  {
+    const char *lname = nullptr, *lvalue = nullptr;
+    const bool utf8 = rolltui_locale_utf8(&lname, &lvalue) != 0;
+    if (lname)
+      std::printf("  locale       %s=%s   (%s)\n", lname, lvalue,
+                  utf8 ? "UTF-8" : "not UTF-8: some characters may not show; set it to a UTF-8 locale such as en_US.UTF-8");
+    else
+      std::printf("  locale       none set, so POSIX's own, which is not UTF-8: set LANG to a UTF-8 locale such as en_US.UTF-8\n");
+  }
+#endif
   std::printf("  colours      %s   (%s)\n", depth_words(f.depth), fact_source(f.depth_source));
   const char* colorterm = std::getenv("COLORTERM");
   if (colorterm && (StrView(colorterm) == "truecolor" || StrView(colorterm) == "24bit") && f.depth < ROLLTUI_DEPTH_TRUECOLOR &&

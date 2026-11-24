@@ -187,6 +187,10 @@ ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_mode", PROCESS)
 /* …and whether its window has the person's focus, by its last focus report: 1 when nothing reported otherwise, and no window draws
  * as focused while it is 0. */
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_focused", PROCESS)
+/* …and what entering it has to tell the person (a locale that is not UTF-8): set once there, taken once by the first window table
+ * that draws its toasts. One terminal a process, as above. */
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_note", PROCESS)
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_note_set", PROCESS)
 /* A web page's side of its terminal: what was typed and not yet read, the size, a pending resize or wake. One page, one terminal;
  * compiled only for wasm32-wasi. */
 ROLLTUI_GLOBAL("rolltui_os_web.c", "g_web", PROCESS)

@@ -285,6 +285,42 @@ static _Atomic int g_active_wide = -1;
 static _Atomic int g_active_mode = -1;
 
 void rolltui_termfacts_set_active_wide(int wide) { g_active_wide = wide < 0 ? -1 : (wide ? 1 : 0); }
+
+int rolltui_locale_utf8(const char** name, const char** value) {
+  static const char* const kOrder[] = {"LC_ALL", "LC_CTYPE", "LANG"};
+  size_t i, k;
+  if (name) *name = NULL;
+  if (value) *value = NULL;
+  for (i = 0; i < 3; ++i) {
+    const char* v = getenv(kOrder[i]);
+    if (!v || !*v) continue;
+    if (name) *name = kOrder[i];
+    if (value) *value = v;
+    for (k = 0; v[k]; ++k) { /* "UTF-8" or "utf8", anywhere: en_US.UTF-8, C.utf8 */
+      const char* rest = v + k;
+      if ((rest[0] == 'u' || rest[0] == 'U') && (rest[1] == 't' || rest[1] == 'T') && (rest[2] == 'f' || rest[2] == 'F') &&
+          (rest[3] == '8' || (rest[3] == '-' && rest[4] == '8')))
+        return 1;
+    }
+    return 0;
+  }
+  return 0;
+}
+
+/* THE NOTE, written once on entering and taken once: a terminal is entered on the main thread, before anything is drawn */
+static char g_note[256];
+static int g_note_set;
+void rolltui_termfacts_set_note(const char* text) {
+  if (!text) return;
+  snprintf(g_note, sizeof g_note, "%s", text);
+  g_note_set = 1;
+}
+int rolltui_termfacts_take_note(char* out, size_t cap) {
+  if (!g_note_set || !out || cap == 0) return 0;
+  g_note_set = 0;
+  snprintf(out, cap, "%s", g_note);
+  return 1;
+}
 int rolltui_termfacts_active_wide(void) { return g_active_wide == 1; }
 
 static _Atomic int g_active_focused = 1;

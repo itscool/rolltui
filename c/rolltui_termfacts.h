@@ -120,6 +120,10 @@ unsigned char rolltui_termfacts_clamp_depth(unsigned char requested);
  * -1 withdraws either: no terminal is entered. */
 void rolltui_termfacts_set_active_wide(int wide);
 int rolltui_termfacts_active_wide(void); /* 1 only when a terminal measured (or was told) two cells */
+/* A NOTE FOR THE PERSON from entering a terminal (a locale that is not UTF-8): set once, taken once by the first window table that
+ * draws its toasts, which shows it as a warning. 1 with the text copied into `out` (`cap` bytes, terminated). */
+void rolltui_termfacts_set_note(const char* text);
+int rolltui_termfacts_take_note(char* out, size_t cap);
 /* Whether the terminal's window has the person's focus, as its last focus report said: 1 until a terminal reports losing it, so a
  * terminal that never reports is always focused. While it is 0 no window draws as focused. */
 void rolltui_termfacts_set_active_focused(int focused);

@@ -1935,6 +1935,9 @@ ROLLTUI_API(rolltui_termenv_no_24bit_known, INTERNAL)
 ROLLTUI_API(rolltui_termenv_read, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_mode, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_wide, INTERNAL)
+ROLLTUI_API(rolltui_locale_utf8, PUBLIC)  /* `dirktui check-terminal` names the locale and whether it says UTF-8 */
+ROLLTUI_API(rolltui_termfacts_set_note, INTERNAL)  /* …and leaves the person a note when it does not */
+ROLLTUI_API(rolltui_termfacts_take_note, INTERNAL)  /* the window table shows it, once */
 ROLLTUI_API(rolltui_termfacts_active_focused, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_split, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_apply_replies, INTERNAL)

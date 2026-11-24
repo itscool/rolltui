@@ -2327,7 +2327,13 @@ once.
 | `ROLL_TERM_PROBE=0` | only probe the keyboard |
 | `ROLLTUI_CONSOLE=1`, `=0` | treat the terminal as the Linux console, or not |
 
-`dirktui check-terminal` probes again and shows each answer and where it came from.
+The library writes UTF-8 whatever the locale says. When the locale isn't UTF-8 (the first of
+`LC_ALL`, `LC_CTYPE` and `LANG` that is set decides, and with none set it's POSIX's own, which
+isn't), entering a terminal logs a warning and the first window table to draw its toasts shows it,
+naming the variable to change. `rolltui_locale_utf8` answers the same question for your program.
+
+`dirktui check-terminal` probes again and shows each answer and where it came from, the locale
+included.
 
 Every theme has a light and a dark variant. The mode (auto, dark or light) and the colour depth are
 user settings, stored with the chosen theme and kept when the theme changes. In `auto` mode the

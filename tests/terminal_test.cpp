@@ -1306,5 +1306,51 @@ int main() {
     check(h.count("\x1b[?1000h\x1b[?1002h\x1b[?1006h") == 2, "…and on again writes them on: once at entry, once now");
   }
 
+  // ---- A LOCALE THAT IS NOT UTF-8 IS NAMED: the library writes UTF-8 whatever the locale says ----
+  {
+    RolltuiTerminalOptions o;
+    o.no_cache = 1;
+    char note[256];
+    const char *name = nullptr, *value = nullptr;
+    rolltui_termfacts_take_note(note, sizeof note); /* nothing left over from the runs above */
+    set_env({{"LANG", "fr_FR.utf8"}});
+    check(rolltui_locale_utf8(&name, &value) == 1 && std::string(name) == "LANG", "fr_FR.utf8 is UTF-8, said by LANG");
+    set_env({{"LANG", "en_US.UTF-8"}, {"LC_ALL", "C"}});
+    check(rolltui_locale_utf8(&name, &value) == 0 && std::string(name) == "LC_ALL" && std::string(value) == "C",
+          "…LC_ALL decides over LANG, and C is not UTF-8");
+    set_env({{"LANG", "C"}, {"LC_CTYPE", "C.UTF-8"}});
+    check(rolltui_locale_utf8(&name, &value) == 1 && std::string(name) == "LC_CTYPE", "…LC_CTYPE decides over LANG");
+    ::unsetenv("LANG");
+    set_env({});
+    ::unsetenv("LANG");
+    check(rolltui_locale_utf8(&name, &value) == 0 && name == nullptr, "with none set, the locale is POSIX's own, which is not UTF-8");
+    with_terminal(kGhostty, {{"TERM", "xterm-256color"}, {"LANG", "C"}}, o, [](RolltuiTerminal*) {});
+    check(rolltui_termfacts_take_note(note, sizeof note) == 1 && std::string(note).find("(LANG=C)") != std::string::npos &&
+              std::string(note).find("Set LANG to a UTF-8 locale") != std::string::npos,
+          "entering a terminal with LANG=C leaves a note naming it and what to set [" + std::string(note) + "]");
+    check(rolltui_termfacts_take_note(note, sizeof note) == 0, "…taken once");
+    with_terminal(kGhostty, {{"TERM", "xterm-256color"}}, o, [](RolltuiTerminal*) {});
+    check(rolltui_termfacts_take_note(note, sizeof note) == 0, "CONTROL: with a UTF-8 locale there is no note");
+    // THE WINDOW TABLE SHOWS IT, once, as a warning
+    with_terminal(kGhostty, {{"TERM", "xterm-256color"}, {"LANG", "C"}}, o, [](RolltuiTerminal*) {});
+    RolltuiContext* c = rolltui_context_new();
+    rolltui_context_set_library_defaults(c);
+    RolltuiWindows* w = rolltui_windows_new(c);
+    RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+    RolltuiFrame* f = rolltui_frame_new(80, 24, styles[0]);
+    rolltui_windows_draw_toasts(w, f, RolltuiRect{0, 0, 80, 24}, styles, 1000);
+    rolltui_windows_draw_toasts(w, f, RolltuiRect{0, 0, 80, 24}, styles, 2000);
+    int level = -1;
+    std::size_t tl = 0;
+    const std::size_t n = rolltui_windows_message_count(w);
+    const char* text = n ? rolltui_windows_message_at(w, 0, &tl, &level, nullptr) : nullptr;
+    check(n == 1 && level == ROLLTUI_MESSAGE_WARNING && text && std::string(text, tl).find("LANG=C") != std::string::npos,
+          "the first window table to draw its toasts posts it as a warning, once [" + std::to_string(n) + "]");
+    rolltui_frame_free(f);
+    rolltui_windows_free(w);
+    rolltui_context_free(c);
+    set_env({});
+  }
+
   return report("rolltui_terminal_test");
 }
