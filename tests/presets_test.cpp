@@ -1485,6 +1485,9 @@ int main() {
     // fairness, and Darwin's does not give it), which hangs a test and proves nothing about a host.
     std::atomic<bool> done{false};
     std::atomic<int> loads{0};
+    // THE VERSION BEFORE ANY LOAD, read before the other thread starts: every copy counted after it follows a load, so the
+    // copies can never outnumber the loads (starting from 0, the first copy was the store's own starting version).
+    const unsigned long long before = rolltui_theme_store_version(ts);
     std::thread changer([&] {
       static const char* const kNames[] = {"mono", "default", "contrast"};
       for (int i = 0; !done.load(); ++i) {
@@ -1502,7 +1505,7 @@ int main() {
     constexpr int kCopies = 200;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     int frames = 0, copies = 0, whole = 0, labelled = 0;
-    unsigned long long seen = 0;
+    unsigned long long seen = before;
     RolltuiStr label{};
     while (copies < kCopies && std::chrono::steady_clock::now() < deadline) {
       ++frames;
