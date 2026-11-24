@@ -237,9 +237,12 @@ int main() {
       check(fp(z, "1") != fp(xterm, "1") && fp(nv, "1") != fp(xterm, "1"), "inside zellij or Neovim's terminal asks again");
     }
     {
-      const RolltuiTermEnv in_tmux = make({.tmux = "x"}), in_screen = make({.sty = "1.pts"}), bare = make(base);
-      check(rolltui_termenv_multiplexed(&in_tmux) == 1 && rolltui_termenv_multiplexed(&in_screen) == 1 && rolltui_termenv_multiplexed(&bare) == 0,
-            "tmux and screen are multiplexers; a terminal is not");
+      Env z = base;
+      z.zellij = "0";
+      const RolltuiTermEnv in_tmux = make({.tmux = "x"}), in_screen = make({.sty = "1.pts"}), in_zellij = make(z), bare = make(base);
+      check(rolltui_termenv_multiplexed(&in_tmux) == 1 && rolltui_termenv_multiplexed(&in_screen) == 1 &&
+                rolltui_termenv_multiplexed(&in_zellij) == 1 && rolltui_termenv_multiplexed(&bare) == 0,
+            "tmux, screen and Zellij are multiplexers; a terminal is not");
     }
     // A tiny buffer is not overrun and is still terminated.
     {

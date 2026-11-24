@@ -867,6 +867,13 @@ int main() {
     check(!file_exists(dir + "/terminal-facts.json"), "…but not remembered: the terminal it is attached to can change without the environment changing");
     h = with_terminal(kGhostty, tmux_env, o3, [](RolltuiTerminal*) {});
     check(h.asked_da(), "…so it asks again next time");
+    // …and behind Zellij, which a session is attached to from one terminal and then another, the same
+    const std::vector<std::pair<const char*, const char*>> zellij_env = {{"TERM", "xterm-256color"}, {"ZELLIJ", "0"}};
+    RolltuiTermFacts zf{};
+    with_terminal(kGhostty, zellij_env, o3, [&](RolltuiTerminal* t) { zf = facts_of(t); });
+    h = with_terminal(kGhostty, zellij_env, o3, [](RolltuiTerminal*) {});
+    check(zf.keyboard == ROLLTUI_PROTOCOL_KITTY && !file_exists(dir + "/terminal-facts.json") && h.asked_da(),
+          "behind Zellij the answers are used, never remembered, and asked again next time");
 
     // BEHIND TMUX, TMUX IS ASKED what terminal is outside it and whether the pane passes escapes; the person's tmux is never set.
     {

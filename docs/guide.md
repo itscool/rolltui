@@ -2103,7 +2103,9 @@ are drawn: kitty's protocol for kitty and Ghostty, iTerm2's for WezTerm and iTer
 mlterm and Konsole.
 
 Answers are cached per terminal, keyed by terminal name and version, operating system, program
-build, and whether the session runs over ssh or inside a multiplexer. The terminal's own variables
+build, and whether the session runs over ssh. Behind a multiplexer (tmux, GNU screen, Zellij) the
+answers are the multiplexer's and the terminal under it can change between attaches: they are used,
+never cached, and each question waits 200 ms rather than 80. The terminal's own variables
 are part of the key where `TERM` does not tell terminals apart: `KONSOLE_VERSION` and
 `VTE_VERSION` by their value, `WT_SESSION` and `KITTY_WINDOW_ID` by being set, so Windows Terminal
 and Windows' console window are two terminals and a new tab is the same one. A cached answer is used at

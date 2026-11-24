@@ -313,7 +313,7 @@ static void term_leave(RolltuiTerminal* t) {
     RolltuiStr del;
     size_t i;
     memset(&del, 0, sizeof del);
-    for (i = 0; i < t->kitty_n; ++i) rolltui_image_kitty_delete(t->kitty[i].id, t->multiplexed, &del);
+    for (i = 0; i < t->kitty_n; ++i) rolltui_image_kitty_delete(t->kitty[i].id, t->env.tmux != NULL, &del);
     rolltui_terminal_write(t, del.p, del.n);
     rolltui_str_free(&del);
     t->kitty_n = 0;
@@ -1433,13 +1433,13 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
         RolltuiStr* slot = &t->kitty_files[t->kitty_file_at % 8];
         if (slot->n) remove(slot->p); /* the oldest: read long since, or never going to be */
         rolltui_str_clear(slot);
-        rolltui_image_kitty_upload(p->img, t->multiplexed, !t->env.ssh_connection, out, slot);
+        rolltui_image_kitty_upload(p->img, t->env.tmux != NULL, !t->env.ssh_connection, out, slot);
         if (slot->n) ++t->kitty_file_at;
       }
     }
     t->kitty[k].drawn = t->presents;
     if (t->kitty[k].cols != p->cells.w || t->kitty[k].rows != p->cells.h) {
-      rolltui_image_kitty_place(id, p->cells.w, p->cells.h, t->multiplexed, out);
+      rolltui_image_kitty_place(id, p->cells.w, p->cells.h, t->env.tmux != NULL, out);
       t->kitty[k].cols = p->cells.w;
       t->kitty[k].rows = p->cells.h;
     }
@@ -1449,7 +1449,7 @@ static void images_before(RolltuiTerminal* t, RolltuiSwap* s, const RolltuiFrame
     for (k = 0; k < t->kitty_n; ++k)
       if (t->kitty[k].drawn != t->presents && (old == t->kitty_n || t->kitty[k].drawn < t->kitty[old].drawn)) old = k;
     if (old == t->kitty_n) break; /* every one is on screen */
-    rolltui_image_kitty_delete(t->kitty[old].id, t->multiplexed, out);
+    rolltui_image_kitty_delete(t->kitty[old].id, t->env.tmux != NULL, out);
     t->kitty[old] = t->kitty[--t->kitty_n];
   }
   if (!rolltui_swap_front(s)) { /* drawn whole: nothing drawn outside the grid survives it */
@@ -1558,7 +1558,7 @@ static void images_after(RolltuiTerminal* t, const RolltuiFrame* drawn, int orig
     if (!picture_due(t, id, p->cells, 0)) continue; /* held: sent once it has stayed */
     len = snprintf(at, sizeof at, "\x1b" "7\x1b[%d;%dH", origin + p->cells.y + 1, p->cells.x + 1);
     if (len > 0) rolltui_str_append(out, at, (size_t)len);
-    if (p->protocol == ROLLTUI_IMAGES_ITERM2) rolltui_image_iterm2(p->img, p->cells.w, p->cells.h, t->multiplexed, out);
+    if (p->protocol == ROLLTUI_IMAGES_ITERM2) rolltui_image_iterm2(p->img, p->cells.w, p->cells.h, t->env.tmux != NULL, out);
     else rolltui_image_sixel(p->img, p->px_w, p->px_h, out);
     rolltui_str_append(out, "\x1b" "8", 2);
     t->pics = (struct ShownImage*)rolltui_grow(t->pics, &t->pics_cap, t->pics_n + 1, sizeof *t->pics);

@@ -50,7 +50,9 @@ void rolltui_termenv_read(RolltuiTermEnv* e) {
   if (rolltui_os_host_name(e->host, sizeof e->host) != 0) e->host[0] = '\0';
 }
 
-int rolltui_termenv_multiplexed(const RolltuiTermEnv* e) { return e->tmux != NULL || e->sty != NULL; }
+/* tmux, GNU screen and Zellij: what answers is the multiplexer, and the terminal it is drawn on can change under it (a session
+ * attached from another terminal) without a byte of the environment changing. */
+int rolltui_termenv_multiplexed(const RolltuiTermEnv* e) { return e->tmux != NULL || e->sty != NULL || e->zellij != NULL; }
 
 /* Terminals that do 24-bit colour and name themselves in a way `TERM=...256color` does not
  * catch. Without this table `TERM=xterm-ghostty` with no COLORTERM — which is exactly what

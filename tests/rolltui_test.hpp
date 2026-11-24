@@ -129,8 +129,12 @@ inline RolltuiContext* test_context() {
 // the terminal it was recorded in, and the person's own (Apple Terminal, a CI runner with no TERM)
 // never reaches a child it starts.
 inline void set_terminal_env(std::initializer_list<std::pair<const char*, const char*>> vars) {
+  // EVERY VARIABLE THE LIBRARY READS ABOUT A TERMINAL, so a suite run inside kitty, Zellij or Windows Terminal tests the terminal it
+  // scripts and not the one it was started in
   for (const char* name : {"COLORTERM", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "LC_TERMINAL", "LC_TERMINAL_VERSION",
-                           "COLORFGBG", "ROLL_COLOR_DEPTH", "ROLL_AMBIGUOUS_WIDE", "ROLL_TERM_PROBE", "TMUX", "STY", "SSH_CONNECTION"})
+                           "COLORFGBG", "ROLL_COLOR_DEPTH", "ROLL_AMBIGUOUS_WIDE", "ROLL_TERM_PROBE", "TMUX", "TMUX_PANE", "STY",
+                           "SSH_CONNECTION", "KITTY_WINDOW_ID", "KONSOLE_VERSION", "WT_SESSION", "VTE_VERSION", "ZELLIJ", "NVIM",
+                           "ROLLTUI_IMAGES", "ROLLTUI_CONSOLE"})
     ::unsetenv(name);
   for (const auto& v : vars) ::setenv(v.first, v.second, 1);
 }
