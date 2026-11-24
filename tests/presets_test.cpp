@@ -1599,8 +1599,6 @@ int main() {
     rolltui_theme_store_free(ts);
   }
 
-  // The sections after the reset above write into the world again, so it is removed here too, last: a run leaves nothing.
-  fs::remove_all(world, ec);
   // ---- A TABLE OLDER THAN A LIBRARY ACTION still has a key for it ----
   // A saved table names every action it has, an unbound one as []. An action the file does not name is one it predates, and takes
   // the shipped default's keys, those its scope has free.
@@ -1627,5 +1625,8 @@ int main() {
     check(chords("sheet.undo").empty(), "…one it names as [] stays without a key: that is the person's choice [" + chords("sheet.undo") + "]");
     check(chords("list.down") == "Down", "…and a default key the file gave to another action in that scope is left to it [" + chords("list.down") + "]");
   }
+  // The sections after the reset above write into the world again, so it is removed here too, last: a run leaves nothing.
+  fs::remove_all(world, ec);
+  check(!fs::exists(world), "a run leaves nothing behind");
   return report("rolltui_presets_test");
 }

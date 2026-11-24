@@ -1387,5 +1387,9 @@ int main(int argc, char** argv) {
               std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");
   }
   std::filesystem::remove_all(scratch);
+  { /* and the fixed root, once no run is in it: another run's folder keeps it, and that run removes it */
+    std::error_code ec;
+    std::filesystem::remove("/tmp/rolltui-studio-golden-scratch", ec);
+  }
   return report("rolltui_studio_golden_test");
 }

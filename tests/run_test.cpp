@@ -7,6 +7,7 @@
 // an event's text valid when the app is called, a repaint after an explicit request, after a child program has had the
 // terminal and after a resize, and the terminal put back before the call returns.
 //
+#include <filesystem>
 #include <cerrno>
 #include <csignal>
 #include <cstddef>
@@ -226,6 +227,14 @@ int main() {
   char tmpl[] = "/tmp/rolltui_run_test_XXXXXX";
   const char* dir = ::mkdtemp(tmpl);
   if (dir) ::setenv("ROLL_CONFIG_DIR", dir, 1);
+  /* A RUN LEAVES NOTHING: the folder and what was written into it go however main returns */
+  struct RemoveAtEnd {
+    std::string dir;
+    ~RemoveAtEnd() {
+      std::error_code ec;
+      if (!dir.empty()) std::filesystem::remove_all(dir, ec);
+    }
+  } remove_at_end{dir ? dir : ""};
   ::unsetenv("ROLL_TERM_PROBE");
 
   // ---- THE PRODUCTS RUN ON IT: none of the three writes a loop of its own again -----------------------------------

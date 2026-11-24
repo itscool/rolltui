@@ -3,6 +3,7 @@
 // opened with F2 and closed with Escape; the page of Markdown shown by a click on its tab; a theme chosen; and Ctrl-Q leaving the
 // terminal as it was found. The same file is the web demo, so what this holds is what the page shows.
 //
+#include <filesystem>
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -66,6 +67,14 @@ int main() {
   char tmpl[] = "/tmp/rolltui_tour_test_XXXXXX";
   const char* dir = ::mkdtemp(tmpl);
   if (dir) ::setenv("ROLL_CONFIG_DIR", dir, 1); /* nothing here may touch the person's own configuration */
+  /* A RUN LEAVES NOTHING: the folder and what was written into it go however main returns */
+  struct RemoveAtEnd {
+    std::string dir;
+    ~RemoveAtEnd() {
+      std::error_code ec;
+      if (!dir.empty()) std::filesystem::remove_all(dir, ec);
+    }
+  } remove_at_end{dir ? dir : ""};
   winsize ws{};
   ws.ws_row = 34;
   ws.ws_col = 120;
