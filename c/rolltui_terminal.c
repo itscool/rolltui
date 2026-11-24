@@ -793,6 +793,18 @@ static long ms_until(const unsigned long long* deadline) {
   return now >= *deadline ? 0 : (long)(*deadline - now);
 }
 
+/* `b` for a log line: ESC as \e, other control bytes as \xNN. */
+static void log_escaped(RolltuiStr* out, const char* b, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    const unsigned char c = (unsigned char)b[i];
+    char hex[8];
+    if (c == 0x1b) rolltui_str_append(out, "\\e", 2);
+    else if (c < 0x20 || c == 0x7f) rolltui_str_append(out, hex, (size_t)snprintf(hex, sizeof hex, "\\x%02x", c));
+    else rolltui_str_append(out, (const char*)&c, 1);
+  }
+}
+
 /* Waits for input until `left` runs out and reads it: bytes read, 0 to try again, -1 to stop. */
 static long read_until(RolltuiTerminal* t, long left, char* b, size_t cap) {
   const int r = rolltui_os_tty_wait(t->os, (int)left, 0);
@@ -1083,6 +1095,10 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
     char* buf = NULL;
     size_t buf_len = 0, buf_cap = 0;
     unsigned long long deadline = deadline_from(timeout_ms);
+    const unsigned long long asked_at = rolltui_os_monotonic_ms();
+    RolltuiStr heard; /* every byte of the answer, for the log: what a terminal said, when it is not what was expected */
+    const int logging = rolltui_log_wants(ROLLTUI_LOG_DEBUG);
+    memset(&heard, 0, sizeof heard);
     rolltui_terminal_write(t, q, qlen);
     while (!rep.da1) {
       long left = ms_until(&deadline);
@@ -1092,6 +1108,7 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
       k = read_until(t, left, b, sizeof b);
       if (k == 0) continue;
       if (k < 0) break;
+      if (logging) log_escaped(&heard, b, (size_t)k);
       buf = (char*)rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
       memcpy(buf + buf_len, b, (size_t)k);
       buf_len += (size_t)k;
@@ -1110,6 +1127,10 @@ static unsigned char negotiate_batch(RolltuiTerminal* t, int timeout_ms, int for
     }
     t->facts.responsive = rep.da1 ? 1 : 0;
     rolltui_termfacts_apply_replies(&t->facts, &rep, asked);
+    if (logging)
+      rolltui_logf(ROLLTUI_LOG_DEBUG, "terminal: asked %zu bytes, %s in %llu ms: %.*s", qlen, rep.da1 ? "answered" : "no Primary DA",
+                   rolltui_os_monotonic_ms() - asked_at, (int)heard.n, heard.p ? heard.p : "");
+    rolltui_str_free(&heard);
   }
   t->facts.keyboard = t->protocol;
   if (rep_out) *rep_out = rep;

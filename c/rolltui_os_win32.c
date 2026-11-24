@@ -594,7 +594,8 @@ int rolltui_os_tty_wait(RolltuiOsTty* t, int timeout_ms, int with_wake) {
     int out = 0;
     if (t->tty) drain_console(t);
     if (t->pending_n) out |= ROLLTUI_OS_TTY_INPUT;
-    if (t->resized) {
+    if (t->resized && with_wake) { /* waiting for input alone (a question's answer), a resize is kept for the next wait, as a
+                                    * signal's is on POSIX: the console reports one as the alternate screen is entered */
       t->resized = 0;
       out |= ROLLTUI_OS_TTY_RESIZED;
     }

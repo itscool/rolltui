@@ -104,7 +104,10 @@ draws a frame whole. The library applies the answers:
   cluster is sent as one code point: its first after canonical composition, so `e` and a
   combining acute is sent as `é`.
 
-Windows' own console sets no `TERM` and is drawn in 24-bit colour.
+Windows' own console sets no `TERM` and is drawn in 24-bit colour. A Windows program in Windows
+Terminal is asked what any terminal is and hears its answers: synchronized output, kitty's
+keyboard, its background, a cell of 10 by 20 pixels, which is the cell it draws sixel to whatever
+the font. A picture is drawn at its cell there, natively and from WSL.
 
 The Linux console is known by `TERM=linux` or by its tty, `/dev/ttyN`, whatever `TERM` says.
 Its font has the PC's glyphs only, so the frame is sent with the nearest it has: braille as a
@@ -117,7 +120,10 @@ are drawn: kitty's protocol for kitty and Ghostty, iTerm2's for WezTerm and iTer
 mlterm and Konsole.
 
 Answers are cached per terminal, keyed by terminal name and version, operating system, program
-build, and whether the session runs over ssh or inside a multiplexer. A cached answer is used at
+build, and whether the session runs over ssh or inside a multiplexer. The terminal's own variables
+are part of the key where `TERM` does not tell terminals apart: `KONSOLE_VERSION` and
+`VTE_VERSION` by their value, `WT_SESSION` and `KITTY_WINDOW_ID` by being set, so Windows Terminal
+and Windows' console window are two terminals and a new tab is the same one. A cached answer is used at
 startup and checked again after the first frame. A probe costs 0.6 ms fresh and 0.2 ms from the
 cache; a terminal that does not answer costs 80 ms, once.
 
@@ -1095,8 +1101,9 @@ seconds since the log began, the level and the text:
   through; INFO by default. `rolltui_log_wants(level)` says whether a line would be written, before
   one that costs is built.
 - The library says what terminal it entered and how it draws, a store read again because another
-  program changed its files, and at DEBUG each frame's time: the host's drawing, the diff and the
-  write, and the bytes sent.
+  program changed its files, and at DEBUG what the terminal answered its questions, byte for byte
+  and how long it took, and each frame's time: the host's drawing, the diff and the write, and the
+  bytes sent.
 
 `rolltui_windows_set_timing(windows, 1)`, or `ROLLTUI_TIMING=1` for any program, puts each
 window's draw time in its top border (" 0.4 ms "), muted, and bold in the warning role past half

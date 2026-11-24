@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -149,6 +151,8 @@ struct Script {
   std::string da1 = "\x1b[?1;2c";
   std::string after;                         // written on its own 150 ms after the first DA1 is answered (a LATE reply)
   int idle_ms = 350;                         // how long the terminal lingers once nothing more is coming
+  int winch_first_ms = -1;                   // >= 0: the window is resized to 100x30 and the program told before any answer,
+                                             // which then waits this long (Windows' console reports a size as the screen is entered)
 };
 
 struct Heard {
@@ -201,6 +205,7 @@ void fake_serve(int master, int report_fd, const Script& sc) {
   long long quiet_since = ms_now(), after_due = -1;
   std::size_t anchors = 0;
   bool after_sent = sc.after.empty();
+  bool winched = false;
   for (;;) {
     pollfd p{master, POLLIN, 0};
     const int r = ::poll(&p, 1, 20);
@@ -258,6 +263,15 @@ void fake_serve(int master, int report_fd, const Script& sc) {
         }
       }
       processed = seen.size();
+      if (sc.answers && !out.empty() && sc.winch_first_ms >= 0 && !winched) {
+        winsize ws{};
+        ws.ws_row = 30;
+        ws.ws_col = 100;
+        ::ioctl(master, TIOCSWINSZ, &ws);
+        ::kill(::getppid(), SIGWINCH);
+        ::usleep(static_cast<useconds_t>(sc.winch_first_ms) * 1000);
+        winched = true;
+      }
       if (sc.answers && !out.empty()) (void)!::write(master, out.data(), out.size());
     }
     if (!after_sent && after_due > 0 && ms_now() >= after_due) {
@@ -618,6 +632,36 @@ int main() {
     check(a.keyboard == ROLLTUI_PROTOCOL_KITTY && a.responsive && !a.remembered, "it speaks kitty, it answered, and nothing was remembered yet");
     check(std::string(a.name) == "ghostty 1.1.3", "it said who it is [" + std::string(a.name) + "]");
     check(file_exists(cache_file), "what it said was remembered");
+
+    // ---- A RESIZE WHILE THE QUESTIONS ARE OUT is the window's, not the terminal's silence: the answers that follow are heard,
+    // and the resize is reported by the first poll at the size it left
+    {
+      Script sz = kGhostty;
+      sz.winch_first_ms = 25;
+      RolltuiTerminalOptions oz;
+      oz.no_cache = 1;
+      RolltuiTermFacts z{};
+      std::string ev;
+      const std::string log = dir + "/exchange.log"; /* and what it answered is in the log at DEBUG, as it came */
+      rolltui_log_to(log.data(), log.size());
+      rolltui_log_set_level(ROLLTUI_LOG_DEBUG);
+      with_terminal(sz, kGhosttyEnv, oz, [&](RolltuiTerminal* t) {
+        z = facts_of(t);
+        ev = names(t, 300);
+      });
+      rolltui_log_to(nullptr, 0);
+      rolltui_log_set_level(ROLLTUI_LOG_INFO);
+      check(z.responsive && z.keyboard == ROLLTUI_PROTOCOL_KITTY && std::string(z.name) == "ghostty 1.1.3",
+            "a resize before the answers: every answer still heard [" + std::string(z.name) + "]");
+      check(ev.find("Resize 100x30") != std::string::npos, "…and the resize reported by the first poll, at its size [" + ev + "]");
+      std::ifstream in(log);
+      const std::string said((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      const std::size_t at = said.find("DEBUG terminal: asked ");
+      check(at != std::string::npos && said.find(", answered in ", at) != std::string::npos &&
+                said.find("\\e[?0u\\e]11;rgb:1e1e/1e1e/2e2e\\e\\", at) != std::string::npos,
+            "at DEBUG the log has what the terminal answered, escapes written out [" + said.substr(at == std::string::npos ? 0 : at, 120) + "]");
+      std::remove(log.c_str());
+    }
 
     // ---- The next run on the SAME terminal asks nothing, and re-checks the background after the first frame
     RolltuiTermFacts b{};

@@ -31,6 +31,7 @@ struct Env {
              *colorfgbg = nullptr, *force_depth = nullptr, *force_wide = nullptr, *tmux = nullptr, *sty = nullptr,
              *ssh = nullptr, *locale = "en_US.UTF-8";
   const char* os = "25.6.0";
+  const char *wt = nullptr, *kitty_window = nullptr, *konsole = nullptr, *vte = nullptr, *zellij = nullptr, *nvim = nullptr;
 };
 
 RolltuiTermEnv make(const Env& e) {
@@ -48,6 +49,12 @@ RolltuiTermEnv make(const Env& e) {
   r.sty = e.sty;
   r.ssh_connection = e.ssh;
   r.locale = e.locale;
+  r.wt_session = e.wt;
+  r.kitty_window_id = e.kitty_window;
+  r.konsole_version = e.konsole;
+  r.vte_version = e.vte;
+  r.zellij = e.zellij;
+  r.nvim = e.nvim;
   std::snprintf(r.os_release, sizeof r.os_release, "%s", e.os);
   std::snprintf(r.host, sizeof r.host, "testhost");
   return r;
@@ -207,6 +214,27 @@ int main() {
       check(fp(x, "0.1.4") == fp(y, "0.1.4"), "…but a new ssh connection from the SAME machine does not (the ports change every time)");
       y.ssh = "10.0.0.3 61234 10.0.0.9 22";
       check(fp(x, "0.1.4") != fp(y, "0.1.4"), "…while a connection from a DIFFERENT machine does");
+    }
+    {  // TERMINALS THAT TERM AND TERM_PROGRAM DO NOT TELL APART are told apart by their own variables
+      const Env xterm{.term = "xterm-256color"}, console{.term = nullptr};
+      Env konsole = xterm, vte = xterm, wt = console, wt2 = console, vte2 = xterm, kitty1 = xterm, kitty2 = xterm;
+      konsole.konsole = "250401";
+      vte.vte = "7800";
+      vte2.vte = "7600";
+      wt.wt = "6a1e4b0c-0000-4000-8000-000000000001";
+      wt2.wt = "6a1e4b0c-0000-4000-8000-000000000002";
+      kitty1.kitty_window = "1";
+      kitty2.kitty_window = "7";
+      check(fp(konsole, "1") != fp(vte, "1") && fp(konsole, "1") != fp(xterm, "1"),
+            "Konsole and GNOME Terminal, both xterm-256color with no program named, are two terminals");
+      check(fp(vte, "1") != fp(vte2, "1"), "…and a new VTE asks again");
+      check(fp(wt, "1") != fp(console, "1") && fp(wt, "1") == fp(wt2, "1"),
+            "Windows Terminal and Windows' console window are two; a new Windows Terminal tab is the same one");
+      check(fp(kitty1, "1") == fp(kitty2, "1") && fp(kitty1, "1") != fp(xterm, "1"), "…and a new kitty window is the same kitty");
+      Env z = xterm, nv = xterm;
+      z.zellij = "0";
+      nv.nvim = "/tmp/nvim.sock";
+      check(fp(z, "1") != fp(xterm, "1") && fp(nv, "1") != fp(xterm, "1"), "inside zellij or Neovim's terminal asks again");
     }
     {
       const RolltuiTermEnv in_tmux = make({.tmux = "x"}), in_screen = make({.sty = "1.pts"}), bare = make(base);

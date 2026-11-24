@@ -212,11 +212,17 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
 size_t rolltui_termfacts_fingerprint(const RolltuiTermEnv* e, const char* app_key, char* out, size_t cap) {
   /* The ssh CLIENT's address, not the whole variable: the ports change every connection and would
    * make every session a stranger. */
-  char client[64];
+  char client[64], who[160];
   size_t i = 0;
   const char* mux = e->tmux ? "tmux" : (e->sty ? "screen" : "");
   int n;
   client[0] = '\0';
+  /* WHICH TERMINAL, where TERM and TERM_PROGRAM do not say: Konsole and GNOME Terminal are both xterm-256color and name no program,
+   * and Windows' console window and Windows Terminal set nothing at all. A version where the variable is one; where it is a
+   * window's own id (kitty, Windows Terminal, zellij, Neovim), only that it is set, so a new window is the same terminal. */
+  snprintf(who, sizeof who, "%s%s%s%s%s%s%s%s%s", e->wt_session ? "wt," : "", e->kitty_window_id ? "kitty," : "",
+           e->konsole_version ? "konsole=" : "", e->konsole_version ? e->konsole_version : "", e->konsole_version ? "," : "",
+           e->vte_version ? "vte=" : "", e->vte_version ? e->vte_version : "", e->zellij ? ",zellij" : "", e->nvim ? ",nvim" : "");
   if (e->ssh_connection) {
     while (e->ssh_connection[i] && e->ssh_connection[i] != ' ' && i + 1 < sizeof client) {
       client[i] = e->ssh_connection[i];
@@ -226,11 +232,11 @@ size_t rolltui_termfacts_fingerprint(const RolltuiTermEnv* e, const char* app_ke
   }
   /* "rt1" is the SCHEMA of what is asked and remembered: a release that asks a new question
    * bumps it and every earlier answer is a stranger. */
-  n = snprintf(out, cap, "rt1|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s", app_key ? app_key : "", e->os_release,
+  n = snprintf(out, cap, "rt1|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s", app_key ? app_key : "", e->os_release,
                e->term ? e->term : "", e->term_program ? e->term_program : "",
                e->term_program_version ? e->term_program_version : "", e->colorterm ? e->colorterm : "",
                e->lc_terminal ? e->lc_terminal : "", e->lc_terminal_version ? e->lc_terminal_version : "", client, mux,
-               e->locale ? e->locale : "", e->host);
+               e->locale ? e->locale : "", e->host, who);
   if (n < 0) {
     if (cap) out[0] = '\0';
     return 0;
