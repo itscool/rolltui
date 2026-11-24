@@ -1,0 +1,53 @@
+# The tour in a browser, published to GitHub Pages: the library and examples/tour.c compiled for wasm32-wasi with zig
+# (tools/web/build.sh), beside xterm.js. Built from what main holds whenever something it is made of changes.
+name: demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "c/**"
+      - "rolltui.h"
+      - "examples/tour.c"
+      - "presets/**"
+      - "tools/web/**"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "third_party/**"
+      - ".github/workflows/demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      # The native build writes the source list and the generated sources the page is compiled from.
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DROLLTUI_BUILD_TESTS=OFF
+      - run: cmake --build build --target rolltui -j
+      - run: tools/web/build.sh build site && rm -rf site/obj
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

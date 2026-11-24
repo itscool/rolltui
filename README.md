@@ -1,6 +1,9 @@
 # rolltui
 
-A terminal UI library in C, with a C++ API on top.
+A terminal UI library in C, with a C++ API. Its screens, themes, keys and menus are files a person
+can change; every terminal it runs on is asked what it can draw and is drawn to the answers; and a
+program built on it runs with no terminal at all, so it can be tested and recorded, by you or by
+your agent.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dirktui-dark.png">
@@ -8,6 +11,56 @@ A terminal UI library in C, with a C++ API on top.
 </picture>
 
 *dirktui previewing a README: a Mermaid flowchart, highlighted C, and a table.*
+
+**[Try it in your browser](https://itscool.github.io/rolltui/)**: `rolltui-tour`, a table that sorts,
+filters and marks, live charts, a page of Markdown, every theme and the vim keys, compiled to
+WebAssembly and running on xterm.js. It is the same `examples/tour.c` a terminal runs. Or install the
+browser above: `brew install itscool/tap/dirktui`.
+
+## Why rolltui
+
+- **The screen is a file.** Layouts, themes, key bindings and menus are JSON the program loads, and
+  `rolltui-studio` edits them live. A person rebinds a key or moves a panel without a rebuild, and an
+  agent writes a screen as data instead of as drawing code.
+- **Right on terminals you never tried.** The library asks each terminal its colour depth, its
+  background, how wide it draws ambiguous characters, whether it draws a frame whole, its keyboard
+  protocol and how it shows pictures, remembers the answers, and draws to them: kitty, Ghostty,
+  iTerm2, WezTerm, Konsole, VTE, Windows Terminal, Apple's Terminal, the Linux console, inside tmux,
+  over ssh and in a browser.
+- **Tested without a terminal.** `rolltui_run_begin_headless` runs a program's real loop at a size
+  with no terminal: a test sends keys, presses and resizes and reads the screen back as text.
+  `ROLLTUI_RECORD=demo.cast` records any run as an asciicast that asciinema plays.
+- **Fast.** A 10,000-row table moving its cursor takes 0.11 ms and 163 bytes a frame, against
+  ratatui's 0.64 ms and 505 bytes. [Speed](#speed) has the rest.
+- **What a program needs, already in it.** Markdown with Mermaid diagrams, syntax highlighting from
+  25 grammar files, pictures, tables and trees, charts, a multi-line editor, a command palette,
+  toasts, dialogs, a file browser with previews, and 10 themes, each with a light and a dark side,
+  checked for contrast and for colour blindness.
+- **One header, nothing to install.** `rolltui.h` is the whole C API, and every pointer in it is
+  OWNED, BORROWED or a VALUE. The library links only the platform's C and C++ libraries.
+
+## Building with an agent
+
+rolltui is written to be read by an agent and to let it check its own work. Point it at:
+
+1. [`rolltui.h`](rolltui.h): the whole API, each function's contract beside it.
+2. [`docs/guide.md`](docs/guide.md): how the parts fit, and what the library does so a program
+   does not have to.
+3. [`examples/tour.c`](examples/tour.c): a whole program in 690 lines of C.
+4. [`docs/design.md`](docs/design.md): the rules a screen is held to, each with a test.
+
+Then have it prove the program works. A headless run in its own test drives it and reads the
+screen. `ROLLTUI_LOG=run.log ROLLTUI_LOG_LEVEL=debug` writes what the terminal answered and each
+frame's time. `ROLLTUI_TIMING=1` puts each window's draw time in its border, and `ROLLTUI_RECORD`
+records a run you can watch.
+
+A prompt to start from:
+
+> Build *the program* with rolltui (https://github.com/itscool/rolltui), added with
+> `add_subdirectory`. Read `rolltui.h`, `docs/guide.md` and `examples/tour.c` first. Put the screen
+> in a layout file rather than drawing code. Write an end-to-end test with
+> `rolltui_run_begin_headless` that drives it with keys and checks the screen text, and record a
+> demo with `ROLLTUI_RECORD=demo.cast`.
 
 ## How it compares (November 2026)
 
@@ -56,12 +109,6 @@ A terminal UI library in C, with a C++ API on top.
 | ![dirktui previewing a Python file](docs/images/code.png) | ![rolltui-chat: the command palette filtering for "theme"](docs/images/palette.png) |
 | dirktui code preview · harbour, light | rolltui-chat command palette · mono |
 
-## In a browser
-
-`rolltui-tour` (`examples/tour.c`) is the library in one screen: a table that sorts, filters and marks, a dashboard of live charts,
-a page of Markdown with code and a diagram, every shipped theme, and the vim keys. `tools/web/build.sh` builds it for wasm32-wasi
-with zig and puts it beside a page that runs it on xterm.js. The program is the same file a terminal runs.
-
 ## Speed
 
 The same screens drawn by rolltui and by ratatui 0.29. A frame is the whole of what a program does for one: drawn, compared with the last
@@ -77,18 +124,20 @@ truecolor, on an Apple M5 Max:
 ratatui's table is given only the rows on screen, its fastest use; given all 10,000 rows, as its `Table` is usually fed, a frame
 takes about 3 ms. Rows that moved are scrolled on the terminal rather than written again, the cursor takes the shortest move, a
 colour change names only what changed, and a run of blanks is an erase. The test suite replays the bytes into a model of a terminal
-and compares the screen with the frame, cell by cell. `tools/bench/run.sh` builds both and prints the table at 200×50 and 80×24.
+and compares the screen with the frame, cell by cell. `tools/bench/run.sh` builds both and prints the table at 200×50 and 80×24, and
+`tools/bench/frame_times.py` times a real program's frames: dirktui at 200×50 draws a frame in 0.6 ms and sends it in 0.2 ms.
 
 ## What's in the repository
 
 - **The library**: `rolltui.h` and `c/`. `rolltui.h` is the whole public API, and everything under
-  `c/` is internal. Every pointer is OWNED, BORROWED or a plain VALUE, and there is no `shared_ptr`.
+  `c/` is internal. `rolltui_cpp.h` is the C++ API over it.
 - **dirktui** (`examples/dirktui.cpp`): a directory browser for the shell. `dirk` browses, prints
   the chosen path, and a shell function does the rest. `brew install itscool/tap/dirktui`; on
   Windows, `dirktui install` puts `dirk` into PowerShell's profile.
 - **rolltui-studio** (`tools/studio.cpp`, `rolltui_studio.h`): edits themes, layouts, key bindings
   and menus live.
-- **Examples**: `rolltui-chat` (`examples/chat.cpp`), `rolltui-paint` (`examples/paint.cpp`).
+- **Examples**: `rolltui-tour` (`examples/tour.c`, the browser demo), `rolltui-chat`
+  (`examples/chat.cpp`), `rolltui-paint` (`examples/paint.cpp`).
 
 ## Building
 
@@ -102,10 +151,14 @@ ctest --test-dir build
 
 ```sh
 ./build/dirktui ~/src            # the directory browser
+./build/rolltui-tour             # the tour the browser demo runs
 ./build/rolltui-studio           # author themes, layouts, key bindings and menus
 ./build/rolltui-chat             # the chat screen with a pretend assistant
 ./build/rolltui-paint            # the text-mode painting app
 ```
+
+In another project, add the repository with `add_subdirectory()` in a folder named `rolltui`, link
+`rolltui`, and include `rolltui/rolltui.h`.
 
 ### Windows
 
@@ -119,10 +172,17 @@ cmake -B build-windows -S . -DCMAKE_SYSTEM_NAME=Windows \
 cmake --build build-windows -j
 ```
 
+### The browser
+
+`tools/web/build.sh` builds `rolltui-tour` for wasm32-wasi with zig and puts it beside a page that
+runs it on xterm.js; `.github/workflows/demo.yml` publishes it to the demo link above.
+
 ## Documentation
 
-[docs/guide.md](docs/guide.md): strings, terminal detection, the run loop, file watching,
-previews, Mermaid diagrams, syntax highlighting and grammar files, ownership, and embedding.
+[docs/guide.md](docs/guide.md): the run loop, terminal detection, layouts at run time, keys and
+sequences, the editor, lists, tables and trees, charts, dialogs, diagnostics, work off the UI
+thread, other programs, pictures, previews, Markdown and Mermaid, syntax highlighting, ownership,
+and embedding.
 
 [docs/design.md](docs/design.md): the rules every screen the library ships follows, each with a
 test a screen can be held to.
