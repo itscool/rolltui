@@ -1225,8 +1225,11 @@ A `RolltuiAnsiText` reads what a program wrote to a terminal as lines to draw: `
 - A carriage return not followed by a newline writes the line again, so a progress counter shows
   its last state. Erase-in-line clears the line being written.
 - Backspace overstrike is read as a man page writes it: `X\bX` bold, `_\bX` underlined.
-- Cursor moves, erase-in-display, OSC, DCS, APC and charset designations are swallowed. The output
-  reads as what it says and never commands the app's screen.
+- OSC 8 hyperlinks are read onto the text they cover, from the link's opening to its closing,
+  across lines as a terminal keeps them, and drawn as links. A URL that is not printable ASCII, or
+  an OSC longer than 4 KB, is no link.
+- Cursor moves, erase-in-display, every other OSC, DCS, APC and charset designations are
+  swallowed. The output reads as what it says and never commands the app's screen.
 - The lines are a ring of `ROLLTUI_ANSI_DEFAULT_LIMIT` (100,000), or what
   `rolltui_ansi_set_limit` says, so a log keeps its newest.
 
@@ -1236,6 +1239,19 @@ to the end again. Lines wrap at its edge; `rolltui_windows_set_output_wrap(w, na
 keeps them whole instead. A cell with no colour of its own takes the window's text colour and
 ground, so the program's defaults are the theme's. `rolltui_ansi_draw` draws the same text
 inside a host's own widget.
+
+### Links in a window
+
+A link in any window (one another program wrote, a Markdown link, one a host drew with
+`rolltui_frame_link_id`) is sent to the terminal as an OSC 8 hyperlink, and the window acts on it
+too, since a terminal reporting the mouse to the app does not:
+
+- While the terminal reports hover, the link under the pointer is underlined across its cells.
+- A press of the left button on a link goes first to the host's handler,
+  `rolltui_windows_set_link_handler(w, fn, ctx)`, with the window and the URL; `fn` returning 1
+  takes it, for a scheme of the host's own (an editor's link, a program's internal one).
+- Otherwise an http, https, mailto or file link is opened with `rolltui_open_with_system`, and a
+  link of any other scheme is a press like any other.
 
 ### Wrapping and scrolling sideways
 

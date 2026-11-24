@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_screen.h"  /* INTERNAL: a cell's link and style, read back */
 #include "rolltui/c/rolltui_widgets.h" /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN, to read the binding back */
 #include "rolltui_test.hpp"
 
@@ -26,6 +27,8 @@ struct Screen {
   RolltuiWindowStack* stack = nullptr;
   int width, height;
   std::vector<std::string> rows;
+  std::vector<std::string> links;     /* each cell's link, row by row: "" for none */
+  std::vector<unsigned char> under;   /* …and whether it is underlined */
   Screen(std::string_view screen, int wd, int ht) : width(wd), height(ht) {
     RolltuiLayoutReport rep{};
     std::size_t nd = 0;
@@ -75,8 +78,31 @@ struct Screen {
       at = nl + 1;
     }
     rows.resize(static_cast<std::size_t>(height));
+    links.clear();
+    under.clear();
+    for (int y = 0; y < height; ++y)
+      for (int x = 0; x < width; ++x) {
+        RolltuiCellRaw c;
+        rolltui_frame_cell(f, x, y, &c);
+        std::size_t n = 0;
+        const char* u = rolltui_frame_link(f, c.link, &n);
+        links.emplace_back(u, n);
+        under.push_back(c.style.underline);
+      }
     rolltui_compose_scratch_free(cs);
     rolltui_frame_free(f);
+  }
+  const std::string& link(int x, int y) const { return links[static_cast<std::size_t>(y * width + x)]; }
+  bool underlined(int x, int y) const { return under[static_cast<std::size_t>(y * width + x)] != 0; }
+  // As a host does it: routed through the stack (which keeps where the pointer is), then handed to the window the route names.
+  int send(const RolltuiEvent& e) {
+    RolltuiStr window{};
+    const unsigned char kind = rolltui_window_stack_route(stack, &e, RolltuiRect{0, 0, width, height}, rolltui_bindings_default(ctx()),
+                                                          rolltui_stack_default_actions(), &window);
+    int took = 0;
+    if (kind == ROLLTUI_ROUTE_DELIVER) took = rolltui_windows_handle(w, window.p ? window.p : "", window.n, &e);
+    rolltui_str_free(&window);
+    return took;
   }
   void key(unsigned char k, char32_t ch = 0, bool alt = false) {
     RolltuiEvent e{};
@@ -192,6 +218,85 @@ void test_output() {
   rolltui_ansi_free(t);
 }
 
+// LINKS ANOTHER PROGRAM WROTE (OSC 8): read onto the text they cover, drawn as the frame's links (sent on as OSC 8), the one under the
+// pointer underlined, and a press on one offered to the host before the library opens it.
+void test_links() {
+  constexpr std::string_view screen = R"({ "name": "o", "root": { "id": "page", "content": "output:run", "focusable": true } })";
+  Screen s(screen, 30, 5);
+  RolltuiAnsiText* t = rolltui_ansi_new();
+  // ST and BEL ends, parameters, a link kept across a newline, a title OSC swallowed, a URL that is not one, and an OSC past 4 KB
+  const std::string bytes = std::string("see \x1b]8;;https://example.test/a\x1b\\the docs\x1b]8;;\x1b\\ now\n") +
+                            "\x1b]0;a title\x07\x1b]8;id=7;lazygit-edit://x\x07two\nthree\x1b]8;;\x07 four\n" +
+                            "\x1b]8;;bad\x01url\x1b\\none\x1b]8;;\x1b\\\n" + "\x1b]8;;https://" + std::string(5000, 'x') + "\x1b\\long\n";
+  const std::size_t half = bytes.find("https") + 5; /* the stream split inside a URL */
+  rolltui_ansi_feed(t, bytes.data(), half);
+  rolltui_ansi_feed(t, bytes.data() + half, bytes.size() - half);
+  rolltui_windows_bind_output(s.w, "run", 3, t);
+  rolltui_windows_set_output_wrap(s.w, "run", 3, 0);
+  s.paint();
+  check(s.rows[0].rfind("see the docs now", 0) == 0 && s.rows[1].rfind("two", 0) == 0 && s.rows[2].rfind("three four", 0) == 0 &&
+            s.rows[3].rfind("none", 0) == 0 && s.rows[4].rfind("long", 0) == 0,
+        "a program's links leave its text as it was, and every other OSC is swallowed [" + s.rows[0] + "|" + s.rows[1] + "]");
+  check(s.link(4, 0) == "https://example.test/a" && s.link(11, 0) == "https://example.test/a" && s.link(3, 0).empty() &&
+            s.link(12, 0).empty(),
+        "an OSC 8 link covers the text from its opening to its closing, split across two feeds [" + s.link(4, 0) + "]");
+  check(s.link(0, 1) == "lazygit-edit://x" && s.link(4, 2) == "lazygit-edit://x" && s.link(6, 2).empty(),
+        "…ended by BEL as well as ST, with its parameters, and kept across a line as a terminal keeps it");
+  check(s.link(0, 3).empty() && s.link(0, 4).empty(), "a URL that is not printable ASCII, or an OSC past 4 KB, is no link");
+  check(!s.underlined(4, 0), "a link the pointer is not on is drawn as the program drew it");
+
+  // THE POINTER on a link underlines it, all of it
+  RolltuiEvent move{};
+  move.kind = ROLLTUI_EVENT_MOUSE;
+  move.mouse.kind = RolltuiMouseEvent::Kind::Move;
+  move.mouse.x = 6;
+  move.mouse.y = 0;
+  s.send(move);
+  s.paint();
+  check(s.underlined(4, 0) && s.underlined(11, 0) && !s.underlined(3, 0) && !s.underlined(0, 1),
+        "the link under the pointer is underlined across its cells, and nothing else");
+
+  // A PRESS: the host's first, then the library's for a scheme it opens
+  struct Seen {
+    std::string window, url;
+    int take = 1;
+  } seen;
+  rolltui_windows_set_link_handler(
+      s.w,
+      [](void* c, const char* win, std::size_t wn, const char* url, std::size_t un) {
+        Seen* z = static_cast<Seen*>(c);
+        z->window.assign(win, wn);
+        z->url.assign(url, un);
+        return z->take;
+      },
+      &seen);
+  RolltuiEvent press{};
+  press.kind = ROLLTUI_EVENT_MOUSE;
+  press.mouse.kind = RolltuiMouseEvent::Kind::Press;
+  press.mouse.button = 1;
+  press.mouse.x = 8;
+  press.mouse.y = 0;
+  check(s.send(press) == 1 && seen.window == "page" && seen.url == "https://example.test/a",
+        "a press on a link is offered to the host with the window and the URL, and taken [" + seen.url + "]");
+  seen = Seen{};
+  seen.take = 0;
+  press.mouse.x = 1;
+  press.mouse.y = 1;
+  RolltuiEvent plain = press;
+  plain.mouse.x = 20;
+  const int plain_took = s.send(plain);
+  check(s.send(press) == plain_took && seen.url == "lazygit-edit://x",
+        "a scheme the library does not open, which the host left, is a press like any other [" + seen.url + "]");
+  seen = Seen{};
+  press.mouse.button = 3;
+  press.mouse.x = 8;
+  press.mouse.y = 0;
+  s.send(press);
+  check(seen.url.empty(), "…and only the left button opens one");
+  rolltui_windows_bind_output(s.w, "run", 3, nullptr);
+  rolltui_ansi_free(t);
+}
+
 // THE WHEEL'S STEP IS THE PERSON'S (`RolltuiWidgetEnv.wheel_lines`): three lines a notch, or what it says, in every window that
 // scrolls by lines.
 void test_wheel_step() {
@@ -224,6 +329,7 @@ int main() {
   test_file();
   test_wide_glyph_at_the_edge();
   test_output();
+  test_links();
   test_wheel_step();
   return report("viewer_test");
 }

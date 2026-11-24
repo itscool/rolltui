@@ -3645,6 +3645,13 @@ void rolltui_windows_dismiss_toasts(RolltuiWindows* w);
  * muted, and bold in the warning role past half of a frame at 60 a second. Off by default; `ROLLTUI_TIMING=1` in the environment
  * turns it on for every window table, so any program can be looked at without a change to it. */
 void rolltui_windows_set_timing(RolltuiWindows* w, int on);
+/* A PRESS ON A LINK in a window (an OSC 8 hyperlink another program wrote, a Markdown link, one a host drew with
+ * `rolltui_frame_link_id`) is offered to `fn` first, with the window and the URL, and 1 says the host took it: its own scheme, an
+ * editor's or a program's internal link. Otherwise the library opens an http, https, mailto or file link with what the system opens
+ * it with (`rolltui_open_with_system`), and a link of any other scheme does nothing. While the terminal reports hover, the link under
+ * the pointer is underlined across its cells. `fn` NULL: the library's opening alone. */
+typedef int (*RolltuiWindowsLinkFn)(void* ctx, const char* window, size_t window_len, const char* url, size_t url_len);
+void rolltui_windows_set_link_handler(RolltuiWindows* w, RolltuiWindowsLinkFn fn, void* ctx);
 
 /* ---- dialogs: a question the app asks the person ------------------------------------------------
  * A DIALOG, modal over the screen: the title in its border after its level's glyph (ROLLTUI_MESSAGE_*; the border and title in the
@@ -3801,8 +3808,10 @@ size_t rolltui_diff_spans(RolltuiDiffScratch* s, const char* lang, size_t lang_l
 /* WHAT A PROGRAM WROTE TO A TERMINAL, as lines to draw: `bat`, `delta`, `ls --color`, a log, a man page. Text, newlines, tabs (to
  * stops every 8 columns), SGR (16, 256 and 24-bit colour, bold, dim, italic, underline, reverse, strikethrough) and backspace overstrike (`X\bX`
  * bold, `_\bX` underlined) are read; a carriage return not followed by a newline writes the line again, so a progress counter shows
- * its last state. Everything else a terminal would act on (cursor moves, erase-in-display, OSC, DCS, APC) is swallowed: the output
- * reads as what it says and never commands this screen. A sequence or a character split across two feeds is joined. OWNED; the
+ * its last state. OSC 8's hyperlinks are read onto the text they cover, from its opening to its closing, across lines as a terminal
+ * keeps them, and drawn as links (a URL that is not printable ASCII, or an OSC past 4 KB, is none). Everything else a terminal would
+ * act on (cursor moves, erase-in-display, every other OSC, DCS, APC) is swallowed: the output reads as what it says and never
+ * commands this screen. A sequence or a character split across two feeds is joined. OWNED; the
  * lines are a ring capped at `rolltui_ansi_set_limit` (ROLLTUI_ANSI_DEFAULT_LIMIT), so a log keeps its newest. */
 #define ROLLTUI_ANSI_DEFAULT_LIMIT 100000
 RolltuiAnsiText* rolltui_ansi_new(void);

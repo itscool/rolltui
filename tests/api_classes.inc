@@ -141,6 +141,7 @@ ROLLTUI_API(rolltui_frame_free, PUBLIC)  /* the pair of `_new` */
 ROLLTUI_API(rolltui_frame_glyph, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_height, INTERNAL)  /* Phase 24: the pair of `_width`, and it went with it */
 ROLLTUI_API(rolltui_frame_link, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
+ROLLTUI_API(rolltui_frame_link_count, INTERNAL)  /* the windows look for links only in a frame that holds one */
 ROLLTUI_API(rolltui_frame_link_id, PUBLIC)  /* KEPT: the only way to fill `rolltui_frame_put_text`'s `link`, so a host that draws a
                                                * hyperlink of its own needs it; until 2026-11-15 a host could pass 0 and nothing else */
 ROLLTUI_API(rolltui_frame_mark, PUBLIC)  /* KEPT: matching part — `rolltui_effects_apply` is consumer-used, and this is the WIDGET half of that contract — motion is the theme's, a state is the widget's */
@@ -831,6 +832,7 @@ ROLLTUI_API(rolltui_windows_draw_toasts, PUBLIC)  /* every host here draws them 
 ROLLTUI_API(rolltui_windows_toast_event, PUBLIC)  /* every host here asks it first */
 ROLLTUI_API(rolltui_windows_dismiss_toasts, PUBLIC)  /* KEPT: a host clears them on a key of its own ("dismiss all") */
 ROLLTUI_API(rolltui_windows_set_timing, PUBLIC)  /* KEPT: a host shows its windows' draw times from a setting (ROLLTUI_TIMING does it for any) */
+ROLLTUI_API(rolltui_windows_set_link_handler, PUBLIC)  /* KEPT: a host takes a press on a link of its own scheme (an editor's, a program's internal one) */
 ROLLTUI_API(rolltui_dialog_new, PUBLIC)  /* KEPT: a host asks a question: a confirmation, an error page */
 ROLLTUI_API(rolltui_dialog_add_item, PUBLIC)  /* KEPT: what a question is about, listed under it */
 ROLLTUI_API(rolltui_dialog_add_button, PUBLIC)  /* KEPT: the answers a host offers */

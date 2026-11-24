@@ -487,6 +487,8 @@ unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_
   return (unsigned int)++f->link_count;
 }
 
+size_t rolltui_frame_link_count(const RolltuiFrame* f) { return f ? f->link_count : 0; }
+
 const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len) {
   static const char kEmpty[1] = {0};
   if (id == 0 || (size_t)id > f->link_count) {

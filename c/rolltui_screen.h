@@ -103,6 +103,8 @@ const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len
 /* ---- the link table ---------------------------------------------------------------------- */
 /* A BORROW, valid until the next reset. Empty for id 0 or an unknown id. */
 const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len);
+/* How many links the frame holds: 0 says no cell of it is one. */
+size_t rolltui_frame_link_count(const RolltuiFrame* f);
 void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
 /* ---- equality ---------------------------------------------------------------------------- */
 /* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a

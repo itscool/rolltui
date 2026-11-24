@@ -212,6 +212,13 @@ typedef struct Track {
 
 /* What a window holds, this frame: its widget (BORROWED from `by_content`), its content
  * string, and its track. One entry per window, rebuilt in place by `sync`. */
+/* A LINK A WINDOW SHOWED: a run of its cells on one row, the frame's id for it then, and its URL in the slot's `link_urls`. */
+typedef struct LinkRun {
+  int x, y, w;
+  unsigned int id;
+  size_t url;
+} LinkRun;
+
 typedef struct WindowSlot {
   RolltuiWidget* widget;
   RolltuiStr content;
@@ -222,12 +229,18 @@ typedef struct WindowSlot {
   RolltuiStr views;
   RolltuiWidget** view_w;
   size_t view_n, view_cap;
+  /* THE LINKS ITS LAST DRAW SHOWED, for a press and the pointer: runs, and their URLs a NUL after each */
+  LinkRun* links;
+  size_t link_n, link_cap;
+  RolltuiStr link_urls;
 } WindowSlot;
 
 static void slot_free(WindowSlot* s) {
   rolltui_str_free(&s->content);
   rolltui_str_free(&s->views);
   rolltui_mem_free(s->view_w);
+  rolltui_mem_free(s->links);
+  rolltui_str_free(&s->link_urls);
   rolltui_mem_free(s);
 }
 
@@ -368,6 +381,8 @@ struct RolltuiWindows {
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
   RolltuiMap dialogs;    /* id -> RolltuiDialog*, OWNED: asked and not yet answered */
   unsigned char timing;  /* each window's draw time in its top border (`rolltui_windows_set_timing`, ROLLTUI_TIMING=1) */
+  RolltuiWindowsLinkFn link_fn; /* a press on a link, offered to the host first (`rolltui_windows_set_link_handler`) */
+  void* link_ctx;
   RolltuiDrawScratch* scratch_draw; /* OWNED: the timing label's, made when it is first drawn */
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
@@ -1966,6 +1981,97 @@ static void draw_timing(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rolltu
   rolltui_frame_put_text(f, w->scratch_draw, x, y, label, (size_t)n, st, n, 0, 0);
 }
 
+/* THE LINKS A WINDOW SHOWS, kept from its draw: a press on one opens it, and the one under the pointer is underlined across its cells,
+ * which reads as a link in every theme. A frame that holds no link is not looked through. */
+static void links_drawn(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  WindowSlot* s = slot_of(w, rn->node->id.p, rn->node->id.n);
+  const RolltuiRect r = rn->inner;
+  unsigned int hot = 0;
+  size_t i;
+  int x, y;
+  if (!s) return;
+  s->link_n = 0;
+  rolltui_str_clear(&s->link_urls);
+  if (!rolltui_frame_link_count(f)) return;
+  for (y = r.y; y < r.y + r.h && y < rolltui_frame_height(f); ++y)
+    for (x = r.x; x < r.x + r.w && x < rolltui_frame_width(f); ++x) {
+      RolltuiCellRaw c;
+      LinkRun* last = s->link_n ? &s->links[s->link_n - 1] : NULL;
+      if (x < 0 || y < 0) continue;
+      rolltui_frame_cell(f, x, y, &c);
+      if (!c.link) continue;
+      if (last && last->y == y && last->x + last->w == x && last->id == c.link) {
+        ++last->w;
+        continue;
+      }
+      s->links = (LinkRun*)rolltui_grow(s->links, &s->link_cap, s->link_n + 1, sizeof *s->links);
+      s->links[s->link_n].x = x;
+      s->links[s->link_n].y = y;
+      s->links[s->link_n].w = 1;
+      s->links[s->link_n].id = c.link;
+      if (last && last->id == c.link) {
+        s->links[s->link_n].url = last->url;
+      } else {
+        size_t n;
+        const char* u = rolltui_frame_link(f, c.link, &n);
+        s->links[s->link_n].url = s->link_urls.n;
+        rolltui_str_append(&s->link_urls, u, n);
+        rolltui_str_append(&s->link_urls, "", 1);
+      }
+      ++s->link_n;
+    }
+  if (!rn->hover) return;
+  for (i = 0; i < s->link_n && !hot; ++i)
+    if (rn->hover_y == s->links[i].y && rn->hover_x >= s->links[i].x && rn->hover_x < s->links[i].x + s->links[i].w) hot = s->links[i].id;
+  for (i = 0; hot && i < s->link_n; ++i)
+    if (s->links[i].id == hot)
+      for (x = s->links[i].x; x < s->links[i].x + s->links[i].w; ++x) {
+        RolltuiCellRaw c;
+        rolltui_frame_cell(f, x, s->links[i].y, &c);
+        if (!c.style.underline) c.style.underline = 1;
+        rolltui_frame_set_style(f, x, s->links[i].y, c.style);
+      }
+}
+
+/* The schemes the library opens on a press: what a terminal opens. Any other is the host's to take. */
+static int opens_by_default(const char* url, size_t n) {
+  static const char* const kSchemes[] = {"http://", "https://", "mailto:", "file://"};
+  size_t i, k;
+  for (i = 0; i < sizeof kSchemes / sizeof *kSchemes; ++i) {
+    const size_t m = strlen(kSchemes[i]);
+    if (n <= m) continue;
+    for (k = 0; k < m && (url[k] | 0x20) == kSchemes[i][k]; ++k) {
+    }
+    if (k == m) return 1;
+  }
+  return 0;
+}
+
+/* A PRESS ON A LINK this window showed: the host's, else the system's for a scheme it opens. 1 when the press was taken. */
+static int press_link(RolltuiWindows* w, const char* window, size_t len, int x, int y) {
+  WindowSlot* s = slot_of(w, window, len);
+  size_t i;
+  if (!s) return 0;
+  for (i = 0; i < s->link_n; ++i) {
+    const LinkRun* r = &s->links[i];
+    if (y == r->y && x >= r->x && x < r->x + r->w) {
+      const char* url = s->link_urls.p + r->url;
+      const size_t n = strlen(url);
+      if (w->link_fn && w->link_fn(w->link_ctx, window, len, url, n)) return 1;
+      if (!opens_by_default(url, n)) return 0;
+      rolltui_open_with_system(url, n, NULL);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void rolltui_windows_set_link_handler(RolltuiWindows* w, RolltuiWindowsLinkFn fn, void* ctx) {
+  if (!w) return;
+  w->link_fn = fn;
+  w->link_ctx = ctx;
+}
+
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
   RolltuiWidget* wd;
@@ -1989,6 +2095,7 @@ void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, Roll
   {
     const unsigned long long t0 = w->timing ? rolltui_os_monotonic_us() : 0;
     wd->vt->draw(wd->ctx, rn, f);
+    links_drawn(w, rn, f);
     draw_scrollbar(w, rn, wd, f, styles, roles);
     if (w->timing) draw_timing(w, rn, f, styles, rolltui_os_monotonic_us() - t0);
   }
@@ -2140,6 +2247,8 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
   if (e->kind != ROLLTUI_EVENT_KEY || !wd->vt->keys) {
     if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0) seq_reset(w); /* a press is a new start */
+    if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 && e->mouse.button == 1 && press_link(w, window, len, e->mouse.x, e->mouse.y))
+      return 1;
     return deliver(w, window, len, wd, e);
   }
   /* SEQUENCES AND COUNTS, in the widget's own scope: what is on the way belongs to one window */

@@ -1,9 +1,9 @@
 /* rolltui/c/rolltui_ansi.c — ANOTHER PROGRAM'S COLOURED OUTPUT, read as styled lines.
  *
- * What a program writes to a terminal is read as a stream: text, newlines, carriage returns, backspace overstrike, tabs and SGR.
- * Everything else a terminal would act on (cursor moves, erase-in-display, OSC, DCS, APC, PM, SOS, charset designations) is
- * swallowed, so a previewer's output, `ls --color`, `git log --color` or a man page reads as what it says, never as commands to this
- * screen. A sequence or a UTF-8 character split across two feeds is joined.
+ * What a program writes to a terminal is read as a stream: text, newlines, carriage returns, backspace overstrike, tabs, SGR and
+ * OSC 8's hyperlinks. Everything else a terminal would act on (cursor moves, erase-in-display, every other OSC, DCS, APC, PM, SOS,
+ * charset designations) is swallowed, so a previewer's output, `ls --color`, `git log --color` or a man page reads as what it says,
+ * never as commands to this screen. A sequence or a UTF-8 character split across two feeds is joined.
  *
  * A LINE is its text and the runs of style over it, which is the compact form: a log of a hundred thousand lines holds the bytes
  * and a few runs a line, not a cell array. A carriage return not followed by a newline means the line is written again (a progress
@@ -21,6 +21,7 @@
 typedef struct AnsiRun {
   size_t begin; /* the byte of the line's text this style starts at */
   RolltuiStyle style;
+  size_t link; /* 0: none; else 1 + where its URL starts in the line's `links` */
 } AnsiRun;
 
 typedef struct AnsiLine {
@@ -37,11 +38,14 @@ typedef struct AnsiLine {
   unsigned long long at_ms; /* when its first character came (`rolltui_ansi_set_stamp`) */
   unsigned char tag;        /* where from: the host's number for the source */
   unsigned char rule;       /* `rolltui_ansi_mark`'s rule; `text` is its label */
+  RolltuiStr links;         /* the URLs its runs link to, a NUL after each */
+  size_t last_link;         /* the one added last, as a run's `link` */
 } AnsiLine;
 
 enum { ST_GROUND = 0, ST_ESC, ST_ESC_SKIP, ST_CSI, ST_STRING, ST_STRING_ESC };
 
 #define SEQ_MAX 96
+#define OSC_MAX 4096 /* an OSC longer than this is no link: a URL is a few hundred bytes */
 #define TAB 8
 
 struct RolltuiAnsiText {
@@ -65,6 +69,9 @@ struct RolltuiAnsiText {
   unsigned long long stamp_ms; /* what lines begun now are stamped with */
   unsigned char stamp_tag;
   unsigned long long dropped; /* lines the ring (or a clear) let go of: line i is number `dropped + i` */
+  RolltuiStr osc;             /* an OSC's text as it comes */
+  unsigned char osc_on, osc_over;
+  RolltuiStr link;            /* the hyperlink being written (OSC 8): "" for none */
 };
 
 static int imax(int a, int b) { return a > b ? a : b; }
@@ -76,6 +83,8 @@ static AnsiLine* last_line(RolltuiAnsiText* t) { return line_at(t, t->n - 1); }
 
 static void line_reset(AnsiLine* l) {
   rolltui_str_clear(&l->text);
+  rolltui_str_clear(&l->links);
+  l->last_link = 0;
   l->run_n = 0;
   l->cols = 0;
   l->rows_w = 0;
@@ -150,8 +159,11 @@ void rolltui_ansi_free(RolltuiAnsiText* t) {
   if (!t) return;
   for (i = 0; i < t->cap; ++i) {
     rolltui_str_free(&t->lines[i].text);
+    rolltui_str_free(&t->lines[i].links);
     rolltui_mem_free(t->lines[i].runs);
   }
+  rolltui_str_free(&t->osc);
+  rolltui_str_free(&t->link);
   rolltui_mem_free(t->lines);
   rolltui_mem_free(t->g);
   rolltui_u_scratch_free(t->u);
@@ -167,6 +179,8 @@ void rolltui_ansi_clear(RolltuiAnsiText* t) {
   t->seq_n = 0;
   t->utf8_n = t->utf8_need = 0;
   memset(&t->cur, 0, sizeof t->cur);
+  rolltui_str_clear(&t->link);
+  t->osc_on = 0;
   t->pending_cr = 0;
   t->over_pending = 0;
   push_line(t);
@@ -208,19 +222,44 @@ const char* rolltui_ansi_line(const RolltuiAnsiText* t, size_t i, size_t* len) {
 
 static int style_eq(const RolltuiStyle* a, const RolltuiStyle* b) { return memcmp(a, b, sizeof *a) == 0; }
 
+/* A run's URL: "" for none. A BORROW into the line. */
+static const char* run_url(const AnsiLine* l, const AnsiRun* r, size_t* n) {
+  const char* u = r->link ? l->links.p + r->link - 1 : "";
+  *n = strlen(u);
+  return u;
+}
+static int links_to(const AnsiLine* l, const AnsiRun* r, const RolltuiStr* link) {
+  size_t n;
+  const char* u = run_url(l, r, &n);
+  return n == link->n && (n == 0 || memcmp(u, link->p, n) == 0);
+}
+/* The hyperlink being written, in the line's table, as a run's `link`: the last one added when it is the same. */
+static size_t line_link(AnsiLine* l, const RolltuiStr* link) {
+  if (!link->n) return 0;
+  if (l->last_link && strlen(l->links.p + l->last_link - 1) == link->n && memcmp(l->links.p + l->last_link - 1, link->p, link->n) == 0)
+    return l->last_link;
+  l->last_link = l->links.n + 1;
+  rolltui_str_append(&l->links, link->p, link->n);
+  rolltui_str_append(&l->links, "", 1);
+  return l->last_link;
+}
+
 static void append(RolltuiAnsiText* t, const char* bytes, size_t n, const RolltuiStyle* st, int cols) {
   AnsiLine* l = last_line(t);
   if (l->text.n == 0) { /* its first character: when and from where the line came */
     l->at_ms = t->stamp_ms;
     l->tag = t->stamp_tag;
   }
-  if (l->run_n == 0 || !style_eq(&l->runs[l->run_n - 1].style, st)) {
+  if (l->run_n == 0 || !style_eq(&l->runs[l->run_n - 1].style, st) || !links_to(l, &l->runs[l->run_n - 1], &t->link)) {
+    const size_t link = line_link(l, &t->link);
     if (l->run_n && l->runs[l->run_n - 1].begin == l->text.n) { /* a style that never got a byte is replaced */
       l->runs[l->run_n - 1].style = *st;
+      l->runs[l->run_n - 1].link = link;
     } else {
       l->runs = (AnsiRun*)rolltui_grow(l->runs, &l->run_cap, l->run_n + 1, sizeof *l->runs);
       l->runs[l->run_n].begin = l->text.n;
       l->runs[l->run_n].style = *st;
+      l->runs[l->run_n].link = link;
       ++l->run_n;
     }
   }
@@ -403,6 +442,40 @@ static void csi(RolltuiAnsiText* t, char final) {
   /* every other CSI moves a cursor or asks a terminal something: swallowed */
 }
 
+/* ---- OSC 8 ----------------------------------------------------------------------------------- */
+
+/* AN OSC ENDED: `8;params;URL` opens a hyperlink over what follows, and an empty URL closes it, as a terminal reads it. A URL is
+ * printable ASCII or it is none. Every other OSC (a title, a colour, the clipboard) is the terminal's own and is swallowed. */
+static void osc_end(RolltuiAnsiText* t) {
+  const char* p = t->osc.p;
+  const size_t n = t->osc.n;
+  size_t i = 2, k;
+  t->osc_on = 0;
+  if (n < 2 || p[0] != '8' || p[1] != ';') return;
+  if (t->osc_over) { /* too long to be a URL: what follows is no link */
+    rolltui_str_clear(&t->link);
+    return;
+  }
+  while (i < n && p[i] != ';') ++i; /* the parameters: `id=` and the like */
+  if (i >= n) return;
+  ++i;
+  for (k = i; k < n; ++k)
+    if ((unsigned char)p[k] < 0x20 || (unsigned char)p[k] > 0x7E) {
+      rolltui_str_clear(&t->link);
+      return;
+    }
+  rolltui_str_set(&t->link, p + i, n - i);
+}
+static void osc_byte(RolltuiAnsiText* t, unsigned char b) {
+  const char c = (char)b;
+  if (!t->osc_on || t->osc_over) return;
+  if (t->osc.n >= OSC_MAX) {
+    t->osc_over = 1;
+    return;
+  }
+  rolltui_str_append(&t->osc, &c, 1);
+}
+
 /* ---- the stream ---------------------------------------------------------------------------- */
 
 static void ground(RolltuiAnsiText* t, unsigned char b);
@@ -467,8 +540,14 @@ void rolltui_ansi_feed(RolltuiAnsiText* t, const char* bytes, size_t len) {
           t->state = ST_CSI;
           t->seq_n = 0;
           t->seq_over = 0;
-        } else if (b == ']' || b == 'P' || b == '_' || b == '^' || b == 'X') {
+        } else if (b == ']') { /* OSC: read, for its hyperlinks */
           t->state = ST_STRING;
+          t->osc_on = 1;
+          t->osc_over = 0;
+          rolltui_str_clear(&t->osc);
+        } else if (b == 'P' || b == '_' || b == '^' || b == 'X') {
+          t->state = ST_STRING;
+          t->osc_on = 0;
         } else if (b == '(' || b == ')' || b == '*' || b == '+' || b == '#' || b == '%') {
           t->state = ST_ESC_SKIP; /* a designation: one more byte names the set */
         } else {
@@ -491,13 +570,26 @@ void rolltui_ansi_feed(RolltuiAnsiText* t, const char* bytes, size_t len) {
         }
         break;
       case ST_STRING:
-        if (b == 0x07) t->state = ST_GROUND;
-        else if (b == 0x1B) t->state = ST_STRING_ESC;
+        if (b == 0x07) {
+          if (t->osc_on) osc_end(t);
+          t->state = ST_GROUND;
+        } else if (b == 0x1B) {
+          t->state = ST_STRING_ESC;
+        } else {
+          osc_byte(t, b);
+        }
         break;
       case ST_STRING_ESC:
-        if (b == '\\') t->state = ST_GROUND;
-        else if (b == 0x1B) t->state = ST_STRING_ESC;
-        else t->state = ST_STRING; /* an ESC that is not ST is part of the string */
+        if (b == '\\') {
+          if (t->osc_on) osc_end(t);
+          t->state = ST_GROUND;
+        } else if (b == 0x1B) {
+          osc_byte(t, 0x1B);
+        } else { /* an ESC that is not ST is part of the string */
+          osc_byte(t, 0x1B);
+          osc_byte(t, b);
+          t->state = ST_STRING;
+        }
         break;
       default: t->state = ST_GROUND; break;
     }
@@ -505,6 +597,15 @@ void rolltui_ansi_feed(RolltuiAnsiText* t, const char* bytes, size_t len) {
 }
 
 /* ---- drawing ------------------------------------------------------------------------------- */
+
+/* Run `ri`'s hyperlink as the frame's id: 0 for none. */
+static unsigned int run_link_id(const AnsiLine* l, size_t ri, RolltuiFrame* f) {
+  size_t n;
+  const char* u;
+  if (!l->run_n || !l->runs[ri].link) return 0;
+  u = run_url(l, &l->runs[ri], &n);
+  return rolltui_frame_link_id(f, u, n);
+}
 
 /* A run's style over the base: its colours where it has them, its attributes added to the base's. */
 static RolltuiStyle over_base(const RolltuiStyle* run, const RolltuiStyle* base) {
@@ -648,7 +749,8 @@ int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect are
       continue;
     }
     gn = graphemes(m, l, ambiguous_wide);
-    size_t gi, ri = 0;
+    size_t gi, ri = 0, link_ri = (size_t)-1;
+    unsigned int link = 0;
     int col = 0, row = 0;
     for (gi = 0; gi < gn; ++gi) {
       const RolltuiUnicodeGrapheme* g = &m->g[gi];
@@ -657,17 +759,18 @@ int rolltui_ansi_draw(const RolltuiAnsiText* t, RolltuiFrame* f, RolltuiRect are
       if (g->width <= 0) continue;
       while (ri + 1 < l->run_n && l->runs[ri + 1].begin <= g->offset) ++ri;
       st = l->run_n ? over_base(&l->runs[ri].style, &base) : base;
+      if (ri != link_ri) link = run_link_id(l, link_ri = ri, f);
       if (wrap) {
         if (col + g->width > area.w && col > 0) {
           ++row;
           col = 0;
         }
         if (row >= skip_rows && y + row - skip_rows < area.y + area.h)
-          rolltui_frame_put(f, area.x + col, y + row - skip_rows, l->text.p + g->offset, g->length, g->width, st, 0);
+          rolltui_frame_put(f, area.x + col, y + row - skip_rows, l->text.p + g->offset, g->length, g->width, st, link);
         col += g->width;
       } else {
         x = col - left;
-        if (x >= 0 && x + g->width <= area.w) rolltui_frame_put(f, area.x + x, y, l->text.p + g->offset, g->length, g->width, st, 0);
+        if (x >= 0 && x + g->width <= area.w) rolltui_frame_put(f, area.x + x, y, l->text.p + g->offset, g->length, g->width, st, link);
         col += g->width;
         if (x >= area.w) break;
       }
@@ -720,7 +823,8 @@ size_t rolltui_ansi_line_rows(const RolltuiAnsiText* t, size_t i, int width, int
 int rolltui_ansi_draw_line(const RolltuiAnsiText* t, size_t i, RolltuiFrame* f, RolltuiRect area, const RolltuiAnsiLineDraw* o) {
   RolltuiAnsiText* m = (RolltuiAnsiText*)t;
   const AnsiLine* l;
-  size_t gn, gi, ri = 0, k = 0;
+  size_t gn, gi, ri = 0, k = 0, link_ri = (size_t)-1;
+  unsigned int link = 0;
   int col = 0, row = 0, drawn = 0;
   const int aw = o ? o->ambiguous_wide : 0;
   const int wrap = o ? o->wrap : 1;
@@ -738,6 +842,7 @@ int rolltui_ansi_draw_line(const RolltuiAnsiText* t, size_t i, RolltuiFrame* f, 
     if (g->width <= 0) continue;
     while (ri + 1 < l->run_n && l->runs[ri + 1].begin <= g->offset) ++ri;
     st = l->run_n ? over_base(&l->runs[ri].style, &o->base) : o->base;
+    if (ri != link_ri) link = run_link_id(l, link_ri = ri, f);
     while (k < o->lit_n && o->lit[2 * k + 1] <= g->offset) ++k; /* the lit ranges are in order */
     if (k < o->lit_n && o->lit[2 * k] <= g->offset && g->offset < o->lit[2 * k + 1]) rolltui_style_patch(&st, &o->lit_style);
     if (wrap) {
@@ -746,13 +851,13 @@ int rolltui_ansi_draw_line(const RolltuiAnsiText* t, size_t i, RolltuiFrame* f, 
         col = 0;
       }
       if (row >= skip && row - skip < area.h) {
-        rolltui_frame_put(f, area.x + col, area.y + row - skip, l->text.p + g->offset, g->length, g->width, st, 0);
+        rolltui_frame_put(f, area.x + col, area.y + row - skip, l->text.p + g->offset, g->length, g->width, st, link);
         drawn = row - skip + 1;
       }
       col += g->width;
     } else {
       const int x = col - o->left;
-      if (x >= 0 && x + g->width <= area.w) rolltui_frame_put(f, area.x + x, area.y, l->text.p + g->offset, g->length, g->width, st, 0);
+      if (x >= 0 && x + g->width <= area.w) rolltui_frame_put(f, area.x + x, area.y, l->text.p + g->offset, g->length, g->width, st, link);
       col += g->width;
       if (x >= area.w) break;
     }
