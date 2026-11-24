@@ -66,9 +66,26 @@ STATUS=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("st
 rm -f "$OUT/dirktui-notarize.zip"
 
 echo "== pack $TARBALL"
-STAGE="$OUT/stage"; mkdir -p "$STAGE"
+STAGE="$OUT/stage"; rm -rf "$STAGE"; mkdir -p "$STAGE"
 cp "$BIN" "$STAGE/dirktui"
-( cd "$STAGE" && tar -czf "../$TARBALL" dirktui )
+# THE NOTICES TRAVEL WITH THE BINARY: rolltui's licence, and those of what is compiled into it (md4c; the Catppuccin and Solarized
+# palettes in two themes). stb_image is taken as public domain and owes none.
+cp "$ROOT/LICENSE" "$STAGE/LICENSE"
+{
+  echo "dirktui is built on rolltui (MIT, in LICENSE). Compiled into it, each under its own licence:"
+  for part in "md4c|Markdown parser|https://github.com/mity/md4c|LICENSE.md" \
+              "Catppuccin|the palette of the catppuccin theme|https://github.com/catppuccin/catppuccin|LICENSE" \
+              "Solarized|the palette of the solarized theme|https://github.com/altercation/solarized|LICENSE"; do
+    IFS='|' read -r name what url file <<EOF2
+$part
+EOF2
+    dir=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+    printf '\n\n== %s: %s (%s)\n\n' "$name" "$what" "$url"
+    cat "$ROOT/third_party/$dir/$file"
+  done
+  printf '\n\n== stb_image: picture decoder (https://github.com/nothings/stb), public domain\n'
+} > "$STAGE/NOTICE"
+( cd "$STAGE" && tar -czf "../$TARBALL" dirktui LICENSE NOTICE )
 SHA=$(shasum -a 256 "$OUT/$TARBALL" | cut -d' ' -f1)
 echo "sha256 $SHA"
 
@@ -85,6 +102,7 @@ class Dirktui < Formula
 
   def install
     bin.install "dirktui"
+    prefix.install "LICENSE", "NOTICE"
     # FISH GETS THE SHELL SIDE FROM THE INSTALL ITSELF: fish sources every file in the vendor
     # config directory, so the \`dirk\` function and Right Arrow are there in the next fish shell
     # with no rc file touched. zsh and bash have no such directory — a formula may not edit a

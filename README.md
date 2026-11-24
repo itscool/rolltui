@@ -15,7 +15,7 @@ A terminal UI library in C, with a C++ API on top.
 |---|---|---|---|---|---|---|
 | Platforms | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 🌐 | 🍎 🐧 🪟 | 🍎 🐧 (🪟) | 🍎 🐧 🪟 🌐 |
 | Language | C, C++ API | Python | Rust | Go | C | C++ |
-| Dependencies | none | rich, Pygments, markdown-it, … | crossterm, ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
+| Dependencies | none (md4c, stb_image built in) | rich, Pygments, markdown-it, … | crossterm, ~15 crates | 10+ Go modules | terminfo, libunistring, libdeflate | none |
 | **Configuration** | | | | | | |
 | Layouts, themes and menus as files | ✓ | stylesheets | ✗ | ✗ | ✗ | ✗ |
 | Key bindings changeable without code | ✓ | ✓ | ✗ | partial | ✗ | ✗ |
@@ -129,5 +129,6 @@ test a screen can be held to.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Vendored under `third_party/`, each under its own licence: md4c
-(Markdown), stb_image (PNG decoding in rolltui-paint), and the Catppuccin and Solarized palettes.
+MIT. See [LICENSE](LICENSE). Compiled into the library from `third_party/`, each under its own
+licence: md4c (Markdown), stb_image (picture decoding, taken as public domain), and the Catppuccin
+and Solarized palettes (two themes' colours). dirktui's release carries their notices in `NOTICE`.
