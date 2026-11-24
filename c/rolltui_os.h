@@ -66,6 +66,12 @@ typedef struct RolltuiMutex { void* lock; } RolltuiMutex; /* an SRWLOCK, which i
 #else
 typedef struct RolltuiMutex { pthread_mutex_t lock; } RolltuiMutex;
 #endif
+/* A lock that needs no init call, for a static (an SRWLOCK is zero; a pthread mutex has its initialiser) */
+#if defined(_WIN32)
+#define ROLLTUI_MUTEX_STATIC_INIT {0}
+#else
+#define ROLLTUI_MUTEX_STATIC_INIT {PTHREAD_MUTEX_INITIALIZER}
+#endif
 void rolltui_mutex_init(RolltuiMutex* m);
 void rolltui_mutex_destroy(RolltuiMutex* m);
 void rolltui_mutex_lock(RolltuiMutex* m);

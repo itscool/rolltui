@@ -146,6 +146,13 @@ ROLLTUI_GLOBAL("rolltui_process_posix.c", "g_term_got", PROCESS)
 ROLLTUI_GLOBAL("rolltui_process_posix.c", "g_refuse_pty", PROCESS)
 /* Whether a SIGUSR1 came since the run last looked, which its handler sets: a process has one disposition for the signal. */
 ROLLTUI_GLOBAL("rolltui_os_posix.c", "g_reload", PROCESS)
+/* THE LOG is one per process, as stderr is: the file it writes, what was asked for, the level let through, when it began, and the
+ * lock that keeps a worker's line out of another's (rolltui_log.c). */
+ROLLTUI_GLOBAL("rolltui_log.c", "g_log_lock", PROCESS)
+ROLLTUI_GLOBAL("rolltui_log.c", "g_log_file", PROCESS)
+ROLLTUI_GLOBAL("rolltui_log.c", "g_log_state", PROCESS)
+ROLLTUI_GLOBAL("rolltui_log.c", "g_log_level", PROCESS)
+ROLLTUI_GLOBAL("rolltui_log.c", "g_log_t0", PROCESS)
 /* The same terminal on Windows: the console handles and modes to restore, the leave sequence, whether the
  * console control handler is installed, and the performance counter's frequency, read once. */
 ROLLTUI_GLOBAL("rolltui_os_win32.c", "g_in", PROCESS)

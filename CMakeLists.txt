@@ -158,7 +158,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_widget_input.c c/rolltui_widget_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_image.c c/rolltui_tasks.c c/rolltui_watch.c c/rolltui_widget_transcript.c c/rolltui_widget_list.c c/rolltui_widget_dialog.c c/rolltui_match.c c/rolltui_chart.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_image.c c/rolltui_tasks.c c/rolltui_watch.c c/rolltui_widget_transcript.c c/rolltui_widget_list.c c/rolltui_widget_dialog.c c/rolltui_log.c c/rolltui_match.c c/rolltui_chart.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -532,6 +532,7 @@ add_rolltui_test(rolltui-tasks-test tests/tasks_test.cpp)
 add_rolltui_test(rolltui-list-test tests/list_test.cpp)
 add_rolltui_test(rolltui-dialog-test tests/dialog_test.cpp)
 add_rolltui_test(rolltui-viewer-test tests/viewer_test.cpp)
+add_rolltui_test(rolltui-diagnostics-test tests/diagnostics_test.cpp)
 # THE WEB PAGE'S TOUCH (tools/web/rolltui_web.js), run by JavaScriptCore's shell where the machine has it (macOS).
 find_program(ROLLTUI_JSC NAMES jsc PATHS /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers NO_DEFAULT_PATH)
 if(ROLLTUI_JSC)

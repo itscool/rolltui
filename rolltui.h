@@ -648,6 +648,31 @@ int rolltui_frame_put_text_cut(RolltuiFrame* f, RolltuiDrawScratch* s, int x, in
 /* The same cut, as text: REPLACES `*out` with `utf8` cut to `max_cells`; returns the cells it takes. */
 int rolltui_text_cut(RolltuiDrawScratch* s, const char* utf8, size_t len, int max_cells, int where, int ambiguous_wide, RolltuiStr* out);
 
+/* ---- the log ------------------------------------------------------------------------------------
+ * THE TERMINAL IS THE SCREEN'S while a program runs, so what the library and a host say for whoever is looking goes to a FILE: the one
+ * `rolltui_log_to` names (a host's, say in its state directory), else the one the environment's `ROLLTUI_LOG` names; with neither,
+ * nothing is written. A line is the local time, the seconds since the log began, the level and the text, one line a call; lines from
+ * workers never land inside one another. `ROLLTUI_LOG_LEVEL` (error, warn, info, debug) or `rolltui_log_set_level` says what is let
+ * through; INFO by default. The library says what terminal it entered and how it draws, a store read again because another program
+ * changed it, and, at DEBUG, each frame's time. */
+#define ROLLTUI_LOG_ERROR 0
+#define ROLLTUI_LOG_WARN 1
+#define ROLLTUI_LOG_INFO 2
+#define ROLLTUI_LOG_DEBUG 3
+/* Appended to; NULL or "" goes back to `ROLLTUI_LOG`. 1 when the file is open. */
+int rolltui_log_to(const char* path, size_t len);
+void rolltui_log_set_level(int level);
+/* 1 when a line of `level` would be written: what a caller asks before building one that costs. */
+int rolltui_log_wants(int level);
+void rolltui_log(int level, const char* text, size_t len);
+void rolltui_logf(int level, const char* fmt, ...)
+#if defined(__MINGW32__) /* the UCRT's printf, the C99 one with %zu, which MinGW names gnu_printf; plain `printf` is Microsoft's old one */
+    __attribute__((format(gnu_printf, 2, 3)))
+#elif defined(__GNUC__) || defined(__clang__)
+    __attribute__((format(printf, 2, 3)))
+#endif
+    ;
+
 /* ---- numbers for a person ---------------------------------------------------------------------
  * A SIZE, as a column of them reads: steps of 1024 (K, M, G, T, P, E) or, with DECIMAL, of 1000 (k, M, G, T, P, E), one decimal under
  * 10 and none from 10 ("1.5K", "12M", "512"), the letter straight after; a value that rounds up to the next step is written in it
@@ -3616,6 +3641,10 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
 /* A press on a toast dismisses it: 1 when `e` was one, and the host stops there. Ask before routing a mouse event to the windows. */
 int rolltui_windows_toast_event(RolltuiWindows* w, const RolltuiEvent* e);
 void rolltui_windows_dismiss_toasts(RolltuiWindows* w);
+/* THE DRAW TIMES, on screen: each window's top border carries how long its widget took to draw in the last frame (" 0.4 ms "),
+ * muted, and bold in the warning role past half of a frame at 60 a second. Off by default; `ROLLTUI_TIMING=1` in the environment
+ * turns it on for every window table, so any program can be looked at without a change to it. */
+void rolltui_windows_set_timing(RolltuiWindows* w, int on);
 
 /* ---- dialogs: a question the app asks the person ------------------------------------------------
  * A DIALOG, modal over the screen: the title in its border after its level's glyph (ROLLTUI_MESSAGE_*; the border and title in the

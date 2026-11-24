@@ -1049,6 +1049,31 @@ id, len, &button, &copy)`:
 Asking again under an open dialog's id replaces it. A layout file that names `dialog:<id>` with
 no dialog asked under it shows that as a problem, as an unbound source does.
 
+## Diagnostics
+
+The terminal is the screen's while a program runs, so what the library and a host say for whoever
+is looking goes to a log file: the one `rolltui_log_to(path, len)` names, else the one the
+environment's `ROLLTUI_LOG` names. With neither, nothing is written. A line is the local time, the
+seconds since the log began, the level and the text:
+
+```
+2026-11-24 09:41:07    0.000s INFO  terminal: kitty 0.43.1, 120x40, depth truecolor, keyboard kitty, pictures kitty
+```
+
+- `rolltui_log(level, text, len)` and `rolltui_logf(level, fmt, ...)` write a line; a newline in the
+  text is a space, so each call is one line, and lines from workers never land inside one another.
+- `ROLLTUI_LOG_LEVEL` (`error`, `warn`, `info`, `debug`) or `rolltui_log_set_level` says what is let
+  through; INFO by default. `rolltui_log_wants(level)` says whether a line would be written, before
+  one that costs is built.
+- The library says what terminal it entered and how it draws, a store read again because another
+  program changed its files, and at DEBUG each frame's time: the host's drawing, the diff and the
+  write, and the bytes sent.
+
+`rolltui_windows_set_timing(windows, 1)`, or `ROLLTUI_TIMING=1` for any program, puts each
+window's draw time in its top border (" 0.4 ms "), muted, and bold in the warning role past half
+of a frame at 60 a second. `rolltui_mem_stats` gives the library's live and peak bytes; a CPU
+profile is the system profiler's (Instruments, `perf`).
+
 ## Work off the UI thread
 
 A `RolltuiTasks` is a few worker threads, the jobs they run, and the queue of what comes back.

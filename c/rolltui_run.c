@@ -213,12 +213,19 @@ static int run_frame(RolltuiRun* r) {
   RolltuiStyle fill;
   RolltuiFrame* f;
   int timeout;
+  const int timed = rolltui_log_wants(ROLLTUI_LOG_DEBUG);
+  const unsigned long long t0 = timed ? rolltui_os_monotonic_us() : 0;
+  unsigned long long t1 = 0;
   ground_of(r, &fill);
   f = rolltui_swap_begin(r->swap, r->w, r->h, fill);
   timeout = app->render(app->ctx, r, f, r->w, r->h, steady_ms());
   timeout = timer_wait(r, timeout); /* a timer due sooner than the frame asked to wait wakes it */
+  if (timed) t1 = rolltui_os_monotonic_us();
   /* AT THE DEPTH THE TERMINAL HAS: a terminal sent 24-bit colour it cannot draw reads it as stray attributes. */
   rolltui_terminal_present(r->term, r->swap, &r->out);
+  if (timed) /* EACH FRAME'S TIME, at DEBUG: the host's drawing, then the diff and the write */
+    rolltui_logf(ROLLTUI_LOG_DEBUG, "frame: render %.2f ms, present %.2f ms, %zu bytes", (double)(t1 - t0) / 1000.0,
+                 (double)(rolltui_os_monotonic_us() - t1) / 1000.0, r->out.n);
   { /* a picture held back is due: the frame then sends it */
     const int held = rolltui_terminal_pending_ms(r->term);
     if (held >= 0 && (timeout < 0 || held < timeout)) timeout = held;
@@ -334,6 +341,7 @@ static void refresh_stores(RolltuiRun* r) {
     }
   }
   if (any) {
+    rolltui_logf(ROLLTUI_LOG_INFO, "stores: read again, %s", asked ? "as SIGUSR1 asked" : "another program changed their files");
     watch_store_files(r);
     if (r->swap) rolltui_swap_invalidate(r->swap);
   }

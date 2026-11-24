@@ -452,6 +452,11 @@ ROLLTUI_API(rolltui_frame_put_text_cut, PUBLIC)  /* a host's own widget cuts a n
 ROLLTUI_API(rolltui_text_cut, PUBLIC)  /* the same cut as text, for a line a host builds */
 ROLLTUI_API(rolltui_format_size, PUBLIC)  /* KEPT: a host writes a size or a rate as the library's views do (a status line's free space) */
 ROLLTUI_API(rolltui_format_count, PUBLIC)  /* KEPT: a host writes a count with its thousands grouped (k9s's pod counts, btop's) */
+ROLLTUI_API(rolltui_log_to, PUBLIC)  /* KEPT: a host names its own log file, in its state directory */
+ROLLTUI_API(rolltui_log_set_level, PUBLIC)  /* KEPT: a host's debug setting lets more through */
+ROLLTUI_API(rolltui_log_wants, PUBLIC)  /* the terminal and the run ask it before building a line */
+ROLLTUI_API(rolltui_log, PUBLIC)  /* KEPT: a host's own line in the log the library writes to */
+ROLLTUI_API(rolltui_logf, PUBLIC)  /* the terminal says what it entered; the run, a store read again and each frame */
 ROLLTUI_API(rolltui_text_cut_with, PUBLIC)  /* KEPT: a cut with a marker, a split and an extension kept, for a host's own line */
 ROLLTUI_API(rolltui_frame_put_text_cut_with, PUBLIC)  /* KEPT: the same cut, drawn */
 ROLLTUI_API(rolltui_path_shorten, PUBLIC)  /* KEPT: a path in a status line or a title, each folder to a letter */
@@ -822,6 +827,7 @@ ROLLTUI_API(rolltui_windows_message_at, PUBLIC)  /* KEPT: a host that shows the 
 ROLLTUI_API(rolltui_windows_draw_toasts, PUBLIC)  /* every host here draws them last */
 ROLLTUI_API(rolltui_windows_toast_event, PUBLIC)  /* every host here asks it first */
 ROLLTUI_API(rolltui_windows_dismiss_toasts, PUBLIC)  /* KEPT: a host clears them on a key of its own ("dismiss all") */
+ROLLTUI_API(rolltui_windows_set_timing, PUBLIC)  /* KEPT: a host shows its windows' draw times from a setting (ROLLTUI_TIMING does it for any) */
 ROLLTUI_API(rolltui_dialog_new, PUBLIC)  /* KEPT: a host asks a question: a confirmation, an error page */
 ROLLTUI_API(rolltui_dialog_add_item, PUBLIC)  /* KEPT: what a question is about, listed under it */
 ROLLTUI_API(rolltui_dialog_add_button, PUBLIC)  /* KEPT: the answers a host offers */

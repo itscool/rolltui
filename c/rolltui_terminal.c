@@ -397,6 +397,16 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
   init_facts(t, &opts);
   term_enter(t, opts.handle_signals);
   rolltui_terminal_refresh_size(t);
+  if (rolltui_log_wants(ROLLTUI_LOG_INFO)) { /* WHAT WAS ENTERED, for whoever reads the log: what `dirktui check-terminal` prints, in a line */
+    static const char* const kKeys[] = {"legacy", "modifyOtherKeys", "kitty"};
+    static const char* const kWays[] = {"blocks", "blocks", "kitty", "iterm2", "sixel"};
+    size_t dl = 0;
+    const char* depth = rolltui_color_depth_name(t->facts.depth, &dl);
+    rolltui_logf(ROLLTUI_LOG_INFO, "terminal: %s, %dx%d, depth %.*s, keyboard %s, pictures %s%s%s%s%s", t->facts.name[0] ? t->facts.name : "(it did not say)",
+                 t->w, t->h, (int)dl, depth ? depth : "", kKeys[t->facts.keyboard < 3 ? t->facts.keyboard : 0],
+                 kWays[t->facts.images <= 4 ? t->facts.images : 0], t->facts.remembered ? ", remembered" : "",
+                 t->facts.outer[0] ? ", behind tmux on " : "", t->facts.outer, t->tty ? "" : ", not a terminal");
+  }
   return t;
 }
 

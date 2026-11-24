@@ -4,6 +4,7 @@
 #include "rolltui/c/rolltui_widgets.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -11,6 +12,7 @@
 #include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
+#include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_feedback.h"
 #include "rolltui/c/rolltui_widget_list.h"
@@ -365,6 +367,8 @@ struct RolltuiWindows {
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
   RolltuiMap dialogs;    /* id -> RolltuiDialog*, OWNED: asked and not yet answered */
+  unsigned char timing;  /* each window's draw time in its top border (`rolltui_windows_set_timing`, ROLLTUI_TIMING=1) */
+  RolltuiDrawScratch* scratch_draw; /* OWNED: the timing label's, made when it is first drawn */
   RolltuiMap lists;      /* name -> RolltuiList*, OWNED: made when a host binds one or a window first shows one */
   RolltuiTasks* tasks;   /* BORROWED: the workers the built-in kinds read files on; NULL reads on this thread */
   /* INPUT HELD (`rolltui_windows_hold`): while `held`, keys and the pointer reach no window; `hold_job` is cancelled by Escape and
@@ -442,6 +446,10 @@ RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   memset(w, 0, sizeof *w);
   w->want_ms = -1;
   w->ctx = ctx;
+  {
+    const char* t = getenv("ROLLTUI_TIMING");
+    w->timing = (unsigned char)(t && *t && strcmp(t, "0") != 0);
+  }
   w->highlight_fn = default_highlight;
   w->highlight_ctx = rolltui_mem_alloc(sizeof(DefaultHighlight));
   memset(w->highlight_ctx, 0, sizeof(DefaultHighlight));
@@ -522,6 +530,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < rolltui_map_count(&w->outputs); ++i) output_binding_free((OutputBinding*)rolltui_map_value_at(&w->outputs, i));
   rolltui_map_release(&w->outputs);
   rolltui_map_release(&w->images);
+  rolltui_draw_scratch_free(w->scratch_draw);
   {
     size_t i;
     for (i = 0; i < rolltui_map_count(&w->dialogs); ++i) rolltui_dialog_free((RolltuiDialog*)rolltui_map_value_at(&w->dialogs, i));
@@ -1938,6 +1947,26 @@ const RolltuiWindowRoles* rolltui_windows_default_roles(void) {
   return &r;
 }
 
+/* A WINDOW'S DRAW TIME, in its top border at the right (or its first row where it has no border): muted, and bold in the warning
+ * role past half of a frame at 60 a second, so a slow window shows itself where it is. */
+static void draw_timing(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f, const RolltuiStyle* styles,
+                        unsigned long long us) {
+  char label[24];
+  const int n = snprintf(label, sizeof label, " %.1f ms ", (double)us / 1000.0);
+  const int border = rn->node->border != 0;
+  const RolltuiRect r = border ? rn->outer : rn->inner;
+  const int x = r.x + r.w - (border ? 1 : 0) - n, y = r.y;
+  RolltuiStyle st = styles[us > 8333 ? ROLLTUI_ROLE_WARNING : ROLLTUI_ROLE_TEXT_MUTED];
+  RolltuiCellRaw under;
+  if (n <= 0 || x < r.x + (border ? 1 : 0) || r.h <= 0) return;
+  memset(&under, 0, sizeof under);
+  rolltui_frame_cell(f, x, y, &under);
+  st.bg = under.style.bg;
+  if (us > 8333) st.bold = 1;
+  if (!w->scratch_draw) w->scratch_draw = rolltui_draw_scratch_new();
+  rolltui_frame_put_text(f, w->scratch_draw, x, y, label, (size_t)n, st, n, 0, 0);
+}
+
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
   RolltuiWidget* wd;
@@ -1958,8 +1987,16 @@ void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, Roll
     }
     return;
   }
-  wd->vt->draw(wd->ctx, rn, f);
-  draw_scrollbar(w, rn, wd, f, styles, roles);
+  {
+    const unsigned long long t0 = w->timing ? rolltui_os_monotonic_us() : 0;
+    wd->vt->draw(wd->ctx, rn, f);
+    draw_scrollbar(w, rn, wd, f, styles, roles);
+    if (w->timing) draw_timing(w, rn, f, styles, rolltui_os_monotonic_us() - t0);
+  }
+}
+
+void rolltui_windows_set_timing(RolltuiWindows* w, int on) {
+  if (w) w->timing = (unsigned char)(on != 0);
 }
 
 /* ---- events ------------------------------------------------------------------------------ */

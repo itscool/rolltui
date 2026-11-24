@@ -641,8 +641,9 @@ int main() {
     // from outside has been continued. 42: whether the entered terminal's window has the person's focus. 43: a web page's side of
     // its terminal (rolltui_os_web.c, compiled for wasm32-wasi in place of the POSIX and Windows sets).
     // 45: the program a SIGTERM is passed on to while it has the terminal, and the signal that came. 46: a pseudo-terminal refused. 47: a SIGUSR1 heard.
-    check(ctx == 0 && proc == 47,
-          "the boundary is 0 CONTEXT + 47 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    /* 52: the log's five, one log a process as stderr is */
+    check(ctx == 0 && proc == 52,
+          "the boundary is 0 CONTEXT + 52 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------
