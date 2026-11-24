@@ -686,8 +686,7 @@ int rolltui_windows_pop_view(RolltuiWindows* w, const char* window, size_t len) 
   WindowSlot* s = w && window ? slot_of(w, window, len) : NULL;
   const char *c, *t;
   size_t cl, tl;
-  if (!s || !s->view_n) return 0;
-  slot_view(s, s->view_n - 1, &c, &cl, &t, &tl);
+  if (!s || !s->view_n || !slot_view(s, s->view_n - 1, &c, &cl, &t, &tl)) return 0;
   s->views.n = (size_t)(c - s->views.p); /* the last content and title go */
   if (s->views.p) s->views.p[s->views.n] = 0;
   --s->view_n;

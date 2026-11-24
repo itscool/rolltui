@@ -521,11 +521,11 @@ void rolltui_render_diff_at(const RolltuiFrame* prev, const RolltuiFrame* next, 
   out_start(&o, out, next, depth, origin, ground);
   memset(&base, 0, sizeof base);
   base.prev = prev;
-  if (h <= ROWS_MAX) { /* each row compared whole, once: most rows of most frames are the same */
+  if (h <= ROWS_MAX) { /* each row compared whole, once: most rows of most frames are the same; and a block of them moved found */
     for (int y = 0; y < h; ++y) same_row[y] = (unsigned char)rolltui_frame_rows_same(prev, y, next, y);
     base.same_row = same_row;
+    if (o.erase && h >= 4) k = find_scroll(prev, next, h, same_row, &top, &bottom); /* a shorter frame has no block to move */
   }
-  if (o.erase && base.same_row) k = find_scroll(prev, next, h, same_row, &top, &bottom);
   if (k != 0) {
     /* SCROLLED ON THE TERMINAL, in the default background so the rows it brings in are known; the rest is diffed against what the
      * screen then holds */

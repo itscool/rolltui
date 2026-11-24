@@ -65,7 +65,7 @@ void run_keys(const fs::path& cfg, const fs::path& tree, const std::vector<std::
   int master = -1;
   const pid_t pid = ::forkpty(&master, nullptr, nullptr, &ws);
   if (pid == 0) {
-    ::chdir(tree.c_str());
+    if (::chdir(tree.c_str()) != 0) ::_exit(127); /* the program would run somewhere else */
     ::setenv("ROLL_CONFIG_DIR", cfg.c_str(), 1);
     ::setenv("TERM", "xterm-256color", 1);
     ::setenv("COLORTERM", "truecolor", 1);

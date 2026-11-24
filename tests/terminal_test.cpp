@@ -401,13 +401,13 @@ int main() {
     check(names(t, 30).empty(), "poll times out empty");
     // A DOUBLE-CLICK IS THE TERMINAL'S: two presses on one cell close together deliver both
     // presses and then a DoubleClick; two presses on different cells never do.
-    write(master, "\x1b[<0;10;5M\x1b[<0;10;5m\x1b[<0;10;5M", 10 * 3);
+    (void)!write(master, "\x1b[<0;10;5M\x1b[<0;10;5m\x1b[<0;10;5M", 10 * 3);
     {
       const std::string got = names(t, 500);
       check(got == "Mouse Press 1 @9,4 | Mouse Release 1 @9,4 | Mouse Press 1 @9,4 | Mouse DoubleClick 1 @9,4",
             "two presses on one cell within the window: both presses, then a DoubleClick after the second [" + got + "]");
     }
-    write(master, "\x1b[<0;12;5M\x1b[<0;14;5M", 10 * 2);
+    (void)!write(master, "\x1b[<0;12;5M\x1b[<0;14;5M", 10 * 2);
     {
       const std::string got = names(t, 500);
       check(got == "Mouse Press 1 @11,4 | Mouse Press 1 @13,4", "…two presses on different cells: no DoubleClick [" + got + "]");
@@ -459,7 +459,7 @@ int main() {
     check(lv.find("\x1b[?1003l") != std::string::npos && lv.find("\x1b[?1003l") < lv.find("\x1b[?1006l"),
           "…and given back first when leaving, before the modes it was asked after");
     (void)read_until(master, en, 500);
-    write(master, "\x1b[<35;12;7M", 11);
+    (void)!write(master, "\x1b[<35;12;7M", 11);
     check(names(t, 500) == "Mouse Move @11,6", "a report of the pointer moving with no button is a Move at its cell");
     rolltui_terminal_free(t);
     (void)read_until(master, "\x1b[?1049l", 500);
@@ -553,7 +553,7 @@ int main() {
       // not this test's subject, so it is ignored here, after the terminal is freed and its own handlers are gone.
       signal(SIGHUP, SIG_IGN);
       const char* word = got_enter ? "GOT" : "NOT";
-      write(sig[1], word, 3);
+      (void)!write(sig[1], word, 3);
       _exit(got_enter ? 0 : 1);
     }
     close(sig[1]);
@@ -561,9 +561,9 @@ int main() {
     // The parent's own copy of the slave is released before the child exits: a session leader
     // leaving its controlling terminal waits for the last reference, and this case is last.
     ::close(slave);
-    write(master, "\r", 1);
+    (void)!write(master, "\r", 1);
     char word[4] = {0};
-    read(sig[0], word, 3);
+    (void)!read(sig[0], word, 3);
     close(sig[0]);
     // The restore bytes were written before the word; read them, then release the MASTER too:
     // the child is a session leader, and its exit revokes its terminal, which waits for the
