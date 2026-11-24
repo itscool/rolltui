@@ -1,7 +1,7 @@
 # rolltui guide
 
-How to build a terminal program with rolltui: the parts and how they fit, a first program and its test, the file
-formats a screen is made of, and each part of the library in turn. `rolltui.h` has every function's contract.
+This guide covers building terminal programs with rolltui. Read the first three sections, then the
+rest as you need it. Every function is documented in `rolltui.h`.
 
 - **Getting started**: [How the parts fit](#how-the-parts-fit) · [A first program](#a-first-program) · [Testing a program](#testing-a-program) · [Embedding rolltui](#embedding-rolltui) · [Ownership](#ownership) · [Strings](#strings)
 - **Screens**: [Layout files](#layout-files) · [The layout at run time](#the-layout-at-run-time) · [Theme files](#theme-files) · [Cut text, footers, strikethrough and focus](#cut-text-footers-strikethrough-and-focus) · [Hover](#hover)
@@ -14,39 +14,40 @@ formats a screen is made of, and each part of the library in turn. `rolltui.h` h
 
 ## How the parts fit
 
-A rolltui program is a few objects, each with one job:
+A rolltui program is built from a handful of objects:
 
-- **The context** (`RolltuiContext`): the session's vocabulary. Its key bindings, its menus, the
-  content kinds a layout may name, its help. `rolltui_context_set_library_defaults` gives it the
-  library's own, and every other object is made for one.
-- **The terminal** (`RolltuiTerminal`): entered, asked what it draws ([Terminal
-  detection](#terminal-detection)), and sent each frame as the bytes that change the screen.
-  `rolltui_run` makes one and runs the loop.
-- **The layout** (`RolltuiLayout`): a screen, read from a [layout file](#layout-files): its
-  windows, how they share the room, and the popups over them.
-- **The window stack** (`RolltuiWindowStack`): the layout's layers as they are now. It holds the
-  focus, routes each key and press to the window it is for, and composes the frame: borders,
-  titles, and each window's inside, drawn by its widget.
-- **The windows** (`RolltuiWindows`): a widget for each window, made from the window's content.
-  `list:files` is a list whose rows the host binds as `files`; the list keeps its own cursor,
-  scroll, marks and filter.
-- **The theme**: a `RolltuiStyle` for each role (the background, a title, the cursor's row, an
-  error). A [theme file](#theme-files) names the colours for each role on a light and a dark side;
-  the library chooses the side and maps the colours down to what the terminal draws.
-- **The stores** (`RolltuiThemeStore`, `RolltuiBindingsStore`, `RolltuiLayoutStore`): a person's
-  own copies of themes, key bindings and layouts, kept beside the shipped presets and edited in
-  the program's sheets and in `rolltui-studio`.
+- `RolltuiContext` holds the program's key bindings, menus, help and the content kinds its layouts
+  can use. `rolltui_context_set_library_defaults` fills it with the library's own. Everything else
+  is created for a context.
+- `RolltuiTerminal` is the terminal. It is queried for what it supports ([Terminal
+  detection](#terminal-detection)) and sent the changes each frame. `rolltui_run` creates one and
+  runs the event loop for you.
+- `RolltuiLayout` is a screen read from a [layout file](#layout-files): its windows, how they share
+  the space, and any popups.
+- `RolltuiWindowStack` is the live state of the layout's layers. It tracks focus, sends each key
+  and mouse event to the right window, and composes the frame: borders, titles, and the inside of
+  each window.
+- `RolltuiWindows` creates a widget for each window from its `content`. A window with
+  `list:files` shows a list whose rows your program supplies under the name `files`; the list
+  keeps track of its own cursor, scroll position, marks and filter.
+- The theme is an array of `RolltuiStyle`, one per role (background, title, selected row, error
+  and so on). A [theme file](#theme-files) gives the colours for a light and a dark variant; the
+  library picks the variant and reduces the colours to what the terminal can show.
+- `RolltuiThemeStore`, `RolltuiBindingsStore` and `RolltuiLayoutStore` keep the user's own copies
+  of themes, key bindings and layouts next to the built-in presets. The program's settings screens
+  and `rolltui-studio` edit them.
 
-A frame is the stack laid out on the screen, each window drawn by its widget, then what sits over
-them: messages, a status line the host draws. An event is routed by the stack to a window and
-handled by its widget first; what the widget does not take is the host's. [A first
-program](#a-first-program) is exactly that.
+Each frame, the stack lays the windows out on the screen, each window's widget draws into its area,
+and then anything on top is drawn (notifications, a status line). Each event goes from the stack to
+a window, the window's widget gets the first chance to handle it, and whatever it doesn't handle
+goes back to your program. [A first program](#a-first-program) shows all of this in about 140
+lines.
 
 ## A first program
 
-`examples/hello.c` is a whole program: a screen from a layout file, a list the program fills, a
-page of text, a message when a row is chosen, and q to quit. `cmake --build build --target
-rolltui-hello` builds it.
+`examples/hello.c` is a complete program: a screen loaded from a layout, a list the program fills,
+a page of text, a notification when you pick a row, and q to quit. Build it with
+`cmake --build build --target rolltui-hello`.
 
 <!-- quoted whole: examples/hello.c -->
 ```c
@@ -196,21 +197,25 @@ int main(void) {
 #endif
 ```
 
-- The layout names two windows by their content: `list:fruit`, whose rows `fruit_count` and
-  `fruit_row` give, and `text:`, whose text is in the file.
-- `render` syncs the windows with the stack (a window that appeared gets its widget), lays them
-  out on the screen, composes the frame and draws the messages over it. It returns how long to
-  wait: -1 until the next event, or the soonest a message moves.
-- `event` routes each event. The focused list takes Up, Down and Enter itself; Enter on a row
-  becomes a list event the program reads. A key no window took is the program's.
-- `main` enters the terminal with `rolltui_run`, which leaves it as it found it, whatever
-  happens.
+Some notes on how it works:
+
+- The layout has two windows. `list:fruit` gets its rows from `fruit_count` and `fruit_row`, and
+  `text:` shows the text written in the layout.
+- `render` brings the windows up to date with the stack (a new window gets its widget here), lays
+  them out, composes the frame and draws notifications on top. It returns how long to wait before
+  the next frame: -1 means until the next event, otherwise the time until a notification needs to
+  move.
+- `event` routes each event. The focused list handles Up, Down and Enter itself, and Enter on a
+  row produces a list event that the program reads afterwards. Keys no window handles come back to
+  the program.
+- `main` hands everything to `rolltui_run`, which restores the terminal however the program ends.
 
 ## Testing a program
 
-A program's real loop runs with no terminal: `rolltui_run_begin_headless(w, h, &app, &result)`
-makes the same app run at a size, and the test steps it, sends it keys and reads the screen back
-as text. `tests/hello_test.c` drives the first program this way, as a program's own test does:
+`rolltui_run_begin_headless(w, h, &app, &result)` runs your program's real event loop at a given
+size without a terminal. Output goes nowhere, colours are 24-bit, and nothing in the environment
+changes how it behaves. A test then steps the loop, sends it keys and reads the screen back as text.
+This is the test for the first program:
 
 <!-- quoted whole: tests/hello_test.c -->
 ```c
@@ -280,92 +285,88 @@ int main(void) {
 }
 ```
 
-- `HELLO_NO_MAIN` leaves out the program's `main`, so the test builds the same app the program
-  runs.
-- What moves in takes a few frames: a message slides in. The test steps until the screen shows
-  what it waits for, within a bound.
+- Defining `HELLO_NO_MAIN` leaves out the program's `main`, so the test runs exactly the app the
+  program runs.
+- Some things take a few frames to appear, like a notification sliding in. The test keeps stepping
+  until the text shows up, with a time limit.
 
-### A program's own end-to-end tests
-
-`rolltui_run_begin_headless(w, h, &app, &result)` runs a program's real loop with no terminal, at
-`w` by `h`: what it sends goes nowhere, its colours are 24-bit and nothing in the environment
-changes what it is. A test drives it as the person would and reads back what is on screen:
+The other calls a test needs:
 
 ```c
 RolltuiRun* run = rolltui_run_begin_headless(80, 24, &app, &result);
-rolltui_run_step(run);                      /* the first frame */
-rolltui_run_inject(run, &key);              /* a key, a press, a paste or focus */
+rolltui_run_step(run);                      /* draw the first frame */
+rolltui_run_inject(run, &key);              /* send a key, a mouse event, a paste or a focus change */
 rolltui_run_step(run);
-rolltui_run_screen_text(run, &text);        /* the screen, a row a line */
-rolltui_run_resize(run, 100, 30);           /* reported at the next step, as a window's is */
-rolltui_tasks_wait_idle(rolltui_run_tasks(run), 2000); /* its workers done */
+rolltui_run_screen_text(run, &text);        /* the screen, one line per row */
+rolltui_run_resize(run, 100, 30);           /* reported at the next step like a real resize */
+rolltui_tasks_wait_idle(rolltui_run_tasks(run), 2000); /* wait for background work */
 rolltui_run_finish(run);
 ```
 
-Where the system reads only a console (Windows), it returns NULL with
+On Windows, where input only comes from a console, `rolltui_run_begin_headless` returns NULL with
 `ROLLTUI_RUN_NOT_A_TERMINAL`.
 
 ### Recordings
 
-`rolltui_terminal_record(term, path, len)` writes every byte sent to the terminal from then on,
-with when it was sent, into an asciicast (v2) file, which asciinema plays and its tools turn into a
-GIF; a change of size is in it too. `ROLLTUI_RECORD=demo.cast` in the environment records any
-program from before it enters, so the script a test drives a headless run with records the demo
-as well. A recording started part way through begins with whatever the next frame sends;
-`rolltui_run_invalidate` makes that frame whole.
+`rolltui_terminal_record(term, path, len)` writes everything sent to the terminal from that point
+on, with timestamps and size changes, to an asciicast v2 file. asciinema plays it, and its tools
+can turn it into a GIF. Setting `ROLLTUI_RECORD=demo.cast` records any program from the moment it
+starts, so the same script that drives a headless test can produce a demo. A recording started
+partway through only gets what later frames send; call `rolltui_run_invalidate` first to make the
+next frame a full one.
 
-What the terminal answered and how long each frame took are in the log ([Diagnostics](#diagnostics)).
+The log has the terminal's replies and how long each frame took; see [Diagnostics](#diagnostics).
 
 ## Embedding rolltui
 
-Add the repository with `add_subdirectory()`. Its `CMakeLists.txt` guards `project()` and the
-C++ standard with `if(NOT PROJECT_NAME)`, so it works standalone or nested.
+Put the repository in a folder named `rolltui` (a submodule or a copy), add it with
+`add_subdirectory()`, and include `rolltui/rolltui.h`. The `CMakeLists.txt` only calls `project()`
+and sets the C++ standard when it is the top-level project, so it works either way. When built on
+its own, CMake creates the `rolltui/` include prefix in the build directory.
 
-Place the repository in a folder named `rolltui` (a submodule or a copy) and include
-`rolltui/rolltui.h`. Built standalone, CMake creates the `rolltui/` prefix in the build directory.
-Every include inside the library is spelled `rolltui/...`; `rolltui-boundary-test` checks that the
-library includes only its own headers.
+All includes inside the library are written as `rolltui/...`, and `rolltui-boundary-test` checks
+that the library only includes its own headers. It links nothing but the platform's C and C++
+libraries.
 
-The library links only the platform's C and C++ libraries. It compiles against `testkit/`, a
-small test harness shipped in this repository; a host that already defines a `testkit` target
-uses its own. Nested inside another build, rolltui registers no tests (`ROLLTUI_BUILD_TESTS` is on
-only at the top level).
+The tests use `testkit/`, a small harness in this repository. If your project already has a
+`testkit` target, that one is used. rolltui only registers its tests when it is the top-level
+project (`ROLLTUI_BUILD_TESTS`).
 
 ## Ownership
 
-Every pointer in the library is one of three kinds:
+Every pointer in the API is one of:
 
-- **OWNED**: one owner, freed by a named `_free` function.
-- **BORROWED**: a raw pointer or view passed across the API; it never owns and never frees.
-- **VALUE**: copied.
+- OWNED: has a single owner and is freed with the matching `_free` function.
+- BORROWED: a pointer or view you are lent for a while; it never owns or frees anything.
+- VALUE: copied.
 
-The library has no `shared_ptr`. `rolltui-ownership-test` enforces these rules.
+There is no `shared_ptr`. `rolltui-ownership-test` checks the header against these rules.
 
 ## Strings
 
-`RolltuiStr` is the library's string type: owned, NUL-terminated, allocated by the library's
-allocator. `clear()` keeps the buffer for the next fill.
+`RolltuiStr` is the library's string: owned, NUL-terminated, and allocated with the library's
+allocator. `clear()` keeps the buffer so it can be refilled without allocating.
 
-`rolltui/str.hpp` is the C++ toolkit over it. It is header-only and adds nothing to `rolltui.h`.
+`rolltui/str.hpp` adds a header-only C++ toolkit on top. It doesn't add anything to `rolltui.h`.
 
 | | |
 |---|---|
-| `StrView` | a borrowed view: `find`, `rfind`, `substr`, `starts_with`, `ends_with`, `compare` |
+| `StrView` | a borrowed view with `find`, `rfind`, `substr`, `starts_with`, `ends_with` and `compare` |
 | `a + b + c` | concatenation into one buffer |
 | `appendf` | formatted append |
-| `StrVec` | a growing list |
-| `path_base`, `path_dir` | path parts |
+| `StrVec` | a growable list |
+| `path_base`, `path_dir` | the parts of a path |
 
-Use these rather than converting to and from `std::string`.
+Prefer these to converting back and forth with `std::string`.
 
 # Screens
 
 ## Layout files
 
-A layout file is JSON: a screen's windows, how they share the room, and the popups over them.
-`rolltui_load_layout_text(text, len, actions, n, hooks, &report)` reads one. Every key it does not
-know and every value it cannot take is named in the report (`RolltuiLayoutReport`), and the rest of
-the screen loads. The studio's layout editor edits the same file.
+A layout file is JSON describing a screen: its windows, how they divide the space, and any popups.
+Load one with `rolltui_load_layout_text(text, len, actions, n, hooks, &report)`. Unknown keys and
+invalid values are listed in the report (`RolltuiLayoutReport`) and the rest of the layout still
+loads. The studio's layout editor works on the same files.
 
 ```json
 {
@@ -388,107 +389,108 @@ the screen loads. The studio's layout editor edits the same file.
 
 | Key | Value |
 |---|---|
-| `root` | the screen's node (required) |
+| `root` | the top node of the screen (required) |
 | `name` | the layout's name |
-| `focus` | the id of the window focused first |
-| `popups` | layers over the screen, each as below |
-| `min_width`, `min_height` | the least screen it is drawn on; on a smaller one a note says so ([A screen too small](#a-screen-too-small)) |
-| `inline` | `true`: drawn below the shell prompt in the normal screen ([Inline mode](#inline-mode)) |
-| `actions` | the host's actions its keys may name, each with what it does: `{ "app.find": "find in the transcript" }` |
+| `focus` | the id of the window that starts with focus |
+| `popups` | popup layers, described below |
+| `min_width`, `min_height` | the smallest screen it supports; below that a message is shown instead ([A screen too small](#a-screen-too-small)) |
+| `inline` | `true` to draw below the shell prompt instead of on the alternate screen ([Inline mode](#inline-mode)) |
+| `actions` | the program's own actions that key bindings can use, with descriptions: `{ "app.find": "find in the transcript" }` |
 
 ### A node
 
-A node is a window or a split, by which one of these it has:
+A node is a window or a split, depending on which of these keys it has:
 
 | Key | The node is |
 |---|---|
-| `content` | a window showing `kind:source` (below) |
-| `tabs` | a window showing one of several contents, `[{ "title": …, "content": … }]` ([Tabs](#tabs)) |
-| `row`, `column` | a split: its children side by side, or one above the other |
+| `content` | a window showing `kind:source` (see below) |
+| `tabs` | a window with tabs, `[{ "title": …, "content": … }]` ([Tabs](#tabs)) |
+| `row`, `column` | a split, with its children side by side or stacked |
 | `grid` | rows of cells, `[[node, …], …]`, or `{ "columns": N or "auto", "cell_height": rows, "cells": [ … ] }` |
 
-Any node may have:
+Any node can also have:
 
 | Key | Value |
 |---|---|
-| `id` | its name; a window without one is named by its content |
-| `size` | its share along its split: cells (`30`), `"40%"`, `"fill"`, `"fill 2"`, or `"content"` for as tall as what it holds |
-| `min`, `max` | the cells its share is held between |
-| `visible` | `false`: hidden until the host shows it |
-| `breakpoint` | `{ "width", "height", "pane_width", "pane_height" }`: shown only while there is that much room ([Breakpoints](#breakpoints)) |
-| `padding` | cells kept clear inside its border |
-| `span` | in a grid of cells, `[rows, columns]` |
+| `id` | the node's name; a window without one is named after its content |
+| `size` | its size within its split: cells (`30`), `"40%"`, `"fill"`, `"fill 2"`, or `"content"` to fit what it shows |
+| `min`, `max` | limits on its size, in cells |
+| `visible` | `false` hides it until the program shows it |
+| `breakpoint` | `{ "width", "height", "pane_width", "pane_height" }`, to show it only when there is that much space ([Breakpoints](#breakpoints)) |
+| `padding` | empty cells inside its border |
+| `span` | `[rows, columns]` for a cell in a grid |
 
-A window also has `title`, `footer`, `focusable`, `background` (a theme role's name), `border`
-(`none`, `single`, `rounded`, `double`, `heavy`, `hidden`, `quadrant-inside`, `quadrant-outside`;
-[Borders](#borders)) and, with tabs, `tab`, the one shown first. A split also has `gap`,
-`separators`, `stack_below` and `focus_weight` ([Room and spacing](#room-and-spacing)).
+Windows can also have `title`, `footer`, `focusable`, `background` (the name of a theme role),
+`border` (`none`, `single`, `rounded`, `double`, `heavy`, `hidden`, `quadrant-inside` or
+`quadrant-outside`; see [Borders](#borders)) and, for a window with tabs, `tab` to pick the one shown
+first. Splits can also have `gap`, `separators`, `stack_below` and `focus_weight` (see [Room and
+spacing](#room-and-spacing)).
 
 ### Content
 
-A window's `content` is `kind:source`:
+A window's `content` has the form `kind:source`:
 
 | Kind | Source | Shows |
 |---|---|---|
 | `text` | the text itself | a page of text |
 | `file` | a path | a file |
-| `output` | a name the host binds | another program's output ([Coloured output](#coloured-output)) |
-| `transcript` | a name the host binds | a document: Markdown, code, diagrams |
-| `input` | the name its lines go to | a line or several to type in ([The editor](#the-editor)) |
-| `list` | a name the host binds | a list, table or tree ([Lists, tables and trees](#lists-tables-and-trees)) |
-| `rows` | a name the host binds | labelled values the host fills |
-| `chart` | a name the host binds | a chart ([Charts and dashboards](#charts-and-dashboards)) |
-| `gauge` | a name the host binds | a progress bar ([Progress](#progress)) |
-| `image` | a path, or a name the host binds | a picture ([Pictures](#pictures)) |
+| `output` | a name your program binds | another program's output ([Coloured output](#coloured-output)) |
+| `transcript` | a name your program binds | a document with Markdown, code and diagrams |
+| `input` | the name its text is submitted to | a single- or multi-line text field ([The editor](#the-editor)) |
+| `list` | a name your program binds | a list, table or tree ([Lists, tables and trees](#lists-tables-and-trees)) |
+| `rows` | a name your program binds | label and value pairs |
+| `chart` | a name your program binds | a chart ([Charts and dashboards](#charts-and-dashboards)) |
+| `gauge` | a name your program binds | a progress bar ([Progress](#progress)) |
+| `image` | a path, or a name your program binds | an image ([Pictures](#pictures)) |
 | `menu` | a [menu file](#menu-files)'s name | a menu |
-| `help` | a key scope, or none for all | the keys, editable ([The keys sheet](#the-keys-sheet)) |
+| `help` | a key scope, or nothing for all of them | the key bindings, editable ([The keys sheet](#the-keys-sheet)) |
 | `keys` | none | the keys editor |
 | `theme` | none | the theme editor ([The theme sheet](#the-theme-sheet)) |
-| `filepicker` | the folder it opens in | a file picker |
-| `messages` | none | the messages the program has shown ([Messages](#messages)) |
-| `dialog` | the dialog's id | a dialog the host asks ([Dialogs](#dialogs)) |
+| `filepicker` | the directory it starts in | a file picker |
+| `messages` | none | the history of notifications ([Messages](#messages)) |
+| `dialog` | the dialog's id | a dialog your program opens ([Dialogs](#dialogs)) |
 
-A host adds kinds of its own with `rolltui_widget_kind_register` and
-`rolltui_context_register_kind`; a host's kind never shadows the library's.
+Programs can add their own kinds with `rolltui_widget_kind_register` and
+`rolltui_context_register_kind`. They can't replace the library's kinds.
 
 ### A popup
 
-A popup is a layer: its own `root` and `focus`, an `id`, and where it sits on the screen.
+A popup is a separate layer with its own `root`, `focus` and `id`, plus its position on the screen:
 
 | Key | Value |
 |---|---|
-| `dismiss` | required: `true` closes it on a press outside it; `false` keeps it until it is answered |
-| `modal` | `true`: the focus stays in it, the screen under it is shaded, and presses under it are dropped |
-| `x`, `y`, `w`, `h` | cells, or `"N%"` of the screen; `w` and `h` are the whole screen unless said |
-| `anchor` | the point of the popup placed at (`x`, `y`): `top-left` (the default), `top`, `top-right`, `left`, `center`, `right`, `bottom-left`, `bottom`, `bottom-right` |
-| `min_w`, `min_h`, `max_w`, `max_h` | bounds on its size, in cells or `"N%"` |
-| `clamp` | `false` lets it run off the screen; by default it is moved to fit |
-| `margin` | columns kept clear at the screen's left and right edges while it is moved to fit |
+| `dismiss` | required. `true` closes it when you click outside it; `false` keeps it open until it's answered |
+| `modal` | `true` keeps focus in the popup, shades the screen behind it and ignores clicks outside it |
+| `x`, `y`, `w`, `h` | position and size, in cells or `"N%"` of the screen; `w` and `h` default to the full screen |
+| `anchor` | which point of the popup goes at (`x`, `y`): `top-left` (the default), `top`, `top-right`, `left`, `center`, `right`, `bottom-left`, `bottom`, `bottom-right` |
+| `min_w`, `min_h`, `max_w`, `max_h` | size limits, in cells or `"N%"` |
+| `clamp` | `false` lets it extend past the screen edge; by default it's moved to fit |
+| `margin` | columns to leave free at the left and right edges when it's moved to fit |
 
 ## The layout at run time
 
-A layout file says what a screen holds. The window stack changes what it shows while the program
-runs, by window or split id; each call answers 0 when nothing has that id.
+The layout file sets up the screen; the window stack can change what is shown while the program
+runs, addressing windows and splits by id. Each of these calls returns 0 if no node has that id.
 
 ### Borders
 
-A window's `"border"` is one of `none`, `single`, `rounded`, `double`, `heavy`, `hidden` (a ring
-of the window's ground that keeps its room and its title), `quadrant-inside` (half blocks drawn
-inside the edge, ▗▄▖) or `quadrant-outside` (▛▀▜). Where ambiguous glyphs are wide every kind is
-drawn with `+ - |`. `rolltui_draw_border(frame, scratch, rect, ROLLTUI_BORDER_*, line, title, n,
-title_style, ambiguous_wide)` draws one inside a widget's own content, for a group or a nested
-section.
+A window's `"border"` can be `none`, `single`, `rounded`, `double`, `heavy`, `hidden` (an invisible
+border in the window's background colour that still takes up space and shows the title),
+`quadrant-inside` (half blocks drawn just inside the edge, ▗▄▖) or `quadrant-outside` (▛▀▜). Where
+ambiguous characters are wide, every style is drawn with `+ - |` instead.
+`rolltui_draw_border(frame, scratch, rect, ROLLTUI_BORDER_*, line, title, n, title_style,
+ambiguous_wide)` draws a border inside your own widget, for a group or a nested section.
 
-A theme's `"glyphs": { "cursor": "caps" }` rounds the ends of the cursor's row in lists, menus and
-the column browser with a half block each (▐…▌); `"edges"` draws a bar at each end and leaves the
-row on its own ground, its text in the cursor's colour, so a terminal's own background shows
-through; `"fill"`, the default, draws the row in the cursor's style. A list keeps a cell clear at
-each side for the ends; a menu draws them in its inset and draws a fill without one.
-`rolltui_cursor_text_style` and `rolltui_frame_cursor_ends` draw the same in a host's own widget.
+A theme's `"glyphs": { "cursor": "caps" }` rounds the ends of the cursor row in lists, menus and the
+column browser with a half block at each end (▐…▌). `"edges"` draws a bar at each end and leaves the
+row's background alone, with the text in the cursor colour, so the terminal's background shows
+through. `"fill"`, the default, draws the whole row in the cursor style. Lists keep a cell free on
+each side for the ends, and menus draw them in their padding. `rolltui_cursor_text_style` and
+`rolltui_frame_cursor_ends` do the same in your own widgets.
 
 ### Tabs
 
-A window with `"tabs"` in place of `"content"` shows one of several contents:
+A window can have `"tabs"` instead of `"content"`, and shows one of them at a time:
 
 ```json
 { "id": "side", "focusable": true,
@@ -496,232 +498,254 @@ A window with `"tabs"` in place of `"content"` shows one of several contents:
             { "title": "Log", "content": "output:log" } ] }
 ```
 
-- The titles are a strip in the window's top border: the shown one bold and underlined in the
-  `title` role, the others in the border's. A window with tabs has a border: single unless the
-  file names another, and `"none"` is refused. `"tab"` names the tab shown first.
-- A press on a title shows that tab. `stack.next_tab` (Ctrl-PageDown) and `stack.prev_tab`
-  (Ctrl-PageUp) cycle the focused window's tabs. `rolltui_window_stack_set_tab` shows one, and
-  `rolltui_window_stack_tab` says which is shown and how many there are.
-- Each tab's widget keeps its state while another is shown: a list's cursor, a transcript's
-  scroll.
-- A new base keeps each window's tab.
+- The tab titles are shown in the window's top border, with the current one bold and underlined in
+  the `title` role and the rest in the border colour. A window with tabs always has a border
+  (`single` unless the file says otherwise; `"none"` is rejected). `"tab"` picks the tab shown
+  first.
+- Clicking a title switches to that tab. `stack.next_tab` (Ctrl-PageDown) and `stack.prev_tab`
+  (Ctrl-PageUp) cycle through the focused window's tabs. `rolltui_window_stack_set_tab` switches
+  from code, and `rolltui_window_stack_tab` returns the current tab and the number of tabs.
+- Each tab's widget keeps its state while hidden, such as a list's cursor or a transcript's scroll
+  position.
+- Setting a new base layout keeps each window's current tab.
 
 ### Breakpoints
 
 `"breakpoint": { "width": 100, "height": 30 }` on any node shows it only while the screen is at
-least that big. Below it, the node takes no space and focus passes over it. Either bound may be
-left out. `"pane_width"` and `"pane_height"` judge the same by the room the node's parent has, so a
-column of a split drops out when its split is narrow, whatever the screen is.
+least that size. Below that, the node takes no space and focus skips it. Either value can be
+omitted. `"pane_width"` and `"pane_height"` work the same way but compare against the space the
+node's parent has, so a column can drop out when its split gets narrow, whatever the screen size.
 
 ### Room and spacing
 
-- `"min"` and `"max"` hold a node's share to a number of cells. A fill held at a bound gives what
-  it does not take to the other fills, by their weights.
-- `"size": "content"` makes a window as tall as what it holds and a spare line, within its `min`
-  and `max`, each frame; the fill windows share what it leaves. Lists, text and output windows
-  size themselves this way.
-- `"padding"` keeps cells clear inside a split's or a window's border; `"gap"` keeps cells between
+- `"min"` and `"max"` limit a node's size in cells. If a fill node is held at a limit, the space it
+  doesn't use goes to the other fill nodes, by weight.
+- `"size": "content"` makes a window just tall enough for what it shows plus one line, within its
+  `min` and `max`, recalculated every frame. Fill windows share whatever is left. Lists, text and
+  output windows support this.
+- `"padding"` leaves empty cells inside a split's or a window's border. `"gap"` leaves cells between
   a split's children, and `"separators": true` draws a line in each gap.
-- `"stack_below": 80` on a row places its children as a column while it is narrower than 80 cells:
-  two diffs side by side on a wide screen, one above the other on a narrow one.
-- `"focus_weight": 2` on a split gives the child holding the focus that weight: the focused panel
-  grows as focus moves.
-- `"grid": { "columns": 3, "cells": [ … ] }` lays cells on three equal columns in reading order, a
-  cell with `"span": [2, 2]` taking two rows and two columns. `"columns": "auto"` with
-  `"cell_height": 3` takes as many columns as it needs to fit every cell three rows tall: a core a
-  cell, in one to three columns as the height allows.
+- `"stack_below": 80` on a row lays its children out as a column while the row is narrower than 80
+  cells, so two diffs side by side on a wide screen end up one above the other on a narrow one.
+- `"focus_weight": 2` on a split gives that weight to whichever child has focus, so the focused
+  panel grows as focus moves.
+- `"grid": { "columns": 3, "cells": [ … ] }` places cells on three equal columns in reading order;
+  a cell with `"span": [2, 2]` takes two rows and two columns. `"columns": "auto"` with
+  `"cell_height": 3` uses as many columns as it takes to give every cell three rows, for example one
+  cell per CPU core in one to three columns depending on the height.
 
-`rolltui_layout_fits(layout, w, h)` answers whether a layout fits a screen: its minimums, fixed
-sizes, borders, padding and gaps, and its own `min_width` and `min_height`. A host refuses a preset
-that would not fit with it, and `rolltui_window_stack_set_visible` refuses to show a node that would
-make the layout need more than the screen (`ROLLTUI_STACK_REFUSED`).
+`rolltui_layout_fits(layout, w, h)` checks whether a layout fits a screen, taking into account its
+minimums, fixed sizes, borders, padding and gaps, and its `min_width` and `min_height`. Use it to
+refuse a preset that wouldn't fit. `rolltui_window_stack_set_visible` likewise refuses to show a
+node that would make the layout too big for the screen (`ROLLTUI_STACK_REFUSED`).
 
 ### Hiding, resizing and maximising
 
 - `rolltui_window_stack_set_visible(stack, id, len, visible)` shows or hides a node. A hidden node
   takes no space.
-- `rolltui_window_stack_set_size(stack, id, len, size, size_len)` sizes a node as the file spells
-  it: `"30"` cells, `"40%"`, `"fill"` or `"fill 2"`.
-- `rolltui_window_stack_maximize(stack, id, len)` makes one window fill its layer, and gives it the
-  focus; a NULL id puts the layout back. `stack.maximize` (Alt-Z) does both for the focused window.
-  `rolltui_window_stack_maximized` names the window.
-- `rolltui_window_stack_set_half(stack, id, len)` gives a window half the screen: the rest of the
-  layout in one half and the window in the other, side by side on a wide screen and stacked on a
-  tall one. `stack.half` (Alt-Shift-Z) does it for the focused window, and again puts it back.
-- `rolltui_window_stack_anchor(stack, rect)` places the topmost popup just under `rect`, above it
-  where there is no room below, kept on the screen: a rename box under the file it renames.
-- `stack.focus_number` (Alt-1 to Alt-9) focuses the window with that number, counting the
-  focusable windows of the focus layer in order. `rolltui_window_stack_set_numbered(stack, 1)`
-  puts each one's number before its title. `stack.focus_left`, `_right`, `_up` and `_down`
-  (Alt-Shift-H, L, K, J) focus the nearest window that way.
-- `rolltui_window_stack_set_busy(stack, id, len, 1, since_ms)` puts a spinner before a window's
-  title while it works, turning from `since_ms`; 0 takes it away.
-- `rolltui_window_stack_set_numbered(stack, 2)` puts each number as a superscript before the title
-  ("²files"), and plain digits where ambiguous glyphs are wide.
-- `rolltui_window_stack_set_border_role(stack, id, len, role)` draws a window's border in a role
-  of its own while it is in a state: searching, an error, a filter applied. 0 gives it back the
-  focus colours.
-- `rolltui_window_stack_set_subtitle(stack, id, len, text, n)` writes a subtitle at the right of
-  the top edge: a live count, a mode.
-- `rolltui_window_stack_set_title_parts(stack, id, len, parts, n)` makes the title of
-  `RolltuiTitlePart`s, each in its own role. A part with an `action` is a label, drawn underlined:
-  a press on it routes as `ROLLTUI_ROUTE_LABEL`, naming the window, and
-  `rolltui_window_stack_pressed_label` gives the action, once.
+- `rolltui_window_stack_set_size(stack, id, len, size, size_len)` resizes a node, using the same
+  syntax as the layout file: `"30"`, `"40%"`, `"fill"` or `"fill 2"`.
+- `rolltui_window_stack_maximize(stack, id, len)` makes one window fill its layer and gives it
+  focus; passing NULL restores the layout. `stack.maximize` (Alt-Z) toggles this for the focused
+  window, and `rolltui_window_stack_maximized` returns which window is maximised.
+- `rolltui_window_stack_set_half(stack, id, len)` gives a window half the screen, with the rest of
+  the layout in the other half: side by side on a wide screen, stacked on a tall one.
+  `stack.half` (Alt-Shift-Z) toggles it for the focused window.
+- `rolltui_window_stack_anchor(stack, rect)` places the top popup just below `rect` (or above it if
+  there's no room), kept on screen. It's meant for things like a rename box under the file being
+  renamed.
+- `stack.focus_number` (Alt-1 to Alt-9) focuses a window by number, counting the focusable windows
+  of the focused layer in order. `rolltui_window_stack_set_numbered(stack, 1)` shows each window's
+  number before its title, and `2` shows it as a superscript ("²files"), falling back to plain
+  digits where ambiguous characters are wide. `stack.focus_left`, `_right`, `_up` and `_down`
+  (Alt-Shift-H, L, K, J) move focus to the nearest window in that direction.
+- `rolltui_window_stack_set_busy(stack, id, len, 1, since_ms)` shows a spinner before a window's
+  title while it's busy, animated from `since_ms`. Pass 0 to remove it.
+- `rolltui_window_stack_set_border_role(stack, id, len, role)` draws a window's border in another
+  role while it's in some state, such as searching, an error or an active filter. 0 goes back to
+  the normal focus colours.
+- `rolltui_window_stack_set_subtitle(stack, id, len, text, n)` shows text at the right of the top
+  border, such as a live count or a mode.
+- `rolltui_window_stack_set_title_parts(stack, id, len, parts, n)` builds the title from
+  `RolltuiTitlePart`s, each in its own role. A part with an `action` is a clickable label, drawn
+  underlined. Clicking it makes the route return `ROLLTUI_ROUTE_LABEL` with the window's id, and
+  `rolltui_window_stack_pressed_label` returns the action once.
 
-Visibility and size last until the next `rolltui_window_stack_set_base`; the maximised window carries
-over to a new base while its window is in it.
+Visibility and size changes last until the next `rolltui_window_stack_set_base`. A maximised window
+stays maximised under a new base if it's in it.
 
 ### Views in a window
 
-`rolltui_windows_push_view(windows, window, len, content, clen, title, tlen)` draws another content
-in a window's place, with its own keys: a drill-down, a pager, a log. The window's own content keeps
-its state underneath. The title reads the views' titles after the window's own ("files › details").
-Escape pops the top view once it has nothing of its own to back out of, as does
-`rolltui_windows_pop_view`; `rolltui_windows_view_depth` says how deep the window is.
+`rolltui_windows_push_view(windows, window, len, content, clen, title, tlen)` shows a different
+content in a window, with its own keys, for things like drilling down, a pager or a log. The
+window's own content keeps its state underneath. The title shows the view titles after the
+window's ("files › details"). Escape pops the top view once the view has nothing of its own to
+back out of, and so does `rolltui_windows_pop_view`. `rolltui_windows_view_depth` returns how many
+views are pushed.
 
-A press or key that changed what is shown makes `rolltui_window_stack_route` answer
-`ROLLTUI_ROUTE_LAYOUT_CHANGED`, naming the window.
+When a click or key changes what is shown, `rolltui_window_stack_route` returns
+`ROLLTUI_ROUTE_LAYOUT_CHANGED` with the window's id.
 
 ### A screen too small
 
-On a screen smaller than the layout's `min_width` by `min_height`, the stack draws a note in place
-of the layout: "the screen is 40×6; this needs 60×8", or "40×6 < 60×8" where the sentence does not
-fit, the screen's size bold in the `error` role and the size needed bold in the `ok` role
-(`RolltuiLayoutRoles`). A layout with no window in it shows the program's keys instead of a blank
-screen. Presses reach nothing; keys still reach the focused window, so a quit key works. A host with
-a layout for smaller screens sets it as the base first: rolltui-chat and the studio switch to the
-shipped `stacked` layout.
+When the screen is smaller than the layout's `min_width` by `min_height`, the stack shows a message
+instead of the layout, "the screen is 40×6; this needs 60×8", or just "40×6 < 60×8" if the
+sentence doesn't fit. The current size is bold in the `error` role and the required size bold in
+the `ok` role (`RolltuiLayoutRoles`). A layout with no windows at all shows the program's key
+bindings instead of a blank screen. Clicks are ignored, but keys still go to the focused window, so
+a quit key keeps working. A program with a layout for small screens can switch to it first;
+rolltui-chat and the studio switch to the built-in `stacked` layout.
 
-The studio's layout editor edits tabs (typed `Title = content | Title = content`), the shown tab,
-a breakpoint (typed `width`, `width x height` or `x height`), and under Spacing and bounds a node's
-min, max, padding, gap, separators, stack_below, focus_weight and grid span.
+The studio's layout editor edits tabs (typed as `Title = content | Title = content`), the starting
+tab, breakpoints (typed as `width`, `width x height` or `x height`), and, under Spacing and bounds,
+a node's min, max, padding, gap, separators, stack_below, focus_weight and grid span.
 
 ## Theme files
 
-A role's `fg`, `bg` and `underline_color` take `#rrggbb`, `#rgb`, `#BW` (a grey: `#80` is
-`#808080`), `"R G B"` in decimals, 0 to 255 for a palette colour, a colour's name, `none` or
-`default` (the terminal's own), or a name from the file's `defs`. The terminal's eight are names
-for its palette, so a theme for a 16-colour terminal follows the person's palette: `black`,
-`red`, `green`, `yellow`, `blue`, `magenta`, `cyan` and `white` are 0 to 7, and `bright-red` and
-the rest 8 to 15. Every other W3C name is the colour it names (`cornflowerblue`, `rebeccapurple`).
-A role may also be written as SGR's parameters, `"sgr": "1;38;5;208"`, read as another program's
-output would set it; `rolltui_style_from_sgr` reads the same for a host.
+A role's `fg`, `bg` and `underline_color` accept any of these:
 
-`"extends": "default"` makes a theme of a shipped one: the file states only the roles it changes,
-each over the shipped role, and its effects over the shipped ones.
+- `#rrggbb` or `#rgb`
+- `#BW` for a grey, so `#80` is `#808080`
+- `"R G B"` in decimal
+- a number from 0 to 255 for a palette colour
+- a colour name, `none`, or `default` for the terminal's own colour
+- a name defined in the file's `defs`
 
-`"gradients"` names colour ramps for meters, graphs and numbers:
+The eight basic names (`black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`) are
+palette entries 0 to 7, and `bright-red` and the others are 8 to 15. That way a theme for a
+16-colour terminal follows the user's own palette. Every other W3C colour name means that colour
+(`cornflowerblue`, `rebeccapurple`). A role can also be given as SGR parameters,
+`"sgr": "1;38;5;208"`, the way another program's output would set it; `rolltui_style_from_sgr`
+parses the same thing in code.
+
+`"extends": "default"` bases a theme on a built-in one. The file then only lists the roles and
+effects it changes.
+
+`"gradients"` defines named colour ramps for meters, graphs and numbers:
 
 ```json
 "gradients": { "cpu": { "start": "green", "mid": "#ffd700", "end": "#d03030" } }
 ```
 
-`rolltui_theme_gradient(colours, mode, "cpu", 3, &gradient)` reads one by name, and
-`rolltui_gradient_at(&gradient, t, &colour)` gives its colour at `t` from 0 to 1: a number coloured
-by where it falls. A gradient with no `end` is its start alone; with no `mid`, two stops.
+`rolltui_theme_gradient(colours, mode, "cpu", 3, &gradient)` looks one up by name, and
+`rolltui_gradient_at(&gradient, t, &colour)` returns its colour at `t` between 0 and 1, which is
+how a value gets coloured by where it falls. A gradient without `end` is a single colour; without
+`mid` it has two stops.
 
-`rolltui_colors_distinct(ground, n, 4.5, colours)` makes `n` colours told apart on a ground, each a
-hue of its own and each reading on it at 4.5:1: a colour an author, a host or a series.
+`rolltui_colors_distinct(ground, n, 4.5, colours)` generates `n` colours with distinct hues that
+all have at least 4.5:1 contrast against `ground`, for things like chat authors or chart series.
 
 ## Cut text, footers, strikethrough and focus
 
 `rolltui_frame_put_text_cut(frame, scratch, x, y, text, len, style, max_cells, where,
-ambiguous_wide, link)` draws text in at most `max_cells`, with an ellipsis where it was cut:
-`ROLLTUI_CUT_END` ("a long na…"), `ROLLTUI_CUT_MIDDLE` ("~/src/r…main.c", a path keeping both
-ends) or `ROLLTUI_CUT_START` ("…/c/main.c"). Text that fits is drawn whole. The ellipsis is one cell,
-or two where ambiguous glyphs are wide, and a wide glyph is never cut in half.
-`rolltui_text_cut` gives the same cut as text. The menu, the list and the column browser cut
-their text this way.
+ambiguous_wide, link)` draws text in at most `max_cells`, with an ellipsis where it was cut.
+`where` is `ROLLTUI_CUT_END` ("a long na…"), `ROLLTUI_CUT_MIDDLE` ("~/src/r…main.c", which keeps
+both ends of a path) or `ROLLTUI_CUT_START` ("…/c/main.c"). Text that fits is drawn as is. The
+ellipsis takes one cell, or two where ambiguous characters are wide, and wide characters are never
+split. `rolltui_text_cut` returns the cut text instead of drawing it. Menus, lists and the column
+browser all cut text this way.
 
-`rolltui_text_cut_with` and `rolltui_frame_put_text_cut_with` take a `RolltuiCutOptions`:
-`marker` in place of the ellipsis (`"~"`), `keep_extension` to keep a file name's extension
-whole after the cut ("a_long_rep….pdf"), and `split`, the percent of the room a middle cut gives
-the head. `rolltui_path_shorten` shortens each folder of a path from the left to its first
-letter until it fits ("~/g/r/c/frame.c", a leading dot kept: ".c" for ".config"), then cuts the
-name in its middle with its extension kept.
+`rolltui_text_cut_with` and `rolltui_frame_put_text_cut_with` take a `RolltuiCutOptions` with:
 
-`rolltui_format_size(n, flags, out, cap)` writes a size the way the column browser, the preview
-and a code block's head do: steps of 1024 (K, M, G, T, P, E), one decimal under 10 and none from
-10 ("1.5K", "12M", "512"), and a value that rounds up written in the next step ("1.0M"). Its
-flags: `ROLLTUI_SIZE_DECIMAL` for steps of 1000 (k, M, G…), `_BITS` for a count of bytes written
-as bits ("12Mb"), `_RATE` for "/s", `_BYTE_UNIT` for the unit under the first step ("512 B").
-`rolltui_format_count(n, sep, len, out, cap)` groups a count's thousands, by a comma unless
-`sep` says otherwise ("12,345,678").
+- `marker`, a replacement for the ellipsis (such as `"~"`)
+- `keep_extension`, to keep a file name's extension after the cut ("a_long_rep….pdf")
+- `split`, the percentage of the space a middle cut gives to the start
 
-`rolltui_frame_put_spans(frame, scratch, rect, spans, n, align, overflow, ambiguous_wide)` lays a
-line of `RolltuiTextSpan`s, each its own style, into a rect: at its left, centre or right
-(`ROLLTUI_ALIGN_*`), and where it is wider, cut at the edge, cut with an ellipsis in the style
-of the span it cuts, or wrapped at word breaks onto the rows below (`ROLLTUI_OVERFLOW_*`). It
-returns the rows used. `rolltui_hotkey_at(label, len, ch, &n)` finds the letter a key names in a
-label, to light it: the first word that starts with it, else its first place.
+`rolltui_path_shorten` shortens each directory of a path to its first letter, from the left, until
+it fits ("~/g/r/c/frame.c"; a leading dot is kept, so ".config" becomes ".c"). If that isn't
+enough it cuts the file name in the middle and keeps its extension.
 
-A window's FOOTER is at the right of its bottom border: `"footer"` in the layout file, or what the
-widget says that frame through the plugin's `footer` slot. A list says where the cursor is, "12
-of 340", while it shows fewer rows than it has or a filter narrows it, and how many rows are
-marked. A footer too long for the border is cut at its start, since its end says most.
+`rolltui_format_size(n, flags, out, cap)` formats a size the way the column browser and previews
+show it: steps of 1024 (K, M, G, T, P, E), one decimal below 10 and none from 10 ("1.5K", "12M",
+"512"), and a value that rounds up shown in the next unit ("1.0M"). Flags:
 
-A selection dims while keys go elsewhere. A list's cursor, a menu's selected row and the column
-browser's cursor draw in the `selection` role while their window does not have focus
-(`RolltuiMenuRoles.selected_away`; 0 draws it as `selected`).
+- `ROLLTUI_SIZE_DECIMAL` for steps of 1000 (k, M, G…)
+- `_BITS` to show a byte count as bits ("12Mb")
+- `_RATE` to add "/s"
+- `_BYTE_UNIT` to add the unit below the first step ("512 B")
 
-A style's `strike` draws a line through the text (SGR 9). A theme file sets it per role with
-`"strikethrough": true`, the theme editor has it beside bold and italic, and every shipped theme
-strikes Markdown's `~~struck~~` text (`md_strikethrough`). A terminal that has no strikethrough
-draws the text plain.
+`rolltui_format_count(n, sep, len, out, cap)` groups thousands with a comma, or with `sep`
+("12,345,678").
 
-A style also has `blink` (1 slow, 2 rapid), `hidden`, `overline`, and an underline with a shape
-and a colour of its own: `underline` is 0 or a `ROLLTUI_UNDERLINE_*` (single, double, curly,
-dotted, dashed), and `underline_color` its colour, none for the text's. A theme file writes
-`"underline": "curly"`, `"underline_color": "#d04040"`, `"blink": true` and `"overline": true`.
-The shapes and the colour are sent to terminals that draw them: kitty, Ghostty, WezTerm, foot,
-iTerm2, Alacritty, VS Code, mintty, Windows Terminal and VTE from 0.52, by what the terminal
-answers to XTVERSION, else what the environment calls it. Every other terminal, and every
-terminal behind a multiplexer, gets a plain underline in the text's colour.
+`rolltui_frame_put_spans(frame, scratch, rect, spans, n, align, overflow, ambiguous_wide)` lays out
+a line of `RolltuiTextSpan`s, each with its own style. `align` is one of `ROLLTUI_ALIGN_*`. When
+the line is too wide, `overflow` (`ROLLTUI_OVERFLOW_*`) either clips it, cuts it with an ellipsis
+in the style of the span being cut, or wraps it at word breaks onto the following rows. It returns
+the number of rows used. `rolltui_hotkey_at(label, len, ch, &n)` finds where a key's letter appears
+in a label so it can be highlighted: at the start of a word if possible, otherwise its first
+occurrence.
 
-`rolltui_style_patch(&base, &over)` puts one style over another: `over`'s colours where it has
-them, its underline's shape and colour where it has one, its other attributes added.
-`rolltui_frame_tint` patches every cell of a rect: a row dimmed, a match lit.
+A window's footer sits at the right of its bottom border. It comes from `"footer"` in the layout
+file, or from the widget's `footer` callback each frame. A list shows its position there ("12 of
+340") when it has more rows than fit or a filter is active, along with the number of marked rows.
+A footer too long for the border loses its start, since the end is the informative part.
+
+A selection is drawn dimmer while focus is elsewhere. The cursor row of a list, a menu or the
+column browser uses the `selection` role while its window is unfocused
+(`RolltuiMenuRoles.selected_away`; 0 keeps the `selected` look).
+
+A style's `strike` draws a line through the text (SGR 9). Theme files set it per role with
+`"strikethrough": true`, the theme editor has it next to bold and italic, and all the built-in
+themes use it for Markdown's `~~struck~~` text (`md_strikethrough`). Terminals without
+strikethrough show the text plain.
+
+Styles also have `blink` (1 slow, 2 fast), `hidden` and `overline`, and underlines can have a shape
+and a colour of their own. `underline` is 0 or a `ROLLTUI_UNDERLINE_*` value (single, double,
+curly, dotted, dashed), and `underline_color` sets its colour, or none to use the text colour. In a
+theme file these are `"underline": "curly"`, `"underline_color": "#d04040"`, `"blink": true` and
+`"overline": true`. Underline shapes and colours are only sent to terminals that support them:
+kitty, Ghostty, WezTerm, foot, iTerm2, Alacritty, VS Code, mintty, Windows Terminal and VTE 0.52
+or later, identified by their XTVERSION reply or their environment. Other terminals, and any
+terminal behind a multiplexer, get a plain underline in the text colour.
+
+`rolltui_style_patch(&base, &over)` layers one style over another: `over`'s colours where it has
+them, its underline shape and colour if it has one, and its other attributes added to the base.
+`rolltui_frame_tint` applies a patch to every cell in a rectangle, to dim a row or highlight a match.
 
 ## Hover
 
-Set `RolltuiTerminalOptions.hover` and the terminal also reports the pointer as it moves with no
-button held (mode 1003). It needs `mouse`, which is on by default. While the pointer rests on
-something a click would act on, that thing is drawn in the theme's `hover` role:
+With `RolltuiTerminalOptions.hover` set, the terminal also reports the pointer moving with no
+button pressed (mode 1003). It needs `mouse`, which is on by default. Whatever a click at the
+pointer would act on is drawn in the theme's `hover` role:
 
-- a menu row, an option in an open dropdown, and a menu's ▲ and ▼ scroll markers;
-- an entry in the column browser;
-- the "N more" marker of a text or file window;
-- a hint in a hint bar.
+- menu rows, options in an open dropdown, and a menu's ▲ and ▼ scroll markers
+- entries in the column browser
+- the "N more" marker in text and file windows
+- hints in a hint bar
+- links, which are also underlined ([Links in a window](#links-in-a-window))
 
-The keyboard's cursor never moves with the pointer, and hover sends no menu event. The cursor's
-own row keeps its look under the pointer. Headings and disabled items are not lit. Under a modal
-popup, or a popup that closes on a press outside it, nothing below the popup is lit.
+The keyboard cursor doesn't follow the pointer, and hovering sends no menu event. The cursor's own
+row keeps its look when the pointer is on it. Headings and disabled items aren't highlighted, and
+nothing under a modal popup (or a popup that closes when you click outside it) is.
 
-The window stack learns where the pointer is from the mouse events it routes, and marks the one
-window a press there would reach: `RolltuiResolvedNode.hover`, with the pointer's cell in
-`hover_x` and `hover_y`. A host's own widget reads them in its `draw`. For what a host draws
-outside the windows, `rolltui_window_stack_pointer` gives the pointer's cell and
-`rolltui_hint_bar_hover` lights a hint bar from it. `rolltui_hint_bar_add_scope(bar, bindings, "app",
-3)` fills a bar with a scope's actions, each its first key the terminal can send and what it does. Short of
-room, a bar leaves out whichever hints do not fit; `rolltui_hint_bar_set_priority(bar, action, len,
-rank)` makes the lowest-ranked go first, the rest keeping their order.
+The window stack works out where the pointer is from the mouse events it routes, and marks the
+window a click would reach: `RolltuiResolvedNode.hover`, with the pointer's cell in `hover_x` and
+`hover_y`. Your own widgets can read these in `draw`. For things drawn outside the windows,
+`rolltui_window_stack_pointer` gives the pointer's cell and `rolltui_hint_bar_hover` highlights a
+hint bar. `rolltui_hint_bar_add_scope(bar, bindings, "app", 3)` fills a bar with a scope's actions,
+each with its first key the terminal can send. If the bar is too narrow, hints are left out;
+`rolltui_hint_bar_set_priority(bar, action, len, rank)` decides which go first, and the rest keep
+their order.
 
-- Nothing is lit until the terminal first reports the pointer moving. A click alone does not
-  say where the pointer rests afterwards.
-- A terminal does not report the pointer leaving its window, so the last thing lit stays lit
-  until the pointer comes back.
-- The shipped themes lift the panel colour toward the text colour. At 16 colours the lift
-  collapses into the panel, as the panel collapses into the background. `mono` draws a
-  hovered row bold.
+Some limits come from the terminal:
 
-dirktui, `rolltui-chat`, paint and the studio turn hover on.
+- Nothing is highlighted until the terminal first reports the pointer moving. A click alone doesn't
+  say where the pointer is afterwards.
+- Terminals don't report the pointer leaving the window, so the last highlight stays until the
+  pointer comes back.
+
+The built-in themes make `hover` a lighter version of the panel colour. At 16 colours that
+difference disappears, the same way the panel colour merges with the background; `mono` shows
+hovered rows in bold.
+
+dirktui, `rolltui-chat`, paint and the studio all turn hover on.
 
 # Keys
 
 ## Bindings files
 
-A bindings file says which keys do each action. `default` and `vim` ship with the library; the keys
-sheet (F1) and the studio edit a person's own copy, which the bindings store keeps.
+A bindings file maps actions to keys. The library ships `default` and `vim`. The keys sheet (F1)
+and the studio edit the user's own copy, which the bindings store keeps.
 
 ```json
 { "name": "mine", "bindings": {
@@ -730,165 +754,170 @@ sheet (F1) and the studio edit a person's own copy, which the bindings store kee
     "app.quit": [] } }
 ```
 
-- `bindings` maps each action to its keys. A key is a chord with its modifiers before it
-  (`ctrl+` or `control+`; `alt+`, `option+` or `meta+`; `shift+`; `super+`, `cmd+` or `win+`), or a
-  sequence of up to four chords apart by spaces ([Key sequences and counts](#key-sequences-and-counts)).
-  `[]` binds the action to nothing.
-- An action is `scope.name`: the library's scopes (`input`, `list`, `menu`, `transcript`, `stack`,
-  `sheet` and the others) and a host's own, such as `app`, which its layout declares in `actions`.
-- `name` is the file's name. `preset`, written by the store, is the preset an edited copy came
-  from.
-- A file that does not name a library action takes the shipped default's keys for it, and every
-  key the loader cannot read is named in its report.
+- `bindings` maps each action to a list of keys. A key is a chord with modifiers in front (`ctrl+`
+  or `control+`; `alt+`, `option+` or `meta+`; `shift+`; `super+`, `cmd+` or `win+`), or a sequence
+  of up to four chords separated by spaces ([Key sequences and counts](#key-sequences-and-counts)).
+  An empty list leaves the action unbound.
+- Actions are named `scope.name`. The library has scopes such as `input`, `list`, `menu`,
+  `transcript`, `stack` and `sheet`; a program's own scope, usually `app`, is declared in its
+  layout's `actions`.
+- `name` is the file's name. `preset` is written by the store and records which preset an edited
+  copy came from.
+- Library actions a file doesn't mention get their keys from the default preset. Keys the loader
+  can't parse are listed in its report.
 
 ## Key sequences and counts
 
-A bindings file binds a SEQUENCE as it binds a chord: up to `ROLLTUI_SEQUENCE_MAX` (4) chords
-apart by spaces, as in `"list.first": ["home", "g g"]` or `"app.save": ["ctrl+x ctrl+s"]`.
+A bindings file can bind a sequence the same way as a single chord: up to `ROLLTUI_SEQUENCE_MAX` (4)
+chords separated by spaces, as in `"list.first": ["home", "g g"]` or
+`"app.save": ["ctrl+x ctrl+s"]`.
 
-- The window table holds the keys on the way for the focused window. A key that begins a
-  sequence of its scope waits for the next; a key no sequence goes on with ends it and is what it
-  would have been alone. Escape lets go of what was on the way.
-- A host's own scope (`app`) gets the same through `rolltui_windows_app_key(windows, event,
-  "app", 3, &action, &len)`, called for each key before the key is routed to a window: DONE
-  names the action a chord or sequence finished, PREFIX says the key is on the way to one, and
-  NONE hands the key on. A sequence on the way in a window is left to that window.
-- The window with focus comes first. A key it takes is NONE to the host's scope: a key its own
-  scope binds (Ctrl-E the end of a line, Ctrl-P the row above), anything typed into it, and every
-  key while an editor sheet waits for one. A list's or an input's Escape is its own only while it
-  has a filter, marks or a selection to clear. A widget kind answers this with the plugin's
-  `takes` slot; a host matching keys of its own outside `rolltui_windows_app_key` asks
-  `rolltui_windows_focused_takes` first. A program's own keys are therefore ones no window scope
-  uses: the shipped tables open the file picker on Alt-O and the palette on Alt-P.
-- A sequence's first chord cannot also be bound alone in the same scope, and two actions cannot
-  share a sequence: the loader reports the conflict and keeps what came first.
-- A COUNT is digits typed before an action: `5` then Down moves five. Before an action that names a
-  place, it is the place: `5` then `list.last` (End, or `G` in the vim keys) is the fifth row, and
-  `50` then `list.percent` (`%`) is half way down. Digits are a count only in a window where a
-  digit is not text or a jump: a list (unless its filter is being typed) and a scrolling page
-  count; the column browser, a menu and an input do not.
-- `any` as a sequence's last key takes whichever character is typed there: `"app.mark":
-  ["m any"]` is m, then a letter, and `rolltui_windows_any_key(windows, &chord)` gives the letter
-  once `rolltui_windows_app_key` answers DONE. `any` alone, or first, is refused.
-- `rolltui_windows_ask_key(windows, action, len, prompt, len)` asks for one key: the panel shows
-  the prompt, the next key makes `rolltui_windows_app_key` answer DONE with `action`, and
-  `rolltui_windows_any_key` gives the key. Escape lets go of the question.
-- After 300 ms with keys on the way, `rolltui_windows_draw_toasts` draws a panel at the screen's
-  bottom left: the keys so far in its border, and a row for each key that can follow, in key
-  order, with what it does or that more follows. Rows that do not fit one column flow into more,
-  and what still does not fit ends in "… N more". `rolltui_windows_pending_keys` gives the keys on the way as text,
-  for a status line.
-- A widget kind joins in by answering the plugin's `keys` slot with its scope and whether a digit
-  is a count; a completed sequence hands it a chord bound to the same action, or calls `perform`
-  with the action's name when only a sequence is bound to it.
+- The window table keeps track of a sequence in progress for the focused window. A key that starts
+  a sequence in its scope waits for the next one; a key that doesn't continue any sequence ends it
+  and is handled as it would have been on its own. Escape cancels a sequence in progress.
+- Your program's own scope (`app`) gets the same handling from `rolltui_windows_app_key(windows,
+  event, "app", 3, &action, &len)`, called for each key before it's routed to a window. It returns
+  DONE with the action when a chord or sequence completes, PREFIX when the key is part of a
+  sequence in progress, and NONE when the key should be passed on. A sequence that started in a
+  window is left to that window.
+- The focused window comes first. Keys it handles come back as NONE for your scope: keys its own
+  scope binds (Ctrl-E for end of line, Ctrl-P for the previous row), anything typed into it, and
+  every key while an editor sheet is waiting for one. Lists and inputs only take Escape while they
+  have a filter, marks or a selection to clear. Widget kinds report this through the plugin's
+  `takes` callback, and if you match keys yourself outside `rolltui_windows_app_key`, check
+  `rolltui_windows_focused_takes` first. In practice your program's keys should be ones no window
+  scope uses; the built-in tables use Alt-O for the file picker and Alt-P for the palette.
+- The first chord of a sequence can't also be bound on its own in the same scope, and two actions
+  can't share a sequence. The loader reports the conflict and keeps the first binding.
+- A count is a number typed before an action: `5` then Down moves down five. For actions that go to
+  a place, the count is the place: `5` then `list.last` (End, or `G` with the vim keys) goes to the
+  fifth row, and `50` then `list.percent` (`%`) goes halfway down. Digits only count in windows
+  where they aren't text or a jump: lists (unless the filter is being typed) and scrolling pages.
+  The column browser, menus and inputs don't take counts.
+- `any` as the last key of a sequence matches whatever character is typed there. With
+  `"app.mark": ["m any"]`, m followed by a letter completes the action, and
+  `rolltui_windows_any_key(windows, &chord)` returns the letter once `rolltui_windows_app_key`
+  returns DONE. `any` can't be used on its own or first.
+- `rolltui_windows_ask_key(windows, action, len, prompt, len)` asks for a single key. The panel
+  shows the prompt, the next key makes `rolltui_windows_app_key` return DONE with `action`, and
+  `rolltui_windows_any_key` returns the key. Escape cancels.
+- When a sequence has been in progress for 300 ms, `rolltui_windows_draw_toasts` shows a panel at
+  the bottom left with the keys so far in its border and a row for each key that can follow, in
+  key order, with its action or a note that more keys follow. Rows that don't fit in one column
+  flow into more columns, and anything that still doesn't fit ends with "… N more".
+  `rolltui_windows_pending_keys` returns the keys so far as text, for a status line.
+- A widget kind takes part by answering the plugin's `keys` callback with its scope and whether
+  digits count. A completed sequence is delivered as a chord bound to the same action, or through
+  `perform` with the action's name when only a sequence is bound.
 
-A chord is spelled without case, so a capital letter is `shift+g`. A terminal sends a typed capital
-as the letter itself, and every lookup matches it as shift and the letter. The help shows a bare
-letter as typed (`g`) and shift with a letter as the capital (`G`).
+Chords are case-insensitive, so a capital letter is written `shift+g`. Terminals send a typed
+capital as the letter itself, and lookups treat it as shift plus the letter. Help shows a bare
+letter as typed (`g`) and shift plus a letter as the capital (`G`).
 
-The shipped `vim` bindings preset is the default table with j and k, h and l, `g g` and `G`,
-Ctrl-D and Ctrl-U added in scrolling pages (both tables move half a page with them in a list and the column browser),
-H, M and L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it.
-In the column browser those letters are keys rather than jumps to a name.
+The `vim` preset is the default table plus j and k, h and l, `g g` and `G`, Ctrl-D and Ctrl-U in
+scrolling pages (in lists and the column browser both presets move half a page with them), H, M and
+L for the top, middle and bottom of a list's view, and Ctrl-E and Ctrl-Y to scroll it. In the
+column browser these letters are bound as keys, not used to jump to a name.
 
-### Vim's modes in a text field
+### Vim modes in text fields
 
-The `vim` preset gives every text field vim's modes. It binds `input.normal_mode` to Escape; the
-default preset binds it to nothing, so a field there has no modes.
+The `vim` preset gives every text field vim's modes, by binding `input.normal_mode` to Escape. The
+default preset leaves it unbound, so fields there have no modes.
 
-- Typing (insert mode) is as in any field, the caret a bar. Escape leaves for normal mode and puts
-  the caret back onto the character before it.
-- In normal mode a printable key types nothing: it is a command of the `normal` scope, or nothing,
-  and never reaches the program around the field. The caret is a block and sits on a character.
-  Key sequences (`d w`) and counts (`3 w`) resolve in this scope. The arrows, Enter and the
-  field's Ctrl keys work as they do while typing.
-- Escape in normal mode is not the field's: a popup the field is in closes, so a second Escape
-  closes what the first left in normal mode.
-- `v` starts visual mode, which selects from where it began to the caret, both characters
-  included; the motions grow it, and `y`, `d` (or `x`) and `c` act on it. Escape or `v` goes back
-  to normal mode.
-- `R` types over what is there (replace mode, the caret an underline); `r` and a character
-  replaces the one under the caret.
-- What `x`, `d` and `c` take, and what `y` copies, goes to the field's register, which `p` puts
-  after the caret and `P` before it.
-- A bordered field names its mode in the bottom border outside typing: NORMAL, VISUAL or REPLACE.
-  `rolltui_input_mode` gives it to a host.
+- Insert mode works like any text field, with a bar cursor. Escape switches to normal mode and
+  moves the cursor back onto the previous character.
+- In normal mode printable keys don't type anything. They're commands in the `normal` scope (or
+  nothing) and never reach the program around the field. The cursor is a block on a character.
+  Sequences (`d w`) and counts (`3 w`) work in this scope, and the arrow keys, Enter and the
+  field's Ctrl keys behave as in insert mode.
+- Escape in normal mode is passed on, so a popup containing the field closes. Pressing Escape twice
+  from insert mode closes the popup.
+- `v` starts visual mode, selecting from where it started to the cursor, both ends included.
+  Motions extend it, and `y`, `d` (or `x`) and `c` act on it. Escape or `v` returns to normal mode.
+- `R` overwrites text (replace mode, with an underline cursor), and `r` followed by a character
+  replaces the one under the cursor.
+- Text removed by `x`, `d` and `c`, or copied by `y`, goes into the field's register. `p` pastes it
+  after the cursor and `P` before.
+- Outside insert mode, a field with a border shows its mode in the bottom border: NORMAL, VISUAL or
+  REPLACE. `rolltui_input_mode` returns it.
 
-| Keys | What they do |
+| Keys | Action |
 |---|---|
-| `i`, `a`, `I`, `A` | type before the caret, after it, at the line's start, at its end |
-| `h`, `l`, `w`, `b`, `e`, `0` or `^`, `$`, `j`, `k` | move: a character, a word's start, back, a word's end, the line's ends, a line |
-| `x`, `X`, `d w`, `d b`, `d d`, `D` or `d $`, `d 0` | erase: the character, the one before, to the next word, back to this word's start, the line, to its end, to its start |
-| `c w`, `c c` or `S`, `C` or `c $`, `s` | erase and type: to the word's end, the line, to its end, the character |
-| `y y` or `Y`, `y w`, `p`, `P` | copy the line, to the next word; put after the caret, before it |
+| `i`, `a`, `I`, `A` | insert before the cursor, after it, at the start of the line, at the end |
+| `h`, `l`, `w`, `b`, `e`, `0` or `^`, `$`, `j`, `k` | move by character, to the next word, back a word, to the end of a word, to either end of the line, by line |
+| `x`, `X`, `d w`, `d b`, `d d`, `D` or `d $`, `d 0` | delete the character, the one before, to the next word, back to the start of the word, the line, to the end of the line, to its start |
+| `c w`, `c c` or `S`, `C` or `c $`, `s` | change to the end of the word, the line, to the end of the line, the character |
+| `y y` or `Y`, `y w`, `p`, `P` | copy the line, copy to the next word, paste after, paste before |
 | `u`, Ctrl-R | undo, redo |
 | `v`, `r`, `R` | visual mode, replace one character, replace mode |
 
-Elsewhere in the column browser a typed letter jumps to the next name starting with it, case and
-accents aside, and letters typed within a second of each other are the start of one name: `av`
-reaches `avocado.txt` past `alpha`.
+In the column browser, typing a letter jumps to the next name starting with it, ignoring case and
+accents. Letters typed within a second of each other are treated as the start of one name, so `av`
+gets to `avocado.txt` past `alpha`.
 
-F13 to F24 and Super (`super+x`, also spelled `cmd+x`) are keys a bindings file may name. Only the
-kitty keyboard protocol sends them, and on other terminals they are reported as undeliverable.
+Bindings files can also use F13 to F24 and Super (`super+x`, or `cmd+x`). Only terminals with the
+kitty keyboard protocol send these; elsewhere they're reported as undeliverable.
 
-On a terminal with the kitty keyboard protocol the library asks for each chord whole
-(disambiguate) and for the key's place on a US layout (alternate keys). A chord no binding
-matches is matched again on that key, so Ctrl and the key that is C on a US keyboard is
-`ctrl+c` on a Cyrillic or Greek layout too, alone and in a sequence. Typed text is still sent as
-text: the library does not ask for every key as an escape. The flags are put back when the
-program leaves, is suspended or is stopped.
+With the kitty keyboard protocol, the library asks the terminal to report each chord unambiguously
+(disambiguate) and to include the key's position on a US layout (alternate keys). A chord with no
+binding is then matched again by that position, so Ctrl plus the key that is C on a US keyboard is
+still `ctrl+c` with a Cyrillic or Greek layout, on its own or in a sequence. Typed text still comes
+through as text, since the library doesn't ask for every key as an escape sequence. The terminal's
+settings are restored when the program exits, is suspended or is stopped.
 
-Inside tmux, keys with modifiers reach the program only where tmux's `extended-keys` is on;
-the library reads it and never sets it, and `dirktui check-terminal` says when it is off.
+Inside tmux, keys with modifiers only reach the program if tmux's `extended-keys` option is on. The
+library reads the option but never changes it, and `dirktui check-terminal` tells you when it's off.
 
 ## The keys sheet
 
-A `keys` window and a `help` window are one sheet: every key the program has, under a heading for
-each scope, the program's own (`app`) first. A row says what the action does, and its keys stand
-beside it in the shortcut role. The line under the rows names the cursor's action as a bindings
-file spells it, the whole description when the row is cut, and what is wrong with its keys.
-`help:<scope>` shows one scope.
+`keys` and `help` windows show the same sheet: every key the program has, grouped by scope, with
+the program's own (`app`) first. Each row describes the action and shows its keys next to it in the
+shortcut role. The line below the rows shows the selected action's name as it would appear in a
+bindings file, its full description if the row is cut off, and any problem with its keys.
+`help:<scope>` shows a single scope.
 
-- `rolltui_windows_set_bindings_store(windows, "keys", 4, store, persist)` says where an edit
-  goes: the app's Bindings preset store. Every keys sheet on the screen, `help` included, then
-  edits into it. Without a store the sheet only shows the keys, and says so.
-- Enter on a row takes the next key pressed as a new key for that action, and Escape cancels.
+- `rolltui_windows_set_bindings_store(windows, "keys", 4, store, persist)` sets where edits go,
+  normally the program's bindings preset store. Every keys sheet on screen, `help` included, then
+  edits that store. Without a store the sheet is read-only and says so.
+- Enter on a row records the next key pressed as an extra key for that action; Escape cancels.
   Delete removes the row's last key. Ctrl-Z and Ctrl-Y undo and redo, Ctrl-O loads a preset,
-  Ctrl-S saves the keys as one, and Ctrl-R goes back to the preset that was loaded. These are the
-  `sheet.*` actions, which every editor sheet shares, bound in a bindings file like any other.
-- An edit lands in the store's working copy, labelled "(modified)" in the sheet's footer until it
-  equals its preset again. Only what the person changed is written: the keys a program suggests
-  for its own actions stay the program's.
-- A key the program has for one of its own actions that another scope also has is marked on both
-  rows, each naming the other. An editor sheet's own keys are not marked: they apply only while
-  the sheet has focus.
-- The lead of `rolltui_context_set_help` is the sheet's first section, "About", and its note the
-  last, "More".
-- `/` filters the sheet as it filters any list.
-- `rolltui_windows_set_keys_editor_show_presets(windows, "keys", 4, 0)` takes the load and save
-  keys away from a program with one table; editing, undo and reset stay.
+  Ctrl-S saves the current keys as a preset, and Ctrl-R reverts to the preset that was loaded.
+  These are the `sheet.*` actions shared by all the editor sheets, and they can be rebound like any
+  other action.
+- Edits go into the store's working copy, which the footer labels "(modified)" until it matches its
+  preset again. Only the user's changes are saved; the keys a program suggests for its own actions
+  stay with the program.
+- When one of the program's own keys is also used by another scope, both rows are marked and each
+  names the other. The editor sheets' own keys aren't marked, since they only apply while the sheet
+  has focus.
+- The text given to `rolltui_context_set_help` appears as the sheet's first section, "About", and
+  its note as the last one, "More".
+- `/` filters the sheet like any list.
+- `rolltui_windows_set_keys_editor_show_presets(windows, "keys", 4, 0)` removes the load and save
+  keys, for a program with only one table. Editing, undo and reset still work.
 
-A bindings file that does not name a library action takes the shipped default's keys for it, each
-one its scope has free. A saved file names every action, an unbound one as `[]`, so an action it
-does not name is newer than the file.
+When a bindings file doesn't mention a library action, the action gets the default preset's keys,
+minus any that its scope already uses for something else. Saved files list every action, with
+unbound ones as `[]`, so an action missing from a file is one that was added after the file was
+saved.
 
 ## The theme sheet
 
-A `theme` window is the theme as one sheet: every role under a heading for the part of the
-screen it colours, each row saying what the role is for in that role's own colours, then its fg
-and bg, each after a swatch, and its attributes. The footer names the preset, the variant and how
-many problems the theme has.
+A `theme` window shows the whole theme as a sheet. Roles are grouped under the part of the screen
+they colour, and each row describes the role in that role's own colours, followed by its foreground
+and background (each after a swatch) and its attributes. The footer shows the preset, the variant
+and how many problems the theme has.
 
-- `rolltui_windows_set_theme_store(windows, "theme", 5, store, persist)` says where an edit goes.
-- Enter edits the row where it is. Type a colour (any form a theme file takes: `#rrggbb`, a name,
-  0 to 255, `none`), or step through the theme's own colours with Up and Down; Left and Right move
-  between fg, bg and the attributes, and Space turns an attribute on or off. The whole screen shows the edit as it is made. Enter
-  keeps it, and Escape puts back what was kept.
-- A role whose colours are too close to read is marked on its row, with what would fix it.
-  Ctrl-F (`theme.fix`) applies the fix; Ctrl-Z takes it back.
-- Ctrl-D (`theme.variant`) edits the other variant, light or dark. Ctrl-G (`theme.generate`) makes
-  a theme from the next seed. Undo, load, save and reset are the `sheet.*` keys every editor
-  sheet shares.
+- `rolltui_windows_set_theme_store(windows, "theme", 5, store, persist)` sets where edits go.
+- Enter edits the row in place. Type a colour in any form a theme file accepts (`#rrggbb`, a name,
+  0 to 255, `none`) or step through the theme's colours with Up and Down. Left and Right move
+  between the foreground, background and attributes, and Space toggles an attribute. The whole
+  screen updates as you edit. Enter keeps the change and Escape reverts it.
+- Rows whose colours are too close to read are marked, with a suggested fix. Ctrl-F (`theme.fix`)
+  applies it and Ctrl-Z undoes it.
+- Ctrl-D (`theme.variant`) switches to editing the other variant, light or dark. Ctrl-G
+  (`theme.generate`) generates a theme from the next seed. Undo, load, save and reset are the
+  `sheet.*` keys shared by all the editor sheets.
 
 # Widgets
 
