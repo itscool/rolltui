@@ -1770,7 +1770,7 @@ int main() {
                 ROLLTUI_REGISTER_IS_LIBRARY,
             std::string("…and a host is REFUSED when it tries to shadow ") + n);
     }
-    check(lib == 17 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has seventeen kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
+    check(lib == 18 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has eighteen kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
     for (std::size_t i = 0; i < lib; ++i) {
       int rung = ROLLTUI_KIND_UNKNOWN;
       check(widget_kind_row_c(widget_kind_name_c(i), &rung) == i && rung == ROLLTUI_KIND_LIBRARY,

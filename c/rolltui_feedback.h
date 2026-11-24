@@ -57,6 +57,10 @@ int rolltui_message_log_draw_toasts(RolltuiMessageLog* log, RolltuiFrame* f, Rol
 int rolltui_message_log_toast_event(RolltuiMessageLog* log, const RolltuiEvent* e);
 void rolltui_message_log_dismiss(RolltuiMessageLog* log);
 
+/* A count as a `count:` window draws it into `r`: the legend (in the focus role while `focused`), big digits, the divider and the
+ * second count, the arrow; one line when `r` is too small for the digits. */
+void rolltui_count_draw_roles(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect r, const RolltuiCount* c, int focused,
+                              const RolltuiStyle* styles, const RolltuiBuiltinRoles* roles, int aw);
 /* The gauge, drawn in roles handed in rather than a table's (the window kind's and the public call's shared body). */
 int rolltui_gauge_draw_roles(RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, int width, const RolltuiGauge* g,
                              const RolltuiStyle* styles, const RolltuiBuiltinRoles* roles, int ambiguous_wide);

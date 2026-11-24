@@ -47,9 +47,10 @@ static const char kLayout[] =
     "      \"tabs\": [ { \"title\": \"Processes\", \"content\": \"list:procs\" },\n"
     "                { \"title\": \"Read me\", \"content\": \"transcript:readme\" } ] },\n"
     "    { \"id\": \"board\", \"size\": \"42%\", \"breakpoint\": { \"width\": 96 }, \"column\": [\n"
+    "      { \"id\": \"running\", \"content\": \"count:running\", \"border\": \"rounded\", \"size\": 6 },\n"
     "      { \"id\": \"cpu\", \"content\": \"chart:cpu\", \"border\": \"rounded\", \"title\": \"cpu\" },\n"
     "      { \"id\": \"disk\", \"content\": \"chart:disk\", \"border\": \"rounded\", \"title\": \"disk\", \"size\": \"30%\" },\n"
-    "      { \"id\": \"net\", \"content\": \"chart:net\", \"border\": \"rounded\", \"title\": \"network\", \"size\": 5 } ] } ] } }\n";
+    "      { \"id\": \"net\", \"content\": \"chart:net\", \"border\": \"rounded\", \"title\": \"network\", \"size\": 9 } ] } ] } }\n";
 
 /* This program's own chords, for its own actions: the shipped table is every host's. */
 static const char kOwnBindings[] = "{ \"bindings\": { \"app.quit\": [\"ctrl+q\"] } }";
@@ -129,6 +130,7 @@ typedef struct Tour {
   Proc procs[PROCS];
   double cpu_user[HISTORY], cpu_sys[HISTORY], rx[HISTORY], tx[HISTORY], reads[16], writes[16];
   size_t hist_n, disk_n;
+  int running, was_running; /* processes running now and a step ago: the count panel and its arrow */
   unsigned long long seed, now_ms, busy_since;
   int w, h, toast_wait;
 } Tour;
@@ -189,12 +191,14 @@ static void make_procs(Tour* t) {
 static void advance(Tour* t) {
   double user = 0, sys = 0;
   size_t i;
+  int running = 0;
   const double wave = sin((double)t->now_ms / 4000.0);
   for (i = 0; i < PROCS; ++i) {
     Proc* p = &t->procs[i];
     p->cpu = p->weight * (0.6 + 0.4 * rnd(t)) * (1 + 0.5 * wave * (i % 3 == 0));
     if (p->cpu > 100) p->cpu = 100;
     p->running = p->cpu > 20;
+    running += p->running;
     p->mem_mb += (rnd(t) - 0.48) * 8;
     if (p->mem_mb < 2) p->mem_mb = 2;
     if (i % 4 == 0) sys += p->cpu / 24;
@@ -203,6 +207,8 @@ static void advance(Tour* t) {
   push_history(t, user > 100 ? 100 : user, sys > 100 ? 100 : sys, 40 + 30 * sin((double)t->now_ms / 1700.0) + 25 * rnd(t),
                15 + 10 * rnd(t));
   push_disk(t, 20 + 60 * rnd(t), 10 + 40 * rnd(t) * (1 + wave));
+  t->was_running = t->running;
+  t->running = running;
   rolltui_windows_list_refresh(t->windows, "procs", 5);
 }
 
@@ -248,11 +254,27 @@ static void disk_chart(void* ctx, RolltuiChart* c) {
   rolltui_chart_set_series(c, 1, "write", 5, 0, t->writes, t->disk_n);
 }
 
+/* Received above, sent hanging below, each on its own scale. */
 static void net_chart(void* ctx, RolltuiChart* c) {
   Tour* t = (Tour*)ctx;
-  rolltui_chart_set_kind(c, ROLLTUI_CHART_SPARK);
+  rolltui_chart_set_kind(c, ROLLTUI_CHART_AREA);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_FLOW | ROLLTUI_CHART_MIRROR | ROLLTUI_CHART_MID);
   rolltui_chart_set_series(c, 0, "in", 2, 0, t->rx, t->hist_n);
   rolltui_chart_set_series(c, 1, "out", 3, 0, t->tx, t->hist_n);
+}
+
+/* How many processes are running, how many of them are busy past half a core, and which way the count went. */
+static void running_count(void* ctx, RolltuiCount* out) {
+  Tour* t = (Tour*)ctx;
+  size_t i;
+  int busy = 0;
+  for (i = 0; i < PROCS; ++i) busy += t->procs[i].running && t->procs[i].cpu > 50;
+  static const char legend[] = "running \xc2\xb7 busy";
+  rolltui_str_set(&out->label, legend, sizeof legend - 1);
+  out->value = t->running;
+  out->fault = busy;
+  out->digits = 2;
+  out->trend = (signed char)(t->running > t->was_running ? 1 : t->running < t->was_running ? -1 : 0);
 }
 
 /* ---- settings: themes, light or dark, keys ----------------------------------------------------- */
@@ -596,6 +618,7 @@ static void tour_init(Tour* t) {
   rolltui_windows_bind_chart(t->windows, "cpu", 3, cpu_chart, t, NULL);
   rolltui_windows_bind_chart(t->windows, "disk", 4, disk_chart, t, NULL);
   rolltui_windows_bind_chart(t->windows, "net", 3, net_chart, t, NULL);
+  rolltui_windows_bind_count(t->windows, "running", 7, running_count, t, NULL);
 }
 
 static void tour_release(Tour* t) {

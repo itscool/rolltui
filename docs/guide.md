@@ -444,6 +444,7 @@ A window's `content` has the form `kind:source`:
 | `rows` | a name your program binds | label and value pairs |
 | `chart` | a name your program binds | a chart ([Charts and dashboards](#charts-and-dashboards)) |
 | `gauge` | a name your program binds | a progress bar ([Progress](#progress)) |
+| `count` | a name your program binds | a number in big digits ([Counts](#counts)) |
 | `image` | a path, or a name your program binds | an image ([Pictures](#pictures)) |
 | `menu` | a [menu file](#menu-files)'s name | a menu |
 | `help` | a key scope, or nothing for all of them | the key bindings, editable ([The keys sheet](#the-keys-sheet)) |
@@ -1391,6 +1392,31 @@ wide, the bar uses `#` and `-`.
 in one cell: a static character marked `waiting`, which the theme's `waiting` effect animates. All
 the built-in themes define `waiting`. A menu row whose action is running can set `busy` and
 `busy_since_ms` to show a spinner after its label until your program clears it.
+
+## Counts
+
+A `count:<source>` window shows a number as a dashboard panel: a legend centred on the top row,
+the number in seven-segment digits three rows tall, and optionally a second number and a trend
+arrow. Bind it with `rolltui_windows_bind_count` and fill in a `RolltuiCount` each frame:
+
+- `label` is the legend. It's in the `label` role, and in `border_active` while the window has
+  focus.
+- `value` is the number, in the `accent_2` role (the role `ok` messages use).
+- `fault`, when it isn't negative, is a second number after a `⡇` divider, in the `error` role,
+  for things like failed pods beside running ones.
+- `digits` pads both numbers with zeros to at least that many digits. The padding is drawn in
+  `text_muted`.
+- `trend` is 1 for ↑ after the numbers, -1 for ↓, or 0 for none.
+
+When the window is too short or narrow for big digits, it shows everything on one line instead.
+`rolltui-tour`'s dashboard counts its running processes this way.
+
+`rolltui_big_digits_draw(frame, x, y, text, len, style, leading, ambiguous_wide)` draws big digits
+in your own widget, three rows tall from `(x, y)`. Each digit is three cells wide in heavy box
+drawing, with a cell between characters. It also draws `-`, `.`, `:` and spaces, and other
+characters plainly on the middle row. When `leading` isn't NULL, zeros before the first other
+digit are drawn in that style. Where ambiguous characters are two cells wide, the digits are drawn
+with `_` and `|`. `rolltui_big_digits_width(text, len)` returns the width.
 
 ## Messages
 

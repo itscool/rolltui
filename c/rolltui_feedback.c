@@ -269,6 +269,174 @@ int rolltui_message_log_toast_event(RolltuiMessageLog* log, const RolltuiEvent* 
   return 0;
 }
 
+/* ---- big digits and a count ------------------------------------------------------------------ */
+
+void rolltui_count_release(RolltuiCount* c) {
+  if (c) rolltui_str_free(&c->label);
+}
+
+/* SEVEN SEGMENTS IN HEAVY BOX DRAWING, three rows of three cells a digit: ━ ┃ ┏ ┓ ┗ ┛ ┣ ┫ and the half lines ╸ ╹ ╺ ╻. */
+#define H_ "\xe2\x94\x81"  /* ━ */
+#define V_ "\xe2\x94\x83"  /* ┃ */
+#define TL "\xe2\x94\x8f"  /* ┏ */
+#define TR "\xe2\x94\x93"  /* ┓ */
+#define BL "\xe2\x94\x97"  /* ┗ */
+#define BR "\xe2\x94\x9b"  /* ┛ */
+#define ML "\xe2\x94\xa3"  /* ┣ */
+#define MR "\xe2\x94\xab"  /* ┫ */
+#define HL "\xe2\x95\xb8"  /* ╸ */
+#define HU "\xe2\x95\xb9"  /* ╹ */
+#define HR "\xe2\x95\xba"  /* ╺ */
+#define HD "\xe2\x95\xbb"  /* ╻ */
+static const char* const kSegments[10][3][3] = {
+    {{TL, H_, TR}, {V_, " ", V_}, {BL, H_, BR}}, /* 0 */
+    {{" ", " ", HD}, {" ", " ", V_}, {" ", " ", HU}}, /* 1 */
+    {{HR, H_, TR}, {TL, H_, BR}, {BL, H_, HL}}, /* 2 */
+    {{HR, H_, TR}, {HR, H_, MR}, {HR, H_, BR}}, /* 3 */
+    {{HD, " ", HD}, {BL, H_, MR}, {" ", " ", HU}}, /* 4 */
+    {{TL, H_, HL}, {BL, H_, TR}, {HR, H_, BR}}, /* 5 */
+    {{TL, H_, HL}, {ML, H_, TR}, {BL, H_, BR}}, /* 6 */
+    {{HR, H_, TR}, {" ", " ", V_}, {" ", " ", HU}}, /* 7 */
+    {{TL, H_, TR}, {ML, H_, MR}, {BL, H_, BR}}, /* 8 */
+    {{TL, H_, TR}, {BL, H_, MR}, {HR, H_, BR}}, /* 9 */
+};
+/* THE SAME IN ASCII, the classic three by three of underscores and bars. */
+static const char* const kAsciiSegments[10][3] = {
+    {" _ ", "| |", "|_|"}, {"   ", "  |", "  |"}, {" _ ", " _|", "|_ "}, {" _ ", " _|", " _|"}, {"   ", "|_|", "  |"},
+    {" _ ", "|_ ", " _|"}, {" _ ", "|_ ", "|_|"}, {" _ ", "  |", "  |"}, {" _ ", "|_|", "|_|"}, {" _ ", "|_|", " _|"},
+};
+#undef H_
+#undef V_
+#undef TL
+#undef TR
+#undef BL
+#undef BR
+#undef ML
+#undef MR
+
+/* A character's cells: a digit, a minus or a space three, anything else one. */
+static int big_cells(char c) { return (c >= '0' && c <= '9') || c == '-' || c == ' ' ? 3 : 1; }
+
+int rolltui_big_digits_width(const char* text, size_t len) {
+  size_t i;
+  int w = 0;
+  for (i = 0; text && i < len; ++i) w += (i ? 1 : 0) + big_cells(text[i]);
+  return w;
+}
+
+int rolltui_big_digits_draw(RolltuiFrame* f, int x, int y, const char* text, size_t len, RolltuiStyle style, const RolltuiStyle* leading,
+                            int aw) {
+  size_t i, lead = 0;
+  int at = x, row;
+  if (!f || !text) return 0;
+  if (leading) /* the zeros before the first other digit, the last one kept bright: 007 dims two */
+    while (lead + 1 < len && text[lead] == '0' && text[lead + 1] >= '0' && text[lead + 1] <= '9') ++lead;
+  for (i = 0; i < len; ++i) {
+    const char c = text[i];
+    const RolltuiStyle st = i < lead ? *leading : style;
+    if (i) ++at;
+    for (row = 0; row < 3; ++row) {
+      if (c >= '0' && c <= '9') {
+        int k;
+        if (aw) {
+          for (k = 0; k < 3; ++k) rolltui_frame_put(f, at + k, y + row, kAsciiSegments[c - '0'][row] + k, 1, 1, st, 0);
+        } else {
+          for (k = 0; k < 3; ++k) rolltui_frame_put(f, at + k, y + row, kSegments[c - '0'][row][k], strlen(kSegments[c - '0'][row][k]), 1, st, 0);
+        }
+      } else if (c == '-') {
+        const char* g = row != 1 ? " " : aw ? "_" : "\xe2\x94\x81";
+        const char* e = row != 1 ? " " : aw ? "_" : HR;
+        const char* l = row != 1 ? " " : aw ? "_" : HL;
+        rolltui_frame_put(f, at, y + row, e, strlen(e), 1, st, 0);
+        rolltui_frame_put(f, at + 1, y + row, g, strlen(g), 1, st, 0);
+        rolltui_frame_put(f, at + 2, y + row, l, strlen(l), 1, st, 0);
+      } else if (c == ' ') {
+        int k;
+        for (k = 0; k < 3; ++k) rolltui_frame_put(f, at + k, y + row, " ", 1, 1, st, 0);
+      } else if (c == '.') {
+        rolltui_frame_put(f, at, y + row, row == 2 ? (aw ? "." : HD) : " ", row == 2 && !aw ? 3 : 1, 1, st, 0);
+      } else if (c == ':') {
+        const char* g = row == 1 ? " " : aw ? "." : row == 0 ? HD : HU;
+        rolltui_frame_put(f, at, y + row, g, strlen(g), 1, st, 0);
+      } else if ((unsigned char)c >= 0x20 && (unsigned char)c < 0x7F) {
+        rolltui_frame_put(f, at, y + row, row == 1 ? &text[i] : " ", 1, 1, st, 0);
+      }
+    }
+    at += big_cells(c);
+  }
+  return at - x;
+}
+#undef HL
+#undef HR
+#undef HU
+#undef HD
+
+/* A count as digits, at least `digits` of them, zero-padded: "007". */
+static int count_text(long long v, int digits, char* out, size_t cap) {
+  if (digits > 18) digits = 18;
+  if (v < 0) return snprintf(out, cap, "-%0*lld", digits > 1 ? digits - 1 : 1, -v);
+  return snprintf(out, cap, "%0*lld", digits > 0 ? digits : 1, v);
+}
+
+#define COUNT_DIVIDER "\xe2\xa1\x87" /* ⡇, braille: one cell in every terminal */
+
+void rolltui_count_draw_roles(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect r, const RolltuiCount* c, int focused,
+                              const RolltuiStyle* styles, const RolltuiBuiltinRoles* roles, int aw) {
+  char vs[24], fs[24];
+  int vn, fn = 0, w, y, x, big;
+  RolltuiStyle ground, value, fault, muted, legend, arrow;
+  const char* up = aw ? "^" : "\xe2\x86\x91";   /* ↑ */
+  const char* down = aw ? "v" : "\xe2\x86\x93"; /* ↓ */
+  if (!f || !c || r.w <= 0 || r.h <= 0) return;
+  rolltui_frame_ground(f, &ground);
+  value = styles[roles->ok];
+  fault = styles[roles->error];
+  muted = styles[roles->text_muted];
+  legend = styles[focused ? roles->focus : roles->label];
+  arrow = styles[roles->text];
+  value.bg = fault.bg = muted.bg = legend.bg = arrow.bg = ground.bg;
+  value.bold = fault.bold = legend.bold = 1;
+  vn = count_text(c->value, c->digits, vs, sizeof vs);
+  if (c->fault >= 0) fn = count_text(c->fault, c->digits, fs, sizeof fs);
+  if (vn < 0) vn = 0;
+  if (fn < 0) fn = 0;
+  /* the count, a space, the divider, a space, the second count; a space and the arrow */
+  w = rolltui_big_digits_width(vs, (size_t)vn) + (c->fault >= 0 ? 3 + rolltui_big_digits_width(fs, (size_t)fn) : 0) + (c->trend ? 2 : 0);
+  big = r.h >= 3 && w <= r.w;
+  if (big) {
+    const int legend_row = c->label.n && r.h >= 4;
+    y = r.y + (r.h - 3 - legend_row) / 2;
+    if (legend_row) {
+      const int lw = rolltui_frame_text_width(draw, c->label.p, c->label.n, aw);
+      rolltui_frame_put_text_cut(f, draw, r.x + imax((r.w - lw) / 2, 0), y, c->label.p, c->label.n, legend, r.w, ROLLTUI_CUT_END, aw, 0);
+      ++y;
+    }
+    x = r.x + (r.w - w) / 2;
+    x += rolltui_big_digits_draw(f, x, y, vs, (size_t)vn, value, &muted, aw);
+    if (c->fault >= 0) {
+      int k;
+      for (k = 0; k < 3; ++k) rolltui_frame_put(f, x + 1, y + k, COUNT_DIVIDER, sizeof COUNT_DIVIDER - 1, 1, muted, 0);
+      x += 3;
+      x += rolltui_big_digits_draw(f, x, y, fs, (size_t)fn, fault, &muted, aw);
+    }
+    if (c->trend) rolltui_frame_put(f, x + 1, y + 1, c->trend > 0 ? up : down, strlen(c->trend > 0 ? up : down), 1, arrow, 0);
+    return;
+  }
+  { /* ONE LINE: the legend, the count, the divider and the second count, the arrow; centred, cut where it must be */
+    const int lw = c->label.n ? rolltui_frame_text_width(draw, c->label.p, c->label.n, aw) + 1 : 0;
+    const int line = lw + vn + (c->fault >= 0 ? 3 + fn : 0) + (c->trend ? 2 : 0);
+    x = r.x + imax((r.w - line) / 2, 0);
+    y = r.y + (r.h - 1) / 2;
+    if (lw && lw + vn <= r.w) x += 1 + rolltui_frame_put_text(f, draw, x, y, c->label.p, c->label.n, legend, r.w - vn - 1, aw, 0);
+    x += rolltui_frame_put_text(f, draw, x, y, vs, (size_t)vn, value, imax(r.x + r.w - x, 0), aw, 0);
+    if (c->fault >= 0 && x + 3 + fn <= r.x + r.w) {
+      rolltui_frame_put(f, x + 1, y, COUNT_DIVIDER, sizeof COUNT_DIVIDER - 1, 1, muted, 0);
+      x += 3 + rolltui_frame_put_text(f, draw, x + 3, y, fs, (size_t)fn, fault, fn, aw, 0);
+    }
+    if (c->trend && x + 2 <= r.x + r.w) rolltui_frame_put(f, x + 1, y, c->trend > 0 ? up : down, strlen(c->trend > 0 ? up : down), 1, arrow, 0);
+  }
+}
+
 int rolltui_gauge_draw(RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, int width, const RolltuiGauge* g,
                        const RolltuiStyle* styles, int ambiguous_wide) {
   RolltuiBuiltinRoles roles;

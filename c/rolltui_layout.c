@@ -880,6 +880,7 @@ static const KindRow kKinds[] = {
      * it, and a screen that says nothing gets the host's answer instead. */
     {"filepicker", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_TEXT, "the directory it opens in"},
     {"gauge", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a gauge the host binds"},
+    {"count", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a count the host binds"},
     /* FORBIDDEN: the history is the window table's own, which every `messages` window on the screen shows alike. */
     {"messages", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
     {"output", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "another program's output the host binds"},

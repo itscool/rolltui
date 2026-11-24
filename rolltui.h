@@ -3517,6 +3517,20 @@ void rolltui_gauge_release(RolltuiGauge* g);
 /* gauge: `out` is the caller's `RolltuiGauge`, its label cleared, filled in place. */
 typedef void (*RolltuiGaugeFn)(void* ctx, RolltuiGauge* out);
 
+/* count: a number shown big, which a `count:` window draws as a dashboard panel: the legend centred on its top row (in the focus
+ * colours while the window has the focus), then the count in seven-segment digits three rows tall, a second count after a divider,
+ * and a trend arrow. One line when the window is too small for that. `label` is OWNED; `rolltui_count_release` frees it. */
+typedef struct RolltuiCount {
+  RolltuiStr label;                        /* the legend: "pods" */
+  long long value ROLLTUI_DEFAULT(0);      /* the count, in the `ok` role */
+  long long fault ROLLTUI_DEFAULT(-1);     /* a second count after the divider, in the error role ("3 failing"); below 0, none */
+  unsigned char digits ROLLTUI_DEFAULT(0); /* at least this many digits each, the leading zeros dimmed */
+  signed char trend ROLLTUI_DEFAULT(0);    /* 1 rising, -1 falling: an arrow after the counts; 0 none */
+} RolltuiCount;
+void rolltui_count_release(RolltuiCount* c);
+/* count: `out` is the caller's `RolltuiCount`, reset (its label cleared, `fault` -1), filled in place. */
+typedef void (*RolltuiCountFn)(void* ctx, RolltuiCount* out);
+
 typedef struct RolltuiWidgetEnv {
   unsigned char ambiguous_wide ROLLTUI_DEFAULT(0);
   unsigned long long now_ms ROLLTUI_DEFAULT(0);
@@ -3590,6 +3604,8 @@ void rolltui_windows_bind_changed(RolltuiWindows* w, const char* name, size_t le
 
 void rolltui_windows_bind_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGaugeFn fn, void* ctx,
                                 void (*free_ctx)(void*));
+void rolltui_windows_bind_count(RolltuiWindows* w, const char* name, size_t len, RolltuiCountFn fn, void* ctx,
+                                void (*free_ctx)(void*));
 
 /* output: another program's output (`RolltuiAnsiText`, filled by `rolltui_child_pump` or `rolltui_ansi_feed`) shown in an
  * `output:<name>` window, which follows the end as it grows unless it was scrolled back. `text` is a BORROW the host keeps alive
@@ -3632,6 +3648,13 @@ void rolltui_windows_set_output_wrap(RolltuiWindows* w, const char* name, size_t
  * 0. Drawn in the table's roles (`styles` indexed by role). Returns the cells used. */
 int rolltui_gauge_draw(RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, int width, const RolltuiGauge* g,
                        const RolltuiStyle* styles, int ambiguous_wide);
+/* BIG DIGITS, three rows tall from (x, y): 0-9 as seven segments of heavy box drawing three cells wide, `-`, `.`, `:` and a space,
+ * a cell between each; another character is drawn as it is on the middle row. `leading` (may be NULL) is the style of the zeros
+ * before the first other digit, the last digit aside: a count padded to a width with its padding dimmed. Where ambiguous glyphs are
+ * two cells wide the segments are ASCII (`_` and `|`). The width is the cells it takes, drawn or not. */
+int rolltui_big_digits_width(const char* text, size_t len);
+int rolltui_big_digits_draw(RolltuiFrame* f, int x, int y, const char* text, size_t len, RolltuiStyle style, const RolltuiStyle* leading,
+                            int ambiguous_wide);
 /* A SPINNER IN ONE CELL: a still glyph marked `waiting` since `since_ms`, which the theme's `waiting` effect turns (every shipped theme
  * maps it; a theme that maps nothing shows it still). A row of a list whose operation is running carries one. */
 void rolltui_spinner_draw(RolltuiFrame* f, int x, int y, RolltuiStyle style, unsigned long long since_ms);
@@ -4252,6 +4275,8 @@ typedef struct RolltuiBuiltinRoles {
   unsigned char cursor, cursor_away, mark, prompt;
   /* a chart's series, when one names no role of its own */
   unsigned char series[ROLLTUI_CHART_SERIES_MAX];
+  /* a legend drawn in the focus colours while its window has the focus: a count's */
+  unsigned char focus;
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use: this file knows the rule and none of the words (the same trade

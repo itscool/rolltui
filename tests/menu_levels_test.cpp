@@ -38,8 +38,8 @@ int main() {
   }
 
   // These hold NO menu: a text page, a file, a rows list, an error, the column browser (its levels are columns, which Left steps
-  // through), the transcript, a gauge and the message history. Help is the keys sheet, below.
-  const std::set<std::string> flat = {"Text", "File", "Rows", "Error", "Picker", "Transcript", "Gauge", "Messages", "Output", "Image", "Chart"};
+  // through), the transcript, a gauge, a count and the message history. Help is the keys sheet, below.
+  const std::set<std::string> flat = {"Text", "File", "Rows", "Error", "Picker", "Transcript", "Gauge", "Count", "Messages", "Output", "Image", "Chart"};
   // These hold levels of their own, so each closes one before the popup closes: the menu and the theme editor, the keys sheet (a
   // key being taken, a load or a save, then its list's filter) that `help` and `keys` both are, the list (its filter, then its
   // marks), and the input where the keys preset has vim's modes (typing and visual mode, then normal mode).

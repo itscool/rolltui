@@ -803,6 +803,7 @@ ROLLTUI_API(rolltui_windows_bind_document, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_note, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_rows, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_gauge, PUBLIC)  /* KEPT: a host with work that takes a while shows how far it has got in a `gauge:` window */
+ROLLTUI_API(rolltui_windows_bind_count, PUBLIC)  /* rolltui-tour's dashboard counts its processes in a `count:` window */
 ROLLTUI_API(rolltui_windows_bind_output, PUBLIC)  /* KEPT: a host shows a program's output in an `output:` window (a build log, a previewer's pane) */
 ROLLTUI_API(rolltui_windows_set_output_wrap, PUBLIC)  /* KEPT: a log that scrolls sideways rather than wrapping */
 ROLLTUI_API(rolltui_windows_output, INTERNAL)  /* the output kind reads what is bound */
@@ -830,6 +831,8 @@ ROLLTUI_API(rolltui_windows_bind_changed, PUBLIC)  /* KEPT: a host filters as a 
 ROLLTUI_API(rolltui_windows_call_changed, INTERNAL)  /* the input kind calls it when the text changes */
 ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() asks it */
 ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
+ROLLTUI_API(rolltui_windows_has_count, INTERNAL)  /* the count kind's problem() asks it */
+ROLLTUI_API(rolltui_windows_call_count, INTERNAL)  /* the count kind's draw asks it */
 ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
 ROLLTUI_API(rolltui_windows_message_count, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */
 ROLLTUI_API(rolltui_windows_message_at, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */
@@ -1088,6 +1091,10 @@ ROLLTUI_API(rolltui_windows_has_chart, INTERNAL)
 /* ---- rolltui_feedback.h — a gauge, a spinner, the message log and its toasts --- */
 ROLLTUI_API(rolltui_gauge_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiGauge it owns and C has no destructor */
 ROLLTUI_API(rolltui_gauge_draw, PUBLIC)  /* KEPT: a host draws a gauge inside its own widget: a status line, a row of a list */
+ROLLTUI_API(rolltui_count_release, PUBLIC)  /* KEPT: rule 1's pair: a C host fills a RolltuiCount it owns and C has no destructor */
+ROLLTUI_API(rolltui_count_draw_roles, INTERNAL)  /* the count kind's body, in roles handed in */
+ROLLTUI_API(rolltui_big_digits_draw, PUBLIC)  /* KEPT: a host draws a big number in its own widget: a clock, a score */
+ROLLTUI_API(rolltui_big_digits_width, PUBLIC)  /* KEPT: …and centres it */
 ROLLTUI_API(rolltui_spinner_draw, PUBLIC)  /* KEPT: a host marks a row of its own list whose operation is running */
 ROLLTUI_API(rolltui_gauge_draw_roles, INTERNAL)  /* the gauge kind's body, in roles handed in */
 ROLLTUI_API(rolltui_message_log_init, INTERNAL)  /* the window table's own log */

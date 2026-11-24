@@ -153,6 +153,8 @@ int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t l
 int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRows* out);
 int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out);
+int rolltui_windows_has_count(const RolltuiWindows* w, const char* name, size_t len);
+int rolltui_windows_call_count(RolltuiWindows* w, const char* name, size_t len, RolltuiCount* out);
 /* What an `output:<name>` window shows, and whether it wraps; NULL when nothing is bound. */
 const RolltuiAnsiText* rolltui_windows_output(const RolltuiWindows* w, const char* name, size_t len, int* wrap);
 /* An output window's programs read and sized at a frame; the ms until the next frame they want, -1 none. */

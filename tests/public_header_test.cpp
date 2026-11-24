@@ -557,7 +557,9 @@ int main() {
     // descriptors (INTERNAL 966). A press on a link offered to the host (PUBLIC 668); whether a frame holds a link (INTERNAL 967).
     // A field's completer, its candidates and the ready-made ones (PUBLIC 673); the field's own reading, closing and drawing of its
     // list (INTERNAL 974).
-    check(totals["PUBLIC"] == 673 && totals["INTERNAL"] == 974 && totals.size() == 2,
+    // A count window bound, its count released, and big digits drawn and measured (PUBLIC 677); the kind's binding asked and its
+    // body (INTERNAL 977).
+    check(totals["PUBLIC"] == 677 && totals["INTERNAL"] == 977 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -751,11 +753,12 @@ int main() {
     // Settings 100, run 261: the log named and its level, the draw times shown; a line asked for and written.
     // Run 265: a run with no terminal, its new size and its screen as text, and a recording. Bind 117: a press on a link, the host's.
     // Bind 122: a field's completer, its candidates added and their range, and the ready-made words and paths.
+    // Bind 123, release 20, widget 89: a count window bound and its count released; big digits drawn and measured.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 35 && rt["HOST_SETTINGS"] == 100 &&
-              rt["HOST_BIND"] == 122 && rt["HOST_RUN"] == 265 && rt["HOST_RELEASE"] == 19 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 87,
-          "the roles are the recorded shape — vocab 45, host load 35 / settings 100 / bind 122 / run 265 / "
-          "release 19, tool interop 0, widget 87 (got " +
+              rt["HOST_BIND"] == 123 && rt["HOST_RUN"] == 265 && rt["HOST_RELEASE"] == 20 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 89,
+          "the roles are the recorded shape — vocab 45, host load 35 / settings 100 / bind 123 / run 265 / "
+          "release 20, tool interop 0, widget 89 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

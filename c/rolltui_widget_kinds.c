@@ -1801,6 +1801,85 @@ static RolltuiWidget gauge_widget_factory(void* c, RolltuiWindows* w, const char
   return out;
 }
 
+/* ============================================================================================
+ * count:<source> — a number shown big, from a count the host binds: the gauge's shape, drawn by rolltui_count_draw_roles.
+ * ============================================================================================ */
+
+typedef struct RolltuiCountCtx {
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  RolltuiCount c;
+  RolltuiDrawScratch* draw;
+} RolltuiCountCtx;
+
+static int count_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiCountCtx* cc = (RolltuiCountCtx*)ctx;
+  if (rolltui_windows_has_count(cc->w, cc->source.p ? cc->source.p : "", cc->source.n)) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &cc->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+static void count_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
+static void count_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiCountCtx* cc = (RolltuiCountCtx*)ctx;
+  RolltuiRect r;
+  rolltui_str_clear(&cc->c.label);
+  cc->c.value = 0;
+  cc->c.fault = -1;
+  cc->c.digits = 0;
+  cc->c.trend = 0;
+  if (!rolltui_windows_call_count(cc->w, cc->source.p ? cc->source.p : "", cc->source.n, &cc->c)) return;
+  rolltui_content_rect(rn, &r);
+  rolltui_count_draw_roles(f, cc->draw, r, &cc->c, rn->focused, rolltui_windows_styles(cc->w), rolltui_windows_builtin_roles(cc->w),
+                           rolltui_windows_env(cc->w)->ambiguous_wide);
+}
+static void count_ctx_destroy(void* ctx) {
+  RolltuiCountCtx* cc = (RolltuiCountCtx*)ctx;
+  rolltui_str_free(&cc->source);
+  rolltui_count_release(&cc->c);
+  rolltui_draw_scratch_free(cc->draw);
+  rolltui_mem_free(cc);
+}
+
+static const RolltuiWidgetPlugin kCountPlugin = {
+    count_ctx_destroy, count_ctx_layout, count_ctx_draw, count_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */, NULL /* back: no levels */,
+    NULL,
+    NULL,
+    NULL,
+    NULL /* takes: none */
+};
+
+static RolltuiWidget count_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  size_t row = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  unsigned char problem = 0;
+  RolltuiStr why;
+  RolltuiCountCtx* cc;
+  RolltuiWidget out;
+  (void)c;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host, &name, &name_len, &source, &source_len,
+                             &problem, &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  cc = (RolltuiCountCtx*)rolltui_mem_alloc(sizeof *cc);
+  memset(cc, 0, sizeof *cc);
+  cc->w = w;
+  cc->c.fault = -1;
+  rolltui_str_set(&cc->source, source, source_len);
+  cc->draw = rolltui_draw_scratch_new();
+  out.vt = &kCountPlugin;
+  out.ctx = cc;
+  return out;
+}
+
 static RolltuiWidget output_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
   size_t row = 0;
   int is_host = 0;
@@ -2226,6 +2305,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "keys", 4, keys_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "filepicker", 10, picker_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "gauge", 5, gauge_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "count", 5, count_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "messages", 8, messages_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "output", 6, output_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "image", 5, image_widget_factory, NULL, NULL);
@@ -2269,6 +2349,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*mark=*/ROLLTUI_ROLE_ACCENT_1,
       /*prompt=*/ROLLTUI_ROLE_PROMPT,
       /*series=*/{ROLLTUI_ROLE_ACCENT_1, ROLLTUI_ROLE_ACCENT_2, ROLLTUI_ROLE_ACCENT_3, ROLLTUI_ROLE_ACCENT_4},
+      /*focus=*/ROLLTUI_ROLE_BORDER_ACTIVE,
   };
   static const RolltuiMenuRoles kMenuRoles = {
       /*item=*/ROLLTUI_ROLE_MENU_ITEM,

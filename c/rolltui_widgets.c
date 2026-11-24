@@ -125,6 +125,11 @@ typedef struct GaugeBinding {
   void* ctx;
   void (*free_ctx)(void*);
 } GaugeBinding;
+typedef struct CountBinding {
+  RolltuiCountFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+} CountBinding;
 typedef struct ChartBinding {
   RolltuiChartFn fn;
   void* ctx;
@@ -376,6 +381,7 @@ struct RolltuiWindows {
   RolltuiMap owned_documents;
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap gauges;     /* name -> GaugeBinding*, OWNED */
+  RolltuiMap counts;     /* name -> CountBinding*, OWNED */
   RolltuiMap charts;     /* name -> ChartBinding*, OWNED: the fill and the chart it fills */
   RolltuiMap outputs;    /* name -> OutputBinding*, OWNED (the text it names is the host's) */
   RolltuiMap images;     /* name -> const RolltuiImage*, BORROWED (the host's) */
@@ -535,6 +541,12 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->gauges);
+  for (i = 0; i < rolltui_map_count(&w->counts); ++i) {
+    CountBinding* b = (CountBinding*)rolltui_map_value_at(&w->counts, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->counts);
   for (i = 0; i < rolltui_map_count(&w->charts); ++i) {
     ChartBinding* b = (ChartBinding*)rolltui_map_value_at(&w->charts, i);
     free_binding_ctx(b->ctx, b->free_ctx);
@@ -969,6 +981,31 @@ int rolltui_windows_has_gauge(const RolltuiWindows* w, const char* name, size_t 
 
 int rolltui_windows_call_gauge(RolltuiWindows* w, const char* name, size_t len, RolltuiGauge* out) {
   GaugeBinding* b = (GaugeBinding*)rolltui_map_get(&w->gauges, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, out);
+  return 1;
+}
+
+void rolltui_windows_bind_count(RolltuiWindows* w, const char* name, size_t len, RolltuiCountFn fn, void* ctx,
+                                void (*free_ctx)(void*)) {
+  CountBinding* b = (CountBinding*)rolltui_mem_alloc(sizeof *b);
+  CountBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  prev = (CountBinding*)rolltui_map_put(&w->counts, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_count(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->counts, name, len) != NULL;
+}
+
+int rolltui_windows_call_count(RolltuiWindows* w, const char* name, size_t len, RolltuiCount* out) {
+  CountBinding* b = (CountBinding*)rolltui_map_get(&w->counts, name, len);
   if (!b || !b->fn) return 0;
   b->fn(b->ctx, out);
   return 1;

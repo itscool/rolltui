@@ -3,6 +3,7 @@
 // `chart:` window bound by a host, and a dashboard's grid of windows.
 //
 #include <cmath>
+#include <filesystem>
 #include <cstring>
 #include <limits>
 #include <string>
@@ -510,6 +511,220 @@ void test_hanging_and_mirrored() {
   rolltui_chart_free(c);
 }
 
+
+// ---- big digits and a count window --------------------------------------------------------------------------------------------
+
+// A frame of the screen `l` with `w` drawn into it in `styles`: the cells, for their styles.
+RolltuiFrame* compose(RolltuiWindows* w, const RolltuiLayout* l, int wd, int ht, const RolltuiStyle* styles) {
+  RolltuiWindowStack* stack = rolltui_window_stack_new();
+  rolltui_window_stack_set_base(stack, rolltui_layout_base(l));
+  const RolltuiRect area{0, 0, wd, ht};
+  rolltui_windows_sync(w, stack);
+  rolltui_windows_layout(w, stack, area);
+  RolltuiFrame* f = rolltui_frame_new(wd, ht, styles[ROLLTUI_ROLE_BACKGROUND]);
+  RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
+  struct Slot {
+    RolltuiWindows* w;
+    const RolltuiStyle* s;
+  } slot{w, styles};
+  rolltui_window_stack_compose(
+      stack, f, area, styles, rolltui_layout_default_roles(),
+      [](void* c, const RolltuiResolvedNode* rn, RolltuiFrame* fr) {
+        Slot* sl = static_cast<Slot*>(c);
+        rolltui_windows_draw(sl->w, rn, fr, sl->s, rolltui_windows_default_roles());
+      },
+      &slot, 0, cs);
+  rolltui_compose_scratch_free(cs);
+  rolltui_window_stack_free(stack);
+  return f;
+}
+std::vector<std::string> rows_of(RolltuiFrame* f) {
+  RolltuiStr t{};
+  rolltui_frame_to_text(f, &t);
+  const std::string all = str_of(t);
+  rolltui_str_free(&t);
+  std::vector<std::string> rows;
+  std::size_t at = 0;
+  while (at < all.size()) {
+    const std::size_t nl = all.find('\n', at);
+    rows.push_back(all.substr(at, nl == std::string::npos ? std::string::npos : nl - at));
+    if (nl == std::string::npos) break;
+    at = nl + 1;
+  }
+  return rows;
+}
+
+struct Pods {
+  long long value = 7, fault = 2;
+  int digits = 2;
+  signed char trend = 1;
+};
+void fill_pods(void* ctx, RolltuiCount* out) {
+  const Pods* p = static_cast<const Pods*>(ctx);
+  rolltui_str_set(&out->label, "pods", 4);
+  out->value = p->value;
+  out->fault = p->fault;
+  out->digits = static_cast<unsigned char>(p->digits);
+  out->trend = p->trend;
+}
+
+void test_big_digits_and_count() {
+  // THE DIGITS, three rows of heavy box drawing, a cell between each
+  Drawn d(40, 3);
+  check(rolltui_big_digits_width("0123456789", 10) == 39 && rolltui_big_digits_width("1:2.3-", 6) == 3 + 1 + 1 + 1 + 3 + 1 + 1 + 1 + 3 + 1 + 3,
+        "a digit, a minus and a space are three cells, a colon and a point one, with a cell between each");
+  rolltui_big_digits_draw(d.f, 0, 0, "0123456789", 10, d.styles[ROLLTUI_ROLE_TEXT], nullptr, 0);
+  d.read();
+  check(d.rows[0] == "┏━┓   ╻ ╺━┓ ╺━┓ ╻ ╻ ┏━╸ ┏━╸ ╺━┓ ┏━┓ ┏━┓" && d.rows[1] == "┃ ┃   ┃ ┏━┛ ╺━┫ ┗━┫ ┗━┓ ┣━┓   ┃ ┣━┫ ┗━┫" &&
+            d.rows[2] == "┗━┛   ╹ ┗━╸ ╺━┛   ╹ ╺━┛ ┗━┛   ╹ ┗━┛ ╺━┛",
+        "ten digits in seven segments [\n" + d.rows[0] + "\n" + d.rows[1] + "\n" + d.rows[2] + "]");
+  Drawn a(40, 3);
+  rolltui_big_digits_draw(a.f, 0, 0, "0123456789", 10, a.styles[ROLLTUI_ROLE_TEXT], nullptr, 1);
+  a.read();
+  check(a.rows[0] == " _       _   _       _   _   _   _   _" && a.rows[1] == "| |   |  _|  _| |_| |_  |_    | |_| |_|" &&
+            a.rows[2] == "|_|   | |_   _|   |  _| |_|   | |_|  _|",
+        "…and in ASCII where ambiguous glyphs are wide [\n" + a.rows[0] + "\n" + a.rows[1] + "\n" + a.rows[2] + "]");
+  Drawn z(12, 3);
+  const RolltuiStyle dim = z.styles[ROLLTUI_ROLE_TEXT_MUTED], bright = z.styles[ROLLTUI_ROLE_TEXT];
+  rolltui_big_digits_draw(z.f, 0, 0, "007", 3, bright, &dim, 0);
+  check(z.cell(0, 0).style == dim && z.cell(4, 0).style == dim && z.cell(8, 0).style == bright, "leading zeros are dimmed, the last digit is not");
+  Drawn zz(4, 3);
+  rolltui_big_digits_draw(zz.f, 0, 0, "0", 1, bright, &dim, 0);
+  check(zz.cell(0, 0).style == bright, "…so a zero alone is bright");
+
+  // A COUNT WINDOW: the legend centred, the count, a divider, the second count, an arrow
+  std::string problems;
+  RolltuiLayout* l = load(R"({ "resizable": false, "name": "c", "focus": "other", "root": { "row": [
+      { "id": "pods", "content": "count:pods", "border": "rounded", "focusable": true },
+      { "id": "other", "content": "text:x", "size": 4, "focusable": true } ] } })", &problems);
+  check(l && problems.empty(), "a count window loads [" + problems + "]");
+  Pods pods;
+  RolltuiWindows* w = rolltui_windows_new(ctx());
+  rolltui_windows_bind_count(w, "pods", 4, fill_pods, &pods, nullptr);
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
+  RolltuiFrame* f = compose(w, l, 34, 6, styles);
+  auto rows = rows_of(f);
+  check(rows[1] == "│            pods            │", "the legend centred on the top row [" + rows[1] + "]");
+  check(rows[2] == "│    ┏━┓ ╺━┓ ⡇ ┏━┓ ╺━┓       │" && rows[3] == "│    ┃ ┃   ┃ ⡇ ┃ ┃ ┏━┛ ↑     │",
+        "the count, the divider and the second count in big digits [\n" + rows[2] + "\n" + rows[3] + "\n" + rows[4] + "]");
+  check(rows[3].find("↑") != std::string::npos && rows[2].find("⡇") != std::string::npos && rows[4].find("⡇") != std::string::npos,
+        "…the divider three rows tall and the arrow on the middle one");
+  {
+    RolltuiCellRaw lc{}, vc{}, zc{}, fc{};
+    rolltui_frame_cell(f, 14, 1, &lc);
+    int vx = -1;
+    for (int x = 0; x < 34 && vx < 0; ++x) {
+      std::size_t n = 0;
+      const char* g = rolltui_frame_glyph(f, x, 2, &n);
+      if (std::string(g, n) == "┏") vx = x;
+    }
+    rolltui_frame_cell(f, vx, 2, &zc);      /* the leading zero of 07 */
+    rolltui_frame_cell(f, vx + 4, 2, &vc);  /* the 7 */
+    rolltui_frame_cell(f, vx + 14, 2, &fc); /* the 2 of 02 */
+    check(lc.style.fg == styles[ROLLTUI_ROLE_LABEL].fg && lc.style.bold, "…the legend in the label role while the window has no focus");
+    check(zc.style.fg == styles[ROLLTUI_ROLE_TEXT_MUTED].fg && vc.style.fg == styles[ROLLTUI_ROLE_ACCENT_2].fg,
+          "…the count in the ok colour, its padding dimmed");
+    check(fc.style.fg == styles[ROLLTUI_ROLE_ERROR].fg, "…the second count in the error colour");
+  }
+  rolltui_frame_free(f);
+  // FOCUSED, the legend takes the focus colours
+  RolltuiLayout* lf = load(R"({ "resizable": false, "name": "c", "focus": "pods", "root": { "row": [
+      { "id": "pods", "content": "count:pods", "border": "rounded", "focusable": true },
+      { "id": "other", "content": "text:x", "size": 4, "focusable": true } ] } })", &problems);
+  f = compose(w, lf, 34, 6, styles);
+  {
+    RolltuiCellRaw lc{};
+    rolltui_frame_cell(f, 14, 1, &lc);
+    check(lc.style.fg == styles[ROLLTUI_ROLE_BORDER_ACTIVE].fg, "focused, the legend is in the focus colours");
+  }
+  rolltui_frame_free(f);
+  // TOO SHORT FOR THE DIGITS: one line
+  f = compose(w, l, 34, 3, styles);
+  rows = rows_of(f);
+  check(rows[1].find("pods 07 ⡇ 02 ↑") != std::string::npos, "a window too short for big digits shows one line [" + rows[1] + "]");
+  rolltui_frame_free(f);
+  // NO SECOND COUNT, NO ARROW, FALLING
+  pods.fault = -1;
+  pods.trend = -1;
+  pods.value = 123;
+  pods.digits = 0;
+  f = compose(w, l, 34, 6, styles);
+  rows = rows_of(f);
+  check(!has(rows, "⡇") && rows[3].find("↓") != std::string::npos && rows[2].find("╻ ╺━┓ ╺━┓") != std::string::npos,
+        "without a second count there is no divider, and a falling count has ↓ [" + rows[2] + "|" + rows[3] + "]");
+  rolltui_frame_free(f);
+  // NOTHING BOUND says so
+  RolltuiLayout* lu = load(R"({ "resizable": false, "name": "c", "root": { "content": "count:nobody", "border": "rounded" } })", &problems);
+  f = compose(w, lu, 34, 6, styles);
+  check(has(rows_of(f), "nothing is bound to 'nobody'"), "a count nothing is bound to says so");
+  rolltui_frame_free(f);
+  rolltui_effect_map_free(fx);
+  rolltui_windows_free(w);
+  rolltui_layout_free(l);
+  rolltui_layout_free(lf);
+  rolltui_layout_free(lu);
+}
+
+
+// EVERY SHIPPED THEME, both modes: a count's two numbers, its padding and its focused legend each read apart.
+void test_count_in_every_theme() {
+  namespace fs = std::filesystem;
+  std::string problems, bad;
+  RolltuiLayout* l = load(R"({ "resizable": false, "name": "c", "focus": "pods", "root": { "row": [
+      { "id": "pods", "content": "count:pods", "border": "rounded", "focusable": true },
+      { "id": "other", "content": "text:x", "size": 4, "focusable": true } ] } })", &problems);
+  RolltuiLayout* away = load(R"({ "resizable": false, "name": "c", "focus": "other", "root": { "row": [
+      { "id": "pods", "content": "count:pods", "border": "rounded", "focusable": true },
+      { "id": "other", "content": "text:x", "size": 4, "focusable": true } ] } })", &problems);
+  Pods pods;
+  RolltuiWindows* w = rolltui_windows_new(ctx());
+  rolltui_windows_bind_count(w, "pods", 4, fill_pods, &pods, nullptr);
+  std::size_t scanned = 0;
+  for (const fs::directory_entry& de : fs::directory_iterator(ROLLTUI_PRESETS_DIR)) {
+    if (de.path().extension() != ".json") continue;
+    std::FILE* fp = std::fopen(de.path().string().c_str(), "rb");
+    if (!fp) continue;
+    std::string text;
+    char buf[4096];
+    for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, fp)) > 0;) text.append(buf, n);
+    std::fclose(fp);
+    RolltuiJsonValue* root = rolltui_json_parse(text.data(), text.size(), nullptr);
+    if (!root) continue;
+    for (int mode : {ROLLTUI_MODE_DARK, ROLLTUI_MODE_LIGHT}) {
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      RolltuiStr name{};
+      RolltuiThemeReport rep{};
+      const RolltuiJsonValue* colours = rolltui_json_get(root, "colours", 7);
+      RolltuiEffectMap* eff = rolltui_theme_load(colours ? colours : root, mode, rolltui_theme_default_vocab(), styles, &name, &rep);
+      const std::string label = de.path().stem().string() + (mode == ROLLTUI_MODE_DARK ? " dark" : " light");
+      ++scanned;
+      RolltuiFrame* f = compose(w, l, 34, 6, styles);
+      RolltuiFrame* g = compose(w, away, 34, 6, styles);
+      RolltuiCellRaw zero{}, seven{}, two{}, lf{}, la{};
+      rolltui_frame_cell(f, 5, 2, &zero);  /* 07's padding */
+      rolltui_frame_cell(f, 9, 2, &seven); /* its 7 */
+      rolltui_frame_cell(f, 19, 2, &two);  /* 02's 2 */
+      rolltui_frame_cell(f, 14, 1, &lf);   /* the legend, focused */
+      rolltui_frame_cell(g, 14, 1, &la);   /* …and not */
+      if (zero.style == seven.style) bad += " " + label + ": padding looks like a digit;";
+      if (seven.style == two.style) bad += " " + label + ": the two counts look alike;";
+      if (lf.style == la.style) bad += " " + label + ": the legend shows no focus;";
+      rolltui_frame_free(f);
+      rolltui_frame_free(g);
+      rolltui_effect_map_free(eff);
+      rolltui_theme_report_release(&rep);
+      rolltui_str_free(&name);
+    }
+    rolltui_json_free(root);
+  }
+  check(scanned >= 16, "scanned every shipped theme in both modes (" + std::to_string(scanned) + ")");
+  check(bad.empty(), "in every one a count's padding, its two numbers and its focused legend are told apart [" + bad + "]");
+  rolltui_windows_free(w);
+  rolltui_layout_free(l);
+  rolltui_layout_free(away);
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_line();
@@ -519,5 +734,7 @@ int main() {
   test_meter_auto_flow();
   test_gradient_axes();
   test_hanging_and_mirrored();
+  test_big_digits_and_count();
+  test_count_in_every_theme();
   return testkit::report("chart_test");
 }
