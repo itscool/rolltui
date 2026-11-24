@@ -270,6 +270,10 @@ typedef struct RolltuiLayoutNode {
    * cells. A column with neither is a column. */
   int grid_cols ROLLTUI_DEFAULT(0), grid_cell_h ROLLTUI_DEFAULT(0);
   unsigned char span_r ROLLTUI_DEFAULT(0), span_c ROLLTUI_DEFAULT(0);
+  /* RUN-TIME, not the layout's: the window's own widget takes the chords bound to the stack's focus_next (1) and focus_prev (2), as a
+   * completing field takes Tab. `rolltui_windows_sync` sets it each frame and the stack's routing gives those keys to the window
+   * instead of moving the focus. Never compared, copied or written. */
+  unsigned char takes_cycle ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   bool is_window() const { return kind == Kind::Window; }

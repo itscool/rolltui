@@ -73,6 +73,9 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(input,     capitalize_word,   "input.capitalize_word",       "capitalise to the end of the word") \
   X(input,     overwrite,         "input.overwrite",             "typing replaces what is under the caret, or inserts again") \
   X(input,     normal_mode,       "input.normal_mode",           "from typing to normal mode, where the keys preset has one") \
+  X(input,     complete,          "input.complete",              "complete the word, or the next candidate in the list") \
+  X(input,     complete_prev,     "input.complete_prev",         "the previous candidate in the list") \
+  X(input,     accept_suggestion, "input.accept_suggestion",     "take the suggestion shown after the caret") \
   X(transcript, page_up,           "transcript.page_up",          "scroll a page up") \
   X(transcript, page_down,         "transcript.page_down",        "scroll a page down") \
   X(transcript, top,               "transcript.top",              "scroll to the top") \

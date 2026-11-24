@@ -2519,6 +2519,18 @@ static int input_ctx_takes(void* ctx, const RolltuiChord* k) {
   }
   a = takes_action(rolltui_windows_bindings(ic->w), k, "input", &n);
   if (takes_typed(k) || k->key == ROLLTUI_KEY_BACKSPACE || k->key == ROLLTUI_KEY_DELETE) return 1;
+  /* COMPLETION'S KEYS are the field's only where there is something to complete: otherwise Tab moves the focus as before */
+  if (rolltui_input_completion_open(ic->ed, NULL)) {
+    if (k->key == ROLLTUI_KEY_ESCAPE || k->key == ROLLTUI_KEY_ENTER) return 1;
+    if (takes_is(a, n, "input.complete") || takes_is(a, n, "input.complete_prev")) return 1;
+  }
+  if (takes_is(a, n, "input.complete") || takes_is(a, n, "input.complete_prev"))
+    return rolltui_input_has_completer(ic->ed) && rolltui_input_completion_at(ic->ed, 0, NULL) != NULL;
+  if (takes_is(a, n, "input.accept_suggestion")) {
+    size_t gl = 0;
+    rolltui_input_suggestion(ic->ed, &gl);
+    return gl != 0;
+  }
   if (takes_is(a, n, "input.clear_selection")) return rolltui_input_selected_text(ic->ed, &sl) && sl != 0; /* nothing selected: not its */
   return a != NULL;
 }
@@ -2529,6 +2541,7 @@ static int input_ctx_back(void* ctx) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
   const int mode = rolltui_input_mode(ic->ed);
   const char* name = rolltui_input_default_actions()->normal_mode;
+  if (rolltui_input_completion_cancel(ic->ed)) return 1; /* an open list is the first level: its word goes back */
   if (mode == ROLLTUI_INPUT_NORMAL) return 0;
   if (mode == ROLLTUI_INPUT_INSERT && !rolltui_bindings_chord_count(rolltui_windows_bindings(ic->w), name, strlen(name))) return 0;
   return rolltui_input_perform(ic->ed, rolltui_input_default_actions(), name, strlen(name), 0) != ROLLTUI_INPUT_IGNORED ||

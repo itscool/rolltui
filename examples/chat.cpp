@@ -511,6 +511,7 @@ struct App {
   void mount() {
     rolltui_windows_bind_document(windows, "session", 7, &doc);
     rolltui_windows_bind_submit(windows, "prompt", 6, on_submit, this, nullptr, /*on_submit=*/0);
+    rolltui_input_set_completer(prompt(), complete, this);
     // Enter in the find bar goes to the next match and KEEPS the query, so it can be pressed again.
     rolltui_windows_bind_submit(
         windows, "find", 4, [](void* c, const char*, std::size_t) { rolltui_transcript_find_next(static_cast<App*>(c)->transcript()); },
@@ -782,6 +783,63 @@ struct App {
   }
 
   // ---- the slash commands --------------------------------------------------------------------
+
+  // TAB IN THE PROMPT completes a command after its slash, a setting after /set and then one of its values, and a preset's name
+  // after /themes, /layouts or /keys. A message completes nothing, so Tab there moves the focus as it always did.
+  static void complete(void* c, const char* text, std::size_t len, std::size_t caret, RolltuiCompletions* out) {
+    static_cast<App*>(c)->complete_line(StrView(text, len).first(caret), out);
+  }
+  void complete_line(StrView line, RolltuiCompletions* out) {
+    static const char* const kCommands[] = {"/help", "/config", "/set", "/themes", "/layouts", "/keys", "/terminal", "/clear", "/quit"};
+    if (line.empty() || line[0] != '/' || line.find('\n') != StrView::npos) return;
+    const std::size_t sp = line.find(' ');
+    if (sp == StrView::npos) {
+      rolltui_complete_words(out, line.data(), line.size(), kCommands, std::size(kCommands));
+      return;
+    }
+    const StrView name = line.substr(1, sp - 1);
+    const StrView rest = line.drop_front(sp + 1);
+    const std::size_t sp2 = rest.find(' ');
+    const StrView word = sp2 == StrView::npos ? rest : rest.drop_front(sp2 + 1);
+    if (word.find(' ') != StrView::npos) return;
+    std::vector<RolltuiStr> names;
+    auto presets = [&](const RolltuiPresetList& list) {
+      for (const RolltuiPresetInfo& p : list) names.push_back(rolltui::own(StrView(p.name)));
+    };
+    if (name == "set" && sp2 == StrView::npos) {
+      for (std::size_t i = 0; i < rolltui_settings_count(); ++i) {
+        const RolltuiSetting* r = rolltui_settings_at(i);
+        names.push_back(rolltui::own(StrView(r->key, r->key_len)));
+      }
+    } else if (name == "set") {
+      const StrView key = rest.first(sp2);
+      const RolltuiSetting* r = rolltui_settings_find(key.data(), key.size());
+      if (!r) return;
+      const StrView store(r->store, r->store_len);
+      RolltuiPresetList list;
+      if (r->names_preset && store == "theme") rolltui_theme_store_list(theme_store, &list);
+      else if (r->names_preset && store == "layout") rolltui_layout_store_list(layout_store, &list);
+      else if (r->names_preset && store == "bindings") rolltui_bindings_store_list(keys_store, &list);
+      presets(list);
+      // A CHOICE AMONG WORDS ("auto | dark | light") offers them; a sentence describing a value offers nothing more.
+      StrView v(r->values, r->values_len);
+      if (!r->names_preset && v.find(" | ") != StrView::npos)
+        while (!v.empty()) {
+          const std::size_t bar = v.find(" | ");
+          names.push_back(rolltui::own(v.first(bar == StrView::npos ? v.size() : bar)));
+          v = bar == StrView::npos ? StrView() : v.drop_front(bar + 3);
+        }
+    } else if (sp2 == StrView::npos && (name == "themes" || name == "layouts" || name == "keys")) {
+      RolltuiPresetList list;
+      if (name == "themes") rolltui_theme_store_list(theme_store, &list);
+      else if (name == "layouts") rolltui_layout_store_list(layout_store, &list);
+      else rolltui_bindings_store_list(keys_store, &list);
+      presets(list);
+    }
+    std::vector<const char*> words;
+    for (const RolltuiStr& n : names) words.push_back(n.c_str());
+    rolltui_complete_words(out, word.data(), word.size(), words.data(), words.size());
+  }
 
   // THE CONVERSATION FORGOTTEN, a reply still arriving included: it is stopped first, since it arrives into an entry that is about
   // to go, and the messages queued behind it go with it. What an inline screen already left in the terminal's history stays there.

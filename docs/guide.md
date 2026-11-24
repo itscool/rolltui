@@ -557,6 +557,9 @@ node that would make the layout too big for the screen (`ROLLTUI_STACK_REFUSED`)
 - `rolltui_window_stack_anchor(stack, rect)` places the top popup just below `rect` (or above it if
   there's no room), kept on screen. It's meant for things like a rename box under the file being
   renamed.
+- `stack.focus_next` and `_prev` (Tab and Shift-Tab) move focus through the focusable windows of
+  the focused layer in order. A window whose `takes` callback claims the key keeps it instead, as a
+  text field with a completer does.
 - `stack.focus_number` (Alt-1 to Alt-9) focuses a window by number, counting the focusable windows
   of the focused layer in order. `rolltui_window_stack_set_numbered(stack, 1)` shows each window's
   number before its title, and `2` shows it as a superscript ("²files"), falling back to plain
@@ -1190,6 +1193,44 @@ same as pressing its key. A modal editor's normal mode is a bindings table over 
 `rolltui_input_set_caret(in, byte, extend)` moves the cursor; calling it again with `extend` set
 selects back to the first position. A rename box uses this to put the cursor before a file's
 extension, or to select the name without it.
+
+### Completion
+
+`rolltui_input_set_completer(in, fn, ctx)` gives a field a completer. The field calls `fn` with its
+text and the cursor's byte offset whenever either changes, and `fn` adds candidates, best first,
+with `rolltui_completions_add(out, text, len, detail, detail_len)`. The detail is optional and is
+shown beside the candidate in the list. A candidate replaces the word before the cursor unless
+`fn` sets another byte range with `rolltui_completions_replace(out, begin, end)`.
+
+Two helpers produce candidates. `rolltui_complete_words(out, word, len, words, n)` matches `word`
+fuzzily against a list and puts the words that start with it first. `rolltui_complete_path(out,
+word, len, dir, dir_len)` lists the folder named by `word` up to its last slash and matches the
+rest against the names in it. A relative path starts from `dir`, or from the working directory
+when `dir` is NULL, and `~/` starts from the home folder. Folders end in `/`, and names starting
+with a dot are offered only once the word starts with one.
+
+| Action | Default | What it does |
+|---|---|---|
+| `input.complete` | Tab | complete the word, or open the list and step through it |
+| `input.complete_prev` | Shift-Tab | step back through the list |
+| `input.accept_suggestion` | Ctrl-F | take the suggestion shown after the cursor |
+
+When only one candidate starts with the word, Tab takes it. When several do and they agree past
+the word, Tab extends the word that far. Otherwise Tab opens a list under the field, or above it
+when there is no room below, and puts the first candidate in the word's place. Tab, Shift-Tab, Up
+and Down then step through the list, replacing the word each time. Enter keeps the candidate
+shown, Escape puts the original word back, and typing keeps the candidate and goes on typing. The
+list keeps its width and position while it is open, and the one shown is in the `menu_selected`
+role.
+
+While the cursor is at the end of the text with nothing selected, the rest of the first candidate
+that starts with the word is drawn after the cursor in the placeholder's colour, in italics.
+Ctrl-F takes it, and so does Right.
+
+A field takes Tab and Shift-Tab only while its completer has candidates for the word or the list is
+open. Otherwise Tab moves the focus as usual. While it does take them, the focus leaves it with
+Alt-1 to Alt-9, Alt-Shift with H, J, K or L, or a click. `rolltui-chat` completes its commands, setting names and values and preset names this way,
+and dirktui's path line completes paths.
 
 ### History
 

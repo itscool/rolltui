@@ -175,9 +175,13 @@ int main() {
 
   // ---- the slash commands -----------------------------------------------------------------------
   {
-    const std::string help = frame("Type:/help Enter", "150x70");
+    const std::string help = frame("Type:/help Enter", "150x90");
     check(has(help, "app:") && has(help, "write the message in $EDITOR") && has(help, "stop the reply"),
           "/help is the live table's document, and this app's own two actions are in it (their chords were suggested and taken)");
+    check(has(frame("Type:/he Tab Enter", "150x90"), "write the message in $EDITOR"), "Tab completes /he to /help, and Enter runs it");
+    const std::string listed = frame("Type:/set_theme_ Tab", "100x30");
+    check(has(listed, "1 of ") && has(listed, "catppuccin"), "after /set theme, Tab lists the theme presets");
+    check(!has(frame("Type:hello Tab Type:x"), "hellox"), "a message completes nothing: Tab moves the focus as before");
     check(has(frame("F1", "150x40"), "open the settings and commands menu"), "F1 opens the same document as a popup");
     check(has(frame("Type:/nope Enter"), "unknown command '/nope'"), "an unknown command is named");
     check(has(frame("Type:/terminal Enter"), "no terminal: this run draws headless"), "/terminal says there is no terminal when there is none");

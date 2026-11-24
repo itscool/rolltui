@@ -9,6 +9,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_os.h" /* a folder listed for path completion */
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_screen.h"
@@ -39,6 +40,14 @@ typedef struct Snapshot {
   size_t caret;
   RolltuiInputSelectionRaw sel;
 } Snapshot;
+
+/* THE CANDIDATES a completer gives (`rolltui_completions_add`), best first, and the bytes of the text each one replaces. */
+struct RolltuiCompletions {
+  RolltuiStr* text;
+  RolltuiStr* detail;
+  size_t n, cap;
+  size_t begin, end;
+};
 
 struct RolltuiInput {
   RolltuiStr text;
@@ -105,8 +114,22 @@ struct RolltuiInput {
   RolltuiCopyFn copy_fn;
   void* copy_ctx;
 
+  /* COMPLETION (`rolltui_input_set_completer`). The candidates for the word at the caret are asked again whenever the text or the
+   * caret has moved since (`comp_seen`, `comp_caret`). While the list is open (`comp_open`) Tab steps through them in place:
+   * `comp_sel` is the one shown, standing at `comp_at` for `comp_len` bytes, and `comp_orig` is the word before Tab, which Escape
+   * puts back. `ghost` is the rest of the best candidate the word begins, drawn after the caret. The list keeps its width and its
+   * place while it is open, so it does not jump as the candidates change. */
+  RolltuiCompleteFn complete_fn;
+  void* complete_ctx;
+  RolltuiCompletions comp;
+  RolltuiStr comp_seen, comp_orig, ghost;
+  size_t comp_caret, comp_sel, comp_at, comp_len;
+  int comp_fresh, comp_open, comp_w, comp_x, comp_top;
+
   RolltuiUnicodeScratch* u; /* WORKING MEMORY, one role: the grapheme walk and word ranges */
 };
+
+static void comp_refresh(RolltuiInput* in);
 
 /* ---- options ----------------------------------------------------------------------------- */
 
@@ -337,6 +360,10 @@ void rolltui_input_free(RolltuiInput* in) {
   rolltui_str_free(&in->hl_name);
   rolltui_mem_free(in->cells);
   rolltui_mem_free(in->row_end);
+  rolltui_completions_release(&in->comp);
+  rolltui_str_free(&in->comp_seen);
+  rolltui_str_free(&in->comp_orig);
+  rolltui_str_free(&in->ghost);
   rolltui_u_scratch_free(in->u);
   rolltui_mem_free(in);
 }
@@ -369,6 +396,8 @@ void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len) {
   size_t n = 0;
   memset(&in->sel, 0, sizeof in->sel);
   in->has_goal = 0;
+  in->comp_open = 0; /* new text: an open completion list was for the old */
+  in->comp_fresh = 0;
   if (len) {
     buf = (char*)rolltui_mem_alloc(len);
     n = sanitise(text, len, buf, 0);
@@ -1064,6 +1093,7 @@ void rolltui_input_layout(RolltuiInput* in, RolltuiRect area) {
     in->dirty = 1;
   }
   ensure(in);
+  comp_refresh(in);
   h = imax(in->area.h, 1);
   rolltui_input_cell_of(in, in->caret, &row, &col);
   cr = row;
@@ -1417,6 +1447,409 @@ static unsigned char handle_mouse(RolltuiInput* in, const RolltuiMouseEvent* m, 
  * means adding a field and a case rather than remembering a third place. */
 #define CMD_COUNT ((int)(sizeof(RolltuiInputActions) / sizeof(const char*)))
 
+/* ---- completion ------------------------------------------------------------------------- */
+
+void rolltui_completions_release(RolltuiCompletions* c) {
+  size_t i;
+  for (i = 0; i < c->cap; ++i) { /* every slot ever used: a cleared one keeps its buffer for the next candidates */
+    rolltui_str_free(&c->text[i]);
+    rolltui_str_free(&c->detail[i]);
+  }
+  rolltui_mem_free(c->text);
+  rolltui_mem_free(c->detail);
+  memset(c, 0, sizeof *c);
+}
+
+static void comps_clear(RolltuiCompletions* c) {
+  size_t i;
+  for (i = 0; i < c->n; ++i) {
+    rolltui_str_clear(&c->text[i]);
+    rolltui_str_clear(&c->detail[i]);
+  }
+  c->n = 0;
+}
+
+void rolltui_completions_add(RolltuiCompletions* c, const char* text, size_t len, const char* detail, size_t detail_len) {
+  size_t cap;
+  if (!c || !text || len == 0 || memchr(text, '\n', len)) return; /* a candidate is one line */
+  cap = c->cap;
+  c->text = (RolltuiStr*)rolltui_grow_zeroed(c->text, &cap, c->n + 1, sizeof *c->text);
+  c->detail = (RolltuiStr*)rolltui_grow_zeroed(c->detail, &c->cap, c->n + 1, sizeof *c->detail);
+  rolltui_str_set(&c->text[c->n], text, len);
+  rolltui_str_set(&c->detail[c->n], detail ? detail : "", detail ? detail_len : 0);
+  ++c->n;
+}
+
+void rolltui_completions_replace(RolltuiCompletions* c, size_t begin, size_t end) {
+  if (!c || begin > end) return;
+  c->begin = begin;
+  c->end = end;
+}
+
+/* The word the caret ends: from after the last space, tab or newline before it. */
+static size_t word_start_at(const char* t, size_t caret) {
+  size_t b = caret;
+  while (b > 0 && t[b - 1] != ' ' && t[b - 1] != '\t' && t[b - 1] != '\n') --b;
+  return b;
+}
+
+typedef struct Scored {
+  const char* p;
+  size_t n;
+  int score;
+  size_t order;
+  int dir;
+} Scored;
+
+static int name_cmp(const void* a, const void* b) {
+  const Scored* x = (const Scored*)a;
+  const Scored* y = (const Scored*)b;
+  const int c = memcmp(x->p, y->p, x->n < y->n ? x->n : y->n);
+  return c ? c : (x->n > y->n) - (x->n < y->n);
+}
+
+static int is_sep(char c) {
+#ifdef _WIN32
+  return c == '/' || c == '\\';
+#else
+  return c == '/';
+#endif
+}
+
+static int scored_cmp(const void* a, const void* b) {
+  const Scored* x = (const Scored*)a;
+  const Scored* y = (const Scored*)b;
+  if (x->score != y->score) return x->score > y->score ? -1 : 1;
+  return x->order < y->order ? -1 : x->order > y->order;
+}
+
+void rolltui_complete_words(RolltuiCompletions* out, const char* word, size_t len, const char* const* words, size_t n) {
+  Scored* v;
+  size_t i, k = 0;
+  if (!out || !words || n == 0) return;
+  v = (Scored*)rolltui_mem_alloc(n * sizeof *v);
+  for (i = 0; i < n; ++i) {
+    int score = 0;
+    const size_t wn = words[i] ? strlen(words[i]) : 0;
+    if (wn == 0 || !rolltui_fuzzy_match(word ? word : "", len, words[i], wn, &score, NULL, 0)) continue;
+    if (wn >= len && len && memcmp(words[i], word, len) == 0) score += 1000; /* what the word begins comes first: the ghost's */
+    v[k].p = words[i], v[k].n = wn, v[k].score = score, v[k].order = i, v[k].dir = 0;
+    ++k;
+  }
+  qsort(v, k, sizeof *v, scored_cmp);
+  for (i = 0; i < k; ++i) rolltui_completions_add(out, v[i].p, v[i].n, NULL, 0);
+  rolltui_mem_free(v);
+}
+
+void rolltui_complete_path(RolltuiCompletions* out, const char* word, size_t len, const char* dir, size_t dir_len) {
+  RolltuiStr base, prefix, path;
+  const char* slash = NULL;
+  const char* name;
+  size_t name_len, i, k = 0, cap = 0;
+  RolltuiOsDir* d;
+  Scored* v = NULL;
+  const char* e;
+  if (!out) return;
+  if (!word) len = 0;
+  for (i = len; i > 0; --i)
+    if (is_sep(word[i - 1])) { /* Windows takes a backslash too */
+      slash = word + i - 1;
+      break;
+    }
+  memset(&base, 0, sizeof base);
+  memset(&prefix, 0, sizeof prefix);
+  memset(&path, 0, sizeof path);
+  if (slash) rolltui_str_set(&prefix, word, (size_t)(slash - word) + 1);
+  name = slash ? slash + 1 : word ? word : "";
+  name_len = slash ? len - (size_t)(slash - word) - 1 : len;
+  /* WHERE TO LOOK: a path from the root (or a drive's, `C:/`) as it is, `~/` from home, anything else from `dir` (the working
+   * directory when NULL) */
+  if ((prefix.n && (prefix.p[0] == '/' || prefix.p[0] == '\\')) || (prefix.n >= 3 && prefix.p[1] == ':')) {
+    rolltui_str_set(&base, prefix.p, prefix.n);
+  } else if (prefix.n >= 2 && prefix.p[0] == '~' && prefix.p[1] == '/') {
+    const char* home = getenv("HOME");
+    if (!home || !*home) home = getenv("USERPROFILE");
+    rolltui_str_set(&base, home ? home : "", home ? strlen(home) : 0);
+    rolltui_str_append(&base, prefix.p + 1, prefix.n - 1);
+  } else {
+    if (dir && dir_len) {
+      rolltui_str_set(&base, dir, dir_len);
+      if (base.p[base.n - 1] != '/') rolltui_str_append(&base, "/", 1);
+    } else {
+      rolltui_str_set(&base, "./", 2);
+    }
+    rolltui_str_append(&base, prefix.p ? prefix.p : "", prefix.n);
+  }
+  d = rolltui_os_dir_open(base.p ? base.p : ".");
+  while (d && (e = rolltui_os_dir_next(d)) != NULL) {
+    const size_t en = strlen(e);
+    int score = 0, isdir = 0;
+    RolltuiOsStat st;
+    if (strcmp(e, ".") == 0 || strcmp(e, "..") == 0) continue;
+    if (e[0] == '.' && !(name_len && name[0] == '.')) continue; /* a hidden name when the word asks for one */
+    if (!rolltui_fuzzy_match(name, name_len, e, en, &score, NULL, 0)) continue;
+    if (en >= name_len && name_len && memcmp(e, name, name_len) == 0) score += 1000;
+    if (rolltui_os_dir_stat(d, 1, &st) == 0) isdir = (st.mode & 0170000) == 0040000;
+    v = (Scored*)rolltui_grow(v, &cap, k + 1, sizeof *v);
+    v[k].p = (const char*)rolltui_mem_alloc(en + 1);
+    memcpy((char*)v[k].p, e, en + 1);
+    v[k].n = en, v[k].score = score, v[k].order = k, v[k].dir = isdir;
+    ++k;
+  }
+  if (d) rolltui_os_dir_close(d);
+  qsort(v, k, sizeof *v, name_cmp); /* names in order where the match is as good: a folder lists in no order of its own */
+  for (i = 0; i < k; ++i) v[i].order = i;
+  qsort(v, k, sizeof *v, scored_cmp);
+  for (i = 0; i < k; ++i) {
+    rolltui_str_set(&path, prefix.p ? prefix.p : "", prefix.n);
+    rolltui_str_append(&path, v[i].p, v[i].n);
+    if (v[i].dir) rolltui_str_append(&path, "/", 1);
+    rolltui_completions_add(out, path.p, path.n, v[i].dir ? "folder" : NULL, v[i].dir ? 6 : 0);
+    rolltui_mem_free((void*)v[i].p);
+  }
+  rolltui_mem_free(v);
+  rolltui_str_free(&base);
+  rolltui_str_free(&prefix);
+  rolltui_str_free(&path);
+}
+
+void rolltui_input_set_completer(RolltuiInput* in, RolltuiCompleteFn fn, void* ctx) {
+  if (!in) return;
+  in->complete_fn = fn;
+  in->complete_ctx = ctx;
+  in->comp_fresh = 0;
+  in->comp_open = 0;
+  comps_clear(&in->comp);
+  rolltui_str_clear(&in->ghost);
+}
+
+int rolltui_input_has_completer(const RolltuiInput* in) { return in && in->complete_fn != NULL; }
+
+/* THE CANDIDATES FOR THE WORD AT THE CARET, asked again when the text or the caret moved since; and the ghost. Not while the list is
+ * open: then the text holds the candidate Tab put there, and the candidates are still the word's. */
+static void comp_refresh(RolltuiInput* in) {
+  const char* t = in->text.p ? in->text.p : "";
+  size_t i, wlen;
+  if (!in->complete_fn || in->comp_open) return;
+  if (!in->comp_fresh || in->comp_caret != in->caret || !rolltui_str_eq(&in->comp_seen, t, in->text.n)) {
+    in->comp_fresh = 1;
+    in->comp_caret = in->caret;
+    rolltui_str_set(&in->comp_seen, t, in->text.n);
+    comps_clear(&in->comp);
+    in->comp.begin = word_start_at(t, in->caret);
+    in->comp.end = in->caret;
+    in->complete_fn(in->complete_ctx, t, in->text.n, in->caret, &in->comp);
+    if (in->comp.end > in->text.n) in->comp.end = in->text.n;
+    if (in->comp.begin > in->comp.end) in->comp.begin = in->comp.end;
+  }
+  rolltui_str_clear(&in->ghost); /* asked every time: a selection or a mode change hides it without the text moving */
+  /* THE GHOST: only at the end of the text, nothing selected, typing; the rest of the first candidate the word begins */
+  if (in->opt.secret || in->caret != in->text.n || (in->sel.active && in->sel.anchor != in->sel.head) || in->mode != ROLLTUI_INPUT_INSERT)
+    return;
+  wlen = in->comp.end - in->comp.begin;
+  /* an empty word, or a folder's path with no name begun after it, suggests nothing: every candidate would do */
+  if (wlen == 0 || is_sep(t[in->comp.end - 1])) return;
+  for (i = 0; i < in->comp.n; ++i) {
+    const RolltuiStr* c = &in->comp.text[i];
+    if (c->n > wlen && memcmp(c->p, t + in->comp.begin, wlen) == 0) {
+      rolltui_str_set(&in->ghost, c->p + wlen, c->n - wlen);
+      return;
+    }
+  }
+}
+
+/* Bytes [b, e) of the text become `s`, the caret after it: one undo step, after the typing before it. */
+static void comp_put(RolltuiInput* in, size_t b, size_t e, const char* s, size_t n) {
+  close_group(in);
+  in->last_kill = 0;
+  WITH_PRE(in, {
+    erase_range(in, b, e);
+    in->caret = b; /* erase_range left nothing selected, and b is where the cut was: a boundary */
+    raw_insert(in, s, n);
+    note_edit(in, EDIT_ATOMIC, &pre);
+  });
+}
+
+/* The candidate `i` in the word's place, while the list is open. */
+static void comp_show(RolltuiInput* in, size_t i) {
+  const RolltuiStr* c = &in->comp.text[i];
+  comp_put(in, in->comp_at, in->comp_at + in->comp_len, c->p, c->n);
+  in->comp_sel = i;
+  in->comp_len = c->n;
+}
+
+/* What the first `count` candidates all begin with, in bytes on a character's boundary. */
+static size_t comp_common(const RolltuiCompletions* c, size_t count) {
+  size_t i, n;
+  if (count == 0) return 0;
+  n = c->text[0].n;
+  for (i = 1; i < count; ++i) {
+    size_t k = 0;
+    while (k < n && k < c->text[i].n && c->text[0].p[k] == c->text[i].p[k]) ++k;
+    n = k;
+  }
+  while (n > 0 && n < c->text[0].n && ((unsigned char)c->text[0].p[n] & 0xC0) == 0x80) --n;
+  return n;
+}
+
+/* TAB (`dir` 1) AND SHIFT-TAB (-1). Open: the next or previous candidate in the word's place. Closed, the candidates the word
+ * begins decide, as a shell's do: the only one is taken, and several that go on alike are taken as far as they agree. Otherwise
+ * (or when only fuzzy matches are left) the list opens on the first, or the last, in place. */
+static unsigned char comp_step(RolltuiInput* in, int dir) {
+  size_t common, begun = 0, wlen;
+  const char* t;
+  if (!in->complete_fn) return ROLLTUI_INPUT_IGNORED;
+  if (in->comp_open) {
+    comp_show(in, dir > 0 ? (in->comp_sel + 1) % in->comp.n : (in->comp_sel + in->comp.n - 1) % in->comp.n);
+    return ROLLTUI_INPUT_HANDLED;
+  }
+  comp_refresh(in);
+  if (in->comp.n == 0) return ROLLTUI_INPUT_IGNORED; /* nothing to complete: the key is the program's, as without a completer */
+  wlen = in->comp.end - in->comp.begin;
+  t = in->text.p ? in->text.p : "";
+  while (begun < in->comp.n && in->comp.text[begun].n >= wlen && memcmp(in->comp.text[begun].p, t + in->comp.begin, wlen) == 0)
+    ++begun; /* the completers put the ones the word begins first */
+  if (in->comp.n == 1) {
+    comp_put(in, in->comp.begin, in->comp.end, in->comp.text[0].p, in->comp.text[0].n);
+    return ROLLTUI_INPUT_HANDLED;
+  }
+  common = comp_common(&in->comp, begun);
+  if (dir > 0 && common > wlen) {
+    comp_put(in, in->comp.begin, in->comp.end, in->comp.text[0].p, common);
+    return ROLLTUI_INPUT_HANDLED;
+  }
+  rolltui_str_set(&in->comp_orig, t + in->comp.begin, wlen);
+  in->comp_at = in->comp.begin;
+  in->comp_len = in->comp.end - in->comp.begin;
+  in->comp_open = 1;
+  in->comp_w = 0;
+  in->comp_x = -1;
+  in->comp_top = 0;
+  rolltui_str_clear(&in->ghost);
+  comp_show(in, dir > 0 ? 0 : in->comp.n - 1);
+  return ROLLTUI_INPUT_HANDLED;
+}
+
+/* The list closes keeping what it put in the word's place, or (`restore`) putting the word back as it was. */
+static void comp_close(RolltuiInput* in, int restore) {
+  if (!in->comp_open) return;
+  if (restore) comp_put(in, in->comp_at, in->comp_at + in->comp_len, in->comp_orig.p ? in->comp_orig.p : "", in->comp_orig.n);
+  in->comp_open = 0;
+  in->comp_fresh = 0;
+}
+
+static unsigned char comp_accept_ghost(RolltuiInput* in) {
+  RolltuiStr g;
+  comp_refresh(in); /* the text may have been set since the last frame */
+  if (!in->ghost.n || in->caret != in->text.n) return ROLLTUI_INPUT_IGNORED;
+  memset(&g, 0, sizeof g);
+  rolltui_str_set(&g, in->ghost.p, in->ghost.n);
+  comp_put(in, in->caret, in->caret, g.p, g.n);
+  rolltui_str_free(&g);
+  return ROLLTUI_INPUT_HANDLED;
+}
+
+int rolltui_input_completion_cancel(RolltuiInput* in) {
+  if (!in || !in->comp_open) return 0;
+  comp_close(in, 1);
+  return 1;
+}
+
+int rolltui_input_completion_open(const RolltuiInput* in, size_t* chosen) {
+  if (chosen) *chosen = in && in->comp_open ? in->comp_sel : 0;
+  return in && in->comp_open ? (int)in->comp.n : 0;
+}
+
+const char* rolltui_input_completion_at(RolltuiInput* in, size_t i, size_t* len) {
+  if (in) comp_refresh(in);
+  if (!in || i >= in->comp.n) {
+    if (len) *len = 0;
+    return NULL;
+  }
+  if (len) *len = in->comp.text[i].n;
+  return in->comp.text[i].p;
+}
+
+const char* rolltui_input_suggestion(RolltuiInput* in, size_t* len) {
+  if (in) comp_refresh(in);
+  if (len) *len = in ? in->ghost.n : 0;
+  return in && in->ghost.n ? in->ghost.p : "";
+}
+
+#define COMP_ROWS 8 /* the list's most rows; more scroll */
+
+int rolltui_input_draw_completions(RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw, const RolltuiStyle* styles,
+                                   RolltuiRect screen) {
+  const int aw = in ? in->opt.ambiguous_wide : 0;
+  int row, col, w, h, x, y, i, rows, below, above, shift;
+  size_t k, stem;
+  RolltuiStyle ground, item, chosen, muted, border;
+  char head[48];
+  int hn;
+  if (!in || !in->comp_open || in->comp.n == 0 || screen.w < 8 || screen.h < 3) return 0;
+  ground = styles[ROLLTUI_ROLE_PANEL_BACKGROUND];
+  item = styles[ROLLTUI_ROLE_MENU_ITEM];
+  chosen = styles[ROLLTUI_ROLE_MENU_SELECTED];
+  muted = styles[ROLLTUI_ROLE_TEXT_MUTED];
+  border = styles[ROLLTUI_ROLE_BORDER_ACTIVE];
+  item.bg = ground.bg, muted.bg = ground.bg, border.bg = ground.bg;
+  /* WHAT EVERY CANDIDATE SHARES up to a separator is not shown: a folder's names, not their whole paths */
+  stem = comp_common(&in->comp, in->comp.n);
+  while (stem > 0 && !is_sep(in->comp.text[0].p[stem - 1])) --stem;
+  /* ITS WIDTH: the widest candidate and its detail, grown and never narrowed while the list is open */
+  for (k = 0; k < in->comp.n; ++k) {
+    const int cw = rolltui_frame_text_width(draw, in->comp.text[k].p + stem, in->comp.text[k].n - stem, aw) +
+                   (in->comp.detail[k].n ? 2 + rolltui_frame_text_width(draw, in->comp.detail[k].p, in->comp.detail[k].n, aw) : 0);
+    if (cw + 4 > in->comp_w) in->comp_w = cw + 4;
+  }
+  w = imin(imax(in->comp_w, 16), screen.w);
+  rows = imin((int)in->comp.n, COMP_ROWS);
+  h = rows + 2;
+  /* ITS PLACE: under the word's first cell, or above it where there is no room below; kept while it is open */
+  rolltui_input_cell_of(in, in->comp_at + (stem <= in->comp_len ? stem : 0), &row, &col);
+  shift = in->opt.single_line ? in->scroll_x : 0; /* the slide the field drew with this frame */
+  y = in->area.y + (row - in->top);
+  below = screen.y + screen.h - (y + 1);
+  above = y - screen.y;
+  if (in->comp_x < 0) in->comp_x = in->area.x + col - shift;
+  x = iclamp(in->comp_x - 1, screen.x, screen.x + screen.w - w);
+  if (below >= h || below >= above) {
+    if (h > below) h = imax(below, 3), rows = h - 2;
+    y = y + 1;
+  } else {
+    if (h > above) h = imax(above, 3), rows = h - 2;
+    y = y - h;
+  }
+  if (rows < 1) return 0;
+  /* the chosen one in view */
+  if ((int)in->comp_sel < in->comp_top) in->comp_top = (int)in->comp_sel;
+  if ((int)in->comp_sel >= in->comp_top + rows) in->comp_top = (int)in->comp_sel - rows + 1;
+  {
+    const RolltuiRect box = {x, y, w, h};
+    hn = snprintf(head, sizeof head, "%zu of %zu", in->comp_sel + 1, in->comp.n);
+    rolltui_frame_fill(f, draw, box, ground, NULL, 0);
+    rolltui_draw_border(f, draw, box, ROLLTUI_BORDER_ROUNDED, border, head, hn > 0 ? (size_t)hn : 0, styles[ROLLTUI_ROLE_TITLE], aw);
+  }
+  for (i = 0; i < rows; ++i) {
+    const size_t at = (size_t)(in->comp_top + i);
+    const int is = at == in->comp_sel;
+    RolltuiStyle st = is ? chosen : item, dt = muted;
+    const RolltuiRect line = {x + 1, y + 1 + i, w - 2, 1};
+    int dw;
+    if (at >= in->comp.n) break;
+    if (is) {
+      rolltui_frame_fill(f, draw, line, chosen, NULL, 0);
+      dt.bg = chosen.bg;
+    }
+    dw = in->comp.detail[at].n ? rolltui_frame_text_width(draw, in->comp.detail[at].p, in->comp.detail[at].n, aw) : 0;
+    rolltui_frame_put_text_cut(f, draw, x + 2, y + 1 + i, in->comp.text[at].p + stem, in->comp.text[at].n - stem, st,
+                               w - 4 - (dw ? dw + 2 : 0),
+                               ROLLTUI_CUT_MIDDLE, aw, 0);
+    if (dw && dw + 6 < w) rolltui_frame_put_text(f, draw, x + w - 2 - dw, y + 1 + i, in->comp.detail[at].p, in->comp.detail[at].n, dt, dw, aw, 0);
+  }
+  return h;
+}
+
 static int command_of(const RolltuiInputActions* a, const char* action, size_t len) {
   const char* const* names = (const char* const*)a;
   int i;
@@ -1431,7 +1864,8 @@ enum {
   CMD_LINE_START, CMD_LINE_END, CMD_UP, CMD_DOWN, CMD_SEL_LEFT, CMD_SEL_RIGHT, CMD_SEL_WORD_LEFT,
   CMD_SEL_WORD_RIGHT, CMD_SEL_LINE_START, CMD_SEL_LINE_END, CMD_SEL_UP, CMD_SEL_DOWN, CMD_SELECT_ALL,
   CMD_CLEAR_SEL, CMD_COPY, CMD_EOF, CMD_UNDO, CMD_REDO, CMD_YANK, CMD_TRANSPOSE_CHARS, CMD_TRANSPOSE_WORDS,
-  CMD_UPCASE_WORD, CMD_DOWNCASE_WORD, CMD_CAPITALIZE_WORD, CMD_OVERWRITE, CMD_NORMAL_MODE
+  CMD_UPCASE_WORD, CMD_DOWNCASE_WORD, CMD_CAPITALIZE_WORD, CMD_OVERWRITE, CMD_NORMAL_MODE, CMD_COMPLETE, CMD_COMPLETE_PREV,
+  CMD_ACCEPT_SUGGESTION
 };
 static void enter_normal(RolltuiInput* in);
 
@@ -1461,6 +1895,14 @@ static void newline(RolltuiInput* in) {
 }
 
 static unsigned char run_command(RolltuiInput* in, int cmd) {
+  /* THE LIST, OPEN: Up and Down step through it as Shift-Tab and Tab do and Enter keeps the one shown; any other command closes
+   * it, keeping what is shown, and goes on to be what it is. A key or an action by name alike. */
+  if (in->comp_open) {
+    if (cmd == CMD_UP || cmd == CMD_COMPLETE_PREV) return comp_step(in, -1);
+    if (cmd == CMD_DOWN || cmd == CMD_COMPLETE) return comp_step(in, 1);
+    comp_close(in, 0);
+    if (cmd == CMD_SUBMIT) return ROLLTUI_INPUT_HANDLED;
+  }
   switch (cmd) {
     case CMD_SUBMIT: return in->opt.refuse_empty && blank(in) ? ROLLTUI_INPUT_HANDLED : ROLLTUI_INPUT_SUBMIT;
     case CMD_NEWLINE: newline(in); return ROLLTUI_INPUT_HANDLED;
@@ -1471,7 +1913,10 @@ static unsigned char run_command(RolltuiInput* in, int cmd) {
     case CMD_KILL_LINE_START: rolltui_input_kill_to_line_start(in); return ROLLTUI_INPUT_HANDLED;
     case CMD_KILL_LINE_END: rolltui_input_kill_to_line_end(in); return ROLLTUI_INPUT_HANDLED;
     case CMD_LEFT: rolltui_input_move_left(in, 0); return ROLLTUI_INPUT_HANDLED;
-    case CMD_RIGHT: rolltui_input_move_right(in, 0); return ROLLTUI_INPUT_HANDLED;
+    case CMD_RIGHT: /* at the end of the text, the ghost is taken */
+      if (comp_accept_ghost(in) == ROLLTUI_INPUT_HANDLED) return ROLLTUI_INPUT_HANDLED;
+      rolltui_input_move_right(in, 0);
+      return ROLLTUI_INPUT_HANDLED;
     case CMD_WORD_LEFT: rolltui_input_move_word_left(in, 0); return ROLLTUI_INPUT_HANDLED;
     case CMD_WORD_RIGHT: rolltui_input_move_word_right(in, 0); return ROLLTUI_INPUT_HANDLED;
     case CMD_SEL_LEFT: rolltui_input_move_left(in, 1); return ROLLTUI_INPUT_HANDLED;
@@ -1528,6 +1973,9 @@ static unsigned char run_command(RolltuiInput* in, int cmd) {
     case CMD_CAPITALIZE_WORD: rolltui_input_change_case(in, ROLLTUI_CASE_TITLE); return ROLLTUI_INPUT_HANDLED;
     case CMD_OVERWRITE: in->overwrite = !in->overwrite; return ROLLTUI_INPUT_HANDLED;
     case CMD_NORMAL_MODE: enter_normal(in); return ROLLTUI_INPUT_HANDLED;
+    case CMD_COMPLETE: return comp_step(in, 1);
+    case CMD_COMPLETE_PREV: return comp_step(in, -1);
+    case CMD_ACCEPT_SUGGESTION: return comp_accept_ghost(in);
     default: return ROLLTUI_INPUT_IGNORED;
   }
 }
@@ -1744,6 +2192,17 @@ static unsigned char handle_key(RolltuiInput* in, const RolltuiChord* k, const R
     if (plain_char) return ROLLTUI_INPUT_HANDLED; /* typing types nothing in normal mode */
     /* the rest (the arrows, Enter, Ctrl's keys) as they are in the field */
   }
+  /* THE LIST, OPEN: Escape puts the word back, whatever else it is bound to here; Enter keeps the one shown; a key no command
+   * names (typing) closes it and goes on to be what it is. The commands are `run_command`'s. */
+  if (in->comp_open) {
+    const int bare = !k->ctrl && !k->alt && !k->shift;
+    if (bare && (k->key == ROLLTUI_KEY_ESCAPE || k->key == ROLLTUI_KEY_ENTER)) {
+      comp_close(in, k->key == ROLLTUI_KEY_ESCAPE);
+      return ROLLTUI_INPUT_HANDLED;
+    }
+    action = rolltui_bindings_action_for(b, k, "input", 5, &alen);
+    if (!action || command_of(actions, action, alen) < 0) comp_close(in, 0);
+  }
   /* Text is text: a printable character without Ctrl or Alt inserts and is never an action — unless typing is off (`insert_typed`),
    * when it is looked up like any other key and does nothing unbound. */
   if (k->key == ROLLTUI_KEY_CHAR && !k->ctrl && !k->alt && in->opt.insert_typed) {
@@ -1910,6 +2369,15 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
       continue;
     }
     rolltui_frame_put(f, x, y, in->text.p + off, in->g[i].length, c->width, st, 0);
+  }
+  if (focused && in->ghost.n && in->caret == in->text.n && in->complete_fn) { /* THE GHOST: the rest of the best candidate, after the caret */
+    int row, col;
+    rolltui_input_cell_of(in, in->caret, &row, &col);
+    if (VISIBLE(row) && col - shift < a.w) {
+      RolltuiStyle g = ph;
+      g.italic = 1;
+      rolltui_frame_put_text(f, draw, a.x + col - shift, a.y + (row - in->top), in->ghost.p, in->ghost.n, g, a.w - (col - shift), aw, 0);
+    }
   }
   if (focused) {
     int row, col;

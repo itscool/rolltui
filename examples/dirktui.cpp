@@ -1627,6 +1627,12 @@ struct App {
     rolltui_hint_bar_set_separator(crumbs, " \xE2\x80\xBA ", 5);  // " › "
     rolltui_hint_bar_set_keep_tail(crumbs, 1);
     // COPY IN THE PATH LINE goes where the picker's copy goes: the clipboard.
+    // TAB IN THE PATH LINE completes the path: the whole line is one path, spaces and all.
+    if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4))
+      rolltui_input_set_completer(in, [](void*, const char* t, std::size_t, std::size_t caret, RolltuiCompletions* out) {
+        rolltui_completions_replace(out, 0, caret);
+        rolltui_complete_path(out, t, caret, nullptr, 0);
+      }, nullptr);
     if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4))
       rolltui_input_set_copy(in, [](void* ctx, const char* t, std::size_t n) { App& a = *static_cast<App*>(ctx); a.hint = a.copy_to_clipboard(StrView(t, n)) ? "copied" : "could not copy: no clipboard command"; }, this);
     // THE PATH LINE IS A PATH, NOT A PROMPT: nothing before it. THE FIND LINE says what it is,

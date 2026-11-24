@@ -15,8 +15,8 @@
 │ │ Wrap engine         │ Typing ───────────────────────────────────────────────────────────── ╻                       │
 │ │                     │ move one word left                                      Alt-H        ┃                       │
 │ │ Windows, layers, pla│ move one word right                                     Alt-J        ┃                       │
-│ │ abs/rel per axis), f│ extend the selection one word left                      Alt-Shift-B  ┃                       │
-│ │                     │ extend the selection one word right                     Alt-Shift-F  ╹                       │
+│ │ abs/rel per axis), f│ extend the selection one word left                      Alt-Shift-B  ╹                       │
+│ │                     │ extend the selection one word right                     Alt-Shift-F  │                       │
 │ │ Menu widget (hierarc│ swap the word before the caret with the next            Alt-T        │                       │
 │ │ filterable) + list/t│ uppercase to the end of the word                        Alt-U        │                       │
 │ │ Layout files (JSON: │ /one word                                                            │                       │

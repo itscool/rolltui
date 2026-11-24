@@ -122,6 +122,19 @@ int rolltui_input_top_row(const RolltuiInput* in);
 void rolltui_input_cell_of(const RolltuiInput* in, size_t offset, int* row, int* col);
 void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
                         const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused);
+/* COMPLETION'S INNARDS for the field kind: whether a completer is set, the list's candidates while open (0 when closed) and the one
+ * chosen, and what a completer's collector frees. */
+int rolltui_input_has_completer(const RolltuiInput* in);
+int rolltui_input_completion_open(const RolltuiInput* in, size_t* chosen);
+int rolltui_input_completion_cancel(RolltuiInput* in); /* an open list closed and its word put back: 1 when one was open */
+/* The candidates now, best first (NULL past the end), and the suggestion after the caret ("" for none). */
+const char* rolltui_input_completion_at(RolltuiInput* in, size_t i, size_t* len);
+const char* rolltui_input_suggestion(RolltuiInput* in, size_t* len);
+/* The open list over `screen`, after everything else: `rolltui_windows_draw_toasts` draws the focused field's. Its rows, 0 when it
+ * is closed. */
+int rolltui_input_draw_completions(RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw, const RolltuiStyle* styles,
+                                   RolltuiRect screen);
+void rolltui_completions_release(RolltuiCompletions* c);
 
 #ifdef __cplusplus
 } /* extern "C" */

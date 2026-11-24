@@ -1402,10 +1402,24 @@ static void draw_hold(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, co
   rolltui_draw_scratch_free(ds);
 }
 
+/* THE FOCUSED FIELD'S COMPLETIONS, open over the screen under the toasts. A scratch only while a list is open. */
+static void draw_completions(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles) {
+  const RolltuiLayoutNode* n = w->stack ? rolltui_window_stack_focused(w->stack) : NULL;
+  RolltuiInput* in;
+  RolltuiDrawScratch* draw;
+  if (!n) return;
+  in = rolltui_windows_input_at(w, n->id.p, n->id.n);
+  if (!in || !rolltui_input_completion_open(in, NULL)) return;
+  draw = rolltui_draw_scratch_new();
+  rolltui_input_draw_completions(in, f, draw, styles, screen);
+  rolltui_draw_scratch_free(draw);
+}
+
 int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect screen, const RolltuiStyle* styles,
                                 unsigned long long now_ms) {
   int toasts, which;
   if (!w || !f || !styles) return -1;
+  draw_completions(w, f, screen, styles);
   toasts = rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
                                            w->cfg->env.still);
   draw_empty_keys(w, f, screen, styles);
@@ -1734,6 +1748,25 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
   s->live = 1;
   rolltui_str_set(&s->content, n->content.p, n->content.n);
   if (s->view_n) wd = s->view_w[s->view_n - 1]; /* what the window shows is its top view */
+  { /* FOCUS WINS over the focus keys too: a window whose widget takes Tab (a completing field) is given it rather than left */
+    const RolltuiStackActions* sa = rolltui_stack_default_actions();
+    const RolltuiBindings* b = w->cfg->bindings;
+    unsigned char bits = 0;
+    RolltuiChord c;
+    if (wd->vt && wd->vt->takes && b) {
+      for (i = 0; rolltui_bindings_chord_at(b, sa->focus_next, strlen(sa->focus_next), i, &c); ++i)
+        if (wd->vt->takes(wd->ctx, &c)) {
+          bits |= 1;
+          break;
+        }
+      for (i = 0; rolltui_bindings_chord_at(b, sa->focus_prev, strlen(sa->focus_prev), i, &c); ++i)
+        if (wd->vt->takes(wd->ctx, &c)) {
+          bits |= 2;
+          break;
+        }
+    }
+    ((RolltuiLayoutNode*)n)->takes_cycle = bits; /* the stack's routing state, not its layout: see the field */
+  }
   /* THE "window 'x' (content 'y'): " PREFIX IS BUILT ONLY WHEN THERE IS SOMETHING TO SAY.
    * It used to be built for every window of every frame and thrown away. */
   if (wd->vt && wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {

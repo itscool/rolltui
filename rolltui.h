@@ -2355,6 +2355,9 @@ typedef struct RolltuiInputActions {
   const char* capitalize_word; /* each word's first letter titled and the rest lowered */
   const char* overwrite;       /* typing replaces the grapheme at the caret, until pressed again */
   const char* normal_mode;     /* from typing to vim's normal mode (`rolltui_input_mode`): bound by the vim preset, not the default */
+  const char* complete;          /* the field's completer: the word completed, or the next candidate in the list (Tab) */
+  const char* complete_prev;     /* the previous candidate in the list (Shift-Tab) */
+  const char* accept_suggestion; /* the suggestion after the caret taken (Ctrl-F; Right at the end of the text too) */
 } RolltuiInputActions;
 
 /* THE FOUR ROLES A DRAW NEEDS, handed in as bytes. `prompt` is the OPTIONS' role, which is
@@ -2438,6 +2441,23 @@ int rolltui_input_history_save(RolltuiInput* in, const char* path, size_t path_l
 
 /* ---- layout and drawing -------------------------------------------------------------------------- */
 void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptionsRaw* o);
+/* COMPLETION. `fn` is asked for the candidates whenever the text or the caret moved: it adds them, best first, with
+ * `rolltui_completions_add` (a candidate and an optional detail shown beside it in the list), and says which bytes of the text they
+ * replace with `rolltui_completions_replace` (the word before the caret unless it says). With a completer, Tab (`input.complete`)
+ * takes the only candidate, or what every candidate begins with past the word, or else opens a list under the field (above it where
+ * there is no room) and puts each candidate in the word's place in turn; Shift-Tab, Up and Down step through it, Enter keeps the one
+ * shown and Escape puts the word back. The rest of the first candidate the word begins is drawn faded after the caret, and Ctrl-F
+ * (`input.accept_suggestion`) or Right at the end of the text takes it. Without one, the field does not take Tab. NULL `fn`: none. */
+typedef struct RolltuiCompletions RolltuiCompletions;
+typedef void (*RolltuiCompleteFn)(void* ctx, const char* text, size_t len, size_t caret, RolltuiCompletions* out);
+void rolltui_input_set_completer(RolltuiInput* in, RolltuiCompleteFn fn, void* ctx);
+void rolltui_completions_add(RolltuiCompletions* out, const char* text, size_t len, const char* detail, size_t detail_len);
+void rolltui_completions_replace(RolltuiCompletions* out, size_t begin, size_t end);
+/* Ready-made candidates for a completer: `words` that fuzzily match `word` (those it begins first), and the names in a folder
+ * matching the last part of a path (`dir` the folder a relative path starts from, the working directory when NULL; `~/` is home; a
+ * folder ends in `/`; hidden names only when the word starts with a dot). */
+void rolltui_complete_words(RolltuiCompletions* out, const char* word, size_t len, const char* const* words, size_t n);
+void rolltui_complete_path(RolltuiCompletions* out, const char* word, size_t len, const char* dir, size_t dir_len);
 
 const RolltuiInputOptionsRaw* rolltui_input_options(const RolltuiInput* in);
 

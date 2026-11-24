@@ -123,6 +123,15 @@
     "input.overwrite": [
       "insert"
     ],
+    "input.complete": [
+      "tab"
+    ],
+    "input.complete_prev": [
+      "shift+tab"
+    ],
+    "input.accept_suggestion": [
+      "ctrl+f"
+    ],
     "transcript.page_up": [
       "pageup",
       "alt+pageup"

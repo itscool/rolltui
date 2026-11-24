@@ -579,6 +579,11 @@ ROLLTUI_API(rolltui_anchor_from_name, INTERNAL)
 ROLLTUI_API(rolltui_anchor_name, INTERNAL)
 ROLLTUI_API(rolltui_border_from_name, INTERNAL)
 ROLLTUI_API(rolltui_border_name, INTERNAL)
+ROLLTUI_API(rolltui_complete_path, PUBLIC)  /* a completer's ready-made candidates: a path typed into a field */
+ROLLTUI_API(rolltui_complete_words, PUBLIC)  /* a completer's ready-made candidates: rolltui-chat's commands and setting values */
+ROLLTUI_API(rolltui_completions_add, PUBLIC)  /* a completer gives its candidates: rolltui-chat's prompt */
+ROLLTUI_API(rolltui_completions_release, INTERNAL)  /* the field frees its candidates; a host never holds the collector */
+ROLLTUI_API(rolltui_completions_replace, PUBLIC)  /* a completer says which bytes its candidates replace: a setting's value after its key */
 ROLLTUI_API(rolltui_compose_layer, INTERNAL)  /* a step of compose */
 ROLLTUI_API(rolltui_compose_scratch_free, PUBLIC)
 ROLLTUI_API(rolltui_compose_scratch_new, PUBLIC)
@@ -1140,8 +1145,15 @@ ROLLTUI_API(rolltui_gaps_collect, PUBLIC)
 /* ---- rolltui_widget_kinds.h — the built-in kinds and their registration; default PUBLIC --- */
 ROLLTUI_API(rolltui_help_document, PUBLIC)
 ROLLTUI_API(rolltui_help_scope_lines, PUBLIC)
+ROLLTUI_API(rolltui_input_completion_at, INTERNAL)  /* the input widget's own editing step; a test reads the candidates (opt-in) */
+ROLLTUI_API(rolltui_input_completion_cancel, INTERNAL)  /* Escape as a level: the field kind closes the list */
+ROLLTUI_API(rolltui_input_completion_open, INTERNAL)  /* the field kind and the overlay ask whether the list is open */
+ROLLTUI_API(rolltui_input_draw_completions, INTERNAL)  /* the overlay pass draws the focused field's list */
+ROLLTUI_API(rolltui_input_has_completer, INTERNAL)  /* the field kind asks whether Tab is the field's */
 ROLLTUI_API(rolltui_input_kind_process_event, PUBLIC)
 ROLLTUI_API(rolltui_input_max_rows, INTERNAL)  /* Phase 24: its old KEPT reason said "a host applies it too" and no host does — measured 0 consumer files */
+ROLLTUI_API(rolltui_input_set_completer, PUBLIC)  /* rolltui-chat's prompt completes its commands */
+ROLLTUI_API(rolltui_input_suggestion, INTERNAL)  /* the input widget's own editing step; a test reads the suggestion (opt-in) */
 ROLLTUI_API(rolltui_input_widget_ctx_set_min_outer, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_input_widget_plugin, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_input_window_rows, INTERNAL)  /* Phase 24: its old KEPT reason said "a host applies it too" and no host does — measured 0 consumer files */

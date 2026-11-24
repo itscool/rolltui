@@ -293,7 +293,7 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 179}, /* +2: `RolltuiPickerActions::preview_up` and `::preview_down`, names the table BORROWS. +1: `RolltuiInputActions::normal_mode`, an action name BORROWED from static storage like its siblings. +2: `RolltuiAnsiLineDraw::lit`, the lit ranges BORROWED for the call, and `RolltuiOutputOptions::filter`,
+        {"rolltui.h", 182}, /* +3: `RolltuiInputActions::complete`, `::complete_prev` and `::accept_suggestion`, action names BORROWED from static storage like their siblings. +2: `RolltuiPickerActions::preview_up` and `::preview_down`, names the table BORROWS. +1: `RolltuiInputActions::normal_mode`, an action name BORROWED from static storage like its siblings. +2: `RolltuiAnsiLineDraw::lit`, the lit ranges BORROWED for the call, and `RolltuiOutputOptions::filter`,
                                COPIED by the call it is passed to. +2: `RolltuiPickerActions::preview_left` and `::preview_right`, names the table BORROWS.
                                +4: `RolltuiPickerActions::mark`, `::mark_up`, `::mark_down` and `::unmark_all`, names the table BORROWS.
                                +5: `RolltuiPickerActions::half_up`, `::half_down`, `::back`, `::forward` and `::previous`, names the
@@ -464,8 +464,8 @@ int main() {
     // table's two lists. 195 -> 196: rolltui_os.h's Windows lock. 196 -> 203: the input's seven new action names.
     // 203 -> 207: the message log's ring and scratches (rolltui_feedback.h). 207 -> 210: a child's options. 210 -> 215:
     // the four environment strings pictures are chosen by, and a frame's picture. 216: a condition variable. 219: the stack's three
-    // new action names. 221: ZELLIJ and NVIM, two more environment strings pictures are chosen by. 226: the stack's five focus names. 227: VTE_VERSION. 232: a cut's marker, a span's text, a title part's text and action, ROLLTUI_CONSOLE. 233: the stack's half action. 238: the picker's five new actions. 242: its four mark actions. 244: its two sideways preview actions. 246: a line's lit ranges and an output window's filter. 247: the input's normal-mode action name. 249: the picker's preview up and down.
-    check(total == 249, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // new action names. 221: ZELLIJ and NVIM, two more environment strings pictures are chosen by. 226: the stack's five focus names. 227: VTE_VERSION. 232: a cut's marker, a span's text, a title part's text and action, ROLLTUI_CONSOLE. 233: the stack's half action. 238: the picker's five new actions. 242: its four mark actions. 244: its two sideways preview actions. 246: a line's lit ranges and an output window's filter. 247: the input's normal-mode action name. 249: the picker's preview up and down. 252: the input's three completion action names.
+    check(total == 252, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

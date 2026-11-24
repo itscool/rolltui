@@ -24,8 +24,10 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -41,6 +43,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_widget_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_layout_tree.h"   /* INTERNAL: the focused node's id */
 #include "rolltui_test.hpp"
 
 using testkit::check;
@@ -1544,10 +1547,339 @@ void test_vim_modes_in_a_window() {
   rolltui_context_free(c);
 }
 
+
+// ---- completion ---------------------------------------------------------------------------
+
+// A completer over a fixed word list: the word before the caret, fuzzily.
+void complete_words(void* ctx, const char* text, std::size_t, std::size_t caret, RolltuiCompletions* out) {
+  const auto* words = static_cast<const std::vector<const char*>*>(ctx);
+  std::size_t b = caret;
+  while (b > 0 && text[b - 1] != ' ') --b;
+  rolltui_complete_words(out, text + b, caret - b, words->data(), words->size());
+}
+
+std::string suggestion_of(RolltuiInput* in) {
+  std::size_t n = 0;
+  const char* p = rolltui_input_suggestion(in, &n);
+  return std::string(p, n);
+}
+
+std::vector<std::string> candidates_of(RolltuiInput* in) {
+  std::vector<std::string> v;
+  std::size_t n = 0;
+  for (std::size_t i = 0; const char* p = rolltui_input_completion_at(in, i, &n); ++i) v.emplace_back(p, n);
+  return v;
+}
+
+void test_completion() {
+  static const std::vector<const char*> kWords = {"help", "hello", "history", "theme", "themes"};
+  InputPtr in = fresh(40, 1);
+  check(handle(in.get(), key(ROLLTUI_KEY_TAB)) == InputAction::Ignored, "with no completer the field does not take Tab");
+  rolltui_input_set_completer(in.get(), complete_words, const_cast<std::vector<const char*>*>(&kWords));
+
+  set_text(in.get(), "his");
+  check(suggestion_of(in.get()) == "tory", "the rest of the one candidate the word begins is suggested [" + suggestion_of(in.get()) + "]");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == "history" && rolltui_input_caret(in.get()) == 7, "Tab takes the only candidate the word begins");
+  check(handle(in.get(), ctrl('z')) == InputAction::Handled && text_of(in.get()) == "his", "…and one undo puts the word back");
+  {
+    InputPtr typed = fresh(40, 1);
+    rolltui_input_set_completer(typed.get(), complete_words, const_cast<std::vector<const char*>*>(&kWords));
+    for (char ch : std::string("his")) handle(typed.get(), chr(static_cast<unsigned char>(ch)));
+    handle(typed.get(), key(ROLLTUI_KEY_TAB));
+    handle(typed.get(), ctrl('z'));
+    const std::string one(text_of(typed.get()));
+    handle(typed.get(), ctrl('z'));
+    check(one == "his" && text_of(typed.get()).empty(),
+          "typed and then completed, the completion undoes first and the typing after it [" + one + "]");
+  }
+
+  set_text(in.get(), "he");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == "hel", "Tab takes what several candidates agree on past the word [" + std::string(text_of(in.get())) + "]");
+  check(rolltui_input_completion_open(in.get(), nullptr) == 0, "…and leaves the list closed");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  std::size_t chosen = 9;
+  check(rolltui_input_completion_open(in.get(), &chosen) == 2 && chosen == 0 && text_of(in.get()) == "help",
+        "the next Tab opens the list with the first candidate in the word's place");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == "hello", "Tab steps to the next candidate in place");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == "help", "…and wraps round");
+  handle(in.get(), key(ROLLTUI_KEY_TAB, /*shift=*/true));
+  check(text_of(in.get()) == "hello", "Shift-Tab steps back");
+  handle(in.get(), key(ROLLTUI_KEY_UP));
+  check(text_of(in.get()) == "help", "Up steps back too while the list is open");
+  handle(in.get(), key(ROLLTUI_KEY_ESCAPE));
+  check(text_of(in.get()) == "hel" && rolltui_input_completion_open(in.get(), nullptr) == 0, "Escape puts the word back and closes the list");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  handle(in.get(), key(ROLLTUI_KEY_DOWN));
+  check(handle(in.get(), key(ROLLTUI_KEY_ENTER)) == InputAction::Handled && text_of(in.get()) == "hello" &&
+            rolltui_input_completion_open(in.get(), nullptr) == 0,
+        "Enter keeps the one shown and does not submit");
+  set_text(in.get(), "hel");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  handle(in.get(), chr('!'));
+  check(text_of(in.get()) == "help!" && rolltui_input_completion_open(in.get(), nullptr) == 0,
+        "typing closes the list, keeping the candidate shown, and types [" + std::string(text_of(in.get())) + "]");
+
+  set_text(in.get(), "th");
+  check(suggestion_of(in.get()) == "eme", "the suggestion is the first candidate's rest [" + suggestion_of(in.get()) + "]");
+  handle(in.get(), key(ROLLTUI_KEY_RIGHT));
+  check(text_of(in.get()) == "theme", "Right at the end of the text takes the suggestion");
+  set_text(in.get(), "hist");
+  handle(in.get(), ctrl('f'));
+  check(text_of(in.get()) == "history", "Ctrl-F takes it too");
+  set_text(in.get(), "hist");
+  set_caret(in.get(), 2);
+  check(suggestion_of(in.get()).empty(), "no suggestion with the caret inside the text");
+  set_caret(in.get(), 4);
+  check(suggestion_of(in.get()) == "ory", "CONTROL: back at the end, it is suggested again");
+  rolltui_input_select_all(in.get());
+  check(suggestion_of(in.get()).empty(), "…but not once the text is selected, the caret still at its end (an address bar reached)");
+  set_text(in.get(), "x ");
+  check(suggestion_of(in.get()).empty(), "…nor for an empty word");
+  set_text(in.get(), "hmm");
+  check(candidates_of(in.get()).empty() && handle(in.get(), key(ROLLTUI_KEY_TAB)) == InputAction::Ignored,
+        "a word nothing matches has no candidates, and Tab is not the field's");
+  set_text(in.get(), "hst");
+  check(candidates_of(in.get()) == std::vector<std::string>{"history"} && suggestion_of(in.get()).empty(),
+        "a fuzzy match is a candidate, but is never suggested: the word does not begin it");
+
+  // THE SUGGESTION IS DRAWN after the caret, faded and in italic, and only in the focused field.
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
+  set_text(in.get(), "his");
+  rolltui_input_layout(in.get(), {0, 0, 40, 1});
+  FrameC f(40, 1);
+  rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
+  check(f.glyph(5, 0) == "t" && f.at(5, 0).style.italic && f.at(5, 0).style.fg == th.style(ROLLTUI_ROLE_INPUT_PLACEHOLDER).fg &&
+            f.cursor().x == 5,
+        "the suggestion is drawn after the caret, in the placeholder's colour and italic");
+  FrameC g(40, 1);
+  rolltui_input_draw(in.get(), g, draw_scratch(), th.styles, &kRoles, false);
+  check(g.glyph(5, 0) == " ", "…and not in a field without the focus");
+  // THE LIST, drawn over the screen under the word
+  set_text(in.get(), "hel");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  rolltui_input_layout(in.get(), {0, 0, 40, 1});
+  FrameC s(40, 8);
+  const int rows = rolltui_input_draw_completions(in.get(), s, draw_scratch(), th.styles, RolltuiRect{0, 0, 40, 8});
+  RolltuiStr t{};
+  rolltui_frame_to_text(s, &t);
+  const std::string shown = str_of(t);
+  rolltui_str_free(&t);
+  check(rows == 4 && shown.find("1 of 2") != std::string::npos && shown.find("hello") != std::string::npos,
+        "the open list is drawn below the field: a title with the count and a row for each candidate");
+  int hx = -1, hy = -1;
+  for (int y = 0; y < 8; ++y)
+    for (int x = 0; x + 4 < 40; ++x)
+      if (s.glyph(x, y) == "h" && s.glyph(x + 1, y) == "e" && s.glyph(x + 2, y) == "l" && s.glyph(x + 3, y) == "p" && s.glyph(x + 4, y) == " ")
+        hx = x, hy = y;
+  check(hy > 0 && hx == 3 && s.at(hx, hy).style == th.style(ROLLTUI_ROLE_MENU_SELECTED),
+        "…the one shown in the menu's selected role, under the word [" + std::to_string(hx) + "," + std::to_string(hy) + "]");
+}
+
+// EVERY SHIPPED THEME, both modes: the list's chosen row stands apart from the others, and the suggestion from the text typed.
+void test_completion_in_every_theme() {
+  namespace fs = std::filesystem;
+  static const std::vector<const char*> kWords = {"help", "hello"};
+  std::size_t scanned = 0;
+  std::string bad;
+  for (const fs::directory_entry& de : fs::directory_iterator(ROLLTUI_PRESETS_DIR)) {
+    if (de.path().extension() != ".json") continue;
+    std::FILE* fp = std::fopen(de.path().string().c_str(), "rb");
+    if (!fp) continue;
+    std::string text;
+    char buf[4096];
+    for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, fp)) > 0;) text.append(buf, n);
+    std::fclose(fp);
+    RolltuiJsonValue* root = rolltui_json_parse(text.data(), text.size(), nullptr);
+    if (!root) continue;
+    for (int mode : {ROLLTUI_MODE_DARK, ROLLTUI_MODE_LIGHT}) {
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      RolltuiStr name{};
+      RolltuiThemeReport rep{};
+      const RolltuiJsonValue* colours = rolltui_json_get(root, "colours", 7); /* a preset file holds its theme there */
+      RolltuiEffectMap* eff = rolltui_theme_load(colours ? colours : root, mode, rolltui_theme_default_vocab(), styles, &name, &rep);
+      if (rep.error.n) bad += " " + de.path().stem().string() + " did not load;";
+      ++scanned;
+      InputPtr in = fresh(40, 1);
+      rolltui_input_set_completer(in.get(), complete_words, const_cast<std::vector<const char*>*>(&kWords));
+      set_text(in.get(), "hel");
+      rolltui_input_layout(in.get(), {0, 0, 40, 1});
+      FrameC f(40, 1);
+      rolltui_input_draw(in.get(), f, draw_scratch(), styles, &kRoles, true);
+      const std::string label = de.path().stem().string() + (mode == ROLLTUI_MODE_DARK ? " dark" : " light");
+      if (f.at(5, 0).style == f.at(4, 0).style) bad += " " + label + ": the suggestion looks typed;";
+      handle(in.get(), key(ROLLTUI_KEY_TAB));
+      rolltui_input_layout(in.get(), {0, 0, 40, 1});
+      FrameC l(40, 6);
+      rolltui_input_draw_completions(in.get(), l, draw_scratch(), styles, RolltuiRect{0, 0, 40, 6});
+      // the chosen row (help, the first) and the other (hello), a letter of each
+      if (l.at(3, 2).style == l.at(3, 3).style) bad += " " + label + ": the chosen row looks like the others;";
+      rolltui_effect_map_free(eff);
+      rolltui_theme_report_release(&rep);
+      rolltui_str_free(&name);
+    }
+    rolltui_json_free(root);
+  }
+  check(scanned >= 16, "scanned every shipped theme in both modes (" + std::to_string(scanned) + ")");
+  check(bad.empty(), "in every one the suggestion and the list's chosen row are told apart [" + bad + "]");
+}
+
+void test_path_completion() {
+  char tmpl[] = "/tmp/rolltui_input_paths_XXXXXX";
+  const char* made = mkdtemp(tmpl);
+  check(made != nullptr, "a scratch directory");
+  if (!made) return;
+  const std::string dir = made;
+  struct RemoveAtEnd {
+    std::string dir;
+    ~RemoveAtEnd() {
+      for (int i = 0; i < 24; ++i) ::unlink((dir + "/many/n" + std::to_string(100 + i)).c_str());
+      ::rmdir((dir + "/many").c_str());
+      for (const char* n : {"/alpha_one", "/alpha_two"}) ::rmdir((dir + n).c_str());
+      for (const char* n : {"/beta.txt", "/.hidden"}) ::unlink((dir + n).c_str());
+      ::rmdir(dir.c_str());
+    }
+  } remove_at_end{dir};
+  ::mkdir((dir + "/alpha_one").c_str(), 0700);
+  ::mkdir((dir + "/alpha_two").c_str(), 0700);
+  for (const char* n : {"/beta.txt", "/.hidden"}) std::fclose(std::fopen((dir + n).c_str(), "w"));
+  struct Ctx { std::string base; } rel{dir};
+  InputPtr in = fresh(80, 1);
+  // The whole line is one path, as dirktui's path line is.
+  rolltui_input_set_completer(in.get(), [](void*, const char* t, std::size_t, std::size_t caret, RolltuiCompletions* out) {
+    rolltui_completions_replace(out, 0, caret);
+    rolltui_complete_path(out, t, caret, nullptr, 0);
+  }, nullptr);
+  set_text(in.get(), dir + "/al");
+  check(candidates_of(in.get()) == std::vector<std::string>{dir + "/alpha_one/", dir + "/alpha_two/"},
+        "a folder's names matching the last part, in name order, each folder with a slash");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == dir + "/alpha_", "Tab takes what they agree on");
+  set_text(in.get(), dir + "/b");
+  handle(in.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(in.get()) == dir + "/beta.txt", "a file is taken whole, with no slash");
+  set_text(in.get(), dir + "/");
+  const auto all = candidates_of(in.get());
+  check(all.size() == 3 && suggestion_of(in.get()).empty(), "a hidden name is left out, and a bare folder suggests nothing");
+  set_text(in.get(), dir + "/.h");
+  check(candidates_of(in.get()) == std::vector<std::string>{dir + "/.hidden"}, "…unless the word starts with a dot");
+  // A RELATIVE PATH from the folder the host names.
+  InputPtr r = fresh(80, 1);
+  rolltui_input_set_completer(r.get(), [](void* c, const char* t, std::size_t, std::size_t caret, RolltuiCompletions* out) {
+    const std::string& base = static_cast<Ctx*>(c)->base;
+    std::size_t b = caret;
+    while (b > 0 && t[b - 1] != ' ') --b;
+    rolltui_complete_path(out, t + b, caret - b, base.data(), base.size());
+  }, &rel);
+  set_text(r.get(), "cd alpha_t");
+  handle(r.get(), key(ROLLTUI_KEY_TAB));
+  check(text_of(r.get()) == "cd alpha_two/", "a relative path completes from the host's folder, replacing only the last word");
+  // NAMES IN ORDER where they match as well: made backwards, the folder's own order is not the answer.
+  ::mkdir((dir + "/many").c_str(), 0700);
+  for (int i = 23; i >= 0; --i) std::fclose(std::fopen((dir + "/many/n" + std::to_string(100 + i)).c_str(), "w"));
+  set_text(in.get(), dir + "/many/n");
+  const auto many = candidates_of(in.get());
+  bool sorted = many.size() == 24;
+  for (std::size_t i = 0; sorted && i < many.size(); ++i) sorted = many[i] == dir + "/many/n" + std::to_string(100 + i);
+  check(sorted, "candidates that match as well are in name order [" + std::to_string(many.size()) + (many.empty() ? "" : ", " + many[0]) + "]");
+}
+
+// TAB IN A SCREEN: a completing field keeps Tab for itself; a field without one lets it move the focus, as before.
+void test_completion_in_a_window() {
+  static const std::vector<const char*> kWords = {"help", "hello"};
+  RolltuiContext* c = rolltui_context_new();
+  rolltui_context_set_library_defaults(c);
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "c", "focus": "field", "root": { "column": [
+    { "id": "field", "content": "input:q", "size": 3, "border": "rounded", "focusable": true },
+    { "id": "other", "content": "input:r", "border": "rounded", "focusable": true } ] } })";
+  RolltuiLayoutReport rep{};
+  std::size_t nd = 0;
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(c, &nd);
+  RolltuiLayout* l = rolltui_load_layout_text(screen.data(), screen.size(), defaults, nd, rolltui_layout_default_hooks(), &rep);
+  rolltui_layout_report_release(&rep);
+  RolltuiWindows* w = rolltui_windows_new(c);
+  RolltuiWindowStack* st = rolltui_window_stack_new();
+  rolltui_window_stack_set_base(st, rolltui_layout_base(l));
+  rolltui_window_stack_set_level_fn(st, rolltui_windows_back, w);
+  for (const char* src : {"q", "r"}) rolltui_windows_bind_submit(w, src, 1, [](void*, const char*, std::size_t) {}, nullptr, nullptr, 1);
+  const RolltuiRect area{0, 0, 40, 12};
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  auto frame = [&]() {
+    rolltui_windows_sync(w, st);
+    rolltui_windows_layout(w, st, area);
+    RolltuiFrame* f = rolltui_frame_new(40, 12, styles[0]);
+    RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
+    struct Slot { RolltuiWindows* w; RolltuiStyle* styles; } slot{w, styles};
+    rolltui_window_stack_compose(
+        st, f, area, styles, rolltui_layout_default_roles(),
+        [](void* cx, const RolltuiResolvedNode* rn, RolltuiFrame* fr) {
+          Slot* sl = static_cast<Slot*>(cx);
+          rolltui_windows_draw(sl->w, rn, fr, sl->styles, rolltui_windows_default_roles());
+        },
+        &slot, 0, cs);
+    rolltui_windows_draw_toasts(w, f, area, styles, 0);
+    RolltuiStr text{};
+    rolltui_frame_to_text(f, &text);
+    const std::string all = str_of(text);
+    rolltui_str_free(&text);
+    rolltui_compose_scratch_free(cs);
+    rolltui_frame_free(f);
+    return all;
+  };
+  auto send = [&](const RolltuiEvent& e) {
+    RolltuiStr window{};
+    const unsigned char kind =
+        rolltui_window_stack_route(st, &e, area, rolltui_bindings_default(c), rolltui_stack_default_actions(), &window);
+    if (kind == ROLLTUI_ROUTE_DELIVER) rolltui_windows_handle(w, window.p ? window.p : "", window.n, &e);
+    rolltui_str_free(&window);
+    frame();
+    return kind;
+  };
+  auto focused = [&]() {
+    const RolltuiLayoutNode* n = rolltui_window_stack_focused(st);
+    return n ? std::string(n->id.p, n->id.n) : std::string();
+  };
+  frame();
+  RolltuiInput* in = rolltui_windows_input(w, "q", 1);
+  rolltui_input_set_text(in, "he", 2);
+  frame();
+  check(send(key(ROLLTUI_KEY_TAB)) == ROLLTUI_ROUTE_FOCUS_MOVED && focused() == "other", "CONTROL: without a completer, Tab moves the focus");
+  send(key(ROLLTUI_KEY_TAB, /*shift=*/true));
+  rolltui_input_set_completer(in, complete_words, const_cast<std::vector<const char*>*>(&kWords));
+  frame();
+  check(send(key(ROLLTUI_KEY_TAB)) == ROLLTUI_ROUTE_DELIVER && focused() == "field" && text_of(in) == "hel",
+        "with one, Tab is the field's: the word completes and the focus stays [" + focused() + ", " + std::string(text_of(in)) + "]");
+  send(key(ROLLTUI_KEY_TAB));
+  const std::string open = frame();
+  check(text_of(in) == "help" && open.find("1 of 2") != std::string::npos && open.find("hello") != std::string::npos,
+        "the list opens, drawn over the screen by the windows' overlay pass");
+  const unsigned char esc = send(key(ROLLTUI_KEY_ESCAPE));
+  check(esc == ROLLTUI_ROUTE_DELIVER && text_of(in) == "hel" && frame().find("1 of 2") == std::string::npos && focused() == "field",
+        "Escape is the open list's: it closes and the word comes back [" + std::to_string(esc) + ", " + std::string(text_of(in)) + "]");
+  check(send(key(ROLLTUI_KEY_TAB, /*shift=*/true)) == ROLLTUI_ROUTE_DELIVER && focused() == "field",
+        "Shift-Tab is the field's too");
+  rolltui_input_set_text(in, "zzz", 3);
+  frame();
+  check(send(key(ROLLTUI_KEY_TAB)) == ROLLTUI_ROUTE_FOCUS_MOVED && focused() == "other" && text_of(in) == "zzz",
+        "a word with nothing to complete leaves Tab to move the focus");
+  rolltui_windows_free(w);
+  rolltui_window_stack_free(st);
+  rolltui_layout_free(l);
+  rolltui_context_free(c);
+}
+
 int main() {
   test_typing_and_grapheme_boundaries();
   test_vim_modes();
   test_vim_modes_in_a_window();
+  test_completion();
+  test_completion_in_every_theme();
+  test_path_completion();
+  test_completion_in_a_window();
   test_control_characters_never_enter();
   test_word_motions();
   test_logical_line_keys();

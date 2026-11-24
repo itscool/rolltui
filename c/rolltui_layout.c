@@ -3621,7 +3621,8 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       {
         const int next = alen == strlen(actions->focus_next) && memcmp(action, actions->focus_next, alen) == 0;
         const int prev = alen == strlen(actions->focus_prev) && memcmp(action, actions->focus_prev, alen) == 0;
-        if (next || prev) {
+        const RolltuiLayoutNode* held = rolltui_window_stack_focused(s);
+        if ((next || prev) && !(held && (held->takes_cycle & (next ? 1 : 2)))) { /* a window that takes the key keeps it */
           if (focusables(s, rolltui_window_stack_focus_layer(s), NULL, 0) > 1) {
             const RolltuiLayoutNode* f;
             rolltui_window_stack_cycle_focus(s, prev);
