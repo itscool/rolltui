@@ -534,6 +534,7 @@ add_rolltui_test(rolltui-dialog-test tests/dialog_test.cpp)
 add_rolltui_test(rolltui-viewer-test tests/viewer_test.cpp)
 add_rolltui_test(rolltui-diagnostics-test tests/diagnostics_test.cpp)
 add_rolltui_test(rolltui-headless-test tests/headless_test.cpp)
+add_rolltui_test(rolltui-guide-test tests/guide_test.cpp)
 # THE WEB PAGE'S TOUCH (tools/web/rolltui_web.js), run by JavaScriptCore's shell where the machine has it (macOS).
 find_program(ROLLTUI_JSC NAMES jsc PATHS /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers NO_DEFAULT_PATH)
 if(ROLLTUI_JSC)
@@ -663,6 +664,20 @@ target_link_libraries(rolltui-paint-selftest PRIVATE rolltui)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE ${ROLLTUI_WARNINGS})
 target_compile_options(rolltui-paint PRIVATE ${ROLLTUI_WARNINGS})
+
+# THE FIRST PROGRAM — the guide quotes it whole, and its test runs it with no terminal, from C.
+add_executable(rolltui-hello examples/hello.c)
+target_link_libraries(rolltui-hello PRIVATE rolltui)
+target_compile_options(rolltui-hello PRIVATE ${ROLLTUI_WARNINGS})
+if(NOT WIN32)
+  add_executable(rolltui-hello-test ${ROLLTUI_TEST_EXCLUDE} tests/hello_test.c)
+  set_source_files_properties(tests/hello_test.c PROPERTIES LANGUAGE C)
+  target_link_libraries(rolltui-hello-test PRIVATE rolltui testkit)
+  target_compile_options(rolltui-hello-test PRIVATE ${ROLLTUI_WARNINGS})
+  if(ROLLTUI_BUILD_TESTS)
+    add_test(NAME rolltui-hello-test COMMAND rolltui-hello-test)
+  endif()
+endif()
 
 # THE TOUR — the library in one screen: a table, a dashboard, a page of Markdown, every shipped theme and the vim keys, each
 # window one of the library's own kinds. The same file is the web demo (tools/web/build.sh), which the page steps.

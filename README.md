@@ -43,24 +43,25 @@ browser above: `brew install itscool/tap/dirktui`.
 
 rolltui is written to be read by an agent and to let it check its own work. Point it at:
 
-1. [`rolltui.h`](rolltui.h): the whole API, each function's contract beside it.
-2. [`docs/guide.md`](docs/guide.md): how the parts fit, and what the library does so a program
-   does not have to.
-3. [`examples/tour.c`](examples/tour.c): a whole program in 690 lines of C.
+1. [`docs/guide.md`](docs/guide.md): how the parts fit, a first program and its test, the file
+   formats a screen is made of, and what the library does so a program does not have to.
+2. [`rolltui.h`](rolltui.h): the whole API, each function's contract beside it.
+3. [`examples/hello.c`](examples/hello.c), a first program in 144 lines, and
+   [`examples/tour.c`](examples/tour.c), the browser demo's 690.
 4. [`docs/design.md`](docs/design.md): the rules a screen is held to, each with a test.
 
 Then have it prove the program works. A headless run in its own test drives it and reads the
-screen. `ROLLTUI_LOG=run.log ROLLTUI_LOG_LEVEL=debug` writes what the terminal answered and each
+screen, as [`tests/hello_test.c`](tests/hello_test.c) does for the first program. `ROLLTUI_LOG=run.log ROLLTUI_LOG_LEVEL=debug` writes what the terminal answered and each
 frame's time. `ROLLTUI_TIMING=1` puts each window's draw time in its border, and `ROLLTUI_RECORD`
 records a run you can watch.
 
 A prompt to start from:
 
 > Build *the program* with rolltui (https://github.com/itscool/rolltui), added with
-> `add_subdirectory`. Read `rolltui.h`, `docs/guide.md` and `examples/tour.c` first. Put the screen
-> in a layout file rather than drawing code. Write an end-to-end test with
-> `rolltui_run_begin_headless` that drives it with keys and checks the screen text, and record a
-> demo with `ROLLTUI_RECORD=demo.cast`.
+> `add_subdirectory`. Read `docs/guide.md` from the start, then `rolltui.h` and `examples/tour.c`.
+> Put the screen in a layout file rather than drawing code. Write an end-to-end test with
+> `rolltui_run_begin_headless` that drives it with keys and checks the screen text, as
+> `tests/hello_test.c` does, and record a demo with `ROLLTUI_RECORD=demo.cast`.
 
 ## How it compares (November 2026)
 
@@ -152,6 +153,7 @@ ctest --test-dir build
 
 ```sh
 ./build/dirktui ~/src            # the directory browser
+./build/rolltui-hello            # the first program in the guide
 ./build/rolltui-tour             # the tour the browser demo runs
 ./build/rolltui-studio           # author themes, layouts, key bindings and menus
 ./build/rolltui-chat             # the chat screen with a pretend assistant
@@ -180,10 +182,12 @@ runs it on xterm.js; `.github/workflows/demo.yml` publishes it to the demo link 
 
 ## Documentation
 
-[docs/guide.md](docs/guide.md): the run loop, terminal detection, layouts at run time, keys and
-sequences, the editor, lists, tables and trees, charts, dialogs, diagnostics, work off the UI
-thread, other programs, pictures, previews, Markdown and Mermaid, syntax highlighting, ownership,
-and embedding.
+[docs/guide.md](docs/guide.md), in six parts: getting started (how the parts fit, a first program
+and its test, embedding); screens (layout files and the layout at run time, themes); keys
+(bindings files, sequences, the keys sheet); widgets (lists, tables and trees, the editor, menus,
+charts, dialogs, pictures, previews, Markdown, Mermaid and syntax highlighting); running (the run
+loop, inline mode, the web, work off the UI thread, other programs, diagnostics); and the terminal.
+A test holds it to the code: every name it uses exists, and a file it quotes is that file.
 
 [docs/design.md](docs/design.md): the rules every screen the library ships follows, each with a
 test a screen can be held to.
