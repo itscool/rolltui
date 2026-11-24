@@ -98,6 +98,7 @@ struct RolltuiPicker {
   RolltuiMap marked; /* full path -> non-NULL: the entries marked (`marks`) */
   RolltuiPickerDecorFn decor_fn;
   void* decor_ctx;
+  const RolltuiFileColors* file_colors; /* BORROWED: the names coloured by their type and name (`rolltui_file_colors_match`) */
   int aw;   /* ambiguous-width glyphs two cells wide, as the last draw was told: the preview's sideways reach is measured with it */
   int lazy; /* the person's keys moved the cursor: a folder beside it is read on the workers (a host's call reads at once) */
   /* A COMMAND AS THE PREVIEWER: its own arguments (OWNED), the run for the file previewed (OWNED), and whether one is due to start
@@ -1097,6 +1098,10 @@ void rolltui_picker_set_decor(RolltuiPicker* p, RolltuiPickerDecorFn fn, void* c
   p->decor_ctx = ctx;
 }
 
+void rolltui_picker_set_file_colors(RolltuiPicker* p, const RolltuiFileColors* fc) {
+  if (p) p->file_colors = fc;
+}
+
 size_t rolltui_picker_marked(const RolltuiPicker* p, RolltuiStrListRaw* out) {
   size_t i;
   if (!p) return 0;
@@ -1658,6 +1663,9 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
                     : is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
       if (is_sel && is_focus_col && show_highlight && !is_hover && shape != ROLLTUI_CURSOR_FILL)
         rolltui_cursor_text_style(&here, d.ground, shape, &st);
+      /* THE NAME IN ITS FILE COLOUR, where a row is drawn in its own style: not the cursor's, the trail's or the hover's */
+      if (p->file_colors && !is_hover && !(show_highlight && is_sel && (is_focus_col || is_trail)))
+        rolltui_file_colors_match(p->file_colors, e->name.p ? e->name.p : "", e->name.n, e->mode, e->unreadable ? 2 : 0, &st);
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
       { /* AN ENTRY'S OWN MARKS: the host's decor, and whether it is marked */

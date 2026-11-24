@@ -675,6 +675,15 @@ ROLLTUI_API(rolltui_windows_set_picker_previewer, PUBLIC)  /* KEPT: a host's own
 ROLLTUI_API(rolltui_windows_set_picker_preview_command, PUBLIC)  /* KEPT: a command as the column browser's previewer, started where the cursor rests and stopped when it moves */
 ROLLTUI_API(rolltui_windows_picker_marked, PUBLIC)  /* KEPT: the paths marked in the column browser, for a host to copy, move or open together */
 ROLLTUI_API(rolltui_windows_set_picker_decor, PUBLIC)  /* KEPT: a host's own marks on the column browser's entries (a git status, a copied or cut tag) */
+ROLLTUI_API(rolltui_windows_set_picker_file_colors, PUBLIC)  /* dirktui's Look setting colours its names by LS_COLORS */
+ROLLTUI_API(rolltui_picker_set_file_colors, INTERNAL)  /* the window table hands the browser its file colours */
+ROLLTUI_API(rolltui_file_colors_new, PUBLIC)  /* dirktui makes one when its Look setting asks */
+ROLLTUI_API(rolltui_file_colors_free, PUBLIC)  /* …and frees it */
+ROLLTUI_API(rolltui_file_colors_add_env, PUBLIC)  /* …filled from the environment, as `ls` reads it */
+ROLLTUI_API(rolltui_file_colors_add_gnu, PUBLIC)  /* KEPT: a host with LS_COLORS of its own, from its settings rather than the environment */
+ROLLTUI_API(rolltui_file_colors_add_bsd, PUBLIC)  /* KEPT: …and LSCOLORS */
+ROLLTUI_API(rolltui_file_colors_add_rule, PUBLIC)  /* KEPT: a host's own glob and regular-expression rules, ahead of LS_COLORS */
+ROLLTUI_API(rolltui_file_colors_match, PUBLIC)  /* KEPT: a host's own list of files coloured as the browser colours them */
 ROLLTUI_API(rolltui_picker_options_init, PUBLIC)  /* KEPT: the defaults, so a host sets only what it means to */
 ROLLTUI_API(rolltui_windows_picker_selected, PUBLIC)  /* what is under the cursor: a status line, a copy */
 ROLLTUI_API(rolltui_windows_picker_dir, PUBLIC)  /* where the cursor is: what a save dialog joins a name onto */

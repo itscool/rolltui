@@ -4666,6 +4666,33 @@ typedef struct RolltuiPickerDecor {
 typedef void (*RolltuiPickerDecorFn)(void* ctx, const char* path, size_t len, int is_dir, RolltuiPickerDecor* out);
 void rolltui_windows_set_picker_decor(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerDecorFn fn, void* ctx);
 
+/* FILE COLOURS: a style for a file by its name and type, as `ls` and the file managers colour them. Rules of your own come first, in
+ * the order added, the first match winning; then LS_COLORS's: a plain file by the last `*suffix` entry its name ends with (case
+ * aside), else by its type (`di`, `ex`, `pi`, `so`, `bd`, `cd`, `su`, `sg`, `tw`, `ow`, `st`, `or` for a broken link, `fi`, `no`).
+ * OWNED. */
+typedef struct RolltuiFileColors RolltuiFileColors;
+RolltuiFileColors* rolltui_file_colors_new(void);
+void rolltui_file_colors_free(RolltuiFileColors* fc); /* a no-op on NULL */
+/* GNU's LS_COLORS (`di=01;34:*.tar=01;31:…`), BSD's LSCOLORS (`exfxcxdxbxegedabagacad`), or whichever the environment has (LS_COLORS
+ * first). Each returns how many entries it took. */
+size_t rolltui_file_colors_add_gnu(RolltuiFileColors* fc, const char* text, size_t len);
+size_t rolltui_file_colors_add_bsd(RolltuiFileColors* fc, const char* text, size_t len);
+size_t rolltui_file_colors_add_env(RolltuiFileColors* fc);
+/* A RULE OF YOUR OWN: `pattern` a glob over the whole name (`*`, `?`, `[a-z]`, `[!x]`, case aside) or, after `re:`, a regular expression
+ * found anywhere in it; for one type of file or any. 0 when a regular expression does not compile. */
+#define ROLLTUI_FILE_ANY 0
+#define ROLLTUI_FILE_REGULAR 1 /* a plain file, not executable */
+#define ROLLTUI_FILE_DIR 2
+#define ROLLTUI_FILE_LINK 3
+#define ROLLTUI_FILE_EXEC 4
+int rolltui_file_colors_add_rule(RolltuiFileColors* fc, const char* pattern, size_t len, unsigned char type, RolltuiStyle style);
+/* THE STYLE FOR A FILE patched onto `*out` (its colours where the rule has them, its attributes added): `mode` its POSIX type and
+ * permission bits, `link` 1 for a link and 2 for a broken one. 1 when a rule or an entry matched, `*out` untouched otherwise. */
+int rolltui_file_colors_match(const RolltuiFileColors* fc, const char* name, size_t len, unsigned int mode, int link, RolltuiStyle* out);
+/* The column browser in `content` colours its names by `fc` (BORROWED; NULL: by the theme alone). The cursor's row, the trail and
+ * the hover keep their own. A link is coloured by what it points at, which is what the browser lists. */
+void rolltui_windows_set_picker_file_colors(RolltuiWindows* w, const char* content, size_t len, const RolltuiFileColors* fc);
+
 /* THE PICKER'S SETTINGS, a host's to set: dotfiles shown, the sort (`ROLLTUI_SORT_*`), motion (the column slide only; off snaps),
  * highlight (a background block on the cursor's row and the trail's, independent of motion; a host that also turns its own glow effect
  * off should leave one of the two on or the cursor stops being visible), the dividers, and whether Enter on a folder TAKES it (a

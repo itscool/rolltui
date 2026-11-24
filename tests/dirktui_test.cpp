@@ -907,6 +907,28 @@ int main() {
     check(has(again, "[ ] Colour source code in the preview"), "…and the box reads back unchecked on the next run");
   }
 
+  // ---- FILE NAMES IN LS_COLORS'S COLOURS: a Look setting, off by default, reading the environment's variable ----
+  {
+    int lrc = 0;
+    const fs::path on_cfg = scratch / "ls-on-cfg", def_cfg = scratch / "ls-def-cfg";
+    write_file(on_cfg / "rolltui" / "dirktui" / "settings.json", "{ \"motion\": false, \"ls_colors\": true }");
+    write_file(def_cfg / "rolltui" / "dirktui" / "settings.json", "{ \"motion\": false }");
+    auto with = [&](const fs::path& cfg) {
+      return "LS_COLORS='*.bin=01;31' ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
+    };
+    const std::string keys = " --keys \"Down Right\"";  // into beta, beside data.bin
+    const std::string on = run(with(on_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", lrc);
+    const std::string def = run(with(def_cfg) + " --frame-sgr 110x16" + keys + " 2>/dev/null", lrc);
+    check(has(on, "\x1b[1;31mdata.bin"), "with `ls_colors` on, a name is drawn in the colour LS_COLORS gives it: data.bin bold red");
+    check(has(def, "data.bin") && !has(def, "\x1b[1;31mdata.bin"), "…and by default in the theme's");
+    const std::string boxes = run(with(def_cfg) + " --frame 80x40 --keys \"F2\" 2>/dev/null", lrc);
+    check(has(boxes, "[ ] File names in the colours LS_COLORS gives them"), "the setting is in Look, unchecked when the file says nothing");
+    run(with(def_cfg) + " --frame 80x40 --keys \"F2 " + keys_down("ls_colors") + " Enter\" >/dev/null 2>&1", lrc);
+    bool got = false;
+    const std::string saved = read_file((def_cfg / "rolltui" / "dirktui" / "settings.json").string(), got);
+    check(got && has(saved, "\"ls_colors\": true"), "toggling it writes the settings file [" + saved.substr(0, 120) + "]");
+  }
+
   // ---- `dirktui languages`: how a person finds out that a language file of their own did not load ----
   {
     const fs::path cfg = scratch / "lang-cfg";

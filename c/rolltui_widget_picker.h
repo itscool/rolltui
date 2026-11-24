@@ -63,6 +63,7 @@ void rolltui_picker_set_tasks(RolltuiPicker* p, RolltuiTasks* tasks);
 void rolltui_picker_set_previewer(RolltuiPicker* p, RolltuiPreviewerFn fn, void* ctx);
 void rolltui_picker_set_preview_command(RolltuiPicker* p, const char* const* argv);
 void rolltui_picker_set_decor(RolltuiPicker* p, RolltuiPickerDecorFn fn, void* ctx);
+void rolltui_picker_set_file_colors(RolltuiPicker* p, const RolltuiFileColors* fc);
 size_t rolltui_picker_marked(const RolltuiPicker* p, RolltuiStrListRaw* out);
 void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner);
 /* THE POINTER, for the next draw (`RolltuiResolvedNode::hover`): the entry a click there would select is drawn in the `hover` role,

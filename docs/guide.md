@@ -1645,6 +1645,27 @@ each entry drawn and fills in a `RolltuiPickerDecor`: `gutter`, a character befo
 copied or cut tag); `cell`, a few characters right of the name (for a git status); and `role`, the
 role for the name. Your `gutter` character replaces the mark's.
 
+### File colours
+
+`rolltui_windows_set_picker_file_colors` colours the names by a `RolltuiFileColors`, the way `ls`
+and most file managers do. The cursor's row, the trail and the hover keep their own styles. Make
+one with `rolltui_file_colors_new` and fill it with any of these:
+
+- `rolltui_file_colors_add_env` reads `LS_COLORS`, or `LSCOLORS` if that isn't set.
+- `rolltui_file_colors_add_gnu` takes GNU's format, such as `di=01;34:*.tar=01;31`.
+- `rolltui_file_colors_add_bsd` takes BSD's, such as `exfxcxdxbxegedabagacad`.
+- `rolltui_file_colors_add_rule(fc, pattern, len, type, style)` adds a rule of your own. The
+  pattern is a glob over the whole name (`*`, `?`, `[a-z]`, `[!x]`, ignoring case), or a regular
+  expression after `re:`. The type is `ROLLTUI_FILE_ANY`, `_REGULAR`, `_DIR`, `_LINK` or `_EXEC`.
+
+Your rules are checked first, in the order you added them, and the first match wins. After them,
+the `LS_COLORS` rules apply as `ls` applies them. A plain file takes the last `*suffix` entry its
+name ends with, ignoring case. An executable is `ex` whatever its suffix, a folder is `di` (or
+`tw`, `ow` or `st` by its permissions), and a broken link is `or`, or `ln` when there's no `or`.
+The browser lists what a link points at, so a working link is coloured as its target.
+`rolltui_file_colors_match` gives the style for a name, its mode and whether it's a link, for a
+list of files your program draws itself. dirktui has this as a Look setting, off by default.
+
 ### Events
 
 `rolltui_windows_picker_event` returns what the user did: chose an entry, cancelled or copied. With

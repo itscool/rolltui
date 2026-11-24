@@ -688,6 +688,7 @@ struct Options {
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
   bool preview = false;  // a file's contents in the right half: off until a person asks (it reads the file under the cursor)
   bool syntax = true;    // source in the preview drawn in colour, when it is in a language the library knows; off draws every file plain
+  bool ls_colors = false; // names in the colours LS_COLORS (or LSCOLORS) gives them, as `ls` draws them; off, the theme's alone
   bool info = true;      // what the cursor is on — its mode and time, a file's size beside its name — said at the head of the pane right of it
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
@@ -1078,6 +1079,7 @@ struct App {
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_window_stack_free(stack);
     rolltui_windows_free(windows);
+    rolltui_file_colors_free(file_colors);  // after the windows: the browser borrowed it
     rolltui_bindings_free(bindings);
     rolltui_draw_scratch_free(draw_scratch);
     rolltui_effect_scratch_free(effect_scratch);
@@ -1165,7 +1167,15 @@ struct App {
     o.show_modified = show_code(opt.show_modified);
     o.take_folders = 1;  // a directory picker: Enter on a folder CHOOSES it, and Right enters it
     rolltui_windows_set_picker_options(windows, kPicker, 10, &o);
+    // THE ENVIRONMENT'S FILE COLOURS, read once the first time they are wanted: what `ls` in this shell would show
+    if (opt.ls_colors && !file_colors) {
+      file_colors = rolltui_file_colors_new();
+      file_colors_taken = rolltui_file_colors_add_env(file_colors);
+    }
+    rolltui_windows_set_picker_file_colors(windows, kPicker, 10, opt.ls_colors ? file_colors : nullptr);
   }
+  RolltuiFileColors* file_colors = nullptr;
+  std::size_t file_colors_taken = 0; /* the entries the environment gave it: none means neither variable is set */
 
   static constexpr const char* kHelpScopes[] = {"app", "picker", "input", "menu", "stack"};
 
@@ -1221,6 +1231,7 @@ struct App {
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = StrView(pv, pn) == "right"; }
         opt.syntax = rolltui_json_as_bool(rolltui_json_get(root, "syntax", 6), 1) != 0;
+        opt.ls_colors = rolltui_json_as_bool(rolltui_json_get(root, "ls_colors", 9), 0) != 0;
         opt.info = rolltui_json_as_bool(rolltui_json_get(root, "info", 4), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
@@ -1256,10 +1267,10 @@ struct App {
     auto tf = [](bool b) { return b ? "true" : "false"; };
     RolltuiStr out;
     rolltui::appendf(out,
-                     "{ \"motion\": %s, \"sparkle\": %s, \"highlight\": %s, \"dividers\": %s, \"preview\": \"%s\", \"syntax\": %s, \"info\": %s, "
+                     "{ \"motion\": %s, \"sparkle\": %s, \"highlight\": %s, \"dividers\": %s, \"preview\": \"%s\", \"syntax\": %s, \"ls_colors\": %s, \"info\": %s, "
                      "\"show_size\": \"%s\", \"show_modified\": \"%s\", \"hidden\": %s, \"sort\": \"%s\", \"reversed\": %s, \"leave\": %s, "
                      "\"exec\": \"%s\", \"land\": \"%s\", \"paths\": \"%s\", \"open\": {",
-                     tf(opt.motion), tf(opt.sparkle), tf(opt.highlight), tf(opt.dividers), opt.preview ? "right" : "off", tf(opt.syntax), tf(opt.info),
+                     tf(opt.motion), tf(opt.sparkle), tf(opt.highlight), tf(opt.dividers), opt.preview ? "right" : "off", tf(opt.syntax), tf(opt.ls_colors), tf(opt.info),
                      show_name(opt.show_size), show_name(opt.show_modified), tf(opt.hidden), sort_name(opt.sort), tf(opt.reversed), tf(opt.leave),
                      exec_name(opt.exec), opt.land_in_file_folder ? "file" : "start", opt.copy_relative ? "relative" : "absolute");
     // In the order of the group ids, as a sorted map would write them, so a settings file reads the same whoever wrote it.
@@ -1438,6 +1449,7 @@ struct App {
     rolltui_menu_set_checked(m, "highlight", 9, opt.highlight ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
     rolltui_menu_set_checked(m, "syntax", 6, opt.syntax ? 1 : 0);
+    rolltui_menu_set_checked(m, "ls_colors", 9, opt.ls_colors ? 1 : 0);
     rolltui_menu_set_checked(m, "info", 4, opt.info ? 1 : 0);
     { const char* v = opt.preview ? "right" : "off"; rolltui_menu_set_value(m, "preview", 7, v, std::strlen(v)); }
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
@@ -2305,6 +2317,13 @@ struct App {
         opt.info = ev.checked != 0;
         apply_picker_options();
         hint = opt.info ? "file info on: the mode and time of what the cursor is on, and a file's size" : "file info off";
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "ls_colors") {
+        opt.ls_colors = ev.checked != 0;
+        apply_picker_options();
+        hint = !opt.ls_colors       ? "file names in the theme's colours"
+               : file_colors_taken ? "file names in the colours LS_COLORS gives them"
+                                   : "neither LS_COLORS nor LSCOLORS is set here: the names keep the theme's colours";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "syntax") {
         opt.syntax = ev.checked != 0;

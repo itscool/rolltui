@@ -2247,6 +2247,10 @@ void rolltui_windows_set_picker_decor(RolltuiWindows* w, const char* content, si
   RolltuiPicker* p = picker_for(w, content, len);
   if (p) rolltui_picker_set_decor(p, fn, ctx);
 }
+void rolltui_windows_set_picker_file_colors(RolltuiWindows* w, const char* content, size_t len, const RolltuiFileColors* fc) {
+  RolltuiPicker* p = picker_for(w, content, len);
+  if (p) rolltui_picker_set_file_colors(p, fc);
+}
 void rolltui_windows_set_picker_preview_command(RolltuiWindows* w, const char* content, size_t len, const char* const* argv) {
   RolltuiPicker* p = picker_for(w, content, len);
   if (p) rolltui_picker_set_preview_command(p, argv);

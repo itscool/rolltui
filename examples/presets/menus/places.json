@@ -28,6 +28,7 @@
     { "id": "highlight", "label": "Highlight: a background block on the cursor and trail (default on)", "kind": "toggle" },
     { "id": "dividers", "label": "A line between the columns (default on)", "kind": "toggle" },
     { "id": "syntax", "label": "Colour source code in the preview (default on)", "kind": "toggle" },
+    { "id": "ls_colors", "label": "File names in the colours LS_COLORS gives them (default off)", "kind": "toggle" },
     { "id": "input", "label": "Input", "kind": "section" },
     { "id": "keys", "label": "Key bindings", "kind": "choice", "dropdown": true, "items": [] },
     { "id": "leave", "label": "Enter on a file", "kind": "choice", "dropdown": true,
