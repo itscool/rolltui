@@ -1,5 +1,5 @@
-/* hello_test.c — examples/hello.c run with no terminal, as a program's own end-to-end test runs it: the same app, keys sent to it,
- * the screen read back as text. docs/guide.md quotes it. */
+/* hello_test.c: an end-to-end test of examples/hello.c with no terminal. It runs the same app, sends it keys and checks the
+ * screen as text. docs/guide.md quotes this file. */
 #define _POSIX_C_SOURCE 200809L /* nanosleep */
 #define HELLO_NO_MAIN
 #include "rolltui/examples/hello.c"
@@ -8,7 +8,7 @@
 
 #include "testkit/testkit.h"
 
-/* Whether the screen shows `text` anywhere. */
+/* Whether `text` appears anywhere on the screen. */
 static int shows(RolltuiRun* run, const char* text) {
   RolltuiStr screen;
   int found;
@@ -19,7 +19,7 @@ static int shows(RolltuiRun* run, const char* text) {
   return found;
 }
 
-/* Steps until the screen shows `text`, for at most `ms`: what moves in, as a message slides in, takes a few frames. */
+/* Keep stepping until `text` appears, for at most `ms`. Some things, like a message sliding in, take a few frames. */
 static int shows_within(RolltuiRun* run, const char* text, int ms) {
   const struct timespec frame = {0, 20 * 1000000};
   int waited;
@@ -30,7 +30,7 @@ static int shows_within(RolltuiRun* run, const char* text, int ms) {
   return shows(run, text);
 }
 
-/* A key, as the person would press it, and the frame it leads to. */
+/* Press a key and draw the resulting frame. */
 static int press(RolltuiRun* run, unsigned char key, unsigned int ch) {
   RolltuiEvent e;
   memset(&e, 0, sizeof e);

@@ -51,14 +51,14 @@ a page of text, a notification when you pick a row, and q to quit. Build it with
 
 <!-- quoted whole: examples/hello.c -->
 ```c
-/* examples/hello.c — the smallest whole rolltui program: a screen from a layout file, a list the program fills, a page of text,
- * a message when a row is chosen, and q to quit. docs/guide.md quotes it whole; tests/hello_test.c runs it with no terminal. */
+/* examples/hello.c: a minimal rolltui program. It loads its screen from a layout, fills a list, shows a page of text, posts a
+ * message when you pick a row, and quits on q. docs/guide.md quotes this file, and tests/hello_test.c runs it headless. */
 #include <stdio.h>
 #include <string.h>
 
 #include "rolltui/rolltui.h"
 
-/* THE SCREEN, a layout file. A program usually ships it beside itself and reads it in; it is here to keep this to one file. */
+/* The screen layout. A real program would normally load this from a file; it's inline to keep the example to one file. */
 static const char kLayout[] =
     "{ \"name\": \"hello\", \"focus\": \"fruit\", \"root\": { \"row\": [\n"
     "  { \"id\": \"fruit\", \"content\": \"list:fruit\", \"size\": 24, \"border\": \"rounded\", \"title\": \"fruit\",\n"
@@ -69,18 +69,18 @@ static const char kLayout[] =
 static const char* const kFruit[] = {"apple", "banana", "cherry", "damson", "elderberry"};
 
 typedef struct Hello {
-  RolltuiContext* ctx;        /* the session: its keys, menus, kinds */
-  RolltuiWindows* windows;    /* each window's widget, made from its content */
-  RolltuiWindowStack* stack;  /* the layout's layers, the focus, where a key or a press goes */
+  RolltuiContext* ctx;        /* key bindings, menus and content kinds */
+  RolltuiWindows* windows;    /* a widget for each window, created from its content */
+  RolltuiWindowStack* stack;  /* the layout's layers, focus, and event routing */
   RolltuiLayout* layout;
   RolltuiComposeScratch* compose;
   RolltuiEffectMap* effects;
-  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]; /* the theme: a style for every role */
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]; /* the theme, one style per role */
   int w, h;
   unsigned long long now_ms;
 } Hello;
 
-/* THE LIST'S ROWS, asked for as they are drawn */
+/* The list's rows, requested as they're drawn. */
 static size_t fruit_count(void* ctx) {
   (void)ctx;
   return sizeof kFruit / sizeof *kFruit;
@@ -96,7 +96,7 @@ static void draw_window(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* 
   rolltui_windows_draw(h->windows, rn, f, h->styles, rolltui_windows_default_roles());
 }
 
-/* A FRAME: the windows laid out on the screen and drawn, then the messages over them. Returns how long to wait. */
+/* Draw one frame: lay out and draw the windows, then any messages on top. Returns how long to wait before the next frame. */
 static int render(void* ctx, RolltuiRun* run, RolltuiFrame* f, int w, int h_, unsigned long long now_ms) {
   Hello* h = (Hello*)ctx;
   const RolltuiRect screen = {0, 0, w, h_};
@@ -113,7 +113,7 @@ static void ground(void* ctx, RolltuiRun* run, RolltuiStyle* out) {
   *out = ((Hello*)ctx)->styles[ROLLTUI_ROLE_BACKGROUND];
 }
 
-/* AN EVENT: routed to the window it is for, which takes it first; a q no window took quits. Then what the list says happened. */
+/* Handle one event: route it to its window, quit on a q that no window used, then read the list's events. */
 static void event(void* ctx, RolltuiRun* run, const RolltuiEvent* e) {
   Hello* h = (Hello*)ctx;
   const RolltuiRect screen = {0, 0, h->w, h->h};
@@ -150,7 +150,7 @@ static void hello_init(Hello* h) {
   memset(&rep, 0, sizeof rep);
   h->layout = rolltui_load_layout_text(kLayout, sizeof kLayout - 1, rolltui_layout_shipped_default_actions(h->ctx, &n), n,
                                        rolltui_layout_default_hooks(), &rep);
-  if (rep.error.n) fprintf(stderr, "hello: %s\n", rep.error.p); /* every problem the file has is named in the report */
+  if (rep.error.n) fprintf(stderr, "hello: %s\n", rep.error.p); /* the report lists any problems in the layout */
   rolltui_layout_report_release(&rep);
   rolltui_window_stack_set_base(h->stack, rolltui_layout_base(h->layout));
   rolltui_windows_bind_list(h->windows, "fruit", 5, fruit_count, fruit_row, h, NULL);
@@ -219,8 +219,8 @@ This is the test for the first program:
 
 <!-- quoted whole: tests/hello_test.c -->
 ```c
-/* hello_test.c — examples/hello.c run with no terminal, as a program's own end-to-end test runs it: the same app, keys sent to it,
- * the screen read back as text. docs/guide.md quotes it. */
+/* hello_test.c: an end-to-end test of examples/hello.c with no terminal. It runs the same app, sends it keys and checks the
+ * screen as text. docs/guide.md quotes this file. */
 #define _POSIX_C_SOURCE 200809L /* nanosleep */
 #define HELLO_NO_MAIN
 #include "rolltui/examples/hello.c"
@@ -229,7 +229,7 @@ This is the test for the first program:
 
 #include "testkit/testkit.h"
 
-/* Whether the screen shows `text` anywhere. */
+/* Whether `text` appears anywhere on the screen. */
 static int shows(RolltuiRun* run, const char* text) {
   RolltuiStr screen;
   int found;
@@ -240,7 +240,7 @@ static int shows(RolltuiRun* run, const char* text) {
   return found;
 }
 
-/* Steps until the screen shows `text`, for at most `ms`: what moves in, as a message slides in, takes a few frames. */
+/* Keep stepping until `text` appears, for at most `ms`. Some things, like a message sliding in, take a few frames. */
 static int shows_within(RolltuiRun* run, const char* text, int ms) {
   const struct timespec frame = {0, 20 * 1000000};
   int waited;
@@ -251,7 +251,7 @@ static int shows_within(RolltuiRun* run, const char* text, int ms) {
   return shows(run, text);
 }
 
-/* A key, as the person would press it, and the frame it leads to. */
+/* Press a key and draw the resulting frame. */
 static int press(RolltuiRun* run, unsigned char key, unsigned int ch) {
   RolltuiEvent e;
   memset(&e, 0, sizeof e);
@@ -1718,504 +1718,515 @@ short.
 
 `rolltui_run(in_fd, out_fd, options, app)`:
 
-1. enters the terminal;
-2. draws each frame at the terminal's colour depth;
-3. waits for input and copies each event before passing it to the app;
-4. repaints in full after a resize, after a cached terminal answer proves stale, and when a child
-   program such as an editor returns the terminal;
-5. restores the terminal before returning.
+1. enters the terminal
+2. draws each frame at the terminal's colour depth
+3. waits for input and passes each event to the app (as a copy)
+4. redraws the whole screen after a resize, after a cached answer about the terminal turns out to
+   be wrong, and when a program such as an editor gives the terminal back
+5. restores the terminal before returning
 
-The app is a `RolltuiRunApp`: `render` and `event` are required; `start`, `ground`, `resized`,
+The app is a `RolltuiRunApp`. `render` and `event` are required; `start`, `ground`, `resized`,
 `facts_changed`, `settle` and `focus` are optional. `rolltui_run` returns `ROLLTUI_RUN_STOPPED`,
 `ROLLTUI_RUN_NOT_A_TERMINAL` or `ROLLTUI_RUN_BAD_APP`.
 
-Every terminal entered is asked to report two things as they change:
+The library asks every terminal to report two kinds of change:
 
-- Its window gaining or losing the person's focus (mode 1004). `rolltui_run` calls the app's
-  `focus` with 1 or 0; a loop of its own gets a `ROLLTUI_TERM_EVENT_FOCUS` event with `focused`.
-  While the window has lost focus no window on the screen is focused: every border, cursor and
-  selection draws as away until it comes back.
-- Its background turning light or dark (mode 2031), when the system's appearance changes. The
-  terminal's facts change and the app's `facts_changed` re-resolves the theme, as for a stale
-  cached answer, so a theme in `auto` mode follows.
+- The window gaining or losing focus (mode 1004). `rolltui_run` calls the app's `focus` with 1 or
+  0, and a hand-written loop gets a `ROLLTUI_TERM_EVENT_FOCUS` event with `focused`. While the
+  terminal window is unfocused, no window on screen is drawn as focused, so borders, cursors and
+  selections all show the unfocused look until focus returns.
+- The background switching between light and dark when the system appearance changes (mode 2031).
+  The terminal's facts change and the app's `facts_changed` re-resolves the theme, as it does when a
+  cached answer turns out to be wrong, so themes in `auto` mode follow along.
 
-A terminal that has neither mode ignores the request.
+Terminals that support neither mode ignore the request.
 
-`rolltui_run_suspend_job(run)` does what Ctrl-Z does in a shell: the terminal is left as it was
-found, the job stops, and when the shell continues it (`fg`) the terminal is entered again and the
-screen repainted whole. A stop sent from outside (`kill -TSTP`) does the same with no app code.
-On Windows there is no job control, and it answers 0. dirktui binds it to Ctrl-Z
-(`app.suspend`); where a line has focus, Ctrl-Z is the line's undo.
+`rolltui_run_suspend_job(run)` does what Ctrl-Z does in a shell: it restores the terminal and stops
+the process, and when the shell continues it (`fg`) the terminal is set up again and the screen
+redrawn. A stop sent from outside (`kill -TSTP`) does the same without any app code. Windows has no
+job control, so there it returns 0. dirktui binds it to Ctrl-Z (`app.suspend`); when a text field
+has focus, Ctrl-Z is undo instead.
 
-`rolltui_run_inject(run, event)` hands the app an event it made itself (a key a macro replays),
-copied, at the start of the next wake and before what the terminal sent.
-`rolltui_run_flush_input(run)`, called while handling a key, drops the rest of the wake's events
-and what has been typed and not yet read, so a key held down over a slow action does not run on.
+`rolltui_run_inject(run, event)` gives the app an event the program created itself, such as a key
+replayed by a macro. It's copied and delivered at the start of the next wake, before anything from
+the terminal. `rolltui_run_flush_input(run)`, called while handling a key, drops the rest of the
+wake's events and anything typed but not yet read, so holding a key down over a slow action
+doesn't queue up repeats.
 
 `rolltui_terminal_set_mouse(term, mouse, hover)` turns mouse reporting on or off while the app
-runs; off, the terminal selects text with the pointer itself. It holds across a suspend.
+runs. With it off, the terminal handles text selection itself. The setting survives a suspend.
 
-An app with threads of its own builds its loop from `rolltui_terminal_new`,
+An app with its own threads can build its own loop from `rolltui_terminal_new`,
 `rolltui_terminal_poll`, `rolltui_terminal_present`, `rolltui_terminal_wake` and
 `rolltui_terminal_suspend` / `_resume`. `examples/chat.cpp` does this.
 
 ### A step at a time
 
-A host whose own loop must never block (a web page, a game engine, a toolkit's event loop) runs
-the same loop a step at a time:
+When your program's own loop can't block (a web page, a game engine, a GUI toolkit's event loop),
+run the same loop one step at a time:
 
 ```c
 int result;
 RolltuiRun* run = rolltui_run_begin(in_fd, out_fd, opts, &app, &result);
-/* in the host's loop, when input arrives and when the last step asked: */
+/* in your loop, when input arrives and when the last step asked to be called: */
 int ms = rolltui_run_step(run);
 if (ms == ROLLTUI_RUN_STEP_STOPPED) rolltui_run_finish(run);
 ```
 
-- `rolltui_run_begin` enters the terminal and calls `start`. It returns NULL, with `result` set as
-  `rolltui_run` would return it, for an app or a descriptor it refuses.
-- Each `rolltui_run_step` takes what has arrived without waiting (events, workers' results, due
-  timers, `settle`), then draws and presents one frame. It returns the milliseconds the frame
-  asked to wait, sooner where a timer is due, or -1 for "until input arrives". Step again then,
-  or as soon as input arrives.
-- Once the app stops, every step returns `ROLLTUI_RUN_STEP_STOPPED`. `rolltui_run_finish` leaves
-  the terminal as it was found and frees the run.
-- `rolltui_run_program` and `rolltui_run_suspend_job` wait, so a stepped host does not call them.
+- `rolltui_run_begin` enters the terminal and calls `start`. If it rejects the app or the file
+  descriptors, it returns NULL and sets `result` to what `rolltui_run` would have returned.
+- Each `rolltui_run_step` processes whatever has arrived without waiting (events, results from
+  workers, due timers, `settle`), then draws and presents one frame. It returns how many
+  milliseconds the frame asked to wait (less if a timer is due sooner), or -1 to wait for input.
+  Call it again after that time or as soon as input arrives.
+- Once the app stops, every step returns `ROLLTUI_RUN_STEP_STOPPED`. `rolltui_run_finish` restores
+  the terminal and frees the run.
+- `rolltui_run_program` and `rolltui_run_suspend_job` block, so a stepped program can't use them.
 
 ## Inline mode
 
-An inline program is drawn in the normal screen, below the shell prompt, instead of on the
-alternate screen. Set `RolltuiTerminalOptions.inline_rows` to run inline. `rolltui_run` draws
-frames of that many rows, at most the terminal's height. A host with its own loop draws each
-frame at the height it wants, and the region follows it.
+An inline program draws in the normal screen below the shell prompt, instead of on the alternate
+screen. Set `RolltuiTerminalOptions.inline_rows` to run inline. `rolltui_run` then draws frames of
+that many rows (at most the terminal's height). With your own loop you can draw each frame at any
+height and the region follows.
 
-- The region starts on the cursor's row, or on the next row when the cursor is past column 1.
-  A terminal that does not report the cursor gets the region at the bottom of the screen.
-- A region taller than the space below the cursor scrolls the screen up to make room.
-- `rolltui_terminal_commit(t, lines)` writes a frame's rows above the region as ordinary lines,
-  each trimmed after its last cell. They stay in the terminal's history, where the person
-  scrolls, selects and copies them with the terminal's own means. The region is drawn again
-  below them.
-- Cells in the frame's ground colour are drawn on the terminal's own background. Panels and
-  other cells keep their colours.
-- Mouse rows are counted from the region's top. A press above the region is dropped.
-- After a resize the region is found again. On a terminal that rewraps lines when it narrows
-  (every common one except xterm, st and the Linux console), the rows the rewrap added are
-  counted.
-- Leaving erases the region and leaves the cursor where the region began.
+- The region starts on the cursor's row, or on the next row if the cursor isn't in column 1.
+  Terminals that don't report the cursor position get the region at the bottom of the screen.
+- If the region is taller than the space below the cursor, the screen scrolls up to make room.
+- `rolltui_terminal_commit(t, lines)` writes rows of a frame above the region as ordinary lines,
+  trimmed after their last cell. They become part of the terminal's scrollback, where the user can
+  scroll, select and copy them as usual. The region is redrawn below them.
+- Cells in the frame's ground colour use the terminal's own background. Panels and other cells keep
+  their colours.
+- Mouse rows count from the top of the region, and clicks above the region are ignored.
+- After a resize the region is located again. On terminals that rewrap lines when they get narrower
+  (all the common ones except xterm, st and the Linux console), the extra rows from the rewrap are
+  taken into account.
+- On exit the region is erased and the cursor left where the region started.
 
 A layout with `"inline": true` is drawn inline, and `rolltui_layout_inline` reports it. In the
-studio's layout editor it is the "Drawn inline" toggle under This screen. The shipped `inline`
-layout is the conversation and the prompt.
+studio's layout editor it's the "Drawn inline" toggle under This screen. The built-in `inline`
+layout has the conversation and the prompt.
 
-`rolltui-chat` runs inline when its layout is `inline`: chosen in the menu, with
-`/set layout inline`, or for one run with `CHAT_LAYOUT=inline`. A finished message is drawn
+`rolltui-chat` runs inline when its layout is `inline`, chosen from the menu, with
+`/set layout inline`, or for one run with `CHAT_LAYOUT=inline`. Each finished message is drawn
 with `rolltui_transcript_entry_frame`, committed, and removed from the document with
-`rolltui_document_remove`. Choosing a whole-screen layout shows the conversation from its start
-on the alternate screen. Choosing `inline` again writes only what the terminal does not already
-hold. Leaving commits a reply still arriving, as far as it got.
+`rolltui_document_remove`. Switching to a full-screen layout shows the whole conversation on the
+alternate screen, and switching back to `inline` only writes what the terminal doesn't already
+have. On exit, a reply that is still arriving is committed as far as it got.
 
 ## In a web page
 
-`tools/web/build.sh` builds `rolltui-tour` (`examples/tour.c`) for wasm32-wasi with zig and puts
-it beside a page that runs it on xterm.js:
+`tools/web/build.sh` builds `rolltui-tour` (`examples/tour.c`) for wasm32-wasi with zig and puts it
+next to a page that runs it in xterm.js:
 
 ```sh
 cmake -S . -B build && cmake --build build
 tools/web/build.sh build              # writes build/web
-python3 -m http.server -d build/web   # a page loads a .wasm over HTTP, not from file://
+python3 -m http.server -d build/web   # browsers only load .wasm over HTTP, not from file://
 ```
 
-The library's sources come from the native build's own list (`rolltui_sources.txt`, written by
-CMake), so the page is built from what the native build compiles. In the browser:
+The list of library sources comes from the native build (`rolltui_sources.txt`, written by CMake),
+so the page is compiled from the same files. In the browser:
 
-- Descriptor 1 is the terminal. `tools/web/rolltui_web.js` hands what xterm.js sends to the
-  program with `rolltui_web_input`, and a new size with `rolltui_web_resize`, and steps the
-  loop when input arrives and when the last step asked.
-- The OS layer is `c/rolltui_os_web.c`. A page runs no other programs and has no threads, so a
-  task pool runs each job on the thread that drains it. It has no files: every preset is the
-  library's embedded copy, and nothing a person changes is kept.
-- A page cannot wait for the terminal's answers while the program enters, so the program asks
-  nothing (`no_probe`) and the page answers DA1 for xterm.js before it starts. Colour depth and
-  light or dark come from the environment the page sets: `COLORTERM=truecolor`, and `COLORFGBG`
-  from the browser's colour scheme.
+- File descriptor 1 is the terminal. `tools/web/rolltui_web.js` passes what xterm.js sends to the
+  program with `rolltui_web_input` and size changes with `rolltui_web_resize`, and steps the loop
+  when input arrives and when the last step asked.
+- On a touch screen, a tap is a click and a swipe scrolls like the mouse wheel, one step per cell
+  moved, while the program has asked for mouse input. Pinch zoom still works.
+- The OS layer is `c/rolltui_os_web.c`. A web page can't run other programs and has no threads, so
+  the task pool runs each job on the thread that drains it. There's no file system either: every
+  preset is the library's built-in copy, and nothing the user changes is saved.
+- The page can't wait for the terminal's replies while the program starts, so the program doesn't
+  ask (`no_probe`), and the page answers DA1 for xterm.js before starting it. Colour depth and light
+  or dark mode come from the environment the page sets: `COLORTERM=truecolor`, and `COLORFGBG` from
+  the browser's colour scheme.
 
-A host of its own built this way exports a start and a step and calls `rolltui_run_begin` and
-`rolltui_run_step`, as `examples/tour.c` does under `__wasi__`.
+To build your own program this way, export a start and a step function that call
+`rolltui_run_begin` and `rolltui_run_step`, as `examples/tour.c` does under `__wasi__`.
 
 ## Work off the UI thread
 
-A `RolltuiTasks` is a few worker threads, the jobs they run, and the queue of what comes back.
-A job's `work` runs on a worker; its `done`, and anything posted, runs on the thread that calls
-`rolltui_tasks_drain`, in the order it arrived. A host's state is only ever touched by that one
-thread.
+A `RolltuiTasks` is a small pool of worker threads, the jobs they run, and a queue of results. A
+job's `work` function runs on a worker. Its `done` function, and anything posted, runs on whichever
+thread calls `rolltui_tasks_drain`, in the order it arrived. That way your program's state is only
+ever touched from that one thread.
 
-- `rolltui_tasks_start(t, work, done, ctx)` queues a job and gives its id. `done(ctx, cancelled)`
-  is called exactly once: the place `ctx` is freed.
-- `rolltui_tasks_cancel(t, id)`: a job still queued never runs; a running one finds
-  `rolltui_job_cancelled(job)` true and stops early if it looks. Either way `done` is told
-  `cancelled`, and what it made is dropped. Cancelling an id that has ended does nothing.
-- `rolltui_tasks_post(t, fn, ctx)`, from any thread: `fn(ctx)` runs at the next drain.
-- `rolltui_tasks_call(t, job, fn, ctx)` does the same and waits until `fn` has run, so a job reads
-  what only the UI thread may touch (the selection, a store). It returns 0, and `fn` never runs,
-  when the job is cancelled or the tasks freed first. Called from the draining thread it runs `fn`
-  at once.
-- `rolltui_job_ask(t, job, ask, ctx, &answer)` pauses a job on a question for the person: `ask(ctx,
-  question)` runs on the UI thread and opens a prompt; whatever takes the answer calls
-  `rolltui_tasks_answer(t, question, text, len, yes)`. The job carries on with 1 and the text, 0
-  for a refusal, or -1 when it was cancelled first. An answer to a cancelled job's question returns
-  0, so the host closes its prompt.
-- `rolltui_tasks_running(t, id)`: the job has not ended.
-- A finished job and every post call the `wake` the tasks were made with, so a loop asleep in its
-  input wait drains at once.
-- `rolltui_tasks_busy` counts jobs whose `done` has not run; `rolltui_tasks_wait_idle` drains until
-  it is 0, which is what a test waits on.
-- `rolltui_tasks_free` cancels what is queued, waits for what is running, and calls every
-  outstanding `done` before it returns.
+- `rolltui_tasks_start(t, work, done, ctx)` queues a job and returns its id. `done(ctx, cancelled)`
+  is always called exactly once, which makes it the place to free `ctx`.
+- `rolltui_tasks_cancel(t, id)` cancels a job. A queued job never runs; a running one sees
+  `rolltui_job_cancelled(job)` return true and can stop early if it checks. Either way `done` gets
+  `cancelled` set and the job's results are dropped. Cancelling a job that already ended does
+  nothing.
+- `rolltui_tasks_post(t, fn, ctx)` can be called from any thread, and runs `fn(ctx)` at the next
+  drain.
+- `rolltui_tasks_call(t, job, fn, ctx)` does the same but waits until `fn` has run, so a job can
+  read things only the UI thread may touch (the selection, a store). It returns 0 without running
+  `fn` if the job is cancelled or the pool is freed first. Called from the draining thread, it runs
+  `fn` immediately.
+- `rolltui_job_ask(t, job, ask, ctx, &answer)` pauses a job to ask the user something. `ask(ctx,
+  question)` runs on the UI thread and opens a prompt, and whatever receives the answer calls
+  `rolltui_tasks_answer(t, question, text, len, yes)`. The job then continues with 1 and the text,
+  0 if the user declined, or -1 if it was cancelled in the meantime. Answering a cancelled job's
+  question returns 0, so your program knows to close its prompt.
+- `rolltui_tasks_running(t, id)` tells you whether a job is still going.
+- Each finished job and each post calls the `wake` function the pool was created with, so a loop
+  waiting for input drains straight away.
+- `rolltui_tasks_busy` counts jobs whose `done` hasn't run yet, and `rolltui_tasks_wait_idle`
+  drains until it reaches 0, which is what tests wait on.
+- `rolltui_tasks_free` cancels queued jobs, waits for running ones, and calls every outstanding
+  `done` before returning.
 
-`rolltui_run` makes its own on first use: `rolltui_run_tasks(run)` gives two workers, woken
-through the terminal and drained every wake before `settle`, freed when the run ends.
+`rolltui_run` creates its own pool on first use. `rolltui_run_tasks(run)` returns it: two workers,
+woken through the terminal and drained on every wake before `settle`, and freed when the run ends.
 
-The run also keeps timers. `rolltui_run_after(run, ms, fn, ctx)` fires once and
-`rolltui_run_every` repeatedly, both on the run's thread after a wake's events; the wait a render
-returns is shortened to the next one due. A periodic timer that falls behind is due a period on
-from now, never in a burst. `rolltui_run_cancel_timer` cancels by id.
-`rolltui_run_debounce(run, &slot, ms, fn, ctx)` cancels the timer in `slot` and sets a new one,
+The run also has timers. `rolltui_run_after(run, ms, fn, ctx)` fires once and `rolltui_run_every`
+repeats, both on the run's thread after the events of a wake, and the wait returned by `render` is
+shortened to the next one due. A repeating timer that falls behind is rescheduled one period from
+now instead of firing in a burst. `rolltui_run_cancel_timer` cancels one by id.
+`rolltui_run_debounce(run, &slot, ms, fn, ctx)` cancels the timer in `slot` and starts a new one,
 so a burst of calls fires once, after the last.
 
 `rolltui_windows_bind_changed(windows, name, …)` calls a function with an `input:<name>` window's
-text each time it changes: filtering as a person types, debounced with `rolltui_run_debounce`.
+text whenever it changes, which together with `rolltui_run_debounce` is how you filter as the user
+types.
 
-`rolltui_windows_set_tasks(windows, tasks)` lends the built-in kinds the workers. The column
-browser's preview then reads a file and decodes a picture on a worker while the cursor moves on,
-says "loading…" once a read has taken 100 ms, and drops a read the cursor left. Without them it
-reads on the drawing thread, which is what a frame dump does. dirktui lends it the run's. A read the
-cursor left stops between 64 KB steps, and the lines are indexed and coloured, and Markdown parsed,
-on the worker that read them.
+`rolltui_windows_set_tasks(windows, tasks)` gives the built-in widgets workers to use. The column
+browser's preview then reads files and decodes images on a worker while the cursor keeps moving,
+shows "loading…" once a read has taken 100 ms, and drops reads for files the cursor has left.
+Without workers it reads on the drawing thread, which is what frame dumps do. dirktui gives it the
+run's pool. An abandoned read stops at the next 64 KB boundary, and indexing lines, highlighting and
+parsing Markdown all happen on the worker that did the read.
 
 ### Holding input
 
-`rolltui_windows_hold(windows, label, len, job)` holds input while work the person waits on runs
-(a pull, a save over the network). No window gets a key or the pointer, and a box with a spinner,
-the label and "Esc cancels" sits over the screen. Escape cancels the job and lets go at once. The
-hold ends by itself when the job has ended (on the tasks lent with `rolltui_windows_set_tasks`),
-or at `rolltui_windows_release`; with `job` 0 only those two end it. The host still sees every key
-first, so its own keys, quit among them, keep working; `rolltui_windows_app_key` leaves Escape to
-the hold.
+`rolltui_windows_hold(windows, label, len, job)` blocks input while work the user is waiting for
+runs (a pull, a save over the network). No window gets keys or mouse events, and a box with a
+spinner, the label and "Esc cancels" is shown over the screen. Escape cancels the job and ends the
+hold immediately. Otherwise the hold ends when the job finishes (for jobs on the pool given to
+`rolltui_windows_set_tasks`) or when you call `rolltui_windows_release`; with `job` set to 0, only
+those two end it. Your program still sees every key first, so its own keys, including quit, keep
+working; `rolltui_windows_app_key` leaves Escape to the hold.
 
 ## Other programs
 
-`rolltui_child_spawn` starts a program and hands back a handle that is read and written without
-waiting. `argv[0]` is found on PATH (on Windows with PATHEXT's extensions; a script runs through
-cmd.exe, which refuses an argument holding `%` or `"`). `RolltuiChildOptions.mode` says how its
-streams are wired:
+`rolltui_child_spawn` starts a program and returns a handle you can read from and write to without
+blocking. `argv[0]` is looked up on PATH (on Windows, using PATHEXT's extensions; scripts run through
+cmd.exe, which rejects arguments containing `%` or `"`). `RolltuiChildOptions.mode` controls how its
+streams are connected:
 
-- `ROLLTUI_CHILD_PIPES`: stdin a pipe the host writes, stdout and stderr one stream the host
-  reads. The program has its own process group.
-- `ROLLTUI_CHILD_PTY`: a pseudo-terminal `cols` x `rows`, so the program writes colour and
-  progress as it would to a terminal. `rolltui_child_resize` follows the window it is shown in.
-  On Windows it is pipes with `COLUMNS` and `LINES` set, because ConPTY reorders what a program
-  wrote.
-- `ROLLTUI_CHILD_QUIET`: the null device for all three streams and its own session. Ctrl-C in the
-  app never reaches it, and freeing the handle lets it go instead of stopping it.
+- `ROLLTUI_CHILD_PIPES`: stdin is a pipe you write to, and stdout and stderr are merged into one
+  stream you read. The program gets its own process group.
+- `ROLLTUI_CHILD_PTY`: a pseudo-terminal of `cols` by `rows`, so the program writes colours and
+  progress output as it would to a terminal. `rolltui_child_resize` keeps it in sync with the window
+  showing it. On Windows this uses pipes with `COLUMNS` and `LINES` set, because ConPTY reorders a
+  program's output.
+- `ROLLTUI_CHILD_QUIET`: all three streams go to the null device and the program gets its own
+  session. Ctrl-C in your app never reaches it, and freeing the handle leaves it running.
 
-`cwd` and `env` (`"NAME=value"` entries over the app's environment) are optional. A program that
-cannot start gives NULL and the reason ("not found: bat").
+`cwd` and `env` (`"NAME=value"` entries added to the app's environment) are optional. If the
+program can't be started, you get NULL and the reason ("not found: bat").
 
-- `rolltui_child_pump(c, text, max_lines)` reads what has arrived into a `RolltuiAnsiText` and
-  stops once it holds `max_lines`: a view reads what it shows, the program waits on its full
-  pipe, and the rest is read when more lines are wanted.
-- `rolltui_child_read` gives the bytes as they came. `rolltui_child_write` and
-  `rolltui_child_close_input` feed its input.
-- `rolltui_child_done` asks whether it has ended without waiting; `rolltui_child_wait` waits.
-  The status is its exit code, or 128 plus the signal that ended it.
-- `rolltui_child_stop` sends SIGTERM to its group and SIGKILL 200 ms later if it is still there
-  (TerminateProcess on Windows). `rolltui_child_free` stops a PIPES or PTY program still running.
-- While a program runs, a render waits at most `rolltui_child_wait_ms(c)`, so what it writes is
-  drawn as it arrives.
+- `rolltui_child_pump(c, text, max_lines)` reads whatever has arrived into a `RolltuiAnsiText`,
+  stopping once it holds `max_lines`. A view only reads what it shows, the program waits on its full
+  pipe, and the rest is read when more lines are needed.
+- `rolltui_child_read` returns the raw bytes. `rolltui_child_write` and `rolltui_child_close_input`
+  feed its input.
+- `rolltui_child_done` checks whether it has exited without waiting; `rolltui_child_wait` waits.
+  The status is the exit code, or 128 plus the signal that killed it.
+- `rolltui_child_stop` sends SIGTERM to its process group, and SIGKILL 200 ms later if it's still
+  running (TerminateProcess on Windows). `rolltui_child_free` stops a PIPES or PTY program that is
+  still running.
+- While a program is running, `render` should wait at most `rolltui_child_wait_ms(c)`, so its
+  output is drawn as it arrives.
 
-`rolltui_run_program(run, argv, cwd, &status, &err)` hands the terminal to a program that takes
-it over (an editor, a pager): the app waits, ignoring the Ctrl-C the program receives, and takes
-the terminal back with the screen repainted whole. A SIGTERM sent to the app meanwhile is passed on
-to the program, and once the program has ended the app ends by the same signal. `rolltui_open_with_system` opens a file or a
-URL with what the system opens it with (`open`, `xdg-open`, ShellExecuteW).
+`rolltui_run_program(run, argv, cwd, &status, &err)` hands the terminal over to a program that takes
+it over completely, such as an editor or a pager. The app waits (ignoring the Ctrl-C the program
+receives), then takes the terminal back and redraws the screen. A SIGTERM sent to the app in the
+meantime is passed on to the program, and once the program exits the app exits with the same
+signal. `rolltui_open_with_system` opens a file or URL with the system's handler (`open`,
+`xdg-open` or ShellExecuteW).
 
 ### Coloured output
 
-A `RolltuiAnsiText` reads what a program wrote to a terminal as lines to draw: `bat`, `delta`,
-`ls --color`, a log, a man page.
+A `RolltuiAnsiText` turns what a program wrote to a terminal into lines you can draw: the output of
+`bat`, `delta`, `ls --color`, a log or a man page.
 
-- Text, newlines, tabs (stops every 8 columns, or what `rolltui_ansi_set_tab_width` says) and SGR
-  are read: 16, 256 and 24-bit colour, bold, dim, italic, an underline's shape (4:1 to 4:5, 21)
-  and colour (58), blink, reverse, hidden, strikethrough and overline. A sequence or a character
-  split across two feeds is joined.
-- A carriage return not followed by a newline writes the line again, so a progress counter shows
-  its last state. Erase-in-line clears the line being written.
-- Backspace overstrike is read as a man page writes it: `X\bX` bold, `_\bX` underlined.
-- OSC 8 hyperlinks are read onto the text they cover, from the link's opening to its closing,
-  across lines as a terminal keeps them, and drawn as links. A URL that is not printable ASCII, or
-  an OSC longer than 4 KB, is no link.
-- Cursor moves, erase-in-display, every other OSC, DCS, APC and charset designations are
-  swallowed. The output reads as what it says and never commands the app's screen.
-- The lines are a ring of `ROLLTUI_ANSI_DEFAULT_LIMIT` (100,000), or what
-  `rolltui_ansi_set_limit` says, so a log keeps its newest.
+- It understands text, newlines, tabs (every 8 columns, or as set by `rolltui_ansi_set_tab_width`)
+  and SGR: 16, 256 and 24-bit colour, bold, dim, italic, underline shapes (4:1 to 4:5, 21) and
+  colour (58), blink, reverse, hidden, strikethrough and overline. Sequences and characters split
+  across two feeds are joined back together.
+- A carriage return without a newline rewrites the line, so a progress counter shows its final
+  state. Erase-in-line clears the line being written.
+- Backspace overstrike is read the way man pages use it: `X\bX` is bold and `_\bX` underlined.
+- OSC 8 hyperlinks are attached to the text they cover, from where the link opens to where it
+  closes, across lines just like in a terminal, and drawn as links. A URL that isn't printable ASCII,
+  or an OSC longer than 4 KB, is ignored.
+- Cursor movement, erase-in-display, other OSC sequences, DCS, APC and charset changes are
+  discarded, so the output shows what it says and can't take over the app's screen.
+- The lines are kept in a ring of `ROLLTUI_ANSI_DEFAULT_LIMIT` (100,000) lines, or the limit set
+  with `rolltui_ansi_set_limit`, so a long log keeps its most recent lines.
 
-An `output:<source>` window shows one. The host binds it with `rolltui_windows_bind_output`.
-The window follows the end as the text grows; scrolled back, it holds still until it is scrolled
-to the end again. Lines wrap at its edge; `rolltui_windows_set_output_wrap(w, name, len, 0)`
-keeps them whole instead. A cell with no colour of its own takes the window's text colour and
-ground, so the program's defaults are the theme's. `rolltui_ansi_draw` draws the same text
-inside a host's own widget.
+An `output:<source>` window shows one. Bind it with `rolltui_windows_bind_output`. The window
+follows the end of the text as it grows; once scrolled back, it stays put until scrolled to the end
+again. Lines wrap at the window's edge, or `rolltui_windows_set_output_wrap(w, name, len, 0)` turns
+wrapping off. Cells without their own colour use the window's text and background colours, so the
+program's default colours follow the theme. `rolltui_ansi_draw` draws the same text in your own
+widget.
 
 ### Links in a window
 
-A link in any window (one another program wrote, a Markdown link, one a host drew with
-`rolltui_frame_link_id`) is sent to the terminal as an OSC 8 hyperlink, and the window acts on it
-too, since a terminal reporting the mouse to the app does not:
+Links in any window, whether written by another program, in Markdown, or drawn by your program
+with `rolltui_frame_link_id`, are sent to the terminal as OSC 8 hyperlinks. The window also handles
+them itself, because a terminal that reports the mouse to the app doesn't:
 
-- While the terminal reports hover, the link under the pointer is underlined across its cells.
-- A press of the left button on a link goes first to the host's handler,
-  `rolltui_windows_set_link_handler(w, fn, ctx)`, with the window and the URL; `fn` returning 1
-  takes it, for a scheme of the host's own (an editor's link, a program's internal one).
-- Otherwise an http, https, mailto or file link is opened with `rolltui_open_with_system`, and a
-  link of any other scheme is a press like any other.
+- While the terminal reports hover, the link under the pointer is underlined.
+- A left click on a link goes to your program's handler first, if you set one with
+  `rolltui_windows_set_link_handler(w, fn, ctx)`, along with the window and the URL. Return 1 from
+  `fn` to handle it yourself, for example for your own URL scheme.
+- Otherwise http, https, mailto and file links are opened with `rolltui_open_with_system`. Clicks
+  on links with any other scheme are handled like ordinary clicks.
 
 ### Wrapping and scrolling sideways
 
-The `text`, `file` and `output` windows wrap long lines at their edge. `view.wrap` (Alt-W)
-keeps each line whole instead, cut at the edge, and turns wrapping back on; `view.left` and
-`view.right` (Left and Right, and h and l in the vim preset) and the wheel's sideways turns
-scroll lines kept whole four cells at a time, as far as the widest line's end. A wide glyph the
-edge would cut in half is drawn as a blank. In an `output` window the key sets the binding's
-wrap, so it and `rolltui_windows_set_output_wrap` agree.
+`text`, `file` and `output` windows wrap long lines at their edge. `view.wrap` (Alt-W) toggles
+between wrapping and keeping lines whole (cut off at the edge). When lines are kept whole,
+`view.left` and `view.right` (Left and Right, or h and l with the vim preset) and horizontal
+scrolling move them four cells at a time, up to the end of the widest line. A wide character that
+would be cut in half at the edge is shown as a blank. In an `output` window the key changes the
+binding's wrap setting, so it stays consistent with `rolltui_windows_set_output_wrap`.
 
-`rolltui_windows_set_output_options` sets an output window's ways:
+`rolltui_windows_set_output_options` sets these options for an output window:
 
-- `timestamps`: each line's time (HH:MM:SS) in a gutter before it.
-- `status`: the footer says "following", or "paused · 12 below" once the window is scrolled back,
-  and whether a program run into it is running or how it exited.
-- `filter`: only the lines that match are shown, with the lists' filter language, and the matches
-  are bold and underlined. Rules always show.
+- `timestamps`: show each line's time (HH:MM:SS) in a gutter.
+- `status`: show "following" in the footer, or "paused · 12 below" once scrolled back, plus whether
+  a program running in the window is still going or how it exited.
+- `filter`: only show lines that match, using the same filter syntax as lists, with matches in bold
+  and underlined. Separator lines are always shown.
 
-A line's time and source come from `rolltui_ansi_set_stamp(text, ms, tag)`, which stamps the lines
-begun after it. `rolltui_ansi_mark(text, label, len)` puts a rule across the text after what is
-there. `rolltui_ansi_line_info`, `rolltui_ansi_line_rows` and `rolltui_ansi_draw_line` give a host's
-own view the same pieces: a line's time, source and number, the rows it wraps to, and one line
-drawn with ranges lit.
+`rolltui_ansi_set_stamp(text, ms, tag)` sets the time and source for lines started after the call.
+`rolltui_ansi_mark(text, label, len)` adds a separator line after the current text.
+`rolltui_ansi_line_info`, `rolltui_ansi_line_rows` and `rolltui_ansi_draw_line` give your own views
+the same building blocks: a line's time, source and number, the rows it wraps to, and a way to draw
+one line with highlighted ranges.
 
 ### Programs in a window
 
-`rolltui_windows_run_output(w, name, len, &opts, label, role, &err)` runs a program into an
-`output:<name>` window, as `opts` says (`ROLLTUI_CHILD_PTY` for its colours). The window reads what
-the program writes as it draws, and a pseudo-terminal is told the window's content size, then
-each new size. When the window leaves the layout, or the name is bound to something else, the
-program is stopped. Where no pseudo-terminal can be opened, the program gets pipes, with the size
-in `COLUMNS` and `LINES`.
+`rolltui_windows_run_output(w, name, len, &opts, label, role, &err)` runs a program and shows its
+output in an `output:<name>` window, using `opts` (`ROLLTUI_CHILD_PTY` to get its colours). The
+window reads the output as it draws, and a pseudo-terminal is given the window's size and every
+later size. The program is stopped when the window leaves the layout or the name is bound to
+something else. If no pseudo-terminal can be opened, the program gets pipes with the size in
+`COLUMNS` and `LINES`.
 
-Several programs run into one name are merged a line at a time, each line led by its program's
-`label` in `role` (`web GET /`, `db  SELECT 1`). The footer shows how they are doing unless the
-host set the window's options. `rolltui_windows_output_running` says whether one is still running
-and how the last one ended; `rolltui_windows_output_mark` puts a rule across the window at a
-boundary, such as the start of a build.
+Several programs run under the same name are interleaved line by line, each line starting with its
+program's `label` in `role` (`web GET /`, `db  SELECT 1`). Unless you've set the window's options,
+the footer shows how they're doing. `rolltui_windows_output_running` returns whether one is still
+running and how the last one exited, and `rolltui_windows_output_mark` adds a separator line, for
+example at the start of a build.
 
-`rolltui-chat` runs a `!command` once it is approved: the output streams into the conversation
-as a code block and the exit status follows; Esc stops it. A frame dump runs nothing.
+`rolltui-chat` runs a `!command` once it's approved. The output streams into the conversation as a
+code block, followed by the exit status, and Esc stops it. Frame dumps never run anything.
 
 ## File watching
 
-The column browser re-reads every folder on screen, and the previewed file, about twice a second.
+The column browser re-reads every directory on screen, and the previewed file, about twice a
+second.
 
-- Files that are added, grow, are removed or are renamed appear within that interval.
-- The cursor and scroll position are kept by name. If the selected entry is gone, the cursor moves
-  to the entry now in its place.
-- A removed folder closes its columns, and focus returns to the deepest folder that still exists.
-- A file replaced by a folder, or the reverse, is followed.
+- Files that are added, grow, get removed or get renamed show up within that interval.
+- The cursor and scroll position are kept by name. If the selected entry disappears, the cursor
+  moves to whatever is now in its place.
+- When a directory is removed its columns close, and focus goes back to the deepest directory that
+  still exists.
+- A file replaced by a directory, or the other way round, is followed.
 - The preview keeps its top line when the start of the file changes, and follows the end of a
-  growing file when it is scrolled to the bottom.
+  growing file if it's scrolled to the bottom.
 
-Each check is one `stat` per folder and per visible row; no file descriptors are held. An
-unchanged folder of 20,000 entries costs about 0.1 ms. A folder that keeps changing is checked
-less often. `RolltuiPickerOptions.no_watch` turns watching off.
+Each check is one `stat` per directory and per visible row, and no file descriptors are held open.
+An unchanged directory of 20,000 entries takes about 0.1 ms to check. Directories that keep
+changing are checked less often. `RolltuiPickerOptions.no_watch` turns watching off.
 
-### Watching files of your own
+### Watching your own files
 
-A `RolltuiWatch` tells a program when files or folders it names have changed:
+`RolltuiWatch` tells your program when files or directories it cares about change:
 
 ```c
 static void wake(void* term) { rolltui_terminal_wake((RolltuiTerminal*)term); }
 
-RolltuiWatch* w = rolltui_watch_new(wake, term);   /* or NULL, NULL: asked, not told */
+RolltuiWatch* w = rolltui_watch_new(wake, term);   /* or NULL, NULL to poll instead */
 unsigned int log = rolltui_watch_add(w, path, strlen(path));
 ...
 unsigned int ids[8];
-size_t n = rolltui_watch_changed(w, ids, 8);       /* each change told once */
+size_t n = rolltui_watch_changed(w, ids, 8);       /* each change is reported once */
 ```
 
-A change is a path's signature moving: its device, inode, size or times. A save that writes a new
-file and renames it over the old one, a path that arrives after it was watched, a file removed,
-and a folder's entries arriving or leaving are all told. The system says when to look (kqueue on
-macOS and the BSDs, inotify on Linux, change notifications on Windows), so a change is seen within
-milliseconds; where it cannot, a thread looks twice a second, and in a browser the call itself
-looks. `rolltui_watch_how` names which. `wake` is called from the watcher's thread, so a loop
-asleep in its input wait looks at once.
+A change means the path's device, inode, size or timestamps changed. That covers saving by writing
+a new file and renaming it over the old one, a path that only appears after you started watching
+it, a file being removed, and entries being added to or removed from a directory. The system
+reports when to look (kqueue on macOS and the BSDs, inotify on Linux, change notifications on
+Windows), so changes are seen within milliseconds. Where that isn't available a thread checks twice
+a second, and in a browser each call checks. `rolltui_watch_how` says which method is in use.
+`wake` is called from the watcher's thread, so a loop waiting for input checks straight away.
 
-### Settings changed elsewhere
+### Settings changed by another program
 
-`rolltui_run_watch_stores(run, theme, layout, keys)` watches the stores' files while the run lasts:
-the working copy, and the preset it follows in the person's folder and the shipped one. A file
-another program changes (the studio, an editor) is read again and the screen drawn again, and
-SIGUSR1 reads them all again. A store with edits of its own keeps them: only a change to its
-working file replaces them. Each store's version moves as an edit's would, so an app that follows
-its stores' versions takes the change; dirktui does, for its theme and its keys.
-`rolltui_theme_store_refresh` and the layout and bindings stores' own do the same for a host that
-reads its files on its own schedule. A store's own writes never count as a change.
+`rolltui_run_watch_stores(run, theme, layout, keys)` watches the stores' files for as long as the
+run lasts: the working copy, plus the preset it's based on in the user's directory and the built-in
+one. When another program (the studio, an editor) changes one of them, it's read again and the
+screen redrawn, and SIGUSR1 reloads all of them. A store with its own unsaved edits keeps them; only
+a change to its working file replaces them. Each store's version number changes just as it would
+for an edit, so an app that tracks store versions picks up the change; dirktui does this for its
+theme and key bindings. For programs that check their files on their own schedule,
+`rolltui_theme_store_refresh` and the equivalent functions of the layout and bindings stores do the
+same thing. A store's own writes never count as changes.
 
 ## The clipboard, the title and the terminal
 
-`rolltui_clipboard_copy(terminal, text, len)` sets the clipboard two ways at once. OSC 52 goes to
-the terminal, the one way that reaches the person's own machine over ssh; inside tmux it is
-passed through, inside GNU screen it goes in pieces screen passes on, and above 74,994 encoded
-bytes it is not sent, except to kitty, which takes any size. The first native tool that works
-gets the text too: pbcopy; wl-copy, xclip or xsel; the Windows clipboard. `$ROLLTUI_CLIPBOARD`
-names a command to feed the text to instead of the native tools.
+`rolltui_clipboard_copy(terminal, text, len)` sets the clipboard in two ways at once. It sends OSC
+52 to the terminal, which is the only way to reach the user's own machine over ssh; inside tmux it's
+passed through, inside GNU screen it's split into pieces screen passes on, and above 74,994 encoded
+bytes it isn't sent (except to kitty, which accepts any size). It also hands the text to the first
+native tool that works: pbcopy, wl-copy, xclip, xsel, or the Windows clipboard.
+`$ROLLTUI_CLIPBOARD` names a command to use instead of the native tools.
 
-`rolltui_clipboard_paste(terminal, &out)` reads it back through the first tool that answers
-(pbpaste; wl-paste, xclip or xsel; the Windows clipboard), or the command `$ROLLTUI_CLIPBOARD_PASTE`
-names. Over ssh, where no tool can reach the person's clipboard, it gives what the program last
-copied, so a copy and a paste inside one program work there too.
+`rolltui_clipboard_paste(terminal, &out)` reads the clipboard through the first tool that responds
+(pbpaste, wl-paste, xclip, xsel, or the Windows clipboard), or the command named by
+`$ROLLTUI_CLIPBOARD_PASTE`. Over ssh, where no tool can reach the user's clipboard, it returns what
+the program last copied, so copying and pasting within one program still works.
 
-`rolltui_terminal_set_title` sets the window's title (OSC 2). The terminal's own title is pushed
-first and put back when the app leaves or hands the terminal to a program, and the app's is set
-again when it takes the terminal back. Only a change is written. `rolltui_terminal_report_cwd`
-reports a folder with OSC 7, so a new tab or split opens there; dirktui reports the folder it is
-browsing.
+`rolltui_terminal_set_title` sets the window title (OSC 2). The terminal's original title is saved
+first and restored when the app exits or hands the terminal to another program, and the app's title
+is set again when it takes the terminal back. Only changes are written.
+`rolltui_terminal_report_cwd` reports a directory with OSC 7, so new tabs and splits open there;
+dirktui reports the directory it's showing.
 
-`rolltui_terminal_set_window_name` names the window in tmux's list (and screen's), which the title
-does not. tmux takes the escape for it while its `allow-rename` is on; with it off, the name is set
-with `tmux rename-window` instead of being refused unsaid. Leaving the terminal puts back the name
-the window had, and tmux's naming it by itself.
+`rolltui_terminal_set_window_name` sets the window's name in tmux's window list (and screen's),
+which the title doesn't affect. tmux accepts the escape sequence for it while `allow-rename` is on;
+with it off, the library runs `tmux rename-window` instead. On exit, the window gets its previous
+name back and tmux goes back to naming it automatically.
 
-`rolltui_open_terminal(&in, &out)` opens the controlling terminal by name (`/dev/tty`; the
-console's CONIN$ and CONOUT$), whatever stdin and stdout are. A program whose stdout is its answer
-to a shell (a file chooser, cd-on-exit) draws there and prints its answer to stdout. dirktui runs
-this way.
+`rolltui_open_terminal(&in, &out)` opens the controlling terminal directly (`/dev/tty`, or CONIN$
+and CONOUT$ on Windows), regardless of what stdin and stdout are. This is for programs whose stdout
+is their result for the shell, such as a file chooser or cd-on-exit: they draw on the terminal and
+print the result to stdout. dirktui works this way.
 
 ## Diagnostics
 
-The terminal is the screen's while a program runs, so what the library and a host say for whoever
-is looking goes to a log file: the one `rolltui_log_to(path, len)` names, else the one the
-environment's `ROLLTUI_LOG` names. With neither, nothing is written. A line is the local time, the
-seconds since the log began, the level and the text:
+While a program runs the terminal is showing its screen, so diagnostics from the library and your
+program go to a log file instead. That's the file passed to `rolltui_log_to(path, len)`, or
+otherwise the one named by the `ROLLTUI_LOG` environment variable. With neither, nothing is written.
+Each line has the local time, the seconds since the log started, the level and the message:
 
 ```
 2026-11-24 09:41:07    0.000s INFO  terminal: kitty 0.43.1, 120x40, depth truecolor, keyboard kitty, pictures kitty
 ```
 
-- `rolltui_log(level, text, len)` and `rolltui_logf(level, fmt, ...)` write a line; a newline in the
-  text is a space, so each call is one line, and lines from workers never land inside one another.
-- `ROLLTUI_LOG_LEVEL` (`error`, `warn`, `info`, `debug`) or `rolltui_log_set_level` says what is let
-  through; INFO by default. `rolltui_log_wants(level)` says whether a line would be written, before
-  one that costs is built.
-- The library says what terminal it entered and how it draws, a store read again because another
-  program changed its files, and at DEBUG what the terminal answered its questions, byte for byte
-  and how long it took, and each frame's time: the host's drawing, the diff and the write, and the
-  bytes sent.
+- `rolltui_log(level, text, len)` and `rolltui_logf(level, fmt, ...)` write a line. Newlines in the
+  text become spaces so each call is one line, and lines written from different threads never mix.
+- `ROLLTUI_LOG_LEVEL` (`error`, `warn`, `info` or `debug`) or `rolltui_log_set_level` sets which
+  lines are written; the default is `info`. `rolltui_log_wants(level)` tells you whether a line at
+  that level would be written, so you can skip building an expensive one.
+- The library logs which terminal it found and how it draws on it, and when a store is reloaded
+  because another program changed its files. At `debug` it also logs the terminal's replies to its
+  queries, byte for byte, with how long they took, and each frame's timing: your drawing, the diff,
+  the write, and the number of bytes sent.
 
-`rolltui_windows_set_timing(windows, 1)`, or `ROLLTUI_TIMING=1` for any program, puts each
-window's draw time in its top border (" 0.4 ms "), muted, and bold in the warning role past half
-of a frame at 60 a second. `rolltui_mem_stats` gives the library's live and peak bytes; a CPU
-profile is the system profiler's (Instruments, `perf`).
+`rolltui_windows_set_timing(windows, 1)`, or `ROLLTUI_TIMING=1` for any program, shows each
+window's draw time in its top border (" 0.4 ms "), in a muted colour, or bold in the warning role
+when it's more than half of a 60 fps frame. `rolltui_mem_stats` returns the library's current and
+peak memory use. For CPU profiles, use the system profiler (Instruments, `perf`).
 
-`tools/bench/frame_times.py` times a real program's frames from that log: dirktui on a
-pseudo-terminal at 200x50, the cursor walked down a folder. On an M5 Max a frame is drawn in a
-median 0.6 ms and diffed and written in 0.2 ms, about 500 bytes. Every window is drawn every
-frame: at that cost a spinner turning ten times a second takes under 1% of a core, and a window
-that drew only when it said it had changed would show stale contents the one time it did not say.
+`tools/bench/frame_times.py` measures a real program's frames from that log: it runs dirktui in a
+pseudo-terminal at 200x50 and moves the cursor down a directory. On an M5 Max, a frame takes a
+median 0.6 ms to draw and 0.2 ms to diff and write, about 500 bytes. Every window is redrawn every
+frame. At that cost a spinner updating ten times a second uses under 1% of a core, and it avoids the
+stale contents you'd get if a window only redrew when it reported a change and once forgot to.
 
 # The terminal
 
 ## Terminal detection
 
 `rolltui_terminal_new` asks the terminal, in the same round trip that sets up the keyboard, how
-many colours it draws, whether its background is light or dark, how wide it draws
-ambiguous-width characters, whether it gives a combining accent a cell of its own, and whether it
-draws a frame whole. The library applies the answers:
+many colours it supports, whether its background is light or dark, how wide it draws
+ambiguous-width characters, whether it gives combining accents their own cell, and whether it
+supports synchronized output. The library uses the answers:
 
-- `rolltui_swap_present` never draws at more colour depth than the terminal has.
+- `rolltui_swap_present` never uses more colours than the terminal supports.
 - Every character is measured at the width the terminal draws it.
-- A theme in `auto` mode follows the terminal's background.
-- A terminal that has synchronized output (DEC mode 2026) is sent each frame between the mode's
-  begin and end, in one write, and draws it whole. A terminal that does not answer is never sent
-  the mode.
-- On a terminal that gives every code point its own cells (Windows' console host), each grapheme
-  cluster is sent as one code point: its first after canonical composition, so `e` and a
-  combining acute is sent as `é`.
+- Themes in `auto` mode follow the terminal's background.
+- Terminals with synchronized output (DEC mode 2026) get each frame wrapped in the mode, in a single
+  write, so they draw it in one go. Terminals that don't answer the query never get the mode.
+- On terminals that give every code point its own cell (Windows' console host), each grapheme
+  cluster is sent as a single code point after canonical composition, so `e` plus a combining acute
+  is sent as `é`.
 
-Windows' own console sets no `TERM` and is drawn in 24-bit colour. A Windows program in Windows
-Terminal is asked what any terminal is and hears its answers: synchronized output, kitty's
-keyboard, its background, a cell of 10 by 20 pixels, which is the cell it draws sixel to whatever
-the font. A picture is drawn at its cell there, natively and from WSL.
+Windows' own console doesn't set `TERM` and is drawn in 24-bit colour. A Windows program running in
+Windows Terminal gets full answers to its queries: synchronized output, the kitty keyboard protocol,
+the background colour, and a cell size of 10 by 20 pixels, which is the cell size Windows Terminal
+uses for sixel images regardless of the font. Images land in the right cells there, both natively
+and from WSL.
 
-The Linux console is known by `TERM=linux` or by its tty, `/dev/ttyN`, whatever `TERM` says.
-Its font has the PC's glyphs only, so the frame is sent with the nearest it has: braille as a
-shade by how many of its dots are set, quadrants and eighths as half and full blocks, rounded
-corners square, heavy lines double, `…` as `~`, `✓` as `√`, superscripts four to nine as digits.
-It is drawn in 16 colours, and the cursor's shape is not sent.
+The Linux console is recognised by `TERM=linux`, or by its tty (`/dev/ttyN`) whatever `TERM` says.
+Its font only has the PC character set, so characters it lacks are replaced with the nearest it
+has: braille becomes a shade according to how many dots are set, quadrants and eighths become half
+and full blocks, rounded corners become square, heavy lines become double, `…` becomes `~`, `✓`
+becomes `√`, and superscript four to nine become plain digits. It's drawn in 16 colours, and the
+cursor shape isn't sent.
 
-When nothing in the environment names the terminal, its answer to XTVERSION chooses how pictures
-are drawn: kitty's protocol for kitty and Ghostty, iTerm2's for WezTerm and iTerm2, sixel for foot,
+When nothing in the environment identifies the terminal, its XTVERSION reply decides how images are
+drawn: kitty's protocol for kitty and Ghostty, iTerm2's for WezTerm and iTerm2, and sixel for foot,
 mlterm and Konsole.
 
-Answers are cached per terminal, keyed by terminal name and version, operating system, program
-build, and whether the session runs over ssh. Behind a multiplexer (tmux, GNU screen, Zellij) the
-answers are the multiplexer's and the terminal under it can change between attaches: they are used,
-never cached, and each question waits 200 ms rather than 80. The terminal's own variables
-are part of the key where `TERM` does not tell terminals apart: `KONSOLE_VERSION` and
-`VTE_VERSION` by their value, `WT_SESSION` and `KITTY_WINDOW_ID` by being set, so Windows Terminal
-and Windows' console window are two terminals and a new tab is the same one. A cached answer is used at
-startup and checked again after the first frame. A probe costs 0.6 ms fresh and 0.2 ms from the
-cache; a terminal that does not answer costs 80 ms, once.
+Answers are cached per terminal, keyed by the terminal's name and version, the operating system,
+the program's build, and whether the session is over ssh. Where `TERM` doesn't tell terminals apart,
+their own environment variables are part of the key: `KONSOLE_VERSION` and `VTE_VERSION` by value,
+and `WT_SESSION` and `KITTY_WINDOW_ID` by whether they're set, so Windows Terminal and the old
+console window count as different terminals while a new tab counts as the same one. Behind a
+multiplexer (tmux, GNU screen, Zellij) the answers come from the multiplexer, and the terminal it's
+attached to can change between sessions, so they're used but never cached, and each query waits
+200 ms instead of 80. A cached answer is used at startup and checked again after the first frame.
+Probing takes 0.6 ms fresh and 0.2 ms from the cache; a terminal that doesn't answer costs 80 ms,
+once.
 
 | Variable | Effect |
 |---|---|
 | `ROLL_COLOR_DEPTH` | `truecolor`, `256`, `16` or `mono` |
 | `ROLL_AMBIGUOUS_WIDE=1` | ambiguous-width characters take two cells |
-| `ROLL_TERM_PROBE=0` | probe only the keyboard |
-| `ROLLTUI_CONSOLE=1`, `=0` | the terminal is, or is not, the Linux console |
+| `ROLL_TERM_PROBE=0` | only probe the keyboard |
+| `ROLLTUI_CONSOLE=1`, `=0` | treat the terminal as the Linux console, or not |
 
-`dirktui check-terminal` probes again and reports each answer and where it came from.
+`dirktui check-terminal` probes again and shows each answer and where it came from.
 
-Every theme has a light and a dark side. Mode (auto, dark or light) and colour depth are the
-person's settings, stored beside the chosen theme and kept when the theme changes. In `auto` the
+Every theme has a light and a dark variant. The mode (auto, dark or light) and the colour depth are
+user settings, stored with the chosen theme and kept when the theme changes. In `auto` mode the
 terminal's background decides: light when its luminance is above 0.5. A terminal that reports its
-colour scheme (DSR 996) and not its background is drawn for the scheme it reports; one that reports
+colour scheme (DSR 996) but not its background is drawn for the scheme it reports; one that reports
 both is drawn for its background.
 
 ## What a frame sends
 
-`rolltui_swap_present` sends the terminal what changed since the last frame, in the fewest bytes it
-knows:
+`rolltui_swap_present` sends the terminal only what changed since the last frame, in as few bytes
+as it can:
 
-- Unchanged cells are not sent. A gap of up to three unchanged cells between two changes is
-  written again; a longer gap is stepped over with a cursor move.
-- The cursor takes the shortest move from where the last write left it: a CR and line feeds to the
-  start of a row below, a cursor-forward along a row, an absolute move otherwise.
-- A style change names only what changed (a colour, an attribute turned on or off), or resets
-  and names the whole style where that is shorter.
-- A run of 12 or more blank cells is erased (ECH) and stepped over; a row's blank rest of 4 or
-  more cells is erased to the end of the line (EL). A blank is a space with no link, underline or
-  reverse.
-- When a block of three or more rows moved up or down, the terminal scrolls that region (DECSTBM
-  with SU or SD) and only the rows the scroll brought in are written.
+- Unchanged cells aren't sent. A gap of up to three unchanged cells between two changes is written
+  out again; longer gaps are skipped with a cursor move.
+- The cursor takes the shortest route from where the last write left it: CR and line feeds to the
+  start of a lower row, cursor-forward along a row, or an absolute move.
+- A style change only includes what changed (a colour, an attribute turned on or off), or resets and
+  sends the whole style when that's shorter.
+- Runs of 12 or more blank cells are erased with ECH and skipped. Trailing blanks of 4 or more cells
+  are erased to the end of the line with EL. A blank is a space with no link, underline or reverse.
+- When a block of three or more rows has moved up or down, the terminal scrolls that region
+  (DECSTBM with SU or SD) and only the rows brought in by the scroll are written.
 
-The cursor's shape (`rolltui_frame_set_cursor_shape`, `ROLLTUI_CARET_*`: block, underline or
-bar, each steady or blinking) is sent when it changes, and the terminal's own is put back when the
-program leaves. An input field asks for a bar while printable keys type and a block while they
-are actions (`RolltuiInputOptionsRaw.caret` sets one). A focused list, menu or column browser
-leaves the hidden cursor on its cursor's row, where a screen reader follows it.
+The cursor shape (`rolltui_frame_set_cursor_shape`, `ROLLTUI_CARET_*`: block, underline or bar,
+steady or blinking) is sent when it changes, and the terminal's own shape is restored on exit. Text
+fields ask for a bar while printable keys type and a block while they're commands
+(`RolltuiInputOptionsRaw.caret` sets one). A focused list, menu or column browser leaves the hidden
+cursor on its selected row, where screen readers follow it.
 
-The erases and the scrolled region stand on the terminal filling an erase with the current
-background colour, which every terminal in use does, and tmux too. Directly under GNU screen
-(`STY` set, no `TMUX`) they are not used. `tests/render_replay_test.cpp` replays the bytes of
-thousands of random frames into a model of a terminal (`tests/vt_model.hpp`) and checks the
-screen against each frame, cell by cell.
+The erase and scroll optimisations rely on the terminal filling erased cells with the current
+background colour, which every terminal in use does, tmux included. They're turned off directly
+under GNU screen (`STY` set without `TMUX`). `tests/render_replay_test.cpp` replays the output of
+thousands of random frames into a terminal model (`tests/vt_model.hpp`) and checks the result
+against each frame, cell by cell.

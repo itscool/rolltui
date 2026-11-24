@@ -1,89 +1,89 @@
-# rolltui design principles
+# rolltui design rules
 
-These are the rules every screen the library ships follows: the window kinds, the editors, the menus
-and the studio. A host's own screens follow them too. Each rule has a test that any screen can be
-held to.
+The screens that ship with rolltui (the window kinds, the editors, the menus and the studio) follow
+these rules, and programs built on it should too. Each rule comes with a check you can apply to any
+screen.
 
-## 1. The view you read is the view you edit
+## 1. One screen per subject
 
-Each subject has one screen: the keys, a theme, the settings, a layout, a menu. The help a person
-reads (F1) is the keys editor. A person who sees something wrong changes it where they see it.
+The keys, a theme, the settings, a layout and a menu each have exactly one screen, and that screen
+is where you both read and edit it. The help you open with F1 is the keys editor, so if something
+there is wrong you can fix it on the spot.
 
-*Test:* a second screen shows the same data another way. Remove one of them.
+*Check:* if a second screen shows the same data in another way, remove one of them.
 
-## 2. Show the content, not the commands
+## 2. Show the content first
 
-The first thing on the screen is the subject itself: every key with what it does, every colour role
-with a sample drawn in it, every setting with its value. Load, save, reset, generate and check are
-keys along the bottom line, not the top of a menu.
+The first thing on screen is the subject itself: every key and what it does, every colour role with
+a sample, every setting with its value. Load, save, reset, generate and check are keys listed along
+the bottom line, not items at the top of a menu.
 
-*Test:* the first screen needs a keypress before it shows anything a person came to change.
+*Check:* the first screen shouldn't need a keypress before it shows what the user came to change.
 
-## 3. Flat and grouped
+## 3. Keep it flat
 
-One scrolling list, grouped under headings. Depth is used only where the subject nests (a layout's
-tree, a menu's submenus), and it is drawn as indentation in place, so the path to the selected row
-stays on the screen.
+Use one scrolling list grouped under headings. Only use nesting where the subject really nests (a
+layout's tree, a menu's submenus), and show it as indentation in place, so the path to the
+selected row stays visible.
 
-*Test:* something a person edits is more than one keypress from the overview.
+*Check:* nothing you can edit should be more than one keypress away from the overview.
 
 ## 4. Edit in place
 
-Enter edits the row where it is. A key row takes the next chord pressed. A colour row takes typed
-text and its swatch changes as it is typed. A choice opens a dropdown on its row. The heading and
-the rows around it stay visible. Escape cancels the edit, not the screen.
+Enter edits the row where it is. A key row records the next chord pressed, a colour row takes typed
+text and updates its swatch as you type, and a choice opens a dropdown on its row. The heading and
+the neighbouring rows stay visible, and Escape cancels the edit, not the screen.
 
-*Test:* editing a row hides the row's neighbours or its heading.
+*Check:* editing a row shouldn't hide its neighbours or its heading.
 
-## 5. Words people use
+## 5. Plain labels
 
-A row says what the thing does: "the row above", "move one word left". An action's name
-(`list.up`, `input.word_left`) appears only where a person writes it, in a file, and in the detail
-line of the row that has it.
+A row says what the thing does, such as "the row above" or "move one word left". Action names like
+`list.up` or `input.word_left` only appear where someone would type them: in a file, and in the
+detail line of the row they belong to.
 
-*Test:* a row's label is an identifier.
+*Check:* no row label should be an identifier.
 
-## 6. The effect shows while editing
+## 6. Show the effect while editing
 
-A colour changes the screen behind the editor as it is typed. A new chord shows in the help line.
-Enter keeps an edit, Escape drops it, and Ctrl-Z undoes it afterwards.
+Typing a colour changes the screen behind the editor as you type, and a new chord shows up in the
+help line straight away. Enter keeps an edit, Escape drops it, and Ctrl-Z undoes it later.
 
-*Test:* a person has to leave the editor to see what an edit did.
+*Check:* you shouldn't have to leave the editor to see what an edit did.
 
-## 7. Find by typing
+## 7. Every list can be filtered
 
-Every list filters as it is typed into, the same way everywhere: fuzzy, folding case and accents,
-with the count in the footer. The help, the keys, the theme roles, the settings and the menus all
-behave alike.
+Every list filters as you type, the same way everywhere: fuzzy, ignoring case and accents, with the
+count in the footer. Help, keys, theme roles, settings and menus all work the same.
 
-*Test:* a list longer than the screen has no filter.
+*Check:* any list longer than the screen should have a filter.
 
-## 8. The same keys mean the same thing everywhere
+## 8. Consistent keys
 
-Up and Down (or j and k in the vim keys) move. Enter edits or acts. Escape goes back one level, and
-only the top level closes. `/` filters. Ctrl-Z undoes. Each F-key opens the same thing in every
-program: F1 the keys, F2 the menu, F4 the theme.
+Up and Down (or j and k with the vim keys) move, Enter edits or acts, Escape goes back one level and
+only closes at the top level, `/` filters, and Ctrl-Z undoes. Each F-key opens the same thing in
+every program: F1 the keys, F2 the menu, F4 the theme.
 
-*Test:* a key does something different in two screens that show the same kind of thing.
+*Check:* a key shouldn't do different things on two screens that show the same kind of thing.
 
-## 9. A problem shows where it is
+## 9. Show problems where they are
 
-A chord bound to two actions, a pair of colours too close to read, a chord the terminal cannot send:
-each is marked on its own row as soon as it exists, with what to do about it. There is no separate
-screen of problems to visit.
+A chord bound to two actions, two colours too close to read, or a chord the terminal can't send is
+marked on its own row as soon as it happens, along with what to do about it. There's no separate
+list of problems to go and look at.
 
-*Test:* a person learns of a problem only by opening another screen.
+*Check:* the user should never have to open another screen to find out about a problem.
 
-## 10. Changes are kept, visible and reversible
+## 10. Save changes and make them reversible
 
-An edit goes to the person's own copy and is saved as it is made. The copy is labelled "modified",
-the preset it came from stays as it was and can still be chosen, and one key goes back to it.
+Edits go to the user's own copy and are saved as they're made. The copy is labelled "modified", the
+preset it came from stays unchanged and can still be picked, and one key switches back to it.
 
-*Test:* an edit is lost on quitting, or overwrites a preset.
+*Check:* no edit should be lost on quitting or overwrite a preset.
 
-## 11. A small screen is a layout, not a failure
+## 11. Work at 80 by 24
 
-At 80 by 24 every screen still works. Side panes become a drawer over the main one, columns drop
-from the right, and text is cut with an ellipsis at the end that says least.
+Every screen has to work at 80 by 24. Side panes turn into a drawer over the main pane, columns are
+dropped from the right, and text is cut with an ellipsis at the end that matters least.
 
-*Test:* a screen at 80 by 24 hides something a person needs, or draws over itself.
+*Check:* at 80 by 24 nothing the user needs should be hidden, and nothing should overlap.

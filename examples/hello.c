@@ -1,11 +1,11 @@
-/* examples/hello.c — the smallest whole rolltui program: a screen from a layout file, a list the program fills, a page of text,
- * a message when a row is chosen, and q to quit. docs/guide.md quotes it whole; tests/hello_test.c runs it with no terminal. */
+/* examples/hello.c: a minimal rolltui program. It loads its screen from a layout, fills a list, shows a page of text, posts a
+ * message when you pick a row, and quits on q. docs/guide.md quotes this file, and tests/hello_test.c runs it headless. */
 #include <stdio.h>
 #include <string.h>
 
 #include "rolltui/rolltui.h"
 
-/* THE SCREEN, a layout file. A program usually ships it beside itself and reads it in; it is here to keep this to one file. */
+/* The screen layout. A real program would normally load this from a file; it's inline to keep the example to one file. */
 static const char kLayout[] =
     "{ \"name\": \"hello\", \"focus\": \"fruit\", \"root\": { \"row\": [\n"
     "  { \"id\": \"fruit\", \"content\": \"list:fruit\", \"size\": 24, \"border\": \"rounded\", \"title\": \"fruit\",\n"
@@ -16,18 +16,18 @@ static const char kLayout[] =
 static const char* const kFruit[] = {"apple", "banana", "cherry", "damson", "elderberry"};
 
 typedef struct Hello {
-  RolltuiContext* ctx;        /* the session: its keys, menus, kinds */
-  RolltuiWindows* windows;    /* each window's widget, made from its content */
-  RolltuiWindowStack* stack;  /* the layout's layers, the focus, where a key or a press goes */
+  RolltuiContext* ctx;        /* key bindings, menus and content kinds */
+  RolltuiWindows* windows;    /* a widget for each window, created from its content */
+  RolltuiWindowStack* stack;  /* the layout's layers, focus, and event routing */
   RolltuiLayout* layout;
   RolltuiComposeScratch* compose;
   RolltuiEffectMap* effects;
-  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]; /* the theme: a style for every role */
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]; /* the theme, one style per role */
   int w, h;
   unsigned long long now_ms;
 } Hello;
 
-/* THE LIST'S ROWS, asked for as they are drawn */
+/* The list's rows, requested as they're drawn. */
 static size_t fruit_count(void* ctx) {
   (void)ctx;
   return sizeof kFruit / sizeof *kFruit;
@@ -43,7 +43,7 @@ static void draw_window(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* 
   rolltui_windows_draw(h->windows, rn, f, h->styles, rolltui_windows_default_roles());
 }
 
-/* A FRAME: the windows laid out on the screen and drawn, then the messages over them. Returns how long to wait. */
+/* Draw one frame: lay out and draw the windows, then any messages on top. Returns how long to wait before the next frame. */
 static int render(void* ctx, RolltuiRun* run, RolltuiFrame* f, int w, int h_, unsigned long long now_ms) {
   Hello* h = (Hello*)ctx;
   const RolltuiRect screen = {0, 0, w, h_};
@@ -60,7 +60,7 @@ static void ground(void* ctx, RolltuiRun* run, RolltuiStyle* out) {
   *out = ((Hello*)ctx)->styles[ROLLTUI_ROLE_BACKGROUND];
 }
 
-/* AN EVENT: routed to the window it is for, which takes it first; a q no window took quits. Then what the list says happened. */
+/* Handle one event: route it to its window, quit on a q that no window used, then read the list's events. */
 static void event(void* ctx, RolltuiRun* run, const RolltuiEvent* e) {
   Hello* h = (Hello*)ctx;
   const RolltuiRect screen = {0, 0, h->w, h->h};
@@ -97,7 +97,7 @@ static void hello_init(Hello* h) {
   memset(&rep, 0, sizeof rep);
   h->layout = rolltui_load_layout_text(kLayout, sizeof kLayout - 1, rolltui_layout_shipped_default_actions(h->ctx, &n), n,
                                        rolltui_layout_default_hooks(), &rep);
-  if (rep.error.n) fprintf(stderr, "hello: %s\n", rep.error.p); /* every problem the file has is named in the report */
+  if (rep.error.n) fprintf(stderr, "hello: %s\n", rep.error.p); /* the report lists any problems in the layout */
   rolltui_layout_report_release(&rep);
   rolltui_window_stack_set_base(h->stack, rolltui_layout_base(h->layout));
   rolltui_windows_bind_list(h->windows, "fruit", 5, fruit_count, fruit_row, h, NULL);
