@@ -1,5 +1,6 @@
 {
   "name": "no-panel",
+  "resizable": true,
   "min_width": 20,
   "min_height": 6,
   "focus": "input",

@@ -1,4 +1,5 @@
 {
+  "resizable": false,
   "name": "kettle-silent", "min_width": 0, "min_height": 0, "focus": "kettle_menu",
   "actions": {},
   "root": { "column": [

@@ -95,7 +95,7 @@ RolltuiEvent ctrl_key(char c) { return key_event(ROLLTUI_KEY_CHAR, static_cast<R
 
 // The one screen the in-process half drives: a `theme` window and nothing else, written here
 // rather than read from a file because what is under test is the KIND, not the loader.
-const char* kInProcessLayout = R"({
+const char* kInProcessLayout = R"({ "resizable": false,
   "name": "kiln-inproc", "min_width": 0, "min_height": 0, "focus": "kiln_edit",
   "actions": {},
   "root": { "id": "kiln_edit", "content": "theme", "focusable": true }

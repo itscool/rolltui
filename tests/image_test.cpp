@@ -468,7 +468,7 @@ void test_preview_and_window() {
   RolltuiLayoutReport rep{};
   std::size_t nd = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &nd);
-  static const char kScreen[] = R"({ "name": "i", "root": { "column": [ { "id": "pic", "content": "image:four.ppm" } ] } })";
+  static const char kScreen[] = R"({ "resizable": false, "name": "i", "root": { "column": [ { "id": "pic", "content": "image:four.ppm" } ] } })";
   RolltuiLayout* l = rolltui_load_layout_text(kScreen, sizeof kScreen - 1, defaults, nd, rolltui_layout_default_hooks(), &rep);
   rolltui_layout_report_release(&rep);
   RolltuiWindows* w = rolltui_windows_new(ctx);

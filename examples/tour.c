@@ -22,7 +22,7 @@
 /* ---- the screen ------------------------------------------------------------------------------ */
 
 static const char kLayout[] =
-    "{ \"name\": \"tour\", \"min_width\": 48, \"min_height\": 12, \"focus\": \"main\",\n"
+    "{ \"name\": \"tour\", \"resizable\": true, \"min_width\": 48, \"min_height\": 12, \"focus\": \"main\",\n"
     "  \"actions\": { \"app.help\": \"every key\", \"app.menu\": \"settings: the theme, light or dark, the keys\",\n"
     "               \"app.theme\": \"edit the theme\", \"app.keys\": \"edit the keys\", \"app.quit\": \"quit\" },\n"
     "  \"popups\": [\n"

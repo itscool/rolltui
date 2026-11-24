@@ -311,7 +311,7 @@ int main() {
   {
     fs::create_directories(scratch + "/wrong/layouts");
     std::ofstream(scratch + "/wrong/layouts/wrong.json", std::ios::binary | std::ios::trunc)
-        << R"({"name":"wrong","min_width":0,"min_height":0,"focus":"s","actions":{},
+        << R"({"resizable":false,"name":"wrong","min_width":0,"min_height":0,"focus":"s","actions":{},
                "root":{"row":[{"id":"s","content":"canvas:nope","border":"single","title":"s","focusable":true}]}})";
     const std::size_t before = stderr_size();
     int rc2 = 0;

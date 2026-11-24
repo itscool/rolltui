@@ -117,7 +117,7 @@ RolltuiLayout* load(std::string_view json) {
 }
 
 void test_footers() {
-  RolltuiLayout* l = load(R"({ "name": "f", "root": { "row": [
+  RolltuiLayout* l = load(R"({ "resizable": false, "name": "f", "root": { "row": [
       { "id": "rows", "content": "list:things", "border": "single", "focusable": true },
       { "id": "note", "content": "text:a note", "border": "single", "footer": "read only" } ] } })");
   RolltuiWindows* w = rolltui_windows_new(ctx());
@@ -140,7 +140,7 @@ void test_footers() {
   rolltui_windows_free(w);
   rolltui_layout_free(l);
   // A TAB'S FOOTER IS ITS OWN: shown in place of the list, a page with nothing to say leaves the border bare.
-  l = load(R"({ "name": "t", "root": { "id": "main", "focusable": true, "border": "single",
+  l = load(R"({ "resizable": false, "name": "t", "root": { "id": "main", "focusable": true, "border": "single",
       "tabs": [ { "title": "Rows", "content": "list:things" }, { "title": "Note", "content": "text:a note" } ] } })");
   w = rolltui_windows_new(ctx());
   rolltui_windows_bind_list(w, "things", 6, count_fn, row_fn, nullptr, nullptr);
@@ -500,7 +500,7 @@ void test_away() {
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
   // a list, with its window focused, then with the terminal's window losing the person's focus
-  RolltuiLayout* l = load(R"({ "name": "a", "root": { "id": "rows", "content": "list:things", "border": "single", "focusable": true } })");
+  RolltuiLayout* l = load(R"({ "resizable": false, "name": "a", "root": { "id": "rows", "content": "list:things", "border": "single", "focusable": true } })");
   RolltuiWindows* w = rolltui_windows_new(ctx());
   rolltui_windows_bind_list(w, "things", 6, count_fn, row_fn, nullptr, nullptr);
   RolltuiFrame* f = nullptr;
@@ -552,7 +552,7 @@ void test_away() {
   }
   rolltui_windows_free(w2);
   // A WINDOW'S OWN BACKGROUND IS ITS GROUND: a list in a panel draws its rows on the panel, not on the screen behind it.
-  RolltuiLayout* panel = load(R"({ "name": "p", "root": { "id": "rows", "content": "list:things", "focusable": true,
+  RolltuiLayout* panel = load(R"({ "resizable": false, "name": "p", "root": { "id": "rows", "content": "list:things", "focusable": true,
       "background": "panel_background" } })");
   RolltuiWindows* w3 = rolltui_windows_new(ctx());
   rolltui_windows_bind_list(w3, "things", 6, count_fn, row_fn, nullptr, nullptr);

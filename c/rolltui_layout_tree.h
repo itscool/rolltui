@@ -264,6 +264,8 @@ typedef struct RolltuiLayoutNode {
    * stacks into a column below `stack_below` cells of width, and the weight the child holding the focus takes (`focus_weight`). */
   unsigned char padding ROLLTUI_DEFAULT(0), gap ROLLTUI_DEFAULT(0), separators ROLLTUI_DEFAULT(0);
   int stack_below ROLLTUI_DEFAULT(0), focus_weight ROLLTUI_DEFAULT(0);
+  /* A SPLIT RESIZED BY DRAGGING the edge between two children: 1 yes, 0 no, -1 as its layer says (the layout's `"resizable"`). */
+  signed char resizable ROLLTUI_DEFAULT(-1);
   /* A GRID with spans: `grid_cols` columns, or as many as rows `grid_cell_h` tall need; each child spans `span_r` by `span_c`
    * cells. A column with neither is a column. */
   int grid_cols ROLLTUI_DEFAULT(0), grid_cell_h ROLLTUI_DEFAULT(0);
@@ -291,6 +293,9 @@ typedef struct RolltuiLayer {
    * ROLLTUI_ROUTE_CLOSED_POPUP with its id and the press goes no further. Off by default: a
    * popup that asks a question (an approval) must be answered, not clicked away. */
   unsigned char dismiss ROLLTUI_DEFAULT(0);
+  /* The layout's `"resizable"`: whether its splits are resized by dragging the edge between two children, unless a split says
+   * otherwise. Every layer of a file carries the file's answer. */
+  unsigned char resizable ROLLTUI_DEFAULT(0);
   RolltuiStr focus; /* the focused window id; "" → first focusable in tree order */
   /* The screen this layer needs, the layout's `min_width` and `min_height` on its base: smaller, the stack draws a note saying so
    * instead of a layout squeezed past use. 0 on a popup. */
@@ -480,12 +485,17 @@ inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
       root(std::move(o.root)),
       modal(o.modal),
       dismiss(o.dismiss),
+      resizable(o.resizable),
       focus(std::move(o.focus)),
       min_width(o.min_width),
-      min_height(o.min_height) {
+      min_height(o.min_height),
+      anchored(o.anchored),
+      anchor(o.anchor) {
   o.modal = 0;
   o.dismiss = 0;
+  o.resizable = 0;
   o.min_width = o.min_height = 0;
+  o.anchored = 0;
 }
 inline RolltuiLayer RolltuiLayer::clone() const {
   RolltuiLayer out;
@@ -500,12 +510,17 @@ inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
     root = std::move(o.root);
     modal = o.modal;
     dismiss = o.dismiss;
+    resizable = o.resizable;
     focus = std::move(o.focus);
     min_width = o.min_width;
     min_height = o.min_height;
+    anchored = o.anchored;
+    anchor = o.anchor;
     o.modal = 0;
     o.dismiss = 0;
+    o.resizable = 0;
     o.min_width = o.min_height = 0;
+    o.anchored = 0;
   }
   return *this;
 }

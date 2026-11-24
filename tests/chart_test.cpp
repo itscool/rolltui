@@ -226,7 +226,7 @@ RolltuiLayout* load(std::string_view json, std::string* problems) {
 
 void test_window_and_grid() {
   std::string problems;
-  RolltuiLayout* l = load(R"({ "name": "d", "root": { "grid": [
+  RolltuiLayout* l = load(R"({ "resizable": false, "name": "d", "root": { "grid": [
       [ { "id": "cpu", "content": "chart:cpu", "border": "single", "title": "cpu" }, { "id": "b", "content": "text:top right" } ],
       [ { "id": "c", "content": "text:bottom left" }, { "id": "d", "content": "chart:x" } ] ] } })",
                           &problems);

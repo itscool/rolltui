@@ -1,5 +1,6 @@
 {
   "name": "wide-left",
+  "resizable": false,
   "min_width": 40,
   "min_height": 6,
   "focus": "input",

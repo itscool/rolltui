@@ -1857,6 +1857,10 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       }
     } else if (streq(k, klen, "separators")) {
       bool_from_json(x, at.p, at.n, report, &n->separators);
+    } else if (streq(k, klen, "resizable")) {
+      unsigned char r = 0;
+      if (n->kind == ROLLTUI_NODE_WINDOW) bad_at(report, at.p, at.n, ": only a split (a row, a column or a grid) is resized by dragging");
+      else if (bool_from_json(x, at.p, at.n, report, &r)) n->resizable = (signed char)r;
     } else if (streq(k, klen, "span")) {
       if (!rolltui_json_is_array(x) || rolltui_json_array_size(x) != 2 || !rolltui_json_is_number(rolltui_json_array_at(x, 0)) ||
           !rolltui_json_is_number(rolltui_json_array_at(x, 1)) || rolltui_json_as_number(rolltui_json_array_at(x, 0), 0) < 1 ||
@@ -2089,7 +2093,7 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
                         const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report) {
   RolltuiJsonValue* base;
-  int have_actions = 0;
+  int have_actions = 0, resizable = -1;
   size_t i, n;
 
   if (!rolltui_json_is_object(root)) {
@@ -2126,6 +2130,9 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
     } else if (streq(k, klen, "inline")) {
       if (!rolltui_json_is_bool(v)) bad_at(report, "", 0, "inline: expected true or false");
       else out->inline_mode = (unsigned char)(rolltui_json_as_bool(v, 0) != 0);
+    } else if (streq(k, klen, "resizable")) {
+      if (!rolltui_json_is_bool(v)) bad_at(report, "", 0, "resizable: expected true or false");
+      else resizable = rolltui_json_as_bool(v, 0) != 0;
     } else if (streq(k, klen, "root") || streq(k, klen, "focus")) {
       rolltui_json_set(base, k, klen, rolltui_json_clone(v));
     } else if (streq(k, klen, "actions")) {
@@ -2230,6 +2237,13 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
   layer_from_json(base, "", 0, 0, hooks, report, &out->base);
   out->base.min_width = out->min_width;
   out->base.min_height = out->min_height;
+  /* WHETHER ITS SPLITS ARE RESIZED BY DRAGGING IS NEVER A DEFAULT: a screen whose panes the person moves and one whose panes stay
+   * where the author put them are both right, and only the file knows which this is. A file that does not say is a named problem,
+   * loaded as if it said false. */
+  if (resizable < 0)
+    bad_at(report, "", 0, "resizable: a layout states whether its splits are resized by dragging the edge between two panes: true | false");
+  out->base.resizable = (unsigned char)(resizable > 0);
+  for (i = 0; i < out->popups_n; ++i) out->popups[i].resizable = out->base.resizable;
   rolltui_json_free(base);
 
   /* A file that declares no actions — a hand-written one, or any saved before the key
@@ -2338,6 +2352,7 @@ static RolltuiJsonValue* node_to_json(const RolltuiLayoutNode* n, const RolltuiL
   if (n->padding) rolltui_json_set(o, K("padding"), rolltui_json_number(n->padding));
   if (n->gap) rolltui_json_set(o, K("gap"), rolltui_json_number(n->gap));
   if (n->separators) rolltui_json_set(o, K("separators"), rolltui_json_bool(1));
+  if (n->resizable >= 0) rolltui_json_set(o, K("resizable"), rolltui_json_bool(n->resizable));
   if (n->stack_below) rolltui_json_set(o, K("stack_below"), rolltui_json_number(n->stack_below));
   if (n->focus_weight) rolltui_json_set(o, K("focus_weight"), rolltui_json_number(n->focus_weight));
   if (n->span_r > 1 || n->span_c > 1) {
@@ -2421,6 +2436,7 @@ RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len
   RolltuiJsonValue* o = rolltui_json_object();
   size_t i;
   rolltui_json_set(o, K("name"), rolltui_json_string(name, name_len));
+  rolltui_json_set(o, K("resizable"), rolltui_json_bool(base->resizable ? 1 : 0)); /* always: it is never a default */
   if (min_width) rolltui_json_set(o, K("min_width"), rolltui_json_number(min_width));
   if (min_height) rolltui_json_set(o, K("min_height"), rolltui_json_number(min_height));
   if (inline_mode) rolltui_json_set(o, K("inline"), rolltui_json_bool(1));
@@ -2479,7 +2495,13 @@ struct RolltuiWindowStack {
   RolltuiStr half; /* the window given half the screen (`rolltui_window_stack_set_half`); "" none */
   RolltuiStr label;  /* the action of the title label last pressed */
   int label_pressed; /* …and whether it is still to be taken */
+  /* AN EDGE BEING DRAGGED between two children of a resizable split (`drag_a` and `drag_b`, in `drag_layer`); NULL `drag_a`: none.
+   * Set by a press on the edge, moved by the drags, ended by the release or by the tree changing under it. */
+  RolltuiLayoutNode *drag_split, *drag_a, *drag_b;
+  size_t drag_layer;
 };
+
+static void end_drag(RolltuiWindowStack* s) { s->drag_split = s->drag_a = s->drag_b = NULL; }
 
 void rolltui_window_stack_set_border_role(RolltuiWindowStack* s, const char* id, size_t len, unsigned char role) {
   RolltuiLayoutNode* n = s && id ? rolltui_window_stack_find(s, id, len) : NULL;
@@ -2767,6 +2789,7 @@ static void show_tab(RolltuiLayoutNode* n, size_t tab) {
 /* A NEW BASE keeps what the person chose on the old one where it still applies: the focus, each tabbed window's tab, the maximised
  * window. What the stack was told at run time about a window's visibility or size is the file's again. */
 void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* base) {
+  end_drag(s); /* the tree under a drag changes, or the layers move */
   RolltuiStr keep, ids[KEEP_TABS];
   unsigned char tabs[KEEP_TABS];
   size_t i, nt;
@@ -2853,6 +2876,7 @@ size_t rolltui_window_stack_tab(const RolltuiWindowStack* s, const char* id, siz
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s) { return &s->layers[0]; }
 RolltuiLayer* rolltui_window_stack_layer_mut(RolltuiWindowStack* s, size_t i) { return s && i < s->n ? &s->layers[i] : NULL; }
 int rolltui_window_stack_remove_layer(RolltuiWindowStack* s, const char* id, size_t len) {
+  end_drag(s); /* the tree under a drag changes, or the layers move */
   size_t i;
   if (!s || !id) return 0;
   for (i = 1; i < s->n; ++i)
@@ -2867,6 +2891,7 @@ int rolltui_window_stack_remove_layer(RolltuiWindowStack* s, const char* id, siz
 }
 
 void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup) {
+  end_drag(s); /* the tree under a drag changes, or the layers move */
   s->layers = (RolltuiLayer*)rolltui_grow_zeroed(s->layers, &s->cap, s->n + 1, sizeof *s->layers);
   rolltui_layer_init(&s->layers[s->n]);
   rolltui_layer_move(&s->layers[s->n], popup);
@@ -2877,6 +2902,7 @@ void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup) {
  * then moved out of: there is no intermediate to get the ownership of wrong, which is the
  * whole point of the call existing (see the header). */
 int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len) {
+  end_drag(s); /* the tree under a drag changes, or the layers move */
   const RolltuiLayer* p = layout != NULL ? rolltui_layout_popup(layout, id, len) : NULL;
   if (p == NULL) return 0;
   s->layers = (RolltuiLayer*)rolltui_grow_zeroed(s->layers, &s->cap, s->n + 1, sizeof *s->layers);
@@ -2887,6 +2913,7 @@ int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* 
 }
 
 int rolltui_window_stack_pop(RolltuiWindowStack* s) {
+  end_drag(s); /* the tree under a drag changes, or the layers move */
   if (s->n <= 1) return 0;
   rolltui_layer_release(&s->layers[--s->n]);
   return 1;
@@ -3069,6 +3096,10 @@ void rolltui_window_stack_resolve(const RolltuiWindowStack* s, RolltuiRect scree
   }
 }
 
+static int edge_at(const RolltuiWindowStack* s, const RolltuiResolvedNode* v, size_t n, size_t layer, int x, int y,
+                   const RolltuiLayoutNode** split, const RolltuiLayoutNode** a, const RolltuiLayoutNode** b);
+static int edge_strip(const RolltuiResolvedNode* v, size_t n, const RolltuiLayoutNode* a, const RolltuiLayoutNode* b, RolltuiRect* out);
+
 void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, RolltuiRect screen,
                                   const RolltuiStyle* styles, const RolltuiLayoutRoles* roles,
                                   RolltuiSlotFn render, void* ctx, int ambiguous_wide,
@@ -3139,6 +3170,20 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
     rolltui_compose_layer(f, scratch->nodes.v, scratch->nodes.n, styles, roles, render, ctx, ambiguous_wide,
                           scratch);
     scratch->numbered_n = 0;
+    if (i + 1 == s->n) { /* THE EDGE being dragged, or the one under the pointer, drawn in the active border's colour */
+      const RolltuiLayoutNode *sp = NULL, *a = s->drag_a, *b = s->drag_b;
+      RolltuiRect strip;
+      if (!(a && s->drag_layer == i) && !(s->pointer_known && edge_at(s, scratch->nodes.v, scratch->nodes.n, i, s->pointer_x,
+                                                                      s->pointer_y, &sp, &a, &b)))
+        a = b = NULL;
+      if (a && b && edge_strip(scratch->nodes.v, scratch->nodes.n, a, b, &strip)) {
+        RolltuiStyle lit;
+        memset(&lit, 0, sizeof lit);
+        lit.fg = styles[roles->border_active].fg;
+        lit.bold = 1;
+        rolltui_frame_tint(f, rect_intersect(strip, screen), lit);
+      }
+    }
   }
 }
 
@@ -3192,6 +3237,174 @@ static int focus_toward(RolltuiWindowStack* s, RolltuiRect screen, int dir, Roll
   return best != NULL;
 }
 
+/* ---- resizing by dragging the edge between two panes ---------------------------------------- */
+
+/* Whether a split is resized by dragging: its own answer, else its layer's (the layout's `"resizable"`). */
+static int split_resizable(const RolltuiWindowStack* s, const RolltuiLayoutNode* n, size_t layer) {
+  return n->resizable >= 0 ? n->resizable : (layer < s->n && s->layers[layer].resizable);
+}
+
+static const RolltuiResolvedNode* resolved_of(const RolltuiResolvedNode* v, size_t n, const RolltuiLayoutNode* node) {
+  size_t k;
+  for (k = 0; k < n; ++k)
+    if (v[k].node == node) return &v[k];
+  return NULL;
+}
+
+/* THE EDGE AT (x, y) in `layer`: the innermost resizable split two of whose children, side by side or one above the other, have
+ * that cell between them (a border either of them draws there, or the gap). A cell inside any window is no edge. 1 with the split
+ * and the two children. */
+static int edge_at(const RolltuiWindowStack* s, const RolltuiResolvedNode* v, size_t n, size_t layer, int x, int y,
+                   const RolltuiLayoutNode** split, const RolltuiLayoutNode** a, const RolltuiLayoutNode** b) {
+  size_t k, i;
+  long best = -1;
+  for (k = 0; k < n; ++k)
+    if (v[k].layer == layer && v[k].node->kind == ROLLTUI_NODE_WINDOW && rect_contains(v[k].inner, x, y)) return 0;
+  for (k = 0; k < n; ++k) {
+    const RolltuiResolvedNode* sp = &v[k];
+    const RolltuiResolvedNode* prev = NULL;
+    const long area = (long)sp->outer.w * sp->outer.h;
+    if (sp->layer != layer || sp->node->kind == ROLLTUI_NODE_WINDOW || !rect_contains(sp->outer, x, y)) continue;
+    if (!split_resizable(s, sp->node, layer) || (best >= 0 && area >= best)) continue;
+    for (i = 0; i < sp->node->children.n; ++i) {
+      const RolltuiResolvedNode* ch = resolved_of(v, n, sp->node->children.v[i]);
+      if (!ch || ch->outer.w <= 0 || ch->outer.h <= 0) continue;
+      if (prev) {
+        const int across = ch->outer.y == prev->outer.y && ch->outer.x > prev->outer.x;
+        const int down = ch->outer.x == prev->outer.x && ch->outer.y > prev->outer.y;
+        const int lo = across ? prev->outer.x + prev->outer.w - 1 : prev->outer.y + prev->outer.h - 1;
+        const int hi = across ? ch->outer.x : ch->outer.y;
+        const int at = across ? x : y, other = across ? y : x;
+        const int o_lo = across ? sp->outer.y : sp->outer.x, o_hi = across ? sp->outer.y + sp->outer.h : sp->outer.x + sp->outer.w;
+        if ((across || down) && at >= lo && at <= hi && other >= o_lo && other < o_hi) {
+          best = area;
+          *split = sp->node;
+          *a = prev->node;
+          *b = ch->node;
+          break;
+        }
+      }
+      prev = ch;
+    }
+  }
+  return best >= 0;
+}
+
+/* The least a pane can be along the drag: its own `min`, else a cell inside its border. */
+static int least_along(const RolltuiLayoutNode* n) {
+  const int floor_ = n->kind == ROLLTUI_NODE_WINDOW && n->border != ROLLTUI_BORDER_NONE ? 3 : 1;
+  return n->size_min > floor_ ? n->size_min : floor_;
+}
+
+static long gcd_l(long a, long b) {
+  while (b) {
+    const long t = a % b;
+    a = b;
+    b = t;
+  }
+  return a < 0 ? -a : a;
+}
+
+/* THE EDGE MOVED TO `at` (a column across, a row down): the two panes either side take the room between them as the pointer
+ * splits it, each within its bounds, and keep the kind of size they had: cells stay cells, a percentage stays a percentage of the
+ * split, and two fills keep filling with their weights in the new proportion (the split's other fills scaled with them, so their
+ * share holds). "content" becomes the cells it was dragged to. */
+static void drag_to(RolltuiWindowStack* s, const RolltuiResolvedNode* v, size_t n, int at) {
+  const RolltuiResolvedNode* sp = resolved_of(v, n, s->drag_split);
+  const RolltuiResolvedNode* ra = resolved_of(v, n, s->drag_a);
+  const RolltuiResolvedNode* rb = resolved_of(v, n, s->drag_b);
+  RolltuiLayoutNode *a = s->drag_a, *b = s->drag_b, *split = s->drag_split;
+  int across, start, span, gap, ea, eb, max_a, inner;
+  size_t i;
+  if (!sp || !ra || !rb) return;
+  across = rb->outer.x > ra->outer.x;
+  start = across ? ra->outer.x : ra->outer.y;
+  gap = across ? rb->outer.x - (ra->outer.x + ra->outer.w) : rb->outer.y - (ra->outer.y + ra->outer.h);
+  span = (across ? rb->outer.x + rb->outer.w : rb->outer.y + rb->outer.h) - start - gap;
+  inner = across ? sp->inner.w : sp->inner.h;
+  ea = at - start + 1;
+  max_a = span - least_along(b);
+  if (b->size_max > 0 && span - ea > b->size_max) ea = span - b->size_max;
+  if (a->size_max > 0 && ea > a->size_max) ea = a->size_max;
+  if (ea > max_a) ea = max_a;
+  if (ea < least_along(a)) ea = least_along(a);
+  eb = span - ea;
+  if (eb < 1 || ea == (across ? ra->outer.w : ra->outer.h)) return;
+  if (a->size.fill && b->size.fill && !a->fit && !b->fit) {
+    const long pair = (long)a->size.weight + b->size.weight, scale = span;
+    long g = 0;
+    for (i = 0; i < split->children.n; ++i) {
+      RolltuiLayoutNode* c = split->children.v[i];
+      if (c->size.fill && c != a && c != b) c->size.weight = (int)(c->size.weight * scale);
+    }
+    a->size.weight = (int)(pair * ea);
+    b->size.weight = (int)(pair * eb);
+    for (i = 0; i < split->children.n; ++i)
+      if (split->children.v[i]->size.fill) g = gcd_l(g, split->children.v[i]->size.weight);
+    for (i = 0; g > 1 && i < split->children.n; ++i)
+      if (split->children.v[i]->size.fill) split->children.v[i]->size.weight = (int)(split->children.v[i]->size.weight / g);
+    return;
+  }
+  {
+    RolltuiLayoutNode* sides[2] = {a, b};
+    const int extent[2] = {ea, eb};
+    int k;
+    for (k = 0; k < 2; ++k) {
+      RolltuiLayoutNode* c = sides[k];
+      if (c->size.fill && !c->fit) continue; /* a fill takes what the fixed one leaves */
+      c->fit = 0;
+      c->size.fill = 0;
+      c->size.weight = 1;
+      if (c->size.dim.fraction > 0 && inner > 0) {
+        c->size.dim.fraction = (double)extent[k] / inner;
+        c->size.dim.cells = 0;
+      } else {
+        c->size.dim.fraction = 0;
+        c->size.dim.cells = extent[k];
+      }
+    }
+  }
+}
+
+/* THE CELLS OF THE EDGE between two panes: the columns (or rows) from the first's last to the second's first, along the length
+ * the two share. */
+static int edge_strip(const RolltuiResolvedNode* v, size_t n, const RolltuiLayoutNode* a, const RolltuiLayoutNode* b, RolltuiRect* out) {
+  const RolltuiResolvedNode* ra = resolved_of(v, n, a);
+  const RolltuiResolvedNode* rb = resolved_of(v, n, b);
+  if (!ra || !rb) return 0;
+  if (rb->outer.x > ra->outer.x) {
+    out->x = ra->outer.x + ra->outer.w - 1;
+    out->w = rb->outer.x - out->x + 1;
+    out->y = ra->outer.y > rb->outer.y ? ra->outer.y : rb->outer.y;
+    out->h = imin(ra->outer.y + ra->outer.h, rb->outer.y + rb->outer.h) - out->y;
+  } else {
+    out->y = ra->outer.y + ra->outer.h - 1;
+    out->h = rb->outer.y - out->y + 1;
+    out->x = ra->outer.x > rb->outer.x ? ra->outer.x : rb->outer.x;
+    out->w = imin(ra->outer.x + ra->outer.w, rb->outer.x + rb->outer.w) - out->x;
+  }
+  return out->w > 0 && out->h > 0;
+}
+
+/* 1 when two resolved panes sit side by side (their edge is dragged across), 0 when one is above the other. */
+static int rolltui_resolved_across(const RolltuiResolvedNode* v, size_t n, const RolltuiLayoutNode* a, const RolltuiLayoutNode* b) {
+  const RolltuiResolvedNode* ra = resolved_of(v, n, a);
+  const RolltuiResolvedNode* rb = resolved_of(v, n, b);
+  return ra && rb && rb->outer.x > ra->outer.x;
+}
+
+/* A PRESS ON AN EDGE between two panes of a resizable split starts dragging it. 1 when it did. */
+static int press_on_edge(RolltuiWindowStack* s, const NodeCollect* c, size_t layer, int x, int y) {
+  const RolltuiLayoutNode *split = NULL, *a = NULL, *b = NULL;
+  if (!edge_at(s, c->v, c->n, layer, x, y, &split, &a, &b)) return 0;
+  s->drag_split = (RolltuiLayoutNode*)split; /* the stack's own tree: resolved from its layers, lent const */
+  s->drag_a = (RolltuiLayoutNode*)a;
+  s->drag_b = (RolltuiLayoutNode*)b;
+  s->drag_layer = layer;
+  rolltui_str_clear(&s->captured);
+  return 1;
+}
+
 unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEvent* e, RolltuiRect screen,
                                          const RolltuiBindings* bindings, const RolltuiStackActions* actions,
                                          RolltuiStr* window) {
@@ -3210,6 +3423,25 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
     if (s->pointer_known) {
       s->pointer_x = m->x;
       s->pointer_y = m->y;
+    }
+    /* AN EDGE BEING DRAGGED takes the drags and the release, wherever the pointer is */
+    if (s->drag_a && (m->kind == 2 /* Drag */ || m->kind == 1 /* Release */)) {
+      if (m->kind == 2) {
+        NodeCollect dc = {NULL, 0, 0};
+        StackSink dw;
+        dw.emit = collect_sink;
+        dw.ctx = &dc;
+        dw.focused = NULL;
+        dw.hover = NULL;
+        dw.hover_x = dw.hover_y = 0;
+        if (s->drag_layer < s->n) resolve_layer(s, s->drag_layer, screen, stack_sink, &dw);
+        drag_to(s, dc.v, dc.n, rolltui_resolved_across(dc.v, dc.n, s->drag_a, s->drag_b) ? m->x : m->y);
+        rolltui_mem_free(dc.v);
+      } else {
+        end_drag(s);
+      }
+      if (s->drag_split && s->drag_split->id.n) rolltui_str_set(window, s->drag_split->id.p, s->drag_split->id.n);
+      return ROLLTUI_ROUTE_LAYOUT_CHANGED;
     }
     /* A captured pointer: drags and the release go to the pressed window, wherever the
      * pointer is now (the window may even have gone: then the capture just ends). */
@@ -3298,6 +3530,10 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
           return ROLLTUI_ROUTE_LABEL;
         }
       }
+      if (m->kind == 0 /* Press */ && m->button == 1 && press_on_edge(s, &c, rn->layer, m->x, m->y)) {
+        rolltui_mem_free(c.v);
+        return ROLLTUI_ROUTE_LAYOUT_CHANGED;
+      }
       if (m->kind == 0 /* Press */) {
         if (rn->node->focusable && rn->layer == rolltui_window_stack_focus_layer(s))
           rolltui_window_stack_focus(s, rn->node->id.p, rn->node->id.n);
@@ -3306,6 +3542,11 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       rolltui_str_set(window, rn->node->id.p, rn->node->id.n);
       verdict = ROLLTUI_ROUTE_DELIVER;
       break;
+    }
+    if (verdict == ROLLTUI_ROUTE_DROPPED && m->kind == 0 && m->button == 1 && !(top > 0 && s->layers[top].dismiss) &&
+        press_on_edge(s, &c, top, m->x, m->y)) { /* a gap between two panes is an edge too */
+      rolltui_mem_free(c.v);
+      return ROLLTUI_ROUTE_LAYOUT_CHANGED;
     }
     rolltui_mem_free(c.v);
     /* A PRESS OUTSIDE A POPUP THAT DISMISSES closes it, exactly as the close key does: the

@@ -1057,7 +1057,7 @@ int main(int argc, char** argv) {
       std::filesystem::create_directories(p + "/menus");
       std::ofstream(p + "/menus/extra.json", std::ios::binary) << R"({"id":"root","label":"dropped","items":[
         {"id":"one","label":"a dropped item"},{"id":"two","label":"another one"}]})";
-      std::ofstream(scratch + "/dropped-layout.json", std::ios::binary) << R"({"name":"dropped","root":{"column":[
+      std::ofstream(scratch + "/dropped-layout.json", std::ios::binary) << R"({"resizable":false,"name":"dropped","root":{"column":[
         {"id":"tx","content":"transcript:session"},
         {"id":"m","content":"menu:extra","size":6,"border":"single","title":"dropped menu"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})";
@@ -1106,7 +1106,7 @@ int main(int argc, char** argv) {
         std::ofstream(p + "/bindings/decl.json", std::ios::binary) << bindings_to_json_text(b, "decl");
         rolltui_bindings_free(b);
       }
-      std::ofstream(scratch + "/declared-layout.json", std::ios::binary) << R"({"name":"declared",
+      std::ofstream(scratch + "/declared-layout.json", std::ios::binary) << R"({"resizable":false,"name":"declared",
         "actions":{"app.help":"open help","app.zoom":"zoom the transcript"},
         "popups":[{"id":"help","dismiss":true,"x":0,"y":0,"w":"100%","h":"100%","modal":true,
                    "root":{"content":"help","border":"single","title":"help","focusable":true}}],

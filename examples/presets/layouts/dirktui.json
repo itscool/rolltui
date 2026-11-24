@@ -1,5 +1,6 @@
 {
   "name": "dirktui",
+  "resizable": false,
   "min_width": 24,
   "min_height": 6,
   "focus": "columns",

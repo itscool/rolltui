@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     }
     rolltui_draw_scratch_free(ds);
   } else {
-    static const char kScreen[] = "{ \"name\": \"b\", \"root\": { \"column\": [ { \"id\": \"rows\", \"content\": \"list:files\" } ] } }";
+    static const char kScreen[] = "{ \"name\": \"b\", \"resizable\": false, \"root\": { \"column\": [ { \"id\": \"rows\", \"content\": \"list:files\" } ] } }";
     RolltuiLayoutReport rep;
     size_t nd = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &nd);

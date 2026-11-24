@@ -427,6 +427,7 @@ void LayoutEditor::rebuild_menu() {
   screen.push_back(MenuItem::input("min_width", "Minimum width", threshold.clone()));
   screen.push_back(MenuItem::input("min_height", "Minimum height", threshold.clone()));
   screen.push_back(MenuItem::toggle("inline", "Drawn inline, below the prompt", false));
+  screen.push_back(MenuItem::toggle("resizable", "Panes resized by dragging the edge between them", false));
   screen.push_back(MenuItem::choice("focus", "Focused window", ""));
   screen.push_back(submenu_of("popups", "Popups", std::move(popups)));
   screen.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
@@ -487,6 +488,13 @@ void LayoutEditor::rebuild_menu() {
     spacing.push_back(MenuItem::input("padding", "Padding inside the border", cells.clone()));
     spacing.push_back(MenuItem::input("gap", "Gap between children", cells.clone()));
     spacing.push_back(MenuItem::toggle("separators", "A line in each gap", false));
+    {
+      std::vector<MenuItem> drag;
+      drag.push_back(MenuItem::action("screen", "as the screen says"));
+      drag.push_back(MenuItem::action("yes", "yes"));
+      drag.push_back(MenuItem::action("no", "no"));
+      spacing.push_back(choice_of("split_resizable", "Dragging an edge between its children resizes them", std::move(drag), "screen"));
+    }
     spacing.push_back(MenuItem::input("stack_below", "A row stacks below this width", cells.clone()));
     spacing.push_back(MenuItem::input("focus_weight", "Weight of the child with focus", cells.clone()));
     spacing.push_back(MenuItem::input("span", "Span in a grid (rows x columns)", span.clone()));
@@ -630,6 +638,7 @@ void LayoutEditor::sync_values() {
   set_value(menu_, "min_width", rolltui::to_str(current_.min_width));
   set_value(menu_, "min_height", rolltui::to_str(current_.min_height));
   set_checked(menu_, "inline", current_.inline_mode != 0);
+  set_checked(menu_, "resizable", current_.base.resizable != 0);
   {
     std::vector<MenuItem> focusable;
     focusable.push_back(MenuItem::action("", "(none \xE2\x80\x94 the first focusable window in tree order)"));
@@ -658,6 +667,7 @@ void LayoutEditor::sync_values() {
   set_value(menu_, "padding", rolltui::to_str(n->padding));
   set_value(menu_, "gap", rolltui::to_str(n->gap));
   set_checked(menu_, "separators", n->separators != 0);
+  set_value(menu_, "split_resizable", n->resizable < 0 ? "screen" : n->resizable ? "yes" : "no");
   set_value(menu_, "stack_below", rolltui::to_str(n->stack_below));
   set_value(menu_, "focus_weight", rolltui::to_str(n->focus_weight));
   {
@@ -1020,6 +1030,13 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       current_.inline_mode = current_.inline_mode ? 0 : 1;
       return commit_current();
     }
+    if (id == "resizable") {  // the screen's own, and every popup of it carries the same answer
+      begin_preview();
+      current_.base.resizable = current_.base.resizable ? 0 : 1;
+      for (Layer& p : current_.popups) p.resizable = current_.base.resizable;
+      status_ = current_.base.resizable ? "panes are resized by dragging the edge between them" : "panes keep the sizes the layout gives";
+      return commit_current();
+    }
     if (id == "visible" || id == "focusable") {
       begin_preview();
       apply_op(id == "visible" ? Op::ToggleVisible : Op::ToggleFocusable);
@@ -1053,6 +1070,17 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
   if (kind == ROLLTUI_MENU_EVENT_CHOOSE) {
     if (id == "border") {
       if (auto b = border_from_name(value)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; }
+      return commit_current();
+    }
+    if (id == "split_resizable") {
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      if (n->is_window()) {
+        status_ = "only a split is resized by dragging: select the row or column around it";
+        return {O::Changed, {}};
+      }
+      begin_preview();
+      n->resizable = value == "yes" ? 1 : value == "no" ? 0 : -1;
       return commit_current();
     }
     if (id == "focus") {

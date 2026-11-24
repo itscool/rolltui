@@ -1,4 +1,5 @@
 {
+  "resizable": false,
   "name": "kiln", "min_width": 0, "min_height": 0, "focus": "kiln_edit",
   "actions": {},
   "root": { "row": [

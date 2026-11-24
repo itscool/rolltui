@@ -1,4 +1,5 @@
 {
+  "resizable": false,
   "name": "anvil", "min_width": 0, "min_height": 0, "focus": "anvil_edit",
   "actions": {
     "app.quench": "an action this screen declares and no binary knows"

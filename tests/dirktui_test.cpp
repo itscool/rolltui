@@ -1271,7 +1271,7 @@ int main() {
     fs::create_directories(own / "bindings");
     fs::copy_file(fs::path(ROLLTUI_EXAMPLES_DIR) / "presets" / "bindings" / "default.json",
                   own / "bindings" / "default.json", fs::copy_options::overwrite_existing);
-    write_file(own / "layouts" / "vestibule.json", R"({
+    write_file(own / "layouts" / "vestibule.json", R"({ "resizable": false,
   "name": "vestibule", "min_width": 10, "min_height": 4, "focus": "vestibule_cols",
   "actions": { "app.quit": "leave" },
   "root": { "column": [

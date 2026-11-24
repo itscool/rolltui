@@ -7,7 +7,7 @@
 
 /* The screen layout. A real program would normally load this from a file; it's inline to keep the example to one file. */
 static const char kLayout[] =
-    "{ \"name\": \"hello\", \"focus\": \"fruit\", \"root\": { \"row\": [\n"
+    "{ \"name\": \"hello\", \"resizable\": true, \"focus\": \"fruit\", \"root\": { \"row\": [\n"
     "  { \"id\": \"fruit\", \"content\": \"list:fruit\", \"size\": 24, \"border\": \"rounded\", \"title\": \"fruit\",\n"
     "    \"focusable\": true },\n"
     "  { \"id\": \"about\", \"content\": \"text:Up and Down move, Enter chooses, q quits.\", \"border\": \"rounded\",\n"

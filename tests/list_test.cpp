@@ -72,7 +72,7 @@ void row_fn(void* c, std::size_t i, RolltuiListRow* out) {
   if (i < d->depth.size()) out->depth = static_cast<unsigned char>(d->depth[i]);
 }
 
-constexpr std::string_view kScreen = R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things" } ] } })";
+constexpr std::string_view kScreen = R"({ "resizable": false, "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things" } ] } })";
 
 struct Screen {
   RolltuiLayout* layout = nullptr;
@@ -850,7 +850,7 @@ void test_tree_levels() {
 void test_states() {
   Data d;
   constexpr std::string_view kBordered =
-      R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "jobs" } ] } })";
+      R"({ "resizable": false, "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "jobs" } ] } })";
   Screen s(30, 8, kBordered);
   rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
   RolltuiListOptions o{};
@@ -1030,7 +1030,7 @@ void test_cursor_shape() {
   check(starts(rows[0], "alpha"), "fill, the default: the row from its first cell");
   check(s.cur_vis == 0 && s.cur_y == 0 && s.cur_x == 0, "(the control: a list without focus leaves the cursor where it was)");
   // THE CURSOR PARKED, hidden, on the cursor's row of the focused list: where a screen reader looks
-  constexpr std::string_view kFocused = R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "focusable": true } ] } })";
+  constexpr std::string_view kFocused = R"({ "resizable": false, "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "focusable": true } ] } })";
   Screen t(20, 4, kFocused);
   rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &d, nullptr);
   rolltui_windows_set_list_options(t.w, "things", 6, &o);
@@ -1050,7 +1050,7 @@ void test_views_fit_empty() {
   details.keys = {"x"};
   details.a = {"the details"};
   constexpr std::string_view kTitled =
-      R"({ "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "files", "focusable": true } ] } })";
+      R"({ "resizable": false, "name": "l", "root": { "column": [ { "id": "rows", "content": "list:things", "border": "single", "title": "files", "focusable": true } ] } })";
   Screen s(30, 8, kTitled);
   rolltui_windows_bind_list(s.w, "things", 6, count_fn, row_fn, &d, nullptr);
   rolltui_windows_bind_list(s.w, "more", 4, count_fn, row_fn, &details, nullptr);
@@ -1069,7 +1069,7 @@ void test_views_fit_empty() {
   check(rolltui_windows_view_depth(s.w, "rows", 4) == 0 && has(rows, "alpha"), "Escape, with nothing in the view to back out of, pops it");
   check(rolltui_windows_pop_view(s.w, "rows", 4) == 0, "…and there is none left to pop");
   // AS TALL AS WHAT IT HOLDS: two rows, the border and a spare line; the window below takes the rest
-  constexpr std::string_view kFit = R"({ "name": "f", "root": { "column": [
+  constexpr std::string_view kFit = R"({ "resizable": false, "name": "f", "root": { "column": [
     { "id": "rows", "content": "list:things", "border": "single", "size": "content" }, { "id": "rest", "content": "text:rest" } ] } })";
   Screen t(30, 20, kFit);
   rolltui_windows_bind_list(t.w, "things", 6, count_fn, row_fn, &d, nullptr);
@@ -1081,7 +1081,7 @@ void test_views_fit_empty() {
     if (rows[static_cast<std::size_t>(y)].rfind("\xE2\x94\x94", 0) == 0) { foot = y; break; }
   check(foot == 4, "a window sized to its content: two rows, a spare line, its border [foot at " + std::to_string(foot) + "]");
   // A LAYOUT WITH NO WINDOW shows the program's keys
-  constexpr std::string_view kEmpty = R"({ "name": "e", "root": { "column": [] } })";
+  constexpr std::string_view kEmpty = R"({ "resizable": false, "name": "e", "root": { "column": [] } })";
   Screen e(40, 10, kEmpty);
   rows = e.paint();
   bool keys = false;

@@ -498,7 +498,7 @@ TESTKIT_TEST(two_bordered_siblings_each_own_their_border) {
   // stop at its own edge. (This was once a control point: the rule that they SHARE one column, and the
   // pair spanning the extent exactly. The rule is gone, and this is what stands in its place.)
   const std::string owned =
-      R"({"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"single"},)"
+      R"({"resizable":false,"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"single"},)"
       R"({"id":"b","content":"text:b","border":"single"}]}})";
   Screen s(owned);
   check(s.loaded, "the two-window screen parsed — an unparsed layout would make every rect below zero");
@@ -506,7 +506,7 @@ TESTKIT_TEST(two_bordered_siblings_each_own_their_border) {
   check(r.x == 32 && r.w == 48, "the second of two bordered siblings starts after the first's border: x=" +
                                     std::to_string(r.x) + " w=" + std::to_string(r.w));
   const std::string unbordered =
-      R"({"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"none"},)"
+      R"({"resizable":false,"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"none"},)"
       R"({"id":"b","content":"text:b","border":"single"}]}})";
   Screen u(unbordered);
   const RolltuiRect q = u.rect_of("b", {0, 0, 80, 10});
@@ -521,7 +521,7 @@ TESTKIT_TEST(a_modal_popup_keeps_focus_off_the_layers_under_it) {
   // The popup's own window is NOT focusable, which is the real shape (roll's approval preview
   // is exactly that): with the guarantee, nothing takes keys; without it, the input behind does.
   const std::string json =
-      R"({"name":"t","focus":"prompt","root":{"id":"prompt","content":"input:prompt","focusable":true},)"
+      R"({"resizable":false,"name":"t","focus":"prompt","root":{"id":"prompt","content":"input:prompt","focusable":true},)"
       R"("popups":[{"id":"note","dismiss":false,"x":"50%","y":"50%","w":20,"h":5,"anchor":"center","modal":true,)"
       R"("root":{"id":"note","content":"text:note","border":"rounded"}}]})";
   Screen s(json);

@@ -825,7 +825,7 @@ RolltuiWidget host_menu_factory(void* ctx, RolltuiWindows* w, const char* conten
 // ============================================================================================
 
 std::string layout_json(const char* content) {
-  return std::string(R"({"name": "tandem", "min_width": 0, "min_height": 0, "focus": "pane",
+  return std::string(R"({"resizable":false,"name": "tandem", "min_width": 0, "min_height": 0, "focus": "pane",
   "actions": { "app.tandem": "run the pair" },
   "root": { "id": "pane", "content": ")") +
          content + R"(", "border": "single", "title": "tandem", "focusable": true } })";

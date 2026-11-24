@@ -1474,7 +1474,7 @@ void test_vim_modes_in_a_window() {
   RolltuiContext* c = rolltui_context_new();
   rolltui_context_set_library_defaults(c);
   rolltui_context_set_bindings(c, rolltui_bindings_shipped(c, "vim", 3));
-  constexpr std::string_view screen = R"({ "name": "v", "root": { "content": "text:the app" },
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "v", "root": { "content": "text:the app" },
     "popups": [ { "id": "ask", "x": "50%", "y": 2, "w": 30, "h": 3, "anchor": "top",
                   "root": { "id": "field", "content": "input:q", "border": "rounded", "focusable": true } } ] })";
   RolltuiLayoutReport rep{};

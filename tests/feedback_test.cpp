@@ -119,7 +119,7 @@ void gauge_fn(void* c, RolltuiGauge* out) {
   out->since_ms = 1000;
 }
 
-const char* kGaugeScreen = R"({ "name": "g", "root": { "column": [
+const char* kGaugeScreen = R"({ "resizable": false, "name": "g", "root": { "column": [
   { "id": "bar", "content": "gauge:copy", "size": 1 },
   { "id": "rest", "content": "text:" } ] } })";
 
@@ -184,7 +184,7 @@ void test_gauge() {
   rolltui_windows_free(w);
 }
 
-const char* kMessagesScreen = R"({ "name": "m", "root": { "column": [
+const char* kMessagesScreen = R"({ "resizable": false, "name": "m", "root": { "column": [
   { "id": "log", "content": "messages" },
   { "id": "line", "content": "messages", "size": 1 } ] } })";
 
@@ -279,7 +279,7 @@ void test_messages_and_toasts() {
 
 void test_menu_busy_spinner() {
   RolltuiWindows* w = rolltui_windows_new(ctx());
-  const Screen l = load(R"({ "name": "b", "root": { "column": [ { "id": "m", "content": "menu:jobs" } ] } })");
+  const Screen l = load(R"({ "resizable": false, "name": "b", "root": { "column": [ { "id": "m", "content": "menu:jobs" } ] } })");
   static const char kMenu[] = R"({ "items": [ { "id": "sync", "label": "Sync now" }, { "id": "other", "label": "Other" } ] })";
   rolltui_context_add_menu(ctx(), "jobs", 4, kMenu, sizeof kMenu - 1);
   {

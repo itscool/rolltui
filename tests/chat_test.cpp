@@ -101,7 +101,7 @@ int main() {
     check(!has(clean, "missing") && has(clean, "Message the pretend assistant"),
           "the shipped `default` screen names nothing rolltui-chat does not provide (its two kinds are registered)");
     const fs::path odd = scratch / "odd.json";
-    std::ofstream(odd) << R"({ "name": "odd", "root": { "row": [ { "id": "x", "content": "nonesuch", "focusable": true } ] } })";
+    std::ofstream(odd) << R"({ "resizable": false, "name": "odd", "root": { "row": [ { "id": "x", "content": "nonesuch", "focusable": true } ] } })";
     const std::string gap = frame("", "100x24", "CHAT_LAYOUT='" + odd.string() + "'", "", scratch / "home-odd");
     check(has(gap, "missing"), "CONTROL: a screen naming a kind nobody provides IS reported at start, so the silence above is a clean screen");
   }

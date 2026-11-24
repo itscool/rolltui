@@ -103,7 +103,7 @@ void test_log(const std::string& dir) {
 
 // THE DRAW TIMES ON SCREEN: each window's top border carries how long its widget took
 void test_timing() {
-  constexpr std::string_view screen = R"({ "name": "t", "root": { "row": [
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "t", "root": { "row": [
     { "id": "left", "content": "text:one", "border": "rounded", "title": "left" },
     { "id": "right", "content": "text:two", "border": "rounded", "title": "right" } ] } })";
   RolltuiLayoutReport rep{};

@@ -1022,7 +1022,7 @@ int main() {
   check(builtin_layout_c("nope") == nullptr, "unknown built-in → nullptr");
   {
     LayoutReport rep;
-    auto l = load_layout_c(R"({"name": "x", "colour": 1, "root": {"content": "a", "size": "50", "shade": true, "border": "thick"},
+    auto l = load_layout_c(R"({"resizable":false,"name": "x", "colour": 1, "root": {"content": "a", "size": "50", "shade": true, "border": "thick"},
                              "popups": [{"id": "p", "dismiss": false, "x": "50%", "w": 3.5, "anchor": "middle", "root": {"content": "b"}}]})", rep);
     check(l.has_value(), "a layout with problems still loads");
     auto has = [&](StrSpan v, std::string_view s) {
@@ -1040,19 +1040,19 @@ int main() {
     // WHETHER A CLICK OUTSIDE CLOSES A POPUP IS NEVER A DEFAULT: a popup that says nothing is a
     // named problem, loaded as if it said false; one that says either is clean.
     LayoutReport rep;
-    auto l = load_layout_c(R"({"root": {"content": "a"}, "popups": [{"id": "p", "root": {"content": "b"}}]})", rep);
+    auto l = load_layout_c(R"({"resizable":false,"root": {"content": "a"}, "popups": [{"id": "p", "root": {"content": "b"}}]})", rep);
     bool named = false;
     for (const RolltuiStr& x : StrSpan{rep.bad_values, rep.bad_values_n}) if (view_of(x).find("popups[0]: says nothing about \"dismiss\"") != std::string::npos) named = true;
     check(l && rep.bad_values_n == 1 && named,
           "a popup that does not say whether a click outside closes it is a named problem [" + std::to_string(rep.bad_values_n) + "]");
     check(l && l->popups.size() == 1 && l->popups[0].dismiss == 0, "…and loads as if it said false");
     LayoutReport rep2;
-    auto l2 = load_layout_c(R"({"root": {"content": "a"}, "popups": [{"id": "p", "dismiss": false, "root": {"content": "b"}}]})", rep2);
+    auto l2 = load_layout_c(R"({"resizable":false,"root": {"content": "a"}, "popups": [{"id": "p", "dismiss": false, "root": {"content": "b"}}]})", rep2);
     check(l2 && rep2.bad_values_n == 0 && rep2.unknown_keys_n == 0, "…while one that says false is clean: explicit, both ways");
   }
   {
     LayoutReport rep;
-    auto l = load_layout_c(R"({"root": {"row": [{"content": "a"}, {"content": "a"}]}, "focus": "zzz"})", rep);
+    auto l = load_layout_c(R"({"resizable":false,"root": {"row": [{"content": "a"}, {"content": "a"}]}, "focus": "zzz"})", rep);
     bool dup = false, dangling = false;
     for (const RolltuiStr& s : StrSpan{rep.bad_values, rep.bad_values_n}) { if (view_of(s).find("duplicate id 'a'") != std::string::npos) dup = true; if (view_of(s).find("focus: no window with id 'zzz'") != std::string::npos) dangling = true; }
     check(l && dup, "a duplicate id is reported");
@@ -1064,7 +1064,7 @@ int main() {
     LayoutReport rep2;
     check(!load_layout_c(R"({"name": "x"})", rep2) && view_of(rep2.error).find("root") != std::string::npos, "no root → nullopt, error names it");
     LayoutReport rep3;
-    auto l = load_layout_c(R"({"root": {"content": "a", "row": []}})", rep3);
+    auto l = load_layout_c(R"({"resizable":false,"root": {"content": "a", "row": []}})", rep3);
     check(l && rep3.bad_values_n != 0 && view_of(rep3.bad_values[0]).find("exactly one") != std::string::npos, "a node with both content and row is a bad value");
   }
 
@@ -1586,7 +1586,7 @@ int main() {
         if (rn.node->is_window() && std::string_view(rn.node->id.p ? rn.node->id.p : "", rn.node->id.n) == id) return rn.outer;
       return RolltuiRect{-1, -1, 0, 0};
     };
-    static const char kSpaced[] = R"({ "name": "s", "root": { "row": [
+    static const char kSpaced[] = R"({ "resizable": false, "name": "s", "root": { "row": [
       { "id": "side", "content": "text:a", "max": 20 },
       { "id": "main", "content": "text:b" },
       { "id": "extra", "content": "text:c", "breakpoint": { "pane_width": 90 } } ], "gap": 1, "padding": 1, "separators": true } })";
@@ -1613,7 +1613,7 @@ int main() {
     check(cell(f, side.x + side.w, 4) == "\xE2\x94\x82", "separators: a line down the gap between them");
   }
   {
-    static const char kStacks[] = R"({ "name": "s", "root": { "row": [ { "id": "a", "content": "text:a" }, { "id": "b", "content": "text:b" } ],
+    static const char kStacks[] = R"({ "resizable": false, "name": "s", "root": { "row": [ { "id": "a", "content": "text:a" }, { "id": "b", "content": "text:b" } ],
       "stack_below": 60 } })";
     LayoutReport rep;
     std::optional<RolltuiLayout> l = load_layout_c(kStacks, rep);
@@ -1632,7 +1632,7 @@ int main() {
     check(b.y == 0 && b.x == 40, "…and is a row again where it is wide enough");
   }
   {
-    static const char kGrid[] = R"({ "name": "g", "root": { "grid": { "columns": 3, "cells": [
+    static const char kGrid[] = R"({ "resizable": false, "name": "g", "root": { "grid": { "columns": 3, "cells": [
       { "id": "big", "content": "text:a", "span": [2, 2] }, { "id": "c1", "content": "text:b" }, { "id": "c2", "content": "text:c" },
       { "id": "c3", "content": "text:d" } ] } } })";
     LayoutReport rep;
@@ -1652,7 +1652,7 @@ int main() {
   }
   {
     // THE ACCORDION: the child holding the focus takes the split's focus_weight
-    static const char kAcc[] = R"({ "name": "a", "root": { "column": [ { "id": "one", "content": "text:a", "focusable": true },
+    static const char kAcc[] = R"({ "resizable": false, "name": "a", "root": { "column": [ { "id": "one", "content": "text:a", "focusable": true },
       { "id": "two", "content": "text:b", "focusable": true } ], "focus_weight": 3 }, "focus": "one" })";
     LayoutReport rep;
     std::optional<RolltuiLayout> l = load_layout_c(kAcc, rep);
@@ -1682,7 +1682,7 @@ int main() {
       if (rn.node->is_window() && rn.node->id.p[0] == 'o') o = rn.outer;
     check(o.w == 80, "…and put back, the layout is as it was");
     // FITS, AND A WINDOW SHOWN THAT WOULD NOT FIT IS REFUSED
-    static const char kTight[] = R"({ "name": "t", "root": { "row": [ { "id": "l", "content": "text:a", "min": 50 },
+    static const char kTight[] = R"({ "resizable": false, "name": "t", "root": { "row": [ { "id": "l", "content": "text:a", "min": 50 },
       { "id": "r", "content": "text:b", "min": 40, "visible": false } ] } })";
     LayoutReport rep2;
     std::optional<RolltuiLayout> tl = load_layout_c(kTight, rep2);
@@ -1718,7 +1718,7 @@ int main() {
     route_c(hs.s, half, scr);
     check(rolltui_window_stack_half(hs.s, nullptr) == nullptr, "…and again puts it back");
     // A SCREEN TOO SMALL: its size in the error role, the size it needs in the ok role
-    static const char kBig[] = R"({ "name": "b", "min_width": 100, "min_height": 30, "root": { "column": [ { "id": "a", "content": "text:a" } ] } })";
+    static const char kBig[] = R"({ "resizable": false, "name": "b", "min_width": 100, "min_height": 30, "root": { "column": [ { "id": "a", "content": "text:a" } ] } })";
     LayoutReport rep;
     std::optional<RolltuiLayout> big = load_layout_c(kBig, rep);
     StackC bs(*big);
@@ -1852,7 +1852,7 @@ int main() {
     // silently lose every app key — and the loader says so in `notes`, which is the one
     // thing that array still carries.
     LayoutReport rep;
-    const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"old","focus":"input","root":{"column":[
+    const std::optional<RolltuiLayout> l = load_layout_c(R"({"resizable":false,"name":"old","focus":"input","root":{"column":[
         {"content":"transcript:session","id":"transcript","focusable":true},
         {"content":"input:prompt","id":"input","size":3,"focusable":true}]}})", rep);
     check(l && rep.clean(), "a layout declaring no actions still loads, clean");
@@ -1872,7 +1872,7 @@ int main() {
     LayoutReport rep2;
     std::string modal_why;
     register_widget_kind_c("modal", ROLLTUI_SOURCE_FORBIDDEN, "", &modal_why);  // see the parse block above
-    const std::optional<RolltuiLayout> l2 = load_layout_c(R"({"name":"bad","root":{"column":[
+    const std::optional<RolltuiLayout> l2 = load_layout_c(R"({"resizable":false,"name":"bad","root":{"column":[
         {"content":"wizard:x","id":"a"},{"content":"modal:x","id":"b"},{"content":"transcript","id":"c"}]}})", rep2);
     check(l2 && !rep2.clean() && rep2.bad_values_n == 1 &&
               view_of(rep2.bad_values[0]).find("root.column[2].content: 'transcript' needs a source") !=
@@ -1904,7 +1904,7 @@ int main() {
   {
     // ---- the layout DECLARES the actions its screen emits -------------------------
     LayoutReport rep;
-    const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
+    const std::optional<RolltuiLayout> l = load_layout_c(R"({"resizable":false,"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
         "root":{"content":"help"}})", rep);
     check(l && rep.clean() && l->actions.size() == 2 && l->actions[0].name == "app.zoom" &&
               l->actions[0].description == "zoom in" && l->actions[1].name == "mine.thing",
@@ -1912,7 +1912,7 @@ int main() {
     check(rep.notes_n == 0, "…and a file that declares actions is not given the shipped default's");
 
     LayoutReport er;
-    const std::optional<RolltuiLayout> bad = load_layout_c(R"({"name":"bad","actions":{"app.a":"ok","nodot":"x","app.":"x",
+    const std::optional<RolltuiLayout> bad = load_layout_c(R"({"resizable":false,"name":"bad","actions":{"app.a":"ok","nodot":"x","app.":"x",
         "input.frob":"x","menu.frob":"x","app.b":7},"root":{"content":"help"}})", er);
     check(bad && bad->actions.size() == 1 && bad->actions[0].name == "app.a", "…and only the well-formed ones are declared");
     // Indexed through a bounds-checked helper: a control that SEGFAULTS reports nothing
@@ -1930,7 +1930,7 @@ int main() {
     // Present-but-empty is a deliberate "none" and must differ from absent, or the
     // fill-in above would quietly re-add what someone deliberately removed.
     LayoutReport nr;
-    const std::optional<RolltuiLayout> none = load_layout_c(R"({"name":"none","actions":{},"root":{"content":"help"}})", nr);
+    const std::optional<RolltuiLayout> none = load_layout_c(R"({"resizable":false,"name":"none","actions":{},"root":{"content":"help"}})", nr);
     check(none && none->actions.empty() && nr.notes_n == 0, "an explicit \"actions\": {} declares none and is left alone");
 
     // Round trip, including the empty case (which is why "actions" is always written).
@@ -1961,7 +1961,7 @@ int main() {
 
     LayoutReport lr;
     std::optional<RolltuiLayout> lay = load_layout_c(
-        R"({"name":"help-only","root":{"column":[{"id":"keys","content":"help","background":"panel_background"}]}})", lr);
+        R"({"resizable":false,"name":"help-only","root":{"column":[{"id":"keys","content":"help","background":"panel_background"}]}})", lr);
     check(lay && lr.clean(), "the help-only layout loads clean");
     WindowsC windows;
     windows.set_help("", {"transcript"}, "");
@@ -2009,7 +2009,7 @@ int main() {
     builtin_theme_c("default-dark", t);
     LayoutReport lr;
     std::optional<RolltuiLayout> lay =
-        load_layout_c(R"({"name":"theme-only","root":{"column":[{"id":"th","content":"theme","background":"panel_background"}]}})", lr);
+        load_layout_c(R"({"resizable":false,"name":"theme-only","root":{"column":[{"id":"th","content":"theme","background":"panel_background"}]}})", lr);
     check(lay && lr.clean(), "the theme-only layout loads clean");
     WindowsC windows;
     StackC s(*lay);
@@ -2054,7 +2054,7 @@ int main() {
     { std::ofstream(dir + "/menus/main.json") << R"({"id":"root","label":"menu","items":[{"id":"act","label":"an action"}]})"; }
 
     LayoutReport lr;
-    std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"every-kind","focus":"prompt","root":{"column":[
+    std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"every-kind","focus":"prompt","root":{"column":[
         {"id":"tx","content":"transcript:session"},
         {"id":"panel","content":"rows:status","size":2},
         {"id":"label","content":"text:a literal","size":1},
@@ -2157,7 +2157,7 @@ int main() {
     // reload keeps what the user typed.
     rolltui_input_set_text(windows.input("prompt"), "half-typed", 10);
     LayoutReport lr2;
-    std::optional<RolltuiLayout> two = load_layout_c(R"({"name":"two","root":{"column":[
+    std::optional<RolltuiLayout> two = load_layout_c(R"({"resizable":false,"name":"two","root":{"column":[
         {"id":"a","content":"transcript:session"},{"id":"b","content":"transcript:session"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})", lr2);
     check(two && lr2.clean(), "a layout showing one document in two windows loads");
@@ -2172,7 +2172,7 @@ int main() {
     // Every failure, by name AND on screen — never a blank window.
     WindowsC windows;
     LayoutReport lr;
-    std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"unbound","root":{"column":[
+    std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"unbound","root":{"column":[
         {"id":"a","content":"transcript:nope","size":1},
         {"id":"b","content":"rows:nope","size":1},
         {"id":"c","content":"nope:x","size":1},
@@ -2222,7 +2222,7 @@ int main() {
     std::filesystem::create_directories(dir + "/menus");
 
     LayoutReport lr;
-    std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"menus","root":{"column":[
+    std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"menus","root":{"column":[
         {"id":"a","content":"menu:main"},
         {"id":"b","content":"menu:extra"}]}})", lr);
     check(lay && lr.clean(), "a layout naming two menu files loads clean");
@@ -2380,7 +2380,7 @@ int main() {
     // Nothing here compiles the action in: the layout declares it, the bindings file
     // gives it a chord, and the help window is the only thing that draws it.
     LayoutReport lr;
-    const std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"declared","actions":{"app.zoom":"zoom the transcript"},
+    const std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"declared","actions":{"app.zoom":"zoom the transcript"},
         "root":{"content":"help"}})", lr);
     check(lay && lr.clean(), "a layout declaring one app action loads clean [" + (lr.bad_values_n == 0 ? std::string() : str_of(lr.bad_values[0])) + "]");
     BindingsFileReport br;
@@ -2419,7 +2419,7 @@ int main() {
     windows.bind_document("session", &doc);
     windows.bind_submit("prompt", [](void*, const char*, std::size_t) {});
     LayoutReport lr;
-    std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"grow","focus":"prompt","root":{"column":[
+    std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"grow","focus":"prompt","root":{"column":[
         {"id":"tx","content":"transcript:session"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})", lr);
     StackC s(*lay);
@@ -2529,7 +2529,7 @@ int main() {
     }
 
     LayoutReport lr;
-    const std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"paint","root":{"column":[
+    const std::optional<RolltuiLayout> lay = load_layout_c(R"({"resizable":false,"name":"paint","root":{"column":[
         {"id":"a","content":"canvas:main","size":3,"focusable":true},
         {"id":"b","content":"canvas:main","size":3},
         {"id":"c","content":"canvas:other","size":3},
@@ -2584,7 +2584,7 @@ int main() {
     // A layout RELOAD keeps the instance, for the reason it keeps a half-typed line: the
     // widget belongs to its content, not to the window that happened to show it.
     LayoutReport lr2;
-    const std::optional<RolltuiLayout> other = load_layout_c(R"({"name":"paint2","root":{"column":[
+    const std::optional<RolltuiLayout> other = load_layout_c(R"({"resizable":false,"name":"paint2","root":{"column":[
         {"id":"z","content":"canvas:main","size":3,"focusable":true}]}})", lr2);
     StackC st2(*other);
     const int before = built;
@@ -2715,7 +2715,7 @@ int main() {
       windows.bind_document("session", &doc);
       LayoutReport lr;
       const std::optional<RolltuiLayout> lay = load_layout_c(
-          R"({"name":"bar","min_width":0,"min_height":0,"actions":{},"root":{"column":[
+          R"({"resizable":false,"name":"bar","min_width":0,"min_height":0,"actions":{},"root":{"column":[
              {"id":"t","content":"transcript:session","border":"single","focusable":true}]}})", lr);
       check(lay && lr.clean(), "a one-window layout for the bar");
       StackC s(*lay);
@@ -2813,14 +2813,14 @@ int main() {
   // ---- "inline": a screen drawn below the prompt, in the normal screen ----
   {
     LayoutReport rep;
-    const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"i","inline":true,"root":{"content":"a"}})", rep);
+    const std::optional<RolltuiLayout> l = load_layout_c(R"({"resizable":false,"name":"i","inline":true,"root":{"content":"a"}})", rep);
     check(l && rep.clean() && rolltui_layout_inline(&*l) == 1, "`\"inline\": true` is read, and the layout says it is drawn inline");
     LayoutReport rep2;
-    const std::optional<RolltuiLayout> plain = load_layout_c(R"({"name":"p","root":{"content":"a"}})", rep2);
+    const std::optional<RolltuiLayout> plain = load_layout_c(R"({"resizable":false,"name":"p","root":{"content":"a"}})", rep2);
     check(plain && rolltui_layout_inline(&*plain) == 0 && layout_to_json_c(*plain).find("\"inline\"") == std::string::npos,
           "…a layout that says nothing is the whole screen, and its file says nothing either");
     LayoutReport rep3;
-    const std::optional<RolltuiLayout> bad = load_layout_c(R"({"name":"b","inline":"yes","root":{"content":"a"}})", rep3);
+    const std::optional<RolltuiLayout> bad = load_layout_c(R"({"resizable":false,"name":"b","inline":"yes","root":{"content":"a"}})", rep3);
     check(bad && rep3.bad_values_n == 1 && view_of(rep3.bad_values[0]).find("inline: expected true or false") != std::string_view::npos &&
               rolltui_layout_inline(&*bad) == 0,
           "…a value that is not true or false is reported, and the screen stays whole");

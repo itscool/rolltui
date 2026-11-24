@@ -64,6 +64,7 @@ void rolltui_layout_node_init(RolltuiLayoutNode* n) {
   n->background = ROLLTUI_ROLE_DEFAULT_BACKGROUND;
   n->size.fill = 1;
   n->size.weight = 1;
+  n->resizable = -1;
 }
 
 RolltuiLayoutNode* rolltui_layout_node_new(void) {
@@ -117,6 +118,7 @@ void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* fr
   to->padding = from->padding;
   to->gap = from->gap;
   to->separators = from->separators;
+  to->resizable = from->resizable;
   to->stack_below = from->stack_below;
   to->focus_weight = from->focus_weight;
   to->grid_cols = from->grid_cols;
@@ -172,7 +174,7 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
   if (!split_size_equal(&a->size, &b->size)) return 0;
   if (a->tab != b->tab || a->tab_count != b->tab_count || a->show_width != b->show_width || a->show_height != b->show_height) return 0;
   if (a->pane_width != b->pane_width || a->pane_height != b->pane_height || a->size_min != b->size_min || a->size_max != b->size_max ||
-      a->fit != b->fit || a->padding != b->padding || a->gap != b->gap || a->separators != b->separators ||
+      a->fit != b->fit || a->padding != b->padding || a->gap != b->gap || a->separators != b->separators || a->resizable != b->resizable ||
       a->stack_below != b->stack_below || a->focus_weight != b->focus_weight || a->grid_cols != b->grid_cols ||
       a->grid_cell_h != b->grid_cell_h || a->span_r != b->span_r || a->span_c != b->span_c)
     return 0;
@@ -208,6 +210,7 @@ void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from) {
   to->placement = from->placement;
   to->modal = from->modal;
   to->dismiss = from->dismiss;
+  to->resizable = from->resizable;
   to->min_width = from->min_width;
   to->min_height = from->min_height;
   rolltui_layout_node_copy(&to->root, &from->root);
@@ -225,7 +228,7 @@ void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from) {
 int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b) {
   if (a == b) return 1;
   if (!str_equal(&a->id, &b->id) || !str_equal(&a->focus, &b->focus)) return 0;
-  if (a->modal != b->modal || a->min_width != b->min_width || a->min_height != b->min_height) return 0;
+  if (a->modal != b->modal || a->min_width != b->min_width || a->min_height != b->min_height || a->resizable != b->resizable) return 0;
   if (memcmp(&a->placement, &b->placement, sizeof a->placement) != 0) {
     /* A field compare rather than the memcmp's answer: padding inside the struct is not
      * part of a placement, and a raw compare would make two equal placements differ. */

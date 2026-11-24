@@ -455,7 +455,7 @@ void test_output_window() {
   RolltuiLayoutReport rep{};
   std::size_t nd = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx(), &nd);
-  static const char kScreen[] = R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:build" } ] } })";
+  static const char kScreen[] = R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:build" } ] } })";
   RolltuiLayout* l = rolltui_load_layout_text(kScreen, sizeof kScreen - 1, defaults, nd, rolltui_layout_default_hooks(), &rep);
   rolltui_layout_report_release(&rep);
   RolltuiWindows* w = rolltui_windows_new(ctx());
@@ -611,7 +611,7 @@ void test_output_programs() {
   }
   // ONE PROGRAM, on a pty the window's size; the footer says how it ended
   {
-    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:run", "border": "rounded" } ] } })", 40, 8);
+    OutScreen s(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:run", "border": "rounded" } ] } })", 40, 8);
     s.paint();
     const char* argv[] = {"/bin/sh", "-c", "echo \"size $(stty size)\"; echo [ -t 1 ] > /dev/null; [ -t 1 ] && echo tty; echo done", nullptr};
     RolltuiChildOptions o{};
@@ -637,7 +637,7 @@ void test_output_programs() {
   }
   // TWO PROGRAMS MERGED: each line whole, led by its program's label
   {
-    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:both" } ] } })", 40, 10);
+    OutScreen s(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:both" } ] } })", 40, 10);
     s.paint();
     const char* web[] = {"/bin/sh", "-c", "printf 'GET /\\n'; sleep 0.05; printf 'GET /a'; sleep 0.1; printf 'bout\\n'", nullptr};
     const char* db[] = {"/bin/sh", "-c", "sleep 0.02; printf 'SELECT 1\\n'; sleep 0.05; printf 'SELECT 2\\n'", nullptr};
@@ -655,7 +655,7 @@ void test_output_programs() {
   }
   // A HOST'S TEXT: each line's time in a gutter, a filter that keeps the lines it matches and lights the matches
   {
-    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:log" } ] } })", 40, 6);
+    OutScreen s(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:log" } ] } })", 40, 6);
     Ansi text;
     rolltui_windows_bind_output(s.w, "log", 3, text.t);
     const unsigned long long at = 1700000000000ULL;
@@ -681,7 +681,7 @@ void test_output_programs() {
   }
   // THE WINDOW GONE: the program it showed is stopped
   {
-    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:long" } ] } })", 40, 6);
+    OutScreen s(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:long" } ] } })", 40, 6);
     s.paint();
     const char* argv[] = {"/bin/sh", "-c", "echo started; exec sleep 30", nullptr};
     RolltuiChildOptions o{};
@@ -689,14 +689,14 @@ void test_output_programs() {
     rolltui_windows_run_output(s.w, "long", 4, &o, nullptr, 0, nullptr);
     s.paint_until([&](const std::vector<std::string>& rows) { return joined(rows).find("started") != std::string::npos; });
     check(rolltui_windows_output_running(s.w, "long", 4, nullptr) == 1, "a program runs while its window shows it");
-    s.load(R"({ "name": "o", "root": { "column": [ { "id": "other", "content": "text:nothing here" } ] } })");
+    s.load(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "other", "content": "text:nothing here" } ] } })");
     s.paint();
     int status = 0;
     check(rolltui_windows_output_running(s.w, "long", 4, &status) == 0 && status == -1, "…and is stopped when that window leaves the layout");
   }
   // NO PSEUDO-TERMINAL: pipes, the size in COLUMNS and LINES
   {
-    OutScreen s(R"({ "name": "o", "root": { "column": [ { "id": "log", "content": "output:pipe" } ] } })", 40, 6);
+    OutScreen s(R"({ "resizable": false, "name": "o", "root": { "column": [ { "id": "log", "content": "output:pipe" } ] } })", 40, 6);
     s.paint();
     rolltui_os_child_refuse_pty(1);
     const char* argv[] = {"/bin/sh", "-c", "echo \"$COLUMNS x $LINES\"; [ -t 1 ] && echo tty || echo pipe", nullptr};

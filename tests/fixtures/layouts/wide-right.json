@@ -1,4 +1,5 @@
 {
+  "resizable": false,
   "name": "wide-right", "min_width": 60, "min_height": 8, "focus": "input",
   "root": { "row": [
     { "column": [

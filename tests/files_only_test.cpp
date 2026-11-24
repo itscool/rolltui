@@ -453,7 +453,7 @@ int main(int argc, char** argv) {
   {
     std::ofstream(presets + "/menus/second.json")
         << R"({"id":"root","label":"a menu written after the binary was built","items":[{"id":"a","label":"row one"}]})";
-    std::ofstream(presets + "/layouts/second.json") << R"({"name":"second","min_width":0,"min_height":0,
+    std::ofstream(presets + "/layouts/second.json") << R"({"resizable":false,"name":"second","min_width":0,"min_height":0,
         "actions":{},"root":{"column":[
           {"id":"second_menu","content":"menu:second","border":"single","focusable":true}]}})";  // untitled: the menu's own root label names the window
     int rc = 0;

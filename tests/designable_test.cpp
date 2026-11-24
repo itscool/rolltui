@@ -128,6 +128,7 @@ const Covered kLayout[] = {
     {"name", "", "STRUCTURE: the file's name, typed at New layout or Save as"},
     {"padding", "padding", "cells inside the border"},
     {"popups", "popup.add", "add by id; each gets its own level"},
+    {"resizable", "resizable", "the screen's own toggle; a split's own answer is the Spacing choice beside it (as the screen says, yes, no)"},
     {"root", "", "STRUCTURE: the tree itself"},
     {"row", "", "STRUCTURE: 'Split into a row' makes one"},
     {"separators", "separators", "a split's: a line in each gap"},

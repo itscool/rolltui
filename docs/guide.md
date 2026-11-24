@@ -60,7 +60,7 @@ a page of text, a notification when you pick a row, and q to quit. Build it with
 
 /* The screen layout. A real program would normally load this from a file; it's inline to keep the example to one file. */
 static const char kLayout[] =
-    "{ \"name\": \"hello\", \"focus\": \"fruit\", \"root\": { \"row\": [\n"
+    "{ \"name\": \"hello\", \"resizable\": true, \"focus\": \"fruit\", \"root\": { \"row\": [\n"
     "  { \"id\": \"fruit\", \"content\": \"list:fruit\", \"size\": 24, \"border\": \"rounded\", \"title\": \"fruit\",\n"
     "    \"focusable\": true },\n"
     "  { \"id\": \"about\", \"content\": \"text:Up and Down move, Enter chooses, q quits.\", \"border\": \"rounded\",\n"
@@ -371,6 +371,7 @@ loads. The studio's layout editor works on the same files.
 ```json
 {
   "name": "browser",
+  "resizable": true,
   "min_width": 60, "min_height": 10,
   "focus": "files",
   "root": { "row": [
@@ -390,6 +391,7 @@ loads. The studio's layout editor works on the same files.
 | Key | Value |
 |---|---|
 | `root` | the top node of the screen (required) |
+| `resizable` | required. `true` lets the user resize panes by dragging the edge between them, `false` keeps the sizes the layout gives ([Resizing by dragging](#resizing-by-dragging)) |
 | `name` | the layout's name |
 | `focus` | the id of the window that starts with focus |
 | `popups` | popup layers, described below |
@@ -418,6 +420,7 @@ Any node can also have:
 | `visible` | `false` hides it until the program shows it |
 | `breakpoint` | `{ "width", "height", "pane_width", "pane_height" }`, to show it only when there is that much space ([Breakpoints](#breakpoints)) |
 | `padding` | empty cells inside its border |
+| `resizable` | on a split, `true` or `false` to override the layout's `resizable` for its children |
 | `span` | `[rows, columns]` for a cell in a grid |
 
 Windows can also have `title`, `footer`, `focusable`, `background` (the name of a theme role),
@@ -573,6 +576,27 @@ node that would make the layout too big for the screen (`ROLLTUI_STACK_REFUSED`)
 
 Visibility and size changes last until the next `rolltui_window_stack_set_base`. A maximised window
 stays maximised under a new base if it's in it.
+
+### Resizing by dragging
+
+A layout with `"resizable": true` lets the user resize panes with the mouse. Pressing on the edge
+between two panes of a split (the border either pane draws there, or the gap between them) and
+dragging moves the edge; releasing lets go. Where splits are nested, the edge belongs to the
+innermost split it separates. While the pointer rests on an edge, and while it's being dragged, the
+edge is drawn bold in the active border colour.
+
+Each pane keeps the kind of size it had. A size in cells stays in cells and a percentage stays a
+percentage. Two fill panes keep filling, with their weights changed to the new proportion, and any
+other fill panes in the split keep their share. A `"content"` size becomes the number of cells it
+was dragged to. Neither pane can go below its `min`, or below one cell inside its border, or above
+its `max`.
+
+A layout must state `"resizable"`, because whether panes should move is a decision about that
+particular screen. A layout without it is reported and loaded as `false`. A split can say
+`"resizable"` itself to differ from the layout. Like other changes made through the stack, dragged
+sizes last until the next `rolltui_window_stack_set_base`. To keep them, read the base layer back
+with `rolltui_window_stack_layer(stack, 0)` and save it with the layout. The studio's layout editor has the layout's setting under This screen and a split's
+own under Spacing and bounds.
 
 ### Views in a window
 

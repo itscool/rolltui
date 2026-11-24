@@ -1,4 +1,5 @@
 {
+  "resizable": false,
   "name": "kettle", "min_width": 0, "min_height": 0, "focus": "kettle_menu",
   "actions": {
     "app.kettle": "put the kettle on",

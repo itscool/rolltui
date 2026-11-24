@@ -1269,7 +1269,7 @@ int main() {
     check(!ls.get("nothing", rep) && str_of(rep.error).find("no layout preset 'nothing'") == 0, "an unknown name is a named error [" + str_of(rep.error) + "]");
     check(!ls.load("nothing", rep) && ls.label() == "wide", "…and leaves the working copy alone");
     // A layout file's own problems are reported through the layout sub-report.
-    write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"name":"odd","colour":"blue","root":{"content":"transcript:session","border":"triple"}})");
+    write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"resizable":false,"name":"odd","colour":"blue","root":{"content":"transcript:session","border":"triple"}})");
     check(ls.load("odd", rep) && !rep.clean() && rep.layout.unknown_keys_n == 1 && rep.layout.unknown_keys[0] == "colour" && rep.layout.bad_values_n == 1 &&
               ls.working()->base.root.border == rolltui::Border::None,
           "a layout with an unknown key and a bad value loads, reports both, and keeps the default [" + rep.summary() + "]");

@@ -120,6 +120,30 @@ struct Screen {
     e.mouse.button = 1;
     return route(e, window);
   }
+  unsigned char mouse(RolltuiMouseEvent::Kind kind, int x, int y) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_MOUSE;
+    e.mouse.kind = kind;
+    e.mouse.x = x;
+    e.mouse.y = y;
+    e.mouse.button = kind == RolltuiMouseEvent::Kind::Move ? 0 : 1;
+    return route(e);
+  }
+  // A window's or split's outer rectangle as the stack places it now.
+  RolltuiRect rect_of(const char* id) const {
+    struct Find {
+      const char* id;
+      RolltuiRect r;
+    } f{id, RolltuiRect{-1, -1, 0, 0}};
+    rolltui_window_stack_resolve(
+        stack, RolltuiRect{0, 0, width, height},
+        [](void* c, const RolltuiResolvedNode* rn) {
+          Find* fd = static_cast<Find*>(c);
+          if (rn->node && str_of(rn->node->id) == fd->id) fd->r = rn->outer;
+        },
+        &f);
+    return f.r;
+  }
   RolltuiCellRaw cell(int x, int y) const {
     RolltuiCellRaw c{};
     rolltui_frame_cell(last, x, y, &c);
@@ -141,7 +165,7 @@ bool has(const std::vector<std::string>& rows, std::string_view s) {
   return false;
 }
 
-constexpr std::string_view kTabs = R"({ "name": "t", "root": { "row": [
+constexpr std::string_view kTabs = R"({ "resizable": false, "name": "t", "root": { "row": [
   { "id": "side", "tabs": [ { "title": "Files", "content": "text:the files" }, { "title": "Log", "content": "text:the log" } ],
     "focusable": true },
   { "id": "main", "content": "text:the main window", "focusable": true } ] } })";
@@ -183,13 +207,13 @@ void test_tabs() {
   check(text.find("\"tabs\"") != std::string::npos && text.find("\"Files\"") != std::string::npos && text.find("text:the log") != std::string::npos,
         "the tabs are written back [" + text.substr(0, 120) + "]");
   // problems named
-  Screen both(R"({ "name": "b", "root": { "id": "x", "content": "text:a", "tabs": [ { "content": "text:b" } ] } })");
+  Screen both(R"({ "resizable": false, "name": "b", "root": { "id": "x", "content": "text:a", "tabs": [ { "content": "text:b" } ] } })");
   check(both.problems.find("\"content\" or \"tabs\", not both") != std::string::npos, "content and tabs together is named [" + both.problems + "]");
-  Screen none(R"({ "name": "n", "root": { "id": "x", "border": "none", "tabs": [ { "content": "text:b" } ] } })");
+  Screen none(R"({ "resizable": false, "name": "n", "root": { "id": "x", "border": "none", "tabs": [ { "content": "text:b" } ] } })");
   check(none.problems.find("draws them in its border") != std::string::npos, "tabs with no border is named [" + none.problems + "]");
 }
 
-constexpr std::string_view kBreak = R"({ "name": "b", "root": { "row": [
+constexpr std::string_view kBreak = R"({ "resizable": false, "name": "b", "root": { "row": [
   { "id": "list", "content": "text:the list", "focusable": true },
   { "id": "preview", "content": "text:the preview", "focusable": true, "breakpoint": { "width": 100 } } ] } })";
 
@@ -233,7 +257,7 @@ void test_hide_size_maximize() {
 }
 
 void test_too_small() {
-  Screen s(R"({ "name": "m", "min_width": 60, "min_height": 8, "root": { "id": "w", "content": "text:the window", "focusable": true } })");
+  Screen s(R"({ "resizable": false, "name": "m", "min_width": 60, "min_height": 8, "root": { "id": "w", "content": "text:the window", "focusable": true } })");
   auto rows = s.paint(40, 6);
   check(has(rows, "the screen is 40\xC3\x97" "6; this needs 60\xC3\x97" "8") && !has(rows, "the window"),
         "a screen smaller than the layout needs says so, in place of the layout");
@@ -265,6 +289,113 @@ void test_nothing_kept() {
                              " before, " + std::to_string(after) + " after)");
 }
 
+// RESIZING BY DRAGGING THE EDGE BETWEEN TWO PANES: only where the layout says so, and the layout must say
+void test_drag_resize() {
+  using K = RolltuiMouseEvent::Kind;
+  const std::string pair = R"({"row":[{"id":"a","content":"text:one","border":"single"},{"id":"b","content":"text:two","border":"single"}]})";
+  {
+    Screen s(R"({"name":"d","resizable":true,"root":)" + pair + "}");
+    s.paint(40, 8);
+    const RolltuiRect a = s.rect_of("a");
+    const int edge = a.x + a.w - 1;
+    check(s.problems.empty() && s.press(edge, 3) == ROLLTUI_ROUTE_LAYOUT_CHANGED, "a press on the edge between two panes takes hold of it [" + s.problems + "]");
+    check(s.mouse(K::Drag, 10, 3) == ROLLTUI_ROUTE_LAYOUT_CHANGED, "…a drag moves it");
+    s.paint();
+    check(s.rect_of("a").w == 11 && s.rect_of("b").x == 11 && s.rect_of("b").w == 29,
+          "…and the left pane ends where the pointer is, the right one taking the rest [" + std::to_string(s.rect_of("a").w) + " | " +
+              std::to_string(s.rect_of("b").x) + "+" + std::to_string(s.rect_of("b").w) + "]");
+    check(s.mouse(K::Release, 10, 3) == ROLLTUI_ROUTE_LAYOUT_CHANGED, "…the release lets go");
+    std::string win;
+    check(s.press(5, 3, &win) == ROLLTUI_ROUTE_DELIVER && win == "a", "…and a press inside a pane is the pane's, as before");
+    check(s.mouse(K::Drag, 30, 3) != ROLLTUI_ROUTE_LAYOUT_CHANGED && s.rect_of("a").w == 11, "…its drags too: nothing is resized");
+    s.mouse(K::Release, 30, 3);
+    // THE POINTER ON AN EDGE lights it, the drag's cue
+    s.mouse(K::Move, 10, 3);
+    s.paint();
+    check(s.cell(10, 3).style.bold && !s.cell(0, 3).style.bold, "the edge under the pointer is drawn lit, the rest of the border not");
+    // the two fills keep filling: written back as weights in the new proportion
+    const RolltuiLayoutNode* ra = rolltui_window_stack_find(s.stack, "a", 1);
+    const RolltuiLayoutNode* rb = rolltui_window_stack_find(s.stack, "b", 1);
+    check(ra && rb && ra->size.fill && rb->size.fill && ra->size.weight * 29 == rb->size.weight * 11,
+          "two fills stay fills, their weights in the proportion dragged to");
+  }
+  {
+    Screen s(R"({"name":"d","resizable":false,"root":)" + pair + "}");
+    s.paint(40, 8);
+    const int edge = s.rect_of("a").x + s.rect_of("a").w - 1;
+    check(s.press(edge, 3) == ROLLTUI_ROUTE_DELIVER, "a layout that says false: the edge is the pane's border, a press like any other");
+    s.mouse(K::Drag, 10, 3);
+    s.paint();
+    check(s.rect_of("a").w == 20, "…and nothing is resized");
+  }
+  {
+    Screen no(R"({"name":"d","resizable":true,"root":{"resizable":false,)" + pair.substr(1) + "}");
+    no.paint(40, 8);
+    check(no.press(no.rect_of("a").x + no.rect_of("a").w - 1, 3) == ROLLTUI_ROUTE_DELIVER, "a split that says false keeps its sizes under a layout that says true");
+    Screen yes(R"({"name":"d","resizable":false,"root":{"resizable":true,)" + pair.substr(1) + "}");
+    yes.paint(40, 8);
+    check(yes.press(yes.rect_of("a").x + yes.rect_of("a").w - 1, 3) == ROLLTUI_ROUTE_LAYOUT_CHANGED, "…and one that says true is resized under one that says false");
+  }
+  {
+    Screen s(R"({"name":"d","root":)" + pair + "}");
+    check(s.problems.find("resizable") != std::string::npos, "a layout that does not say whether it is resized by dragging is a named problem [" + s.problems + "]");
+    s.paint(40, 8);
+    check(s.press(s.rect_of("a").x + s.rect_of("a").w - 1, 3) == ROLLTUI_ROUTE_DELIVER, "…loaded as if it said false");
+    Screen w(R"({"name":"d","resizable":true,"root":{"id":"a","content":"text:x","resizable":true}})");
+    check(w.problems.find("only a split") != std::string::npos, "a window is no split, and is told so [" + w.problems + "]");
+  }
+  {
+    // BOUNDS AND KINDS: a pane's min holds; cells stay cells
+    Screen s(R"({"name":"d","resizable":true,"root":{"row":[{"id":"a","content":"text:one","border":"single","min":8},)"
+             R"({"id":"b","content":"text:two","border":"single","size":12}]}})");
+    s.paint(40, 8);
+    const int edge = s.rect_of("a").x + s.rect_of("a").w - 1;
+    s.press(edge, 3);
+    s.mouse(K::Drag, 2, 3);
+    s.mouse(K::Release, 2, 3);
+    s.paint();
+    check(s.rect_of("a").w == 8, "a pane is held at its min [" + std::to_string(s.rect_of("a").w) + "]");
+    const RolltuiLayoutNode* rb = rolltui_window_stack_find(s.stack, "b", 1);
+    check(rb && !rb->size.fill && rb->size.dim.cells == s.rect_of("b").w && s.rect_of("b").w > 12, "…and a pane sized in cells keeps cells, now the width dragged to");
+  }
+  {
+    // THREE FILLS: the two either side of the edge trade room; the third keeps its share
+    Screen s(R"({"name":"d","resizable":true,"root":{"row":[{"id":"a","content":"text:1","border":"single"},)"
+             R"({"id":"b","content":"text:2","border":"single"},{"id":"c","content":"text:3","border":"single"}]}})");
+    s.paint(60, 8);
+    const int cw = s.rect_of("c").w;
+    s.press(s.rect_of("a").x + s.rect_of("a").w - 1, 3);
+    s.mouse(K::Drag, 8, 3);
+    s.mouse(K::Release, 8, 3);
+    s.paint();
+    check(s.rect_of("a").w == 9 && s.rect_of("c").w == cw, "a third pane keeps its width while two trade [" + std::to_string(s.rect_of("c").w) + " of " + std::to_string(cw) + "]");
+    s.paint(90, 8);
+    check(s.rect_of("c").w > cw, "…and still grows with the screen: the fills are still fills");
+  }
+  {
+    // NESTED: the edge inside a row is the row's; the edge under it is the column's
+    Screen s(R"({"name":"d","resizable":true,"root":{"column":[{"id":"top","row":[{"id":"a","content":"text:1","border":"single"},)"
+             R"({"id":"b","content":"text:2","border":"single"}]},{"id":"c","content":"text:3","border":"single"}]}})");
+    s.paint(40, 12);
+    const RolltuiRect a = s.rect_of("a");
+    s.press(a.x + a.w - 1, 2);
+    s.mouse(K::Drag, 12, 2);
+    s.mouse(K::Release, 12, 2);
+    s.paint();
+    check(s.rect_of("a").w == 13 && s.rect_of("c").w == 40, "the edge between two panes of a row resizes the row's panes");
+    const int bottom = s.rect_of("top").y + s.rect_of("top").h - 1;
+    check(s.press(20, bottom) == ROLLTUI_ROUTE_LAYOUT_CHANGED, "…and the edge under the row is the column's [" + std::to_string(bottom) + "]");
+    s.mouse(K::Drag, 20, 3);
+    s.mouse(K::Release, 20, 3);
+    s.paint();
+    check(s.rect_of("top").h == 4, "…which moves it down and up [" + std::to_string(s.rect_of("top").h) + "]");
+    // A NEW BASE under a drag ends it: nothing is held
+    s.press(20, s.rect_of("top").y + s.rect_of("top").h - 1);
+    rolltui_window_stack_set_base(s.stack, rolltui_layout_base(s.layout));
+    check(s.mouse(K::Drag, 20, 6) != ROLLTUI_ROUTE_LAYOUT_CHANGED, "a new base layout under a drag lets go of it");
+  }
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_tabs();
@@ -272,5 +403,6 @@ int main() {
   test_hide_size_maximize();
   test_too_small();
   test_nothing_kept();
+  test_drag_resize();
   return testkit::report("layout_runtime_test");
 }

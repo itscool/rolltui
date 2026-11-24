@@ -16,7 +16,7 @@ namespace {
 
 RolltuiContext* ctx() { return rolltui_test::test_context(); }
 
-constexpr std::string_view kScreen = R"({ "name": "d", "root": { "column": [ { "id": "body", "content": "text:the app" } ] } })";
+constexpr std::string_view kScreen = R"({ "resizable": false, "name": "d", "root": { "column": [ { "id": "body", "content": "text:the app" } ] } })";
 
 struct Screen {
   RolltuiLayout* layout = nullptr;
@@ -200,7 +200,7 @@ void test_shown() {
 
 void test_unasked() {
   // A SCREEN NAMING A DIALOG NO HOST ASKED says so in the window, as an unbound source does
-  constexpr std::string_view screen = R"({ "name": "u", "root": { "column": [ { "id": "q", "content": "dialog:nobody" } ] } })";
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "u", "root": { "column": [ { "id": "q", "content": "dialog:nobody" } ] } })";
   RolltuiLayoutReport rep{};
   std::size_t nd = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx(), &nd);

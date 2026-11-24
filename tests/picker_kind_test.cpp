@@ -147,7 +147,7 @@ int main() {
   // ---- a start the LAYOUT states, with no host call ------------------------------------------
   {
     const std::string sub = (root / "inner").string();
-    const std::string screen = std::string("{\"name\":\"quarry2\",\"min_width\":0,\"min_height\":0,\"actions\":{},\"root\":{\"row\":[") +
+    const std::string screen = std::string("{\"name\":\"quarry2\",\"resizable\":false,\"min_width\":0,\"min_height\":0,\"actions\":{},\"root\":{\"row\":[") +
         "{\"id\":\"pick2\",\"content\":\"filepicker:" + sub + "\",\"border\":\"single\",\"title\":\"pick\",\"focusable\":true}]}}";
     RolltuiLayoutReport rep2{};
     RolltuiLayout* l2 = rolltui_load_layout_text(screen.data(), screen.size(), nullptr, 0, nullptr, &rep2);

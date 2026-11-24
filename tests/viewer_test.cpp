@@ -159,7 +159,7 @@ void check_page(Screen& s, const std::string& what) {
 }
 
 void test_text() {
-  const std::string screen = std::string(R"({ "name": "t", "root": { "id": "page", "content": "text:)") + kLong + R"(\nsecond", "focusable": true } })";
+  const std::string screen = std::string(R"({ "resizable": false, "name": "t", "root": { "id": "page", "content": "text:)") + kLong + R"(\nsecond", "focusable": true } })";
   Screen s(screen, 10, 6);
   check_page(s, "a text window");
 }
@@ -176,7 +176,7 @@ void test_file() {
     std::fclose(f);
   }
   {
-    const std::string screen = R"({ "name": "f", "root": { "id": "page", "content": "file:)" + path + R"(", "focusable": true } })";
+    const std::string screen = R"({ "resizable": false, "name": "f", "root": { "id": "page", "content": "file:)" + path + R"(", "focusable": true } })";
     Screen s(screen, 10, 6);
     check_page(s, "a file window");
   }
@@ -186,7 +186,7 @@ void test_file() {
 
 void test_wide_glyph_at_the_edge() {
   // "a中文字": four cells in, 文 would be cut in half, so its cell left of the edge is blank and 字 follows
-  const std::string screen = R"({ "name": "t", "root": { "id": "page", "content": "text:a中文字 and more", "focusable": true } })";
+  const std::string screen = R"({ "resizable": false, "name": "t", "root": { "id": "page", "content": "text:a中文字 and more", "focusable": true } })";
   Screen s(screen, 10, 3);
   s.paint();
   s.wrap_key();
@@ -196,7 +196,7 @@ void test_wide_glyph_at_the_edge() {
 }
 
 void test_output() {
-  constexpr std::string_view screen = R"({ "name": "o", "root": { "id": "page", "content": "output:run", "focusable": true } })";
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "o", "root": { "id": "page", "content": "output:run", "focusable": true } })";
   Screen s(screen, 10, 6);
   RolltuiAnsiText* t = rolltui_ansi_new();
   const std::string bytes = std::string(kLong) + "\nsecond\n";
@@ -221,7 +221,7 @@ void test_output() {
 // LINKS ANOTHER PROGRAM WROTE (OSC 8): read onto the text they cover, drawn as the frame's links (sent on as OSC 8), the one under the
 // pointer underlined, and a press on one offered to the host before the library opens it.
 void test_links() {
-  constexpr std::string_view screen = R"({ "name": "o", "root": { "id": "page", "content": "output:run", "focusable": true } })";
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "o", "root": { "id": "page", "content": "output:run", "focusable": true } })";
   Screen s(screen, 30, 5);
   RolltuiAnsiText* t = rolltui_ansi_new();
   // ST and BEL ends, parameters, a link kept across a newline, a title OSC swallowed, a URL that is not one, and an OSC past 4 KB
@@ -302,7 +302,7 @@ void test_links() {
 void test_wheel_step() {
   std::string lines;
   for (int i = 1; i <= 30; ++i) lines += std::string(i < 10 ? "l0" : "l") + std::to_string(i) + "\\n";
-  const std::string screen = R"({ "name": "t", "root": { "id": "page", "content": "text:)" + lines + R"(", "focusable": true } })";
+  const std::string screen = R"({ "resizable": false, "name": "t", "root": { "id": "page", "content": "text:)" + lines + R"(", "focusable": true } })";
   Screen s(screen, 10, 5);
   s.paint();
   RolltuiEvent down{};

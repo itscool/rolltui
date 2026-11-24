@@ -105,7 +105,7 @@ struct Screen {
   explicit Screen(RolltuiBindings* bindings) : b(bindings) {
     rolltui_context_set_library_defaults(ctx);
     rolltui_context_set_bindings(ctx, b);
-    static const char kScreen[] = R"({ "name": "s", "root": { "id": "rows", "content": "list:things", "focusable": true } })";
+    static const char kScreen[] = R"({ "resizable": false, "name": "s", "root": { "id": "rows", "content": "list:things", "focusable": true } })";
     RolltuiLayoutReport rep{};
     std::size_t nd = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &nd);

@@ -1,5 +1,6 @@
 {
   "name": "inline",
+  "resizable": false,
   "inline": true,
   "min_width": 20,
   "min_height": 3,

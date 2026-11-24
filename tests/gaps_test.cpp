@@ -112,7 +112,7 @@ int main() {
   // The screen wants a `browser` kind nobody registered, a `rows:telemetry` source nothing is
   // bound to, and declares `app.zoom` that no chord reaches. None of those is an error.
   {
-    const Screen l = load(R"({
+    const Screen l = load(R"({ "resizable": false,
       "name": "wanted", "actions": { "app.zoom": "zoom a pane" },
       "root": { "column": [
         { "id": "sheet", "content": "browser" },
@@ -163,7 +163,7 @@ int main() {
   // The empty case earns its keep: without it "reports three gaps" is satisfied by a function
   // that reports three gaps at all times.
   {
-    const Screen l = load(R"({
+    const Screen l = load(R"({ "resizable": false,
       "name": "whole", "actions": { "app.help": "open help" },
       "root": { "column": [ { "id": "log", "content": "transcript:session" } ] } })");
     check(static_cast<bool>(l), "the complete screen loads");
@@ -197,7 +197,7 @@ int main() {
   // user opens that popup, which is the wrong moment and the wrong person. This is the
   // assertion that says the two are different jobs rather than two spellings of one.
   {
-    const Screen l = load(R"({
+    const Screen l = load(R"({ "resizable": false,
       "name": "deferred",
       "root": { "column": [ { "id": "log", "content": "transcript:session" } ] },
       "popups": [
@@ -232,7 +232,7 @@ int main() {
   // whether a host HANDLES one is not library-visible). A host with no table gets the exact
   // half that is knowable rather than a wrong answer.
   {
-    const Screen l = load(R"({
+    const Screen l = load(R"({ "resizable": false,
       "name": "noverbs", "actions": { "app.zoom": "zoom" },
       "root": { "column": [ { "id": "log", "content": "transcript:session" } ] } })");
     if (l) {
@@ -250,9 +250,9 @@ int main() {
 
   // ---- 5. THE REPORT IS REUSABLE, which is the rule every report on this boundary has ----
   {
-    const Screen bad = load(R"({ "name": "b",
+    const Screen bad = load(R"({ "resizable": false, "name": "b",
       "root": { "column": [ { "id": "x", "content": "nosuchkind" } ] } })");
-    const Screen good = load(R"({ "name": "g",
+    const Screen good = load(R"({ "resizable": false, "name": "g",
       "root": { "column": [ { "id": "x", "content": "text:hello" } ] } })");
     if (bad && good) {
       RolltuiWindows* w = rolltui_windows_new(ctx());

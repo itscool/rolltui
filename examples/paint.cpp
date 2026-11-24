@@ -178,7 +178,7 @@ struct Tool {
 // A file, in the sense that matters — it is parsed by the same loader as any other, so this
 // app's minimum size is stated once, here, rather than in a second place that could drift.
 constexpr const char* kDefaultLayout = R"({
-  "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
+  "name": "paint", "resizable": true, "min_width": 20, "min_height": 6, "focus": "sheet",
   "actions": { "app.theme": "edit the theme", "app.keys": "edit the keys",
                "app.filepicker": "open a picture", "app.save": "save the sheet as text" },
   "popups": [

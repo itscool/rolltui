@@ -1,5 +1,6 @@
 {
   "name": "panel-left",
+  "resizable": true,
   "min_width": 60,
   "min_height": 8,
   "focus": "input",
