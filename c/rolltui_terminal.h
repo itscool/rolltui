@@ -80,6 +80,10 @@
 extern "C" {
 #endif
 void rolltui_terminal_refresh_size(RolltuiTerminal* t); /* ioctl; also called on SIGWINCH */
+/* A size said outright, for a run with no terminal: `announce` reports it at the next poll, as a window resized does. */
+void rolltui_terminal_set_size(RolltuiTerminal* t, int w, int h, int announce);
+/* `rolltui_terminal_new` at a size said outright, from before it enters: a run with no terminal (`rolltui_run_begin_headless`). */
+RolltuiTerminal* rolltui_terminal_new_sized(int in_fd, int out_fd, RolltuiTerminalOptions opts, int w, int h);
 
 /* ---- keyboard protocol ------------------------------------------------------------------- */
 /*

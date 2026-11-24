@@ -170,6 +170,10 @@ void rolltui_os_dir_close(RolltuiOsDir* d);
 /* ---- the terminal -------------------------------------------------------------------------- */
 
 int rolltui_os_isatty(int fd);
+/* Descriptors for a run with no terminal: input nothing writes to (and the end that could, kept open so the input never ends),
+ * output that goes nowhere. 0 on success; -1 where the system reads only a console. */
+int rolltui_os_headless_fds(int* in_fd, int* keep_fd, int* out_fd);
+void rolltui_os_close_fd(int fd);
 
 /* One terminal: the input and output it was opened on, its saved mode, and a wake channel that
  * another thread (or the resize signal) can trip. */

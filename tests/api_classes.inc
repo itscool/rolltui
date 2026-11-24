@@ -185,6 +185,9 @@ ROLLTUI_API(rolltui_run_debounce, PUBLIC)  /* KEPT: filtering once a burst of ke
 ROLLTUI_API(rolltui_run_begin, PUBLIC)   /* a host whose own loop must never block (a web page) steps the same loop */
 ROLLTUI_API(rolltui_run_step, PUBLIC)    /* …one wake and one frame, without waiting */
 ROLLTUI_API(rolltui_run_finish, PUBLIC)  /* …and leaves the terminal as it was found */
+ROLLTUI_API(rolltui_run_begin_headless, PUBLIC)  /* KEPT: a host's end-to-end test runs its real loop with no terminal */
+ROLLTUI_API(rolltui_run_resize, PUBLIC)  /* KEPT: (a run with no terminal, given a new size) */
+ROLLTUI_API(rolltui_run_screen_text, PUBLIC)  /* KEPT: (what such a test asserts on: the screen as text) */
 
 /* ---- rolltui_diff.h — diff highlighting a host draws; default PUBLIC --------------------- */
 ROLLTUI_API(rolltui_diff_default_roles, PUBLIC)
@@ -1639,6 +1642,8 @@ ROLLTUI_API(rolltui_terminal_poll, PUBLIC)
 ROLLTUI_API(rolltui_terminal_query_background, PUBLIC)
 ROLLTUI_API(rolltui_terminal_query_ambiguous_wide, PUBLIC)  /* how wide this terminal draws an ambiguous glyph is a FACT a host must know before it draws, and only the terminal can answer */
 ROLLTUI_API(rolltui_terminal_refresh_size, INTERNAL)  /* a step of the terminal's own loop */
+ROLLTUI_API(rolltui_terminal_set_size, INTERNAL)  /* a run with no terminal is given its size */
+ROLLTUI_API(rolltui_terminal_new_sized, INTERNAL)  /* …from before it enters */
 ROLLTUI_API(rolltui_terminal_restore_now, INTERNAL)  /* a step of leave */
 /* the operating system, behind rolltui_os.h: no host reaches it */
 ROLLTUI_API(rolltui_os_monotonic_us, INTERNAL)
@@ -1697,6 +1702,8 @@ ROLLTUI_API(rolltui_os_dir_stat, INTERNAL)
 ROLLTUI_API(rolltui_os_dir_hidden, INTERNAL)
 ROLLTUI_API(rolltui_os_dir_close, INTERNAL)
 ROLLTUI_API(rolltui_os_isatty, INTERNAL)
+ROLLTUI_API(rolltui_os_headless_fds, INTERNAL)
+ROLLTUI_API(rolltui_os_close_fd, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_open, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_close, INTERNAL)
 ROLLTUI_API(rolltui_os_tty_is_tty, INTERNAL)
@@ -1722,6 +1729,7 @@ ROLLTUI_API(rolltui_terminal_set_title, PUBLIC)  /* chat names what the conversa
 ROLLTUI_API(rolltui_terminal_set_window_name, PUBLIC)  /* KEPT: a program named in tmux's window list, the old name put back on leaving */
 ROLLTUI_API(rolltui_terminal_set_cell_pixels, PUBLIC)  /* KEPT: a host that measured the font itself, where the terminal's size is wrong */
 ROLLTUI_API(rolltui_terminal_pending_ms, PUBLIC)  /* KEPT: a host's own loop waking when a held picture is due (rolltui_run does it itself) */
+ROLLTUI_API(rolltui_terminal_record, PUBLIC)  /* KEPT: a host records a demo from its own script (ROLLTUI_RECORD does it for any) */
 ROLLTUI_API(rolltui_terminal_set_outside_pictures, PUBLIC)  /* KEPT: the host told when to draw and clear an outside program's picture */
 ROLLTUI_API(rolltui_terminal_report_cwd, PUBLIC)  /* dirktui reports the folder it is in */
 ROLLTUI_API(rolltui_child_spawn, PUBLIC)  /* chat runs an approved command; dirktui checks for an update, hands a file to an app */

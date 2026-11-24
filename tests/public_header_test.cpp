@@ -553,8 +553,9 @@ int main() {
     // The input's mode, and a normal or visual command by name (PUBLIC 647). The column browser's wheel step (INTERNAL 961).
     // A size and a count for a person (PUBLIC 649). The state directory and a state file (PUBLIC 657); the system's state home
     // (INTERNAL 962).
-    // The log and the draw times on screen (PUBLIC 663).
-    check(totals["PUBLIC"] == 663 && totals["INTERNAL"] == 962 && totals.size() == 2,
+    // The log and the draw times on screen (PUBLIC 663). A run with no terminal and a recording (PUBLIC 667); its size and
+    // descriptors (INTERNAL 966).
+    check(totals["PUBLIC"] == 667 && totals["INTERNAL"] == 966 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -746,10 +747,11 @@ int main() {
     // Run 251, release 18: a dialog built, asked and answered; one never asked, freed. Run 253: the input's mode, a modal command.
     // Widget 87: a size and a count for a person. Load 35, run 258, release 19: the state directory and a state file.
     // Settings 100, run 261: the log named and its level, the draw times shown; a line asked for and written.
+    // Run 265: a run with no terminal, its new size and its screen as text, and a recording.
     check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 35 && rt["HOST_SETTINGS"] == 100 &&
-              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 261 && rt["HOST_RELEASE"] == 19 &&
+              rt["HOST_BIND"] == 116 && rt["HOST_RUN"] == 265 && rt["HOST_RELEASE"] == 19 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 87,
-          "the roles are the recorded shape — vocab 45, host load 35 / settings 100 / bind 116 / run 261 / "
+          "the roles are the recorded shape — vocab 45, host load 35 / settings 100 / bind 116 / run 265 / "
           "release 19, tool interop 0, widget 87 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

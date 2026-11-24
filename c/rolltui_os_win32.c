@@ -424,6 +424,13 @@ int rolltui_os_tty_is_console(const RolltuiOsTty* t) {
   return 0; /* no Linux console here */
 }
 
+int rolltui_os_headless_fds(int* in_fd, int* keep_fd, int* out_fd) {
+  (void)in_fd, (void)keep_fd, (void)out_fd;
+  return -1; /* the console is read as a console, not as a descriptor */
+}
+void rolltui_os_close_fd(int fd) {
+  if (fd >= 0) _close(fd);
+}
 int rolltui_os_isatty(int fd) {
   DWORD mode;
   const HANDLE h = (HANDLE)_get_osfhandle(fd);

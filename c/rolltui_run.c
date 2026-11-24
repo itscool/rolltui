@@ -8,6 +8,7 @@
 #include "rolltui/c/rolltui_presets.h" /* the stores a run watches, read again through their own calls */
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_os.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* One event of a wake, copied out of the terminal's borrowed buffers. */
 typedef struct RunEvent {
@@ -35,6 +36,8 @@ struct RolltuiRun {
   RunEvent* ev;
   size_t ev_n, ev_cap;
   int in_fd, out_fd; /* the terminal's descriptors, for a program that takes it over */
+  int headless;      /* `rolltui_run_begin_headless`: the three descriptors below are the run's own, closed when it ends */
+  int keep_fd;
   /* TIMERS, by id: due on the steady clock, `every` 0 for once. Fired after a wake's events, before `settle`. */
   struct RunTimer { unsigned int id; unsigned long long due; int every; RolltuiTimerFn fn; void* ctx; } * timers;
   size_t timer_n, timer_cap;
@@ -175,7 +178,8 @@ static void ground_of(RolltuiRun* r, RolltuiStyle* fill) {
 }
 
 /* Enters the terminal and makes the run's own state. 0, with nothing made, when the app or the descriptors are refused. */
-static int run_enter(RolltuiRun* r, int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result) {
+static int run_enter(RolltuiRun* r, int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result,
+                     int headless_w, int headless_h) {
   RolltuiStyle fill;
   if (!app || !app->render || !app->event) {
     *result = ROLLTUI_RUN_BAD_APP;
@@ -183,8 +187,9 @@ static int run_enter(RolltuiRun* r, int in_fd, int out_fd, RolltuiTerminalOption
   }
   /* ASKED BEFORE THE TERMINAL IS MADE, of both descriptors. Making it enters: the alternate screen, the modes, the
    * questions, and the leaving again at free, all WRITTEN — so a refusal decided afterwards has already sent all of
-   * that into a pipe or a file, which is the one place a program refusing to draw must leave untouched. */
-  if (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd)) {
+   * that into a pipe or a file, which is the one place a program refusing to draw must leave untouched. A run with no terminal
+   * asked for that outright. */
+  if (!headless_w && (!rolltui_os_isatty(in_fd) || !rolltui_os_isatty(out_fd))) {
     *result = ROLLTUI_RUN_NOT_A_TERMINAL;
     return 0;
   }
@@ -192,8 +197,11 @@ static int run_enter(RolltuiRun* r, int in_fd, int out_fd, RolltuiTerminalOption
   r->app = app;
   r->in_fd = in_fd;
   r->out_fd = out_fd;
+  r->keep_fd = -1;
   opts.facts_events = 1; /* the loop is what listens for them */
-  r->term = rolltui_terminal_new(in_fd, out_fd, opts);
+  /* A run with no terminal is made at its size, and in 24-bit colour, whatever the environment says */
+  r->term = headless_w ? rolltui_terminal_new_sized(in_fd, out_fd, opts, headless_w, headless_h) : rolltui_terminal_new(in_fd, out_fd, opts);
+  if (headless_w) rolltui_terminal_set_depth(r->term, ROLLTUI_DEPTH_TRUECOLOR);
   r->w = rolltui_terminal_width(r->term);
   r->h = rolltui_terminal_height(r->term);
   r->rows = opts.inline_rows;
@@ -250,7 +258,11 @@ static void run_wake(RolltuiRun* r, int timeout) {
     r->inj = NULL, r->inj_n = 0, r->inj_cap = 0;
     for (i = 0; i < n && !r->stop; ++i) {
       if (made[i].has_text) made[i].e.text = text.p ? text.p + made[i].at : "";
-      app->event(app->ctx, r, &made[i].e);
+      if (made[i].e.kind == ROLLTUI_EVENT_FOCUS) { /* focus is the app's `focus`, as the terminal's is */
+        if (app->focus) app->focus(app->ctx, r, made[i].e.focused);
+      } else {
+        app->event(app->ctx, r, &made[i].e);
+      }
     }
     rolltui_mem_free(made);
     rolltui_str_free(&text);
@@ -388,7 +400,7 @@ static void run_leave(RolltuiRun* r) {
 int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app) {
   RolltuiRun r;
   int result;
-  if (!run_enter(&r, in_fd, out_fd, opts, app, &result)) return result;
+  if (!run_enter(&r, in_fd, out_fd, opts, app, &result, 0, 0)) return result;
   while (!r.stop) {
     const int timeout = run_frame(&r);
     run_wake(&r, timeout);
@@ -401,11 +413,57 @@ RolltuiRun* rolltui_run_begin(int in_fd, int out_fd, RolltuiTerminalOptions opts
   RolltuiRun* r = (RolltuiRun*)rolltui_mem_alloc(sizeof *r);
   int ignored;
   if (!result) result = &ignored;
-  if (!run_enter(r, in_fd, out_fd, opts, app, result)) {
+  if (!run_enter(r, in_fd, out_fd, opts, app, result, 0, 0)) {
     rolltui_mem_free(r);
     return NULL;
   }
   return r;
+}
+
+RolltuiRun* rolltui_run_begin_headless(int w, int h, const RolltuiRunApp* app, int* result) {
+  RolltuiRun* r;
+  RolltuiTerminalOptions o;
+  int in_fd = -1, keep_fd = -1, out_fd = -1, ignored;
+  if (!result) result = &ignored;
+  if (w <= 0 || h <= 0 || rolltui_os_headless_fds(&in_fd, &keep_fd, &out_fd) != 0) {
+    *result = ROLLTUI_RUN_NOT_A_TERMINAL;
+    return NULL;
+  }
+  memset(&o, 0, sizeof o);
+  o.alt_screen = 1;
+  o.mouse = 1;
+  o.bracketed_paste = 1;
+  o.hide_cursor = 1;
+  o.no_probe = 1;
+  o.no_cache = 1;
+  o.images = ROLLTUI_IMAGES_BLOCKS; /* pictures in cells, which the screen's text and a recording both hold */
+  r = (RolltuiRun*)rolltui_mem_alloc(sizeof *r);
+  if (!run_enter(r, in_fd, out_fd, o, app, result, w, h)) {
+    rolltui_mem_free(r);
+    rolltui_os_close_fd(in_fd);
+    rolltui_os_close_fd(keep_fd);
+    rolltui_os_close_fd(out_fd);
+    return NULL;
+  }
+  r->headless = 1;
+  r->keep_fd = keep_fd;
+  return r;
+}
+
+void rolltui_run_resize(RolltuiRun* run, int w, int h) {
+  if (run && run->headless && run->term) {
+    rolltui_terminal_set_size(run->term, w, h, 1);
+    rolltui_terminal_wake(run->term);
+  }
+}
+
+int rolltui_run_screen_text(const RolltuiRun* run, RolltuiStr* out) {
+  const RolltuiFrame* f = run && run->swap ? rolltui_swap_front(run->swap) : NULL;
+  if (!out) return 0;
+  rolltui_str_clear(out);
+  if (!f) return 0;
+  rolltui_frame_to_text(f, out);
+  return 1;
 }
 
 int rolltui_run_step(RolltuiRun* r) {
@@ -419,6 +477,11 @@ int rolltui_run_step(RolltuiRun* r) {
 int rolltui_run_finish(RolltuiRun* r) {
   if (!r) return ROLLTUI_RUN_STOPPED;
   run_leave(r);
+  if (r->headless) { /* its own descriptors, after the terminal that wrote to them */
+    rolltui_os_close_fd(r->in_fd);
+    rolltui_os_close_fd(r->keep_fd);
+    rolltui_os_close_fd(r->out_fd);
+  }
   rolltui_mem_free(r);
   return ROLLTUI_RUN_STOPPED;
 }

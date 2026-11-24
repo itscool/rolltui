@@ -4980,6 +4980,10 @@ int rolltui_terminal_set_window_name(RolltuiTerminal* t, const char* name, size_
 /* A CELL'S SIZE IN PIXELS as the host knows it (a terminal whose window size is not the truth, a font the host measured): pictures
  * are fitted to it; 0, 0 gives the terminal's own back (its report, CSI 16 t, or its window size divided by its cells). */
 void rolltui_terminal_set_cell_pixels(RolltuiTerminal* t, int w, int h);
+/* A RECORDING: every byte sent to the terminal from now, with when it was sent, into an asciicast (v2) file at `path`, which asciinema
+ * plays and its tools turn into a GIF; a change of size is in it too. `ROLLTUI_RECORD` in the environment records any program from
+ * before it enters. NULL stops it. 1 when the file is open. */
+int rolltui_terminal_record(RolltuiTerminal* t, const char* path, size_t len);
 /* The milliseconds until a picture held back (`picture_delay_ms`) is due to be sent, so the frame after that sends it; -1 none.
  * `rolltui_run` waits on it itself. */
 int rolltui_terminal_pending_ms(const RolltuiTerminal* t);
@@ -5150,6 +5154,18 @@ int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const Rolltu
 RolltuiRun* rolltui_run_begin(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app, int* result);
 int rolltui_run_step(RolltuiRun* run);
 int rolltui_run_finish(RolltuiRun* run);
+
+/* A RUN WITH NO TERMINAL, for a host's own end-to-end tests: the program's real loop at `w` x `h`, drawing a screen nothing shows
+ * (what it sends goes nowhere, or into a recording: `rolltui_terminal_record(rolltui_run_terminal(run), ...)`), its events the ones
+ * `rolltui_run_inject` gives it: keys, the mouse, a paste and focus. Stepped as `rolltui_run_begin`'s run is; `rolltui_run_resize` gives
+ * it a new size, `rolltui_run_screen_text` reads what is on screen, and `rolltui_tasks_wait_idle(rolltui_run_tasks(run), ...)` waits for
+ * its workers. Its colours are 24-bit and nothing in the environment changes what it is. NULL with `*result` as `rolltui_run_begin`
+ * sets it; ROLLTUI_RUN_NOT_A_TERMINAL where the system reads only a console (Windows). */
+RolltuiRun* rolltui_run_begin_headless(int w, int h, const RolltuiRunApp* app, int* result);
+/* A NEW SIZE for a run with no terminal, reported at the next step as a window resized is; a run on a terminal takes its window's. */
+void rolltui_run_resize(RolltuiRun* run, int w, int h);
+/* WHAT IS ON SCREEN after the last step, a row a line (REPLACES `*out`); 0 before the first frame. */
+int rolltui_run_screen_text(const RolltuiRun* run, RolltuiStr* out);
 
 /* WHAT THE CALLBACKS CALL, all no-ops on NULL. Leave the loop after this wake: the events of the batch that follow
  * are dropped, `settle` is still called once. */

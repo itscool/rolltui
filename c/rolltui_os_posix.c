@@ -259,6 +259,24 @@ void rolltui_os_dir_close(RolltuiOsDir* d) {
 
 int rolltui_os_isatty(int fd) { return isatty(fd) != 0; }
 
+int rolltui_os_headless_fds(int* in_fd, int* keep_fd, int* out_fd) {
+  int p[2], o;
+  if (pipe(p) != 0) return -1;
+  o = open("/dev/null", O_WRONLY | O_CLOEXEC);
+  if (o < 0) {
+    close(p[0]);
+    close(p[1]);
+    return -1;
+  }
+  fcntl(p[0], F_SETFD, FD_CLOEXEC);
+  fcntl(p[1], F_SETFD, FD_CLOEXEC);
+  *in_fd = p[0], *keep_fd = p[1], *out_fd = o;
+  return 0;
+}
+void rolltui_os_close_fd(int fd) {
+  if (fd >= 0) close(fd);
+}
+
 struct RolltuiOsTty {
   int in_fd, out_fd;
   int owned_fd; /* a reopened terminal (see reopen_if_unpollable), closed at close; else -1 */

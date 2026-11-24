@@ -288,6 +288,35 @@ CMake), so the page is built from what the native build compiles. In the browser
 A host of its own built this way exports a start and a step and calls `rolltui_run_begin` and
 `rolltui_run_step`, as `examples/tour.c` does under `__wasi__`.
 
+### A program's own end-to-end tests
+
+`rolltui_run_begin_headless(w, h, &app, &result)` runs a program's real loop with no terminal, at
+`w` by `h`: what it sends goes nowhere, its colours are 24-bit and nothing in the environment
+changes what it is. A test drives it as the person would and reads back what is on screen:
+
+```c
+RolltuiRun* run = rolltui_run_begin_headless(80, 24, &app, &result);
+rolltui_run_step(run);                      /* the first frame */
+rolltui_run_inject(run, &key);              /* a key, a press, a paste or focus */
+rolltui_run_step(run);
+rolltui_run_screen_text(run, &text);        /* the screen, a row a line */
+rolltui_run_resize(run, 100, 30);           /* reported at the next step, as a window's is */
+rolltui_tasks_wait_idle(rolltui_run_tasks(run), 2000); /* its workers done */
+rolltui_run_finish(run);
+```
+
+Where the system reads only a console (Windows), it returns NULL with
+`ROLLTUI_RUN_NOT_A_TERMINAL`.
+
+### Recordings
+
+`rolltui_terminal_record(term, path, len)` writes every byte sent to the terminal from then on,
+with when it was sent, into an asciicast (v2) file, which asciinema plays and its tools turn into a
+GIF; a change of size is in it too. `ROLLTUI_RECORD=demo.cast` in the environment records any
+program from before it enters, so the script a test drives a headless run with records the demo
+as well. A recording started part way through begins with whatever the next frame sends;
+`rolltui_run_invalidate` makes that frame whole.
+
 ## Inline mode
 
 An inline program is drawn in the normal screen, below the shell prompt, instead of on the

@@ -243,6 +243,11 @@ int rolltui_os_tty_is_console(const RolltuiOsTty* t) {
 }
 
 int rolltui_os_isatty(int fd) { return fd == 0 || fd == 1; }
+int rolltui_os_headless_fds(int* in_fd, int* keep_fd, int* out_fd) {
+  (void)in_fd, (void)keep_fd, (void)out_fd;
+  return -1; /* a page is its own terminal */
+}
+void rolltui_os_close_fd(int fd) { (void)fd; }
 
 RolltuiOsTty* rolltui_os_tty_open(int in_fd, int out_fd) {
   RolltuiOsTty* t = (RolltuiOsTty*)rolltui_mem_alloc(sizeof *t);

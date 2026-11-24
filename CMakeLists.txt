@@ -533,6 +533,7 @@ add_rolltui_test(rolltui-list-test tests/list_test.cpp)
 add_rolltui_test(rolltui-dialog-test tests/dialog_test.cpp)
 add_rolltui_test(rolltui-viewer-test tests/viewer_test.cpp)
 add_rolltui_test(rolltui-diagnostics-test tests/diagnostics_test.cpp)
+add_rolltui_test(rolltui-headless-test tests/headless_test.cpp)
 # THE WEB PAGE'S TOUCH (tools/web/rolltui_web.js), run by JavaScriptCore's shell where the machine has it (macOS).
 find_program(ROLLTUI_JSC NAMES jsc PATHS /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers NO_DEFAULT_PATH)
 if(ROLLTUI_JSC)

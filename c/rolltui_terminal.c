@@ -12,6 +12,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -86,6 +87,14 @@ struct RolltuiTerminal {
   unsigned char publishing;    /* this terminal's facts are the process-wide ones (publish_depth) */
   unsigned char away;          /* the window lost the person's focus, by the last focus report: 1 away, 0 focused */
   unsigned char resize_owed;   /* entered again after a stop: the next poll reports the size, as after a resize */
+  /* A RECORDING (`rolltui_terminal_record`, ROLLTUI_RECORD): an asciicast file of every byte sent, when it began, and the end of a
+   * write that stopped inside a character, held for the next so each event is whole UTF-8 */
+  FILE* rec;
+  unsigned long long rec_t0;
+  char rec_tail[4];
+  size_t rec_tail_n;
+  int rec_w, rec_h;
+  unsigned char fixed_size;    /* a size said outright (a run with no terminal): the descriptors' own is not asked */
   unsigned char facts_events;  /* the host asked to be told of a change (RolltuiTerminalOptions::facts_events) */
   /* ---- an INLINE region (RolltuiTerminalOptions::inline_rows): drawn below the prompt, in the
    * normal screen, its rows found from where the cursor was ---- */
@@ -371,6 +380,9 @@ int rolltui_terminal_mouse(const RolltuiTerminal* t) { return t && t->m_mouse; }
 /* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts) {
+  return rolltui_terminal_new_sized(in_fd, out_fd, opts, 0, 0);
+}
+RolltuiTerminal* rolltui_terminal_new_sized(int in_fd, int out_fd, RolltuiTerminalOptions opts, int w, int h) {
   RolltuiTerminal* t = (RolltuiTerminal*)rolltui_mem_alloc(sizeof *t);
   memset(t, 0, sizeof *t);
   t->os = rolltui_os_tty_open(in_fd, out_fd);
@@ -395,6 +407,12 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
   t->decoder = rolltui_key_decoder_new();
   rolltui_key_decoder_set_reply_sink(t->decoder, on_reply, t);
   init_facts(t, &opts);
+  if (w > 0 && h > 0) t->w = w, t->h = h, t->fixed_size = 1; /* before it enters, so a recording begins at it */
+  rolltui_terminal_refresh_size(t);
+  {
+    const char* rec = getenv("ROLLTUI_RECORD"); /* any program recorded, without a change to it; from before it enters */
+    if (rec && *rec) rolltui_terminal_record(t, rec, strlen(rec));
+  }
   term_enter(t, opts.handle_signals);
   rolltui_terminal_refresh_size(t);
   if (rolltui_log_wants(ROLLTUI_LOG_INFO)) { /* WHAT WAS ENTERED, for whoever reads the log: what `dirktui check-terminal` prints, in a line */
@@ -413,6 +431,8 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
 void rolltui_terminal_free(RolltuiTerminal* t) {
   if (!t) return;
   term_leave(t);
+  if (t->rec) fclose(t->rec); /* after leave: the leaving is in the recording too */
+  t->rec = NULL;
   if (t->publishing) { /* nothing is being drawn to any more */
     rolltui_termfacts_set_active(-1, 0);
     rolltui_termfacts_set_active_wide(-1);
@@ -450,17 +470,102 @@ int rolltui_terminal_is_tty(const RolltuiTerminal* t) { return t->tty; }
 int rolltui_terminal_width(const RolltuiTerminal* t) { return t->w; }
 int rolltui_terminal_height(const RolltuiTerminal* t) { return t->h; }
 
+static void rec_size(RolltuiTerminal* t);
 void rolltui_terminal_refresh_size(RolltuiTerminal* t) {
   int w = 0, h = 0;
-  if (rolltui_os_tty_size(t->os, &w, &h)) {
+  if (!t->fixed_size && rolltui_os_tty_size(t->os, &w, &h)) {
     t->w = w;
     t->h = h;
+    rec_size(t);
   }
   refresh_cell_pixels(t);
   if (t->publishing) rolltui_termfacts_set_active_images(t->facts.images, t->facts.cell_w, t->facts.cell_h);
 }
 
-void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) { rolltui_os_tty_write(t->os, bytes, len); }
+/* ---- a recording ---------------------------------------------------------------------------------- */
+
+static double rec_seconds(const RolltuiTerminal* t) { return (double)(rolltui_os_monotonic_ms() - t->rec_t0) / 1000.0; }
+/* The bytes as a JSON string's contents: a quote, a backslash and every control escaped, the rest as it is (UTF-8). */
+static void rec_escape(FILE* f, const char* s, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    const unsigned char c = (unsigned char)s[i];
+    if (c == '"' || c == '\\') fputc('\\', f), fputc((int)c, f);
+    else if (c < 0x20 || c == 0x7f) fprintf(f, "\\u%04x", c);
+    else fputc((int)c, f);
+  }
+}
+static void rec_output(RolltuiTerminal* t, const char* bytes, size_t len) {
+  char buf[4096 + 4];
+  size_t at = 0;
+  while (at < len || t->rec_tail_n) {
+    size_t n = t->rec_tail_n, k, keep = 0;
+    memcpy(buf, t->rec_tail, t->rec_tail_n);
+    t->rec_tail_n = 0;
+    while (n < 4096 && at < len) buf[n++] = bytes[at++];
+    /* a character cut at the end waits for the rest: the lead byte of the last one, and how long it says it is */
+    for (k = 1; k <= 3 && k <= n; ++k) {
+      const unsigned char c = (unsigned char)buf[n - k];
+      if ((c & 0xC0) == 0x80) continue;
+      if (c >= 0xC0) {
+        const size_t want = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : 2;
+        if (want > k) keep = k;
+      }
+      break;
+    }
+    if (keep && at >= len) { /* the rest has not come yet */
+      memcpy(t->rec_tail, buf + n - keep, keep);
+      t->rec_tail_n = keep;
+      n -= keep;
+    }
+    if (n) {
+      fprintf(t->rec, "[%.3f, \"o\", \"", rec_seconds(t));
+      rec_escape(t->rec, buf, n);
+      fputs("\"]\n", t->rec);
+    }
+    if (keep && at >= len) break;
+  }
+  fflush(t->rec);
+}
+static void rec_size(RolltuiTerminal* t) {
+  if (!t->rec || (t->rec_w == t->w && t->rec_h == t->h)) return;
+  t->rec_w = t->w, t->rec_h = t->h;
+  fprintf(t->rec, "[%.3f, \"r\", \"%dx%d\"]\n", rec_seconds(t), t->w, t->h);
+  fflush(t->rec);
+}
+int rolltui_terminal_record(RolltuiTerminal* t, const char* path, size_t len) {
+  char p[4096];
+  if (!t) return 0;
+  if (t->rec) fclose(t->rec);
+  t->rec = NULL;
+  t->rec_tail_n = 0;
+  if (!path || !len || len >= sizeof p) return 0;
+  memcpy(p, path, len);
+  p[len] = 0;
+  t->rec = fopen(p, "w");
+  if (!t->rec) return 0;
+  t->rec_t0 = rolltui_os_monotonic_ms();
+  t->rec_w = t->w, t->rec_h = t->h;
+  fprintf(t->rec, "{\"version\": 2, \"width\": %d, \"height\": %d, \"timestamp\": %lld, \"env\": {\"TERM\": \"xterm-256color\"}}\n",
+          t->w > 0 ? t->w : 80, t->h > 0 ? t->h : 24, (long long)time(NULL));
+  fflush(t->rec);
+  return 1;
+}
+
+void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len) {
+  rolltui_os_tty_write(t->os, bytes, len);
+  if (t->rec && len) rec_output(t, bytes, len);
+}
+
+/* A SIZE SAID OUTRIGHT, for a run with no terminal (`rolltui_run_begin_headless`): `announce` reports it at the next poll, as a
+ * window resized does. */
+void rolltui_terminal_set_size(RolltuiTerminal* t, int w, int h, int announce) {
+  if (!t || w <= 0 || h <= 0) return;
+  t->w = w;
+  t->h = h;
+  if (announce) t->resize_owed = 1;
+  rec_size(t);
+}
 
 void rolltui_terminal_wake(RolltuiTerminal* t) { rolltui_os_tty_wake(t->os); }
 
