@@ -923,268 +923,285 @@ and how many problems the theme has.
 
 ## Lists, tables and trees
 
-A `list:<source>` window shows data the host holds. The host binds the source with
-`rolltui_windows_bind_list(windows, name, len, count, row, ctx, free_ctx)`: `count(ctx)` says how
-many rows there are, and `row(ctx, i, out)` fills row `i`: its `key`, its cells
-(`rolltui_list_row_cell`), a `role` for the whole row, a tree's `depth`, and `busy` with
-`busy_since_ms` for a spinner at the row's end.
+A `list:<source>` window shows data your program holds. Bind it with
+`rolltui_windows_bind_list(windows, name, len, count, row, ctx, free_ctx)`. `count(ctx)` returns
+the number of rows, and `row(ctx, i, out)` fills in row `i`: its `key`, its cells
+(`rolltui_list_row_cell`), an optional `role` for the whole row, `depth` for a tree, and `busy`
+with `busy_since_ms` to show a spinner at the end of the row.
 
 - `rolltui_list_row_span(out, cell, begin, end, role)` draws bytes `begin` to `end` of a cell in a
-  role of its own, over the row's style: a permissions string a letter at a time, a branch head in
-  a log line. A row holds up to `ROLLTUI_LIST_SPAN_MAX` spans. Colours come from the theme, so a
-  span reads in every theme and in mono; a script's ANSI colours are mapped to roles by the host.
-- `gutter` is one glyph of the row's own in the mark column, in `gutter_role`: copied, cut, tagged.
-  It stands in place of the marks' ▌.
+  different role, on top of the row's style. Use it to colour a permissions string letter by
+  letter, or a branch name inside a log line. A row can have up to `ROLLTUI_LIST_SPAN_MAX` spans.
+  The colours come from the theme, so spans work in every theme including mono; if a script's
+  output has ANSI colours, your program maps them to roles.
+- `gutter` is a single character shown in the mark column in `gutter_role`, for states like copied,
+  cut or tagged. It replaces the ▌ that marks use.
 
-- A plain list asks only for the rows it draws, so a hundred thousand rows cost a screenful.
-  Sorting, a filter and a tree ask for every row once, when the data or the question changes:
-  `rolltui_windows_list_refresh` says the data changed, and a count that moves says so too.
-- A row is its key. The cursor, the marks and which nodes are open follow it through a refresh,
-  a sort or a filter, and the cursor's row keeps its place on screen when rows arrive above it. A
-  row with no key is keyed by its index.
-- A list with nothing to show says "no rows", or "no rows match “…”" under a filter.
-- `rolltui_windows_list_set_loading(windows, name, len, 1)` says the rows are still coming. An
-  empty list then shows a spinner and "loading…", after 100 ms so rows that come at once never
-  flash it, and the footer says "loading…" while rows arrive. 0 when they have all come.
-- `rolltui_windows_list_freeze(windows, name, len, 1)` pauses one list: it keeps the rows it has
-  while the host's change, and its footer says "paused". The other windows keep updating. 0 takes
-  the host's rows again.
-- `rolltui_windows_draw_toasts` returns the soonest a window wants its next frame along with the
-  toasts': a drag held past a list's edge, a "loading" about to show, a changed row settling. A
-  render that returns it as its wait keeps these moving.
+How the list gets its data:
 
-`rolltui_windows_set_list_columns` makes it a table. The first column takes the width the others
-leave. The rest are `width` cells, or as wide as the widest cell they have shown; that width only
-grows, so the columns stay put as the list scrolls. `align` puts a column's text at its right
-edge, and `min_screen` shows a column only while the list is at least that wide. When the first
-column would be narrower than 8 cells, columns go from the right, except a column marked `keep`:
-the first is cut instead. `max_share` holds a measured column to that percentage of the width.
-`role` draws a column's cells in a role of their own on a plain row, as the keys sheet draws its
-keys in the shortcut role. `rolltui_sparkline_text(values, n, lo, hi, ascii, &out)` writes a
-sparkline as text, one cell a value from ▁ to █, for a cell or a status line; with `ascii`, where
-block elements are wide, `_.-~^`. The values' history is the host's. A row with fewer cells than the table has columns draws its last cell
-across the columns it has none for. A cell that does not fit ends in an ellipsis. The header row
-names the columns in bold, the sorted one marked ▲ or ▼.
+- A plain list only asks for the rows it draws, so a hundred thousand rows cost no more than a
+  screenful. Sorting, filtering and trees read every row once, when the data or the query changes.
+  Call `rolltui_windows_list_refresh` when your data changes; a change in the count is noticed
+  automatically.
+- Rows are identified by their key. The cursor, the marks and which nodes are open follow the key
+  through a refresh, a sort or a filter, and the cursor's row keeps its position on screen when rows
+  are inserted above it. A row without a key is identified by its index.
+- An empty list shows "no rows", or "no rows match “…”" when a filter is active.
+- `rolltui_windows_list_set_loading(windows, name, len, 1)` marks the rows as still loading. An
+  empty list then shows a spinner and "loading…" (after 100 ms, so rows that arrive quickly never
+  flash it), and the footer shows "loading…" while rows arrive. Set it back to 0 when they're all
+  in.
+- `rolltui_windows_list_freeze(windows, name, len, 1)` pauses one list. It keeps the rows it has
+  while your data changes and shows "paused" in its footer; other windows keep updating. 0 resumes
+  it.
+- `rolltui_windows_draw_toasts` returns how soon any window needs another frame, for example while
+  a drag is held past the edge of a list, before "loading" appears, or while a changed row is
+  highlighted. Returning that value from `render` keeps those things moving.
 
-`rolltui_windows_set_list_options`:
+`rolltui_windows_set_list_columns` turns the list into a table. The first column gets whatever
+width the others leave. Other columns are either `width` cells or as wide as the widest cell shown
+so far; that width only grows, so columns don't shift while scrolling. `align` right-aligns a
+column, and `min_screen` only shows a column while the list is at least that wide. When the first
+column would get narrower than 8 cells, columns are dropped from the right, except ones marked
+`keep`, in which case the first column is cut instead. `max_share` limits a measured column to that
+percentage of the width. `role` draws a column's cells in a specific role on plain rows (the keys
+sheet uses this to draw keys in the shortcut role). A row with fewer cells than there are columns
+stretches its last cell over the rest. Cells that don't fit end in an ellipsis. The header row shows
+the column names in bold, with ▲ or ▼ on the sorted column.
 
-- `tree`: rows nest by `depth`, in tree order, a parent before its children. Guide lines draw the
-  shape, and ▾ and ▸ mark open and closed nodes. Nodes shallower than `open_depth` start open
-  and the rest closed; 0, the default, starts every node closed. Enter opens and closes a node; with `activate_nodes`, Enter on a node is an
-  activation like any other row's.
-- `marks`: several rows chosen at once. A marked row is bold in the `accent_1` colour with ▌ in
-  the mark column, so it reads without colour.
-- `gutter`: the mark column for rows' own glyphs, with `marks` off.
-- `close_over`: a node with more children than this starts closed, whatever `open_depth` says.
-- `column_cursor`: in a table, Left and Right move a column cursor. Its title is drawn reversed
-  and its cell on the cursor's row underlined, and `list.sort` sorts by its column, then the
-  other way, then the host's order. `rolltui_windows_list_cursor_column` says which column it is
-  on, for copying or editing that cell.
-- `reorder`: the person moves rows, and the list asks the host (see below).
-- `changes_ms`: a row that appeared or changed at a refresh is drawn bold, italic and in the
-  `info` role for this many milliseconds. Without a frame clock, until the next refresh. A row
-  that vanished is gone from the host's data; a host that wants it seen going keeps it for a
-  moment in a muted role.
-- `fade`: each row this many percent fainter for every row it is from the cursor, to at most 70.
-  Only RGB colours fade, so a 16- or 256-colour theme draws every row alike.
-- `line_numbers`: 1 numbers each row; 2 counts from the cursor's row, which shows its own number.
-- `scrolloff`: rows kept between the cursor and the window's edge. Past half the window, the
-  cursor stays in the middle.
-- `wrap`: the cursor goes from the last row to the first and back.
+`rolltui_sparkline_text(values, n, lo, hi, ascii, &out)` writes a sparkline as text, one cell per
+value from ▁ to █, for a table cell or a status line. With `ascii` (for terminals where block
+characters are wide) it uses `_.-~^`. Keeping the history of values is up to your program.
 
-  `RolltuiMenuOptions` and `RolltuiPickerOptions` take `scrolloff` and `wrap` too.
-- `hide_header`: no header row.
-- `headings`: with `tree`, a row at depth 0 is a section heading, drawn bold with a rule after its
-  name. The cursor passes over headings, a heading is always open, and a filter keeps a heading
-  while a row under it matches.
+`rolltui_windows_set_list_options` sets:
 
-Where the terminal draws ambiguous-width glyphs two cells wide, the guides, the openers, the sort
-arrows and the mark are ASCII.
+- `tree`: rows nest by `depth`, in tree order with parents before their children. Guide lines show
+  the structure, with ▾ and ▸ for open and closed nodes. Nodes shallower than `open_depth` start
+  open and the rest closed (0, the default, starts them all closed). Enter opens and closes a node;
+  with `activate_nodes`, Enter on a node activates it like any other row.
+- `marks`: lets the user select several rows. Marked rows are bold in the `accent_1` colour with ▌
+  in the mark column, so they're visible without colour too.
+- `gutter`: uses the mark column for the rows' own characters, with `marks` off.
+- `close_over`: a node with more children than this starts closed regardless of `open_depth`.
+- `column_cursor`: in a table, Left and Right move a column cursor. The current column's title is
+  drawn reversed and its cell on the cursor row underlined, and `list.sort` sorts by that column,
+  then in reverse, then back to your program's order. `rolltui_windows_list_cursor_column` returns
+  the current column, for copying or editing that cell.
+- `reorder`: the user can move rows, and the list asks your program to do it (see below).
+- `changes_ms`: rows that appeared or changed in a refresh are drawn bold, italic and in the `info`
+  role for this many milliseconds (until the next refresh if there's no frame clock). Rows that
+  disappeared are simply gone; if you want them to be seen leaving, keep them for a moment in a
+  muted role.
+- `fade`: each row is this many percent fainter for every row it is away from the cursor, up to 70.
+  Only RGB colours fade, so 16- and 256-colour themes draw all rows the same.
+- `line_numbers`: 1 numbers the rows; 2 shows the distance from the cursor row, which shows its own
+  number.
+- `scrolloff`: how many rows to keep between the cursor and the edge of the window. Beyond half the
+  window, the cursor stays in the middle.
+- `wrap`: moving past the last row goes to the first, and back. `RolltuiMenuOptions` and
+  `RolltuiPickerOptions` have `scrolloff` and `wrap` too.
+- `hide_header`: hides the header row.
+- `headings`: with `tree`, rows at depth 0 are section headings, drawn bold with a line after the
+  name. The cursor skips headings, headings are always open, and a filter keeps a heading as long as
+  a row under it matches.
+
+When the terminal draws ambiguous-width characters as two cells, the tree lines, open/closed
+markers, sort arrows and marks fall back to ASCII.
 
 ### Keys and the mouse
 
-| Action | Keys | Does |
+| Action | Keys | What it does |
 |---|---|---|
-| `list.up`, `list.down` | Up, Down, Ctrl-P, Ctrl-N | the row above, the row below |
-| `list.page_up`, `list.page_down` | PageUp, PageDown | a page up, a page down |
-| `list.first`, `list.last` | Home, End | the first row, the last row; after a count, that row |
-| `list.half_up`, `list.half_down` | Ctrl-U, Ctrl-D | half a page up, half a page down |
-| `list.view_top`, `list.view_middle`, `list.view_bottom` | Alt-Home, Alt-M, Alt-End | the top, middle and bottom rows in view |
-| `list.scroll_up`, `list.scroll_down` | Alt-Up, Alt-Down | the view a row, the cursor staying on its row while it can |
-| `list.percent` | % | after a count, that percent of the way down |
-| `list.activate` | Enter | acts on the row; a tree's node opens or closes |
-| `list.back` | Escape | ends a visual range, then clears the filter, then the marks |
-| `list.mark` | Space | marks or unmarks the row, and moves to the next |
-| `list.mark_up`, `list.mark_down` | Shift-Up, Shift-Down | marks from where the range began |
-| `list.mark_all`, `list.unmark_all`, `list.invert_marks` | Alt-A, Alt-U, Alt-I | every row shown, none, the others |
-| `list.visual` | Alt-V | marks from here to wherever the cursor goes; again, keeps the range |
-| `list.visual_swap` | Alt-; | goes to the range's other end |
-| `list.open`, `list.close` | Right, Left | opens a node or goes into it; closes a node or goes up to its parent; in a table with `column_cursor`, the next and previous column |
-| `list.open_deep` | Shift-Right | opens the node and every node under it |
-| `list.open_all`, `list.close_all` | Alt-Right, Alt-Left | every node |
-| `list.move_up`, `list.move_down` | Alt-Shift-Up, Alt-Shift-Down | with `reorder`, moves the row |
-| `list.sort` | Alt-S | sorts by the next column, then by the host's order |
-| `list.reverse` | Alt-R | the sort the other way |
-| `list.filter` | / | types a filter in the list's last row |
+| `list.up`, `list.down` | Up, Down, Ctrl-P, Ctrl-N | previous or next row |
+| `list.page_up`, `list.page_down` | PageUp, PageDown | a page up or down |
+| `list.first`, `list.last` | Home, End | first or last row; with a count, that row |
+| `list.half_up`, `list.half_down` | Ctrl-U, Ctrl-D | half a page up or down |
+| `list.view_top`, `list.view_middle`, `list.view_bottom` | Alt-Home, Alt-M, Alt-End | top, middle or bottom row in view |
+| `list.scroll_up`, `list.scroll_down` | Alt-Up, Alt-Down | scroll by a row, keeping the cursor on its row while possible |
+| `list.percent` | % | with a count, that percentage of the way down |
+| `list.activate` | Enter | activate the row, or open or close a tree node |
+| `list.back` | Escape | end a visual range, then clear the filter, then the marks |
+| `list.mark` | Space | toggle the row's mark and move to the next row |
+| `list.mark_up`, `list.mark_down` | Shift-Up, Shift-Down | mark from where the range started |
+| `list.mark_all`, `list.unmark_all`, `list.invert_marks` | Alt-A, Alt-U, Alt-I | mark every visible row, none, or invert |
+| `list.visual` | Alt-V | mark from here to wherever the cursor goes; press again to keep the range |
+| `list.visual_swap` | Alt-; | jump to the other end of the range |
+| `list.open`, `list.close` | Right, Left | open a node or move into it, close a node or move to its parent; with `column_cursor`, next and previous column |
+| `list.open_deep` | Shift-Right | open the node and everything under it |
+| `list.open_all`, `list.close_all` | Alt-Right, Alt-Left | open or close every node |
+| `list.move_up`, `list.move_down` | Alt-Shift-Up, Alt-Shift-Down | with `reorder`, move the row |
+| `list.sort` | Alt-S | sort by the next column, then back to your program's order |
+| `list.reverse` | Alt-R | reverse the sort |
+| `list.filter` | / | type a filter in the list's last row |
 
-A press moves the cursor and a double click activates the row. A press in the mark column marks
-the row, and a drag marks the rows it passes over. A drag held past the top or bottom of the view
-goes on, a row every 50 ms. A press on ▸ or ▾ opens or closes the node. A press on a column's
-title sorts by it, and a second press sorts the other way. The wheel scrolls.
+Clicking a row moves the cursor there and double-clicking activates it. Clicking in the mark column
+marks the row, and dragging there marks every row it passes. Holding a drag past the top or bottom
+keeps scrolling, a row every 50 ms. Clicking ▸ or ▾ opens or closes the node, clicking a column
+title sorts by that column (click again to reverse), and the wheel scrolls.
 
-A visual range marks every row from where it began to the cursor, over the marks there were
-before it. The visual key again keeps what it marked, and Escape ends it with the marks as they
-were. Shift-Up and Shift-Down add to the marks and the marks stay: they are what the host acts
-on, and a plain arrow does not drop them.
+A visual range marks every row from where it started to the cursor, on top of any existing marks.
+Pressing the visual key again keeps what it marked, and Escape ends it and restores the marks as
+they were. Shift-Up and Shift-Down add to the marks and the marks stay put; they're what your
+program acts on, and moving with a plain arrow key doesn't clear them.
 
-With `reorder`, Alt-Shift-Up and Alt-Shift-Down move the cursor's row, and a drag that starts on
-a row moves it, drawn where it would land as the pointer goes. With `marks`, a drag that starts
-on a marked row moves, and one that starts on an unmarked row marks a range. The list does not
-reorder the host's data: it reports `ROLLTUI_LIST_EVENT_REORDER` with the row's `key` and
-`before`, the key of the row it now goes before ("" for the end), and the host moves its rows and
-refreshes. A moved row that is marked means every marked row. The cursor follows the key. A
-sorted list and a tree do not move rows, and their keys stay the program's.
+With `reorder`, Alt-Shift-Up and Alt-Shift-Down move the cursor row, and dragging a row moves it,
+showing where it will land as the pointer moves. With `marks`, dragging a marked row moves it, and
+dragging from an unmarked row marks a range instead. The list doesn't reorder your data itself. It
+reports `ROLLTUI_LIST_EVENT_REORDER` with the row's `key` and `before`, the key of the row it should
+now come before ("" for the end), and your program moves the rows and refreshes. Moving a marked row
+means moving all the marked rows. The cursor follows the key. Sorted lists and trees don't allow
+moving rows, since their order isn't the user's to change.
 
-A filter is space-separated terms, and a row is shown when every term matches within one of its
-cells: a plain term fuzzily (`rolltui_fuzzy_match`), `'term` as written, `^term` at the start,
-`term$` at the end, `/re/` as a regular expression, and `!term` not at all. Case and accents are
-ignored unless a term has a capital. What matched is drawn bold and underlined. Each new query puts
-the cursor on the row that matches it best, with the rows in their own order. Enter keeps the
-filter and gives the keys back to the list. Escape while editing a kept filter goes back to it;
-otherwise it clears the filter. In a tree, a filter keeps the parents of what it matches, and shows
-them open. Menus filter the same way, the selection landing on the best match, and the command
-palette lists its rows best match first.
+A filter is a list of terms separated by spaces, and a row is shown when every term matches within
+one of its cells:
 
-A `ROLLTUI_LIST_SORT_TEXT` column sorts in natural order. A `ROLLTUI_LIST_SORT_NUMBER` column
-sorts by the number a cell starts with, reading K, M, G and T as powers of 1024 and s, m, h and d
-as an age; a cell with no number goes last in either direction. Equal cells keep the host's
-order. A sorted tree sorts the rows of each level and keeps every row under its parent; with
-`headings`, the headings keep the host's order and their rows sort. A tree whose chains of single
-children should read as one row (`src/main/java`) gets that row from the host, which knows what
-joins the names.
+- a plain term matches fuzzily (`rolltui_fuzzy_match`)
+- `'term` matches exactly
+- `^term` matches at the start and `term$` at the end
+- `/re/` is a regular expression
+- `!term` excludes rows that match
 
-`rolltui_windows_list_event` pops what happened, oldest first: `MOVED`, `ACTIVATE`, `MARKED`,
-`SORTED`, `OPENED`, `CLOSED`, `FILTERED` and `REORDER`, each with the row's key (the filter's text
-for `FILTERED`). `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` give the keys to
-act on, and `_set_cursor` and `_set_filter` set them. `rolltui_windows_list_sort` and
-`_sort_state` set and read the sort. `rolltui_windows_list_mark_matching(windows, name, len,
-query, qlen, on)` marks or unmarks every row a filter query matches, shown or not: `/\.log$/`,
-`^tmp`. `rolltui_windows_list_reveal` goes to a row by its key, opening its parents, and
-`_set_open` opens or closes a node. `rolltui_windows_list_perform` runs an action
-by name, for a host's own menu entry. In a popup, Escape clears the filter, then the marks, then
-closes the popup.
+Case and accents are ignored unless a term contains a capital letter. Matched text is drawn bold and
+underlined. With each change to the query the cursor moves to the best match, and rows stay in
+their original order. Enter keeps the filter and returns the keys to the list. Escape while editing
+a kept filter restores it; otherwise it clears the filter. In a tree, the filter keeps the parents of
+matching rows and shows them open. Menus filter the same way, with the selection on the best match,
+and the command palette sorts its rows by match quality.
+
+`ROLLTUI_LIST_SORT_TEXT` columns sort in natural order. `ROLLTUI_LIST_SORT_NUMBER` columns sort by
+the number a cell starts with, reading K, M, G and T as powers of 1024 and s, m, h and d as ages;
+cells without a number go last in both directions. Equal cells keep your program's order. A sorted
+tree sorts each level separately and keeps every row under its parent, and with `headings` the
+headings keep your order while the rows under them sort. To show chains of single children as one
+row (`src/main/java`), give the list that row yourself, since only your program knows how the names
+join.
+
+`rolltui_windows_list_event` returns what happened, oldest first: `MOVED`, `ACTIVATE`, `MARKED`,
+`SORTED`, `OPENED`, `CLOSED`, `FILTERED` and `REORDER`, each with the row's key (or the filter text
+for `FILTERED`). Other calls:
+
+- `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` return the keys to act on, and
+  `_set_cursor` and `_set_filter` set them.
+- `rolltui_windows_list_sort` and `_sort_state` set and read the sort.
+- `rolltui_windows_list_mark_matching(windows, name, len, query, qlen, on)` marks or unmarks every
+  row matching a filter query, visible or not, such as `/\.log$/` or `^tmp`.
+- `rolltui_windows_list_reveal` moves to a row by key, opening its parents, and `_set_open` opens or
+  closes a node.
+- `rolltui_windows_list_perform` runs a list action by name, for your program's own menus.
+
+In a popup, Escape clears the filter, then the marks, then closes the popup.
 
 ### Ordering and finding text
 
-`rolltui_natural_compare(a, alen, b, blen)` orders text as a person reads it. A run of digits
-compares by value, so `file2` comes before `file10` and `7` before `07`. The rest compares
-case-folded with accents removed, and the bytes as written break a tie. The column browser sorts
+`rolltui_natural_compare(a, alen, b, blen)` compares text the way people read it. Runs of digits
+compare by value, so `file2` comes before `file10` and `7` before `07`. Everything else compares
+case-folded and without accents, with the original bytes as a tiebreaker. The column browser sorts
 names this way.
 
-`rolltui_text_find(hay, hlen, needle, nlen, from, &at, &len)` finds text as a person means it:
-case and accents aside unless the needle has a capital, the answer the bytes of what was found.
-`rolltui_text_find_each` reports every match. The transcript's find works this way, and takes a
-query written `/re/` as a regular expression.
+`rolltui_text_find(hay, hlen, needle, nlen, from, &at, &len)` searches ignoring case and accents
+unless the needle has a capital letter, and returns the byte range that matched.
+`rolltui_text_find_each` reports every match. Find in the transcript works this way, and also
+accepts `/re/` as a regular expression.
 
-`rolltui_filter_new(query, len)` makes the filter lists and menus read, for a host's own rows:
-`rolltui_filter_match` tests a text and scores it, `rolltui_filter_term` tests one term (a row of
-several cells matches a term within one of them), and `rolltui_filter_spans` gives the byte
-ranges that matched, to light them.
+`rolltui_filter_new(query, len)` creates the same filter that lists and menus use, for your own
+rows. `rolltui_filter_match` tests and scores a string, `rolltui_filter_term` tests a single term
+(for a row with several cells, a term only has to match one of them), and `rolltui_filter_spans`
+returns the byte ranges that matched so you can highlight them.
 
-`rolltui_fuzzy_match(pattern, plen, text, tlen, &score, positions, cap)` answers whether the
-pattern's letters appear in the text in order. Case is ignored unless the pattern has an
-uppercase letter, and accents are always ignored. The score is higher for a run of letters, a
-match at the start of a word, and a match early in the text, so candidates sorted by it put the
-likeliest first. `positions` receives each matched letter's byte offset in the text, for
-lighting what matched.
+`rolltui_fuzzy_match(pattern, plen, text, tlen, &score, positions, cap)` checks whether the
+pattern's letters appear in the text in order. Case is ignored unless the pattern has a capital,
+and accents always are. Consecutive letters, matches at the start of a word and matches early in
+the text score higher, so sorting by score puts the likeliest candidates first. `positions`
+receives the byte offset of each matched letter, for highlighting.
 
 ## The editor
 
-An `input:<target>` window is a text editor. With `single_line` off (the default) its text
-wraps and its window grows with it. `RolltuiInputOptions` sets the rest:
+An `input:<target>` window is a text editor. Unless `single_line` is set, the text wraps and the
+window grows to fit it. `RolltuiInputOptions` has the other settings:
 
-- `wrap_words`: a row breaks after a space, so a word moves to the next row whole. A word longer
-  than the row is still broken at the edge.
-- `wrap_column`: rows wrap at this many columns of text, or at the window's edge when that is
-  nearer. `rolltui_input_wrapped_text(in, column, out)` gives the text with a newline at each
-  soft break and the spaces before it dropped: a commit message typed at 72 columns is read back
-  with the breaks it was seen with.
-- `line_numbers`: a gutter numbering each line, in the `text_muted` role. A wrapped line's later
-  rows leave it blank.
-- `language`: a language name the syntax engine knows (`"c"`, `"json"`, a fence's tag). The text
-  is highlighted as code by the shipped languages and the person's own.
-- `auto_indent`: a newline starts with the spaces and tabs the broken line begins with.
-- `secret`: `ROLLTUI_INPUT_SHOW_MASKED` draws one `•` per grapheme (`*` where that glyph is two
-  cells wide); `ROLLTUI_INPUT_SHOW_NOTHING` draws nothing and keeps the caret after the prompt.
-  A secret is never copied, never kept in the history or the kill buffer, and word motions move
-  by whole lines.
-- `refuse_empty`: Enter does nothing while the text is only spaces, tabs and newlines.
-- `insert_typed` off: a printable key is looked up in the bindings like any other key, and types
-  nothing when none is bound.
+- `wrap_words`: wrap after spaces, so words move to the next row whole. A word longer than the row
+  is still broken at the edge.
+- `wrap_column`: wrap at this many columns, or at the window edge if that's narrower.
+  `rolltui_input_wrapped_text(in, column, out)` returns the text with a newline at each soft wrap
+  (and the spaces before it removed), so a commit message typed at 72 columns comes back with the
+  line breaks the user saw.
+- `line_numbers`: show line numbers in a gutter, in the `text_muted` role. Continuation rows of a
+  wrapped line have no number.
+- `language`: a language name the syntax highlighter knows (`"c"`, `"json"`, a code fence's tag).
+  The text is highlighted with the built-in grammars and the user's own.
+- `auto_indent`: a new line starts with the same spaces and tabs as the line it was split from.
+- `secret`: `ROLLTUI_INPUT_SHOW_MASKED` shows a `•` per character (`*` where `•` would be two cells
+  wide), and `ROLLTUI_INPUT_SHOW_NOTHING` shows nothing and keeps the cursor after the prompt. A
+  secret is never copied, never stored in the history or the kill buffer, and word motions jump over
+  the whole line.
+- `refuse_empty`: Enter does nothing while the text is only whitespace.
+- `insert_typed` off: printable keys are looked up in the bindings like any other key and type
+  nothing if unbound.
 
-The editing keys are the readline set. Each is an action in the `input` scope, so a bindings
-file rebinds it:
+The editing keys are readline's. Each one is an action in the `input` scope, so it can be rebound:
 
-| Action | Default | Does |
+| Action | Default | What it does |
 |---|---|---|
-| `input.kill_word_backward` | Ctrl-W, Alt-Backspace | kill the word before the caret |
-| `input.kill_word_forward` | Alt-D, Ctrl-Delete | kill the word after the caret |
-| `input.kill_to_line_start` | Ctrl-U | kill to the line's start |
-| `input.kill_to_line_end` | Ctrl-K | kill to the line's end |
-| `input.yank` | Alt-Y | put back what the last run of kills took |
-| `input.transpose_chars` | Ctrl-T | swap the graphemes either side of the caret |
-| `input.transpose_words` | Alt-T | swap the word before the caret with the next |
+| `input.kill_word_backward` | Ctrl-W, Alt-Backspace | cut the word before the cursor |
+| `input.kill_word_forward` | Alt-D, Ctrl-Delete | cut the word after the cursor |
+| `input.kill_to_line_start` | Ctrl-U | cut to the start of the line |
+| `input.kill_to_line_end` | Ctrl-K | cut to the end of the line |
+| `input.yank` | Alt-Y | paste what the last run of cuts removed |
+| `input.transpose_chars` | Ctrl-T | swap the characters on either side of the cursor |
+| `input.transpose_words` | Alt-T | swap the word before the cursor with the next one |
 | `input.upcase_word` | Alt-U | uppercase to the end of the word, or the selection |
 | `input.downcase_word` | Alt-L | lowercase the same way |
 | `input.capitalize_word` | Alt-Shift-C | capitalise the same way |
-| `input.overwrite` | Insert | typing replaces the grapheme under the caret, until pressed again |
+| `input.overwrite` | Insert | toggle overwrite mode |
 
-A run of kills is one kill: killing three words one at a time yanks back as the three. Ctrl-Y is
-redo here, so yank is Alt-Y. Overwrite never replaces a newline. Case follows Unicode's simple
-mappings, so `é` uppercases to `É`. `rolltui_u_case` maps a whole text the same way, and its
-`ROLLTUI_CASE_FOLD` is for matching without case.
+Consecutive cuts count as one, so cutting three words one at a time pastes back all three. Ctrl-Y
+is redo here, which is why yank is on Alt-Y. Overwrite mode never replaces a newline. Case changes
+use Unicode's simple mappings, so `é` uppercases to `É`. `rolltui_u_case` converts a whole string
+the same way, and `ROLLTUI_CASE_FOLD` gives a case-folded form for comparisons.
 
-`rolltui_input_perform(in, actions, name, len, now)` runs one command by its action name, as a
-bound key would. A modal editor's normal mode is a bindings table over these commands with
+`rolltui_input_perform(in, actions, name, len, now)` runs an editing command by action name, the
+same as pressing its key. A modal editor's normal mode is a bindings table over these commands with
 `insert_typed` off.
 
-`rolltui_input_set_caret(in, byte, extend)` places the caret; a second call with `extend` 1
-selects up to the first. A rename puts the caret before a file's extension this way, or selects
-the name without it.
+`rolltui_input_set_caret(in, byte, extend)` moves the cursor; calling it again with `extend` set
+selects back to the first position. A rename box uses this to put the cursor before a file's
+extension, or to select the name without it.
 
 ### History
 
-Enter keeps what was sent in the input's history, the newest last, a repeated entry kept once,
-at most `history_limit` entries. Up and Down browse it from the first and last rows. With
-`history_prefix` on (the default), they recall only entries that begin with the text before the
-caret: type `git` and Up finds the last `git` line. With the caret at the start, every entry
-matches.
+Enter adds the submitted text to the input's history (newest last, duplicates kept once, at most
+`history_limit` entries). Up and Down browse it from the first and last rows. With
+`history_prefix` on (the default), they only recall entries that start with the text before the
+cursor, so typing `git` and pressing Up finds the last `git` command. With the cursor at the start,
+every entry matches.
 
-`rolltui_input_history_load` and `rolltui_input_history_save` keep the history in a file, a JSON
-array of strings. A save reads the file again first and writes its entries followed by the ones
-this input gained since it last loaded or saved, through a temporary file and a rename. Two
-instances saving in turn keep both their entries, and a reader never sees half a file.
-`rolltui-chat` keeps its prompt's history in its state directory, `<state>/chat/history.json`.
+`rolltui_input_history_load` and `rolltui_input_history_save` store the history in a file as a
+JSON array of strings. Saving re-reads the file first and writes its entries plus the ones this
+input added since it last loaded or saved, through a temporary file and a rename. Two instances
+saving in turn keep both sets of entries, and a reader never sees a half-written file.
+`rolltui-chat` keeps its history in its state directory, `<state>/chat/history.json`.
 
 ### What an app keeps between runs
 
-`rolltui_state_dir(app, len, &out)` is where an app keeps what it remembers rather than what a
-person configures: `ROLL_STATE_DIR/<app>`; under a scratch home, `ROLL_CONFIG_DIR/state/<app>`;
-else `XDG_STATE_HOME/roll/<app>`, else `~/.local/state/roll/<app>` (Windows:
-`%LOCALAPPDATA%\roll\<app>`). Nothing is made there until something is saved.
+`rolltui_state_dir(app, len, &out)` returns the directory for things an app remembers, as opposed
+to settings the user configures. It is `ROLL_STATE_DIR/<app>`, or `ROLL_CONFIG_DIR/state/<app>`
+under a scratch config directory, else `XDG_STATE_HOME/roll/<app>`, else
+`~/.local/state/roll/<app>` (`%LOCALAPPDATA%\roll\<app>` on Windows). Nothing is created there
+until something is saved.
 
-A state file keeps names and their text values in a JSON object: marks, tags, the tabs that were
-open, the folder last visited. `rolltui_state_file_open(path, len, &err)` reads it (a file not
-there yet is an empty one), `_get` and `_set` read and change a name (a NULL value removes it),
-`_count` and `_name_at` walk them, and `rolltui_state_file_save(file, &err)` reads the file again
-and lays this handle's changes over what is there, through a temporary file and a rename. Two
-instances saving in turn keep each other's names; a name both changed keeps the one saved last.
-After a save the handle holds what the file holds. A file that is not a state file is reported
-and never written over. dirktui keeps its update check's last answer in its state directory.
+A state file holds names and text values in a JSON object, for things like marks, tags, the tabs
+that were open or the last directory visited. `rolltui_state_file_open(path, len, &err)` reads it
+(a missing file counts as empty), `_get` and `_set` read and change a value (a NULL value removes
+it), and `_count` and `_name_at` list the names. `rolltui_state_file_save(file, &err)` re-reads the
+file, applies this handle's changes on top, and writes it through a temporary file and a rename.
+Two instances saving in turn keep each other's names; when both changed the same name, the last
+save wins. After a save, the handle holds what the file holds. A file that isn't a state file is
+reported and never overwritten. dirktui keeps the result of its last update check here.
 
 ## Menu files
 
-A menu file is a tree of items; `menu:<name>` shows one, and the studio's menu editor edits it.
+A menu file is a tree of items. A `menu:<name>` window shows one, and the studio's menu editor
+edits them.
 
 ```json
 { "id": "root", "label": "menu", "items": [
@@ -1201,137 +1218,142 @@ A menu file is a tree of items; `menu:<name>` shows one, and the studio's menu e
 
 | Key | Value |
 |---|---|
-| `id` | what the host is told when the item is chosen; an option's value |
-| `label` | what the row says |
+| `id` | what your program receives when the item is chosen; for an option, its value |
+| `label` | the text shown |
 | `kind` | `action` (the default), `submenu` (the default for an item with `items`), `toggle`, `choice`, `input`, `section`, `separator` |
 | `items` | a submenu's items, or a choice's options |
-| `action` | a bindings action the item does the same as: its keys are shown beside it, as bound now |
-| `shortcut` | keys to show, for an item with no `action` |
-| `description` | a line a host may show for it |
-| `enabled` | `false`: listed, muted, never chosen |
-| `checked` | a toggle's state |
-| `value` | a choice's chosen option; an input's text |
-| `dropdown` | a choice's options open in a box over the menu |
-| `popup` | a submenu opens in a box over its level |
-| `swatch` | a choice's or an input's value is a colour, shown as one |
-| `type` | an input's: `text`, `int`, `float`, `color`, `size`, `dim`, `name` |
-| `min`, `max`, `step`, `precision` | a number's bounds, the step the arrows take, its decimals |
-| `min_len`, `max_len`, `optional` | a text's length, and whether it may be empty |
-| `validator`, `hint` | a check the host registered, by name; the line beside the field |
-| `columns` | a level that is a table: `[{ "width": cells, "align": "left" or "right" }]` |
-| `cells` | a row's text in its level's columns |
+| `action` | a bindings action that does the same thing; its current keys are shown next to the item |
+| `shortcut` | keys to show for an item without an `action` |
+| `description` | a longer description your program can show |
+| `enabled` | `false` shows the item dimmed and makes it unselectable |
+| `checked` | the state of a toggle |
+| `value` | a choice's selected option, or an input's text |
+| `dropdown` | show a choice's options in a dropdown over the menu |
+| `popup` | open a submenu in a box over the current level |
+| `swatch` | the value is a colour and is shown as a swatch |
+| `type` | an input's type: `text`, `int`, `float`, `color`, `size`, `dim` or `name` |
+| `min`, `max`, `step`, `precision` | a number's range, the step for the arrow keys, and its decimal places |
+| `min_len`, `max_len`, `optional` | a text's length limits, and whether it can be empty |
+| `validator`, `hint` | the name of a check your program registered, and a hint shown next to the field |
+| `columns` | makes a level a table: `[{ "width": cells, "align": "left" or "right" }]` |
+| `cells` | a row's text for each of its level's columns |
 
-A section is a heading over the rows below it and a separator a rule; neither takes the cursor. An
-item with both `action` and `shortcut` is named in the report: its keys are the bindings' to say.
+A section is a heading over the rows that follow it, and a separator is a horizontal line; the
+cursor skips both. An item with both `action` and `shortcut` is reported as a problem, since the
+keys for an action come from the bindings.
 
 ## Charts and dashboards
 
-A `chart:<source>` window draws numbers the host binds with
-`rolltui_windows_bind_chart(windows, name, len, fill, ctx, free_ctx)`. Before each frame `fill` is
-handed the window's chart, cleared, and sets:
+A `chart:<source>` window draws numbers your program supplies. Bind it with
+`rolltui_windows_bind_chart(windows, name, len, fill, ctx, free_ctx)`. Before each frame, `fill`
+gets the window's chart, already cleared, and sets:
 
 - the kind, with `rolltui_chart_set_kind`: `ROLLTUI_CHART_LINE` (the default), `ROLLTUI_CHART_AREA`
-  (the line filled to its foot), `ROLLTUI_CHART_BARS`, `ROLLTUI_CHART_SPARK`, `ROLLTUI_CHART_METER`
-  (a row a series, its newest value as a bar of ■ along a track), or `ROLLTUI_CHART_AUTO` (a meter
-  on one row, a sparkline on two or three, a line on more);
+  (a line filled down to the axis), `ROLLTUI_CHART_BARS`, `ROLLTUI_CHART_SPARK`,
+  `ROLLTUI_CHART_METER` (one row per series, showing its latest value as a bar of ■) or
+  `ROLLTUI_CHART_AUTO` (a meter on one row, a sparkline on two or three, a line on more)
 - up to four series, with `rolltui_chart_set_series(chart, i, label, len, role, values, n)`: a name
-  (or none), a role (0 for the accents in order) and the values, copied;
-- the range, with `rolltui_chart_set_range(chart, lo, hi)`, when it is fixed (a percentage is 0 to
-  100 however high it has been). Otherwise it is the values' own, and bars and sparklines stand on
-  zero.
+  (optional), a role (0 to use the accent colours in order) and the values, which are copied
+- the range, with `rolltui_chart_set_range(chart, lo, hi)`, if it should be fixed (for example 0 to
+  100 for a percentage). Otherwise the range comes from the values, and bars and sparklines start
+  at zero.
 
-A line is drawn in braille, two dots across and four down a cell, each point joined to the next so
-a steep change is a line. Bars are a group a value, a bar a series in it, in eighth blocks. A
-sparkline is one row a series, a block a value. More values than fit shows the newest, and a NaN
-value is a gap. The range's labels are on the left, the most at the top; the series' names, each
-in its colour and bold, are on the top row. Braille is narrow in every terminal; where ambiguous
-glyphs are two cells wide, the blocks are ASCII.
+Lines are drawn in braille, two dots across and four down per cell, with each point joined to the
+next so steep changes stay continuous. Bars are grouped by value with one bar per series, drawn in
+eighth blocks. A sparkline is one row per series with one block per value. When there are more
+values than fit, the newest are shown, and NaN leaves a gap. Range labels are on the left with the
+maximum at the top, and series names are on the top row in bold, each in its colour. Braille is
+narrow in every terminal; where ambiguous characters are two cells wide, the blocks fall back to
+ASCII.
 
-- `rolltui_chart_set_symbols` draws a line or an area in braille, quadrant blocks (two by two a
-  cell) or shades (one a cell, ░▒▓█ by how full). A chart that sets none takes the theme's
-  `"glyphs": { "chart": "blocks" }`, braille when it says nothing.
-- In an area, a row covers a band of values: full above the value, empty below it, the row the
-  value is in filled to it. A value above the least shows at least one dot, and a bar for one at
-  least the least block.
-- `rolltui_chart_set_gradient(chart, i, &gradient)` colours series `i` by its gradient: a line or
-  area a row at a time by height, bars and a sparkline a value at a time, a meter along its length.
-- `rolltui_chart_set_flags` takes `ROLLTUI_CHART_FLOW` (a time series: a value a column, the newest
-  at the right and the left empty while there are fewer than fit, never stretched),
-  `ROLLTUI_CHART_AXES` (a line up the plot's left and one along its foot) and
-  `ROLLTUI_CHART_INVERT` (a meter fills from its right). With axes,
-  `rolltui_chart_set_time(chart, newest_s, step_s)` writes HH:MM under the foot every ten columns.
-- A `RolltuiHistory` keeps the newest values pushed (`rolltui_history_new`, `_push`, `_resize`):
-  `rolltui_chart_capacity(chart, cells)` is how many a chart of that width shows, and
-  `rolltui_chart_set_series_history` makes a series of it.
+- `rolltui_chart_set_symbols` draws lines and areas in braille, quadrant blocks (two by two per
+  cell) or shades (░▒▓█ by how full the cell is). Without it the chart uses the theme's
+  `"glyphs": { "chart": "blocks" }`, or braille if the theme doesn't say.
+- In an area chart each row covers a band of values: full above the value, empty below it, and the
+  row containing the value filled up to it. Any value above the minimum shows at least one dot, and
+  a bar at least the smallest block.
+- `rolltui_chart_set_gradient(chart, i, &gradient)` colours series `i` from a gradient: lines and
+  areas by height, bars and sparklines per value, and meters along their length.
+- `rolltui_chart_set_flags` takes `ROLLTUI_CHART_FLOW` for a time series (one value per column,
+  newest on the right, the left left empty until the chart fills up, never stretched),
+  `ROLLTUI_CHART_AXES` for axis lines on the left and bottom, and `ROLLTUI_CHART_INVERT` to fill a
+  meter from the right. With axes, `rolltui_chart_set_time(chart, newest_s, step_s)` labels the
+  bottom axis with HH:MM every ten columns.
+- `RolltuiHistory` keeps a rolling window of values (`rolltui_history_new`, `_push`, `_resize`).
+  `rolltui_chart_capacity(chart, cells)` says how many values a chart of that width shows, and
+  `rolltui_chart_set_series_history` turns a history into a series.
 
-`rolltui_chart_new`, the same setters and `rolltui_chart_draw(chart, frame, scratch, area, styles,
-ambiguous_wide)` draw a chart inside a host's own widget.
+To draw a chart in your own widget, use `rolltui_chart_new`, the same setters, and
+`rolltui_chart_draw(chart, frame, scratch, area, styles, ambiguous_wide)`.
 
-A dashboard is a `"grid"` in the layout file: rows of cells, each cell a node.
+A dashboard is a `"grid"` in the layout file, made of rows of cells where each cell is a node:
 
 ```json
 { "grid": [ [ { "content": "chart:cpu" }, { "content": "chart:mem" } ],
             [ { "content": "list:procs" }, { "content": "output:log" } ] ] }
 ```
 
-A grid is a column whose children are rows; it is written back as that column of rows. A grid with
-spans, `{ "grid": { "columns": 3, "cells": [ … ] } }`, is under Room and spacing.
+A grid is a column of rows, and it's saved back in that form. Grids with spans,
+`{ "grid": { "columns": 3, "cells": [ … ] } }`, are described under [Room and
+spacing](#room-and-spacing).
 
 ## Progress
 
-A `gauge:<source>` window shows how far something has got, on one row: the label, a bar of
-eighth blocks in the `accent_2` role, and the percent. The host binds the source with
-`rolltui_windows_bind_gauge` and fills a `RolltuiGauge` each frame:
+A `gauge:<source>` window shows progress on one row: a label, a bar of eighth blocks in the
+`accent_2` role, and a percentage. Bind it with `rolltui_windows_bind_gauge` and fill in a
+`RolltuiGauge` each frame:
 
-- `fraction` from 0 to 1. The percent is rounded down, so 100% is said only when it is done.
-- `fraction` below 0: how far is not known. The window draws a spinner and the label.
-- `failed`: the bar and the percent are drawn in the `error` role.
-- `since_ms`: when the work began, the spinner's phase.
+- `fraction` from 0 to 1. The percentage is rounded down, so 100% only appears when the work is
+  done.
+- A negative `fraction` means the amount is unknown, and the window shows a spinner and the label.
+- `failed` draws the bar and percentage in the `error` role.
+- `since_ms` is when the work started, which sets the spinner's phase.
 
-A narrow window drops the label before the bar. Where the terminal draws ambiguous-width glyphs
-two cells wide, the bar is `#` and `-`.
+In a narrow window the label is dropped before the bar. Where ambiguous characters are two cells
+wide, the bar uses `#` and `-`.
 
-`rolltui_gauge_draw` draws the same row inside a host's own widget. `rolltui_spinner_draw` puts
-a spinner in one cell: a still glyph marked `waiting`, which the theme's `waiting` effect turns.
-Every shipped theme maps `waiting`. A menu row whose action is running sets `busy` and
-`busy_since_ms`, and the row shows a spinner after its label until the host clears it.
+`rolltui_gauge_draw` draws the same row in your own widget. `rolltui_spinner_draw` draws a spinner
+in one cell: a static character marked `waiting`, which the theme's `waiting` effect animates. All
+the built-in themes define `waiting`. A menu row whose action is running can set `busy` and
+`busy_since_ms` to show a spinner after its label until your program clears it.
 
 ## Messages
 
-`rolltui_windows_post(windows, level, text, len, now)` tells the person something. The levels
-are `ROLLTUI_MESSAGE_INFO` (`accent_1`, `i`), `_OK` (`accent_2`, `✓`), `_WARNING` (`warning`,
-`!`) and `_ERROR` (`error`, `✗`), so a level reads without colour.
+`rolltui_windows_post(windows, level, text, len, now)` shows a message. The levels are
+`ROLLTUI_MESSAGE_INFO` (`accent_1`, `i`), `_OK` (`accent_2`, `✓`), `_WARNING` (`warning`, `!`)
+and `_ERROR` (`error`, `✗`), so the level is clear without colour too.
 
-- The window table keeps the newest `ROLLTUI_MESSAGE_HISTORY` (500) messages.
-  `rolltui_windows_message_count` and `_message_at` read them.
-- Each message shows as a TOAST in the screen's bottom-right corner for `ROLLTUI_TOAST_MS`
-  (6 seconds), an error for twice that. The newest is at the bottom; the stack takes at most a
-  third of the screen, and the newest always shows. A toast slides in from the right unless the
-  env is `still`.
-- A `messages` window lists the history, newest at the bottom, and scrolls. One row tall, it
-  shows the newest message while its toast would: a status line's message.
+- The window table keeps the last `ROLLTUI_MESSAGE_HISTORY` (500) messages, which
+  `rolltui_windows_message_count` and `_message_at` read.
+- Each message appears as a toast in the bottom-right corner for `ROLLTUI_TOAST_MS` (6 seconds),
+  or twice that for errors. The newest is at the bottom, the toasts take at most a third of the
+  screen, and the newest is always visible. Toasts slide in from the right unless motion is turned
+  off (`still`).
+- A `messages` window lists the history, newest at the bottom, and scrolls. If it's one row tall it
+  shows the newest message while its toast would be showing, which makes it usable as a status
+  line.
 
-A host draws the toasts last, after compose:
-`rolltui_windows_draw_toasts(windows, frame, screen, styles, now)` returns how long until they
-next change, which the render's wait takes into account. A press on a toast dismisses it:
-`rolltui_windows_toast_event` answers 1 for one, and the host stops there.
-`rolltui_windows_dismiss_toasts` clears them all.
+Draw the toasts last, after composing the frame:
+`rolltui_windows_draw_toasts(windows, frame, screen, styles, now)` returns the time until they next
+change, which `render` should take into account. Clicking a toast dismisses it;
+`rolltui_windows_toast_event` returns 1 when an event was such a click, and your program should
+stop handling the event there. `rolltui_windows_dismiss_toasts` clears them all.
 
-`RolltuiWidgetEnv.still` says the person asked for no motion: what the library moves by itself
-is placed where it ends. A frame dump is one moment, and the hosts here draw it still. dirktui
-sets it from its motion setting.
+`RolltuiWidgetEnv.still` means the user asked for no motion. Anything the library animates on its
+own is drawn in its final position. Frame dumps are a single moment, so the programs here draw
+them still, and dirktui sets it from its motion setting.
 
-`RolltuiWidgetEnv.wheel_lines` is how many lines a notch of the wheel scrolls, in every window
-that scrolls by lines and in the column browser's columns and preview (3 when 0). A menu moves
-a row a notch.
+`RolltuiWidgetEnv.wheel_lines` sets how many lines one notch of the mouse wheel scrolls, in every
+window that scrolls by lines and in the column browser's columns and preview (3 if 0). Menus move
+one row per notch.
 
-dirktui, paint and the studio post a failure as an error toast. dirktui keeps its own status-line
-note for what went right.
+dirktui, paint and the studio show failures as error toasts. dirktui uses its own status-line note
+for successes.
 
 ## Dialogs
 
-A dialog asks the person something and waits for the answer. It opens modal over the screen,
-focused, and is as tall as what it holds, up to nine tenths of the screen.
+A dialog asks the user a question and waits for the answer. It opens as a focused modal popup and
+is as tall as its content, up to 90% of the screen.
 
 ```c
 RolltuiDialog* d = rolltui_dialog_new(ROLLTUI_MESSAGE_WARNING, 0, "Delete 3 files?", 15,
@@ -1339,205 +1361,215 @@ RolltuiDialog* d = rolltui_dialog_new(ROLLTUI_MESSAGE_WARNING, 0, "Delete 3 file
 rolltui_dialog_add_item(d, "notes.txt", 9);
 rolltui_dialog_add_button(d, "Delete", 6, 0);
 rolltui_dialog_add_button(d, "Cancel", 6, ROLLTUI_DIALOG_DEFAULT | ROLLTUI_DIALOG_CANCEL);
-rolltui_windows_ask(windows, stack, "delete", 6, d); /* the table owns it now */
+rolltui_windows_ask(windows, stack, "delete", 6, d); /* the window table owns it now */
 rolltui_windows_sync(windows, stack);
 ```
 
-- The title sits in the border after the level's glyph, the border and title in the level's role.
-- The body wraps to the dialog's width. The items it is about follow, one line each; when they do
-  not fit they scroll, and the bottom border says which are shown ("3–8 of 40").
-- The buttons sit in a row at the bottom, framed. `ROLLTUI_DIALOG_DEFAULT` marks the one chosen
-  when it opens (else the first), `ROLLTUI_DIALOG_CANCEL` the one the close key answers (else the
-  last). A dialog given no buttons has one, OK.
-- `ROLLTUI_DIALOG_FULL_SCREEN` fills the screen: an error page.
-- `rolltui_dialog_set_phrase` adds a field under the body. Every button but the cancel one is
-  drawn inert and answers nothing until the field holds the phrase exactly, and letters are typed
-  into the field rather than answering.
+- The title goes in the border after the level's symbol, with the border and title in the level's
+  role.
+- The body wraps to the dialog's width. Items follow, one per line; if they don't fit they scroll,
+  and the bottom border shows which ones are visible ("3–8 of 40").
+- Buttons sit in a row at the bottom. `ROLLTUI_DIALOG_DEFAULT` marks the one selected initially
+  (otherwise the first), and `ROLLTUI_DIALOG_CANCEL` the one the close key picks (otherwise the
+  last). A dialog without buttons gets a single OK.
+- `ROLLTUI_DIALOG_FULL_SCREEN` fills the screen, for things like an error page.
+- `rolltui_dialog_set_phrase` adds a text field under the body. All buttons except cancel are
+  disabled until the field contains the phrase exactly, and letters go into the field instead of
+  choosing buttons.
 
 | Action | Keys | What it does |
 |---|---|---|
-| `dialog.next`, `dialog.prev` | Tab, Right; Shift-Tab, Left | the next button, the previous one |
-| `dialog.answer` | Enter | answer with the button chosen |
-| `dialog.up`, `dialog.down` | Up, Down | scroll the items a row |
-| `dialog.page_up`, `dialog.page_down` | PageUp, PageDown | scroll the items a page |
-| `dialog.copy` | Alt-C | hand the host the dialog's text |
+| `dialog.next`, `dialog.prev` | Tab, Right; Shift-Tab, Left | next or previous button |
+| `dialog.answer` | Enter | choose the selected button |
+| `dialog.up`, `dialog.down` | Up, Down | scroll the items by a row |
+| `dialog.page_up`, `dialog.page_down` | PageUp, PageDown | scroll the items by a page |
+| `dialog.copy` | Alt-C | give your program the dialog's text |
 
-A button's letter answers it: the first letter of its label that no button before it has,
-underlined. A press on a button answers it too, and the close key answers the cancel button.
+Each button can be chosen with a letter, the first letter of its label not used by an earlier
+button, shown underlined. Clicking a button chooses it too, and the close key chooses the cancel
+button.
 
-After each event is routed and delivered, the host asks `rolltui_windows_answer(windows, stack,
-id, len, &button, &copy)`:
+After routing and delivering each event, call `rolltui_windows_answer(windows, stack, id, len,
+&button, &copy)`. It returns:
 
-- `ROLLTUI_DIALOG_ANSWERED`: the button's index, and the dialog is closed. A dialog closed some
-  other way (the close key, the host popping it) answers its cancel button. Told once.
-- `ROLLTUI_DIALOG_COPY`: `dialog.copy` was pressed; `copy` holds the title, the body and the
-  items, for `rolltui_clipboard_copy`. The dialog stays open.
-- 0: still open, or no dialog of that id.
+- `ROLLTUI_DIALOG_ANSWERED`, with the button's index, once the dialog has closed. A dialog closed
+  some other way (the close key, or your program popping it) answers with its cancel button. Each
+  answer is reported once.
+- `ROLLTUI_DIALOG_COPY` when `dialog.copy` was pressed, with the title, body and items in `copy`
+  for `rolltui_clipboard_copy`. The dialog stays open.
+- 0 while the dialog is still open, or if there's no dialog with that id.
 
-Asking again under an open dialog's id replaces it. A layout file that names `dialog:<id>` with
-no dialog asked under it shows that as a problem, as an unbound source does.
+Asking again with the id of an open dialog replaces it. A layout with a `dialog:<id>` window but no
+dialog asked under that id reports it as a problem, like any unbound source.
 
 ## Pictures
 
-`rolltui_image_load(path)` and `rolltui_image_decode(bytes)` decode PNG, JPEG, GIF (its first
-frame), BMP, TGA and PNM to RGBA. A picture larger than `ROLLTUI_IMAGE_MAX_SIDE` (10,000) pixels
-on a side, or than `ROLLTUI_IMAGE_MAX_BYTES` (512 MB) decoded, is refused before it is decoded,
-with the reason. `rolltui_image_from_rgba` takes pixels a host made. A JPEG whose EXIF says the
-camera was held sideways is turned upright as it is decoded.
+`rolltui_image_load(path)` and `rolltui_image_decode(bytes)` decode PNG, JPEG, GIF (first frame),
+BMP, TGA and PNM to RGBA. Images larger than `ROLLTUI_IMAGE_MAX_SIDE` (10,000) pixels on a side,
+or `ROLLTUI_IMAGE_MAX_BYTES` (512 MB) once decoded, are rejected before decoding, with the reason.
+`rolltui_image_from_rgba` takes pixels your program made. JPEGs whose EXIF data says the camera
+was rotated are turned upright when decoded.
 
-A picture is scaled to its cells by averaging the pixels each one covers.
-`rolltui_image_set_filter(img, ROLLTUI_IMAGE_NEAREST)` takes the pixel under each one's centre
-instead, so pixel art and a screenshot of text stay hard-edged.
+By default an image is scaled to its cells by averaging the pixels each cell covers.
+`rolltui_image_set_filter(img, ROLLTUI_IMAGE_NEAREST)` uses the pixel at each cell's centre
+instead, which keeps pixel art and screenshots of text sharp.
 
-`rolltui_frame_image(frame, area, img, ground, &used)` fits a picture into a rectangle of cells,
-its aspect kept and never enlarged past its own pixels, and draws it the way the terminal draws
-pictures. `ground` shows through transparent pixels. `rolltui_image_cells` gives the cells it
-would take, for centring.
+`rolltui_frame_image(frame, area, img, ground, &used)` fits an image into a rectangle of cells,
+keeping its aspect ratio and never scaling it up past its own size, and draws it with whatever
+method the terminal supports. `ground` shows through transparent pixels. `rolltui_image_cells`
+returns the cells it would take, for centring.
 
-| Way | Terminals | How |
+| Method | Terminals | How it works |
 |---|---|---|
-| `ROLLTUI_IMAGES_BLOCKS` | every terminal, tmux, ssh | half blocks, two pixels to a cell in their colours |
-| `ROLLTUI_IMAGES_KITTY` | kitty, Ghostty | Unicode placeholders: the picture is in the cells |
+| `ROLLTUI_IMAGES_BLOCKS` | every terminal, tmux, ssh | half blocks, two pixels per cell in their colours |
+| `ROLLTUI_IMAGES_KITTY` | kitty, Ghostty | Unicode placeholders; the image lives in the cells |
 | `ROLLTUI_IMAGES_ITERM2` | iTerm2, WezTerm | OSC 1337, drawn by the terminal at a cell |
 | `ROLLTUI_IMAGES_SIXEL` | foot, mlterm, Konsole, Windows Terminal, xterm with sixel | sixel, drawn by the terminal at a cell |
 
-The way is chosen by the terminal's name (`TERM`, `TERM_PROGRAM`, then its XTVERSION answer). A
-terminal no name tells of is asked: kitty's protocol where it answers kitty's picture query, then
-sixel where its Primary DA names it, then blocks. What it said is remembered with the rest of its
-answers. Inside tmux, tmux is asked what terminal is outside it and whether the pane passes
-escapes through (`allow-passthrough`, read and never set): kitty's placeholders and their pixels
-are passed through to kitty or Ghostty where it does; tmux draws sixel itself where the outer
-terminal draws sixel and tmux's Primary DA names it; anything else is drawn in blocks. Inside
-GNU screen, Zellij and Neovim's terminal, pictures are drawn in blocks. `ROLLTUI_IMAGES` (`blocks`, `kitty`,
-`iterm2`, `sixel`) or `RolltuiTerminalOptions.images` chooses outright, and
-`RolltuiTermFacts.images` says what was chosen, and `dirktui check-terminal` prints it. A cell's
-size in pixels (`cell_w`, `cell_h`) is the terminal's own report (`CSI 16 t`) where its window
-size says nothing or disagrees with it, else its window size divided by its cells, read again at
-every resize; `rolltui_terminal_set_cell_pixels` sets it outright. Where nothing says, a cell is
-taken to be about twice as tall as wide.
+The method is chosen from the terminal's name (`TERM`, `TERM_PROGRAM`, then its XTVERSION reply).
+For an unknown terminal, the library asks: kitty's protocol if the terminal answers kitty's image
+query, then sixel if its Primary DA mentions it, otherwise blocks. The answer is cached with the
+others.
 
-A new picture is held until it has stayed in the same cells for 60 ms
-(`RolltuiTerminalOptions.picture_delay_ms`; -1 sends at once), so a cursor moving over files sends
-none of the pictures it passes. `rolltui_terminal_pending_ms` says when a held one is due;
-`rolltui_run` waits on it.
+Inside tmux, the library asks tmux which terminal is outside it and whether the pane allows
+passthrough (`allow-passthrough`, which it reads but never sets). With passthrough on, kitty
+placeholders and their pixels go through to kitty or Ghostty. tmux draws sixel itself when the
+outer terminal supports it and tmux's Primary DA says so. Anything else is drawn with blocks.
+Inside GNU screen, Zellij and Neovim's terminal, images are always drawn with blocks.
 
-- A kitty picture's pixels are sent once, before the frame that first shows it, and its
-  placement whenever its cells change size. On this machine they go in a temp file kitty reads
-  and deletes; over ssh, in the escapes. What a terminal did not take is removed when the app
-  leaves. Its cells are text to everything else: a popup over
-  it covers it, the diff sends only what changed, and leaving deletes what was sent.
-- A sixel or iTerm2 picture is drawn after the diff, the cursor kept, when every one of its
-  cells is still its own blank and it was not already on the screen. While anything is drawn
-  over part of it, it is not sent; once that is gone, it is sent whole again. When it goes, its
-  cells are written again, which erases it.
-- A sixel is kept off the screen's last row, where the terminal would scroll the screen to move
-  the cursor below it. Its palette is fitted to the picture: up to 255 colours, each the mean of
-  the pixels it stands for.
-- iTerm2 is sent a PNG, JPEG or GIF file as it was read. A picture with none (a host's pixels, a
-  BMP, a TGA) is sent as a PNG made for it, its transparency kept.
+`ROLLTUI_IMAGES` (`blocks`, `kitty`, `iterm2` or `sixel`) or `RolltuiTerminalOptions.images`
+forces a method. `RolltuiTermFacts.images` says which one is in use, and `dirktui check-terminal`
+prints it.
 
-A picture another program draws (`kitten icat --place`, chafa's sixel, a window over the
-terminal such as Überzug++) is the host's to draw and clear; the library says when.
-`rolltui_frame_outside_picture(frame, id, cells, ground)` holds the cells blank under the host's
-id, and `rolltui_terminal_set_outside_pictures(term, fn, user)` gives the function told:
+The size of a cell in pixels (`cell_w`, `cell_h`) comes from the terminal's own report (`CSI 16 t`)
+when its window size is missing or disagrees with it, and otherwise from the window size divided by
+the number of cells, re-read on every resize. `rolltui_terminal_set_cell_pixels` overrides it.
+When nothing is known, cells are assumed to be about twice as tall as they are wide.
 
-- `ROLLTUI_OUTSIDE_DRAW` once the cells are blank on the screen and have stayed in place for
-  `picture_delay_ms`, after the frame is written, with the rectangle in the terminal's rows and
-  columns. The cursor is put back when `fn` returns. It is told again after anything removed the
-  picture: a resize or repaint, something drawn over it that has gone, the terminal entered again.
-- `ROLLTUI_OUTSIDE_CLEAR` when the picture is no longer where it was drawn: gone from the frame,
-  moved, drawn over, the screen about to be written whole, or the terminal left or handed to a
-  program. It comes before the frame that writes the cells again; the host removes what text does
-  not cover, such as a kitty placement or a window over the terminal. Freeing the terminal clears
-  what is still drawn.
+A new image is held back until it has stayed in the same cells for 60 ms
+(`RolltuiTerminalOptions.picture_delay_ms`; -1 sends it immediately), so moving the cursor quickly
+over a list of files doesn't send every image it passes. `rolltui_terminal_pending_ms` says when a
+held image is due, and `rolltui_run` waits for it.
 
-A stop sent from the shell (Ctrl-Z) leaves from a signal handler, which tells nothing; the clear
-comes when the program continues, then the draw.
+- A kitty image's pixels are sent once, before the frame that first shows it, and its placement is
+  sent again whenever its size in cells changes. Locally the pixels go through a temporary file
+  that kitty reads and deletes; over ssh they go in the escape sequence. Images are removed when the
+  program exits. Since the image lives in its cells, a popup on top covers it, the diff only sends
+  what changed, and exiting deletes what was sent.
+- A sixel or iTerm2 image is drawn after the diff, with the cursor saved and restored, as long as
+  all of its cells are still blank and it isn't already on screen. While anything covers part of it,
+  it isn't sent; once that goes away, it's sent again in full. When the image goes away, its cells
+  are rewritten, which erases it.
+- Sixel images are kept off the last row of the screen, where the terminal would scroll to move the
+  cursor below them. The palette is fitted to each image, with up to 255 colours, each the average
+  of the pixels it stands for.
+- iTerm2 gets PNG, JPEG and GIF files as they were read. Images without a file (pixels from your
+  program, BMP, TGA) are sent as a generated PNG, keeping transparency.
 
-An `image:<path>` window shows a picture, centred: the one `rolltui_windows_bind_image` bound
-under that name, or the file the path names (relative to the preset directory, as `file:` is),
-read again when it changes. With workers lent (`rolltui_windows_set_tasks`) the file is read and
-decoded on them, and the picture before it stays on screen until the new one is back. The column browser's preview shows a picture file the same way, with
-its size in pixels in the head.
+When another program draws the image (`kitten icat --place`, chafa's sixel output, or a window over
+the terminal like Überzug++), your program is responsible for drawing and clearing it, and the
+library tells it when. `rolltui_frame_outside_picture(frame, id, cells, ground)` keeps the cells
+blank under your id, and `rolltui_terminal_set_outside_pictures(term, fn, user)` registers a
+callback that receives:
+
+- `ROLLTUI_OUTSIDE_DRAW` once the cells are blank on screen and have stayed put for
+  `picture_delay_ms`, after the frame is written, with the rectangle in terminal rows and columns.
+  The cursor is restored when `fn` returns. It is sent again whenever something removed the image:
+  a resize or repaint, something covering it that has since gone, or the terminal being re-entered.
+- `ROLLTUI_OUTSIDE_CLEAR` when the image is no longer where it was drawn: removed from the frame,
+  moved, covered, about to be overwritten by a full repaint, or because the terminal is being left
+  or handed to another program. It arrives before the frame that rewrites the cells, and your
+  program removes whatever text won't cover, such as a kitty placement or an overlay window.
+  Freeing the terminal clears anything still drawn.
+
+A stop from the shell (Ctrl-Z) happens inside a signal handler, which can't call anything, so the
+clear arrives when the program continues, followed by a draw.
+
+An `image:<path>` window shows a centred image: either the one bound under that name with
+`rolltui_windows_bind_image`, or the file at the path (relative to the preset directory, like
+`file:`), reloaded when it changes. If the window table has workers (`rolltui_windows_set_tasks`),
+files are read and decoded in the background, and the previous image stays on screen until the new
+one is ready. The column browser's preview shows image files the same way, with the size in pixels
+in its header.
 
 ## The column browser
 
-A `picker:` window shows one column per folder from the root to the cursor's, and the folder or file
-under the cursor beside them.
+A `picker:` window shows one column per directory from the root down to the current one, with the
+directory or file under the cursor next to them.
 
 | Keys | Action |
 |---|---|
-| Up, Down, Home, End, Page Up, Page Down | move in the folder |
-| Ctrl-U, Ctrl-D | half a page |
-| Left, Right | the folder above; into the folder under the cursor |
-| Alt-Left, Alt-Right | back and forward through the folders visited |
-| `-` | the folder last left |
-| Enter, Escape | take the entry; cancel |
+| Up, Down, Home, End, Page Up, Page Down | move within the directory |
+| Ctrl-U, Ctrl-D | move half a page |
+| Left, Right | go to the parent directory, or into the one under the cursor |
+| Alt-Left, Alt-Right | back and forward through visited directories |
+| `-` | the directory you last left |
+| Enter, Escape | choose the entry, or cancel |
 
-A folder keeps the entry its cursor was last on, and the column beside the cursor draws that entry
-in the selection's colour, as the path behind the cursor is drawn.
+Each directory remembers which entry its cursor was on, and the column next to the cursor shows
+that entry in the selection colour, like the path leading to the cursor.
 
-With workers lent (`rolltui_windows_set_tasks`), the folder beside the cursor is read on them as the
-cursor moves. A move waits up to 30 ms for it, so a folder read quickly is there in the same frame.
-A slower one (a network share, a very large folder) says "loading…" from 100 ms and fills in when its
-read is back; going into it meanwhile puts the cursor in it at that point. A folder a host points
-the browser at (`rolltui_windows_set_picker_dir`), and each folder on the way to it, is read at once,
-as are the folders Alt-Left, Alt-Right and `-` return to.
+If the window table has workers (`rolltui_windows_set_tasks`), the directory next to the cursor is
+read in the background as the cursor moves. A move waits up to 30 ms for it, so a fast read shows up
+in the same frame. A slower one (a network share or a very large directory) shows "loading…" after
+100 ms and fills in when it's done; going into it in the meantime puts the cursor there once it
+arrives. A directory your program points the browser at (`rolltui_windows_set_picker_dir`), and each
+directory on the way to it, is read straight away, as are the ones Alt-Left, Alt-Right and `-`
+go back to.
 
-`RolltuiPickerOptions.ratio_parent`, `ratio_current` and `ratio_next` set the panes' widths as
-shares: 1, 2 and 1 give each folder above a quarter, the cursor's folder a half and the pane beside
-it a quarter. A share of 0 leaves that pane at the width of its names.
+`RolltuiPickerOptions.ratio_parent`, `ratio_current` and `ratio_next` set the pane widths as
+proportions. 1, 2 and 1 give the parent directories a quarter, the current directory half, and the
+pane beside it a quarter. A proportion of 0 sizes that pane to fit its names.
 
 ### Marks
 
-With `RolltuiPickerOptions.marks`, entries are marked by path, in any folder: Space marks or unmarks
-the entry and moves to the next, Shift-Up and Shift-Down mark as they move, Alt-U clears every mark.
-A marked entry is bold in the `accent_1` role with ▌ before it (`*` where ambiguous-width glyphs
-are drawn two cells wide). `rolltui_windows_picker_marked` gives the marked paths, for a host to
-copy, move or open together.
+With `RolltuiPickerOptions.marks`, entries can be marked by path in any directory. Space toggles the
+mark and moves to the next entry, Shift-Up and Shift-Down mark while moving, and Alt-U clears all
+marks. Marked entries are bold in the `accent_1` role with ▌ in front (`*` where ambiguous-width
+characters are two cells wide). `rolltui_windows_picker_marked` returns the marked paths, so your
+program can copy, move or open them together.
 
-A host marks entries of its own with `rolltui_windows_set_picker_decor`. Its function is asked for
-each entry drawn and fills a `RolltuiPickerDecor`: `gutter`, a glyph in the cell before the name
-(a copied or cut tag); `cell`, a few characters right of the name (a git status); `role`, the
-name's role. A host's glyph takes the place of the mark's.
+`rolltui_windows_set_picker_decor` lets your program decorate entries. Its function is called for
+each entry drawn and fills in a `RolltuiPickerDecor`: `gutter`, a character before the name (for a
+copied or cut tag); `cell`, a few characters right of the name (for a git status); and `role`, the
+role for the name. Your `gutter` character replaces the mark's.
 
 ### Events
 
-`rolltui_windows_picker_event` reads what the person did: an entry taken, a cancel, a copy. With
-`RolltuiPickerOptions.report_changes` it also reads `ROLLTUI_PICKER_EVENT_MOVED` when the cursor is
-on another entry and `ROLLTUI_PICKER_EVENT_FOLDER` when the focused folder changes, each with its
-path, after those outcomes.
+`rolltui_windows_picker_event` returns what the user did: chose an entry, cancelled or copied. With
+`RolltuiPickerOptions.report_changes` it also returns `ROLLTUI_PICKER_EVENT_MOVED` when the cursor
+moves to another entry and `ROLLTUI_PICKER_EVENT_FOLDER` when the current directory changes, each
+with its path.
 
 ## Previews
 
 `RolltuiPickerOptions.preview` shows the file under the cursor in the right half of the browser
-(dirktui: Settings › General › Preview).
+(in dirktui, Settings › General › Preview).
 
 | File | Preview |
 |---|---|
-| Text | its lines, read whole up to 256 KB |
-| Markdown | rendered: headings, lists, tables, code blocks |
-| Binary | offsets, hex byte pairs and an ASCII column, read one screen at a time |
+| Text | its lines, reading up to 256 KB |
+| Markdown | rendered, with headings, lists, tables and code blocks |
+| Binary | offsets, hex bytes and an ASCII column, read a screen at a time |
 
-Control characters are drawn as their symbols (`␛`) and invalid bytes as `�`. A tab reaches the
-next stop of `RolltuiPickerOptions.preview_tab` columns (4 when 0). With `preview_wrap`, a line
-wider than the preview carries on in the rows below; without it, the line ends in an ellipsis, and
-Shift-Left and Shift-Right (from the list or in the preview) and the wheel's sideways turns scroll a
-text file's lines sideways, as far as the widest line's end. Alt-Up and Alt-Down (`picker.preview_up`,
-`picker.preview_down`; also K and J in the vim preset) scroll the preview a wheel's notch from the
-columns, the focus staying where it is.
+Control characters are shown as their symbols (`␛`) and invalid bytes as `�`. Tabs stop every
+`RolltuiPickerOptions.preview_tab` columns (4 if 0). With `preview_wrap`, long lines continue on
+the next rows. Without it they end in an ellipsis, and Shift-Left and Shift-Right (from the list or
+in the preview) and horizontal scrolling move a text file sideways, up to the end of its widest
+line. Alt-Up and Alt-Down (`picker.preview_up`, `picker.preview_down`; also K and J in the vim
+preset) scroll the preview by one wheel notch without moving focus from the columns.
 
-With workers lent (`rolltui_windows_set_tasks`; `rolltui_run_tasks` gives the run's own), a file is
-read off the UI thread and the files above and below the cursor are read ahead, unless a host's
-previewer is set. The last four previews are kept, so a file looked at before shows at once; a kept
-file is read again only when it changed on disk.
+If the window table has workers (`rolltui_windows_set_tasks`, or `rolltui_run_tasks` for the run's
+own), files are read off the UI thread, and the files above and below the cursor are read ahead
+unless your program sets its own previewer. The last four previews are cached, so going back to a
+file shows it immediately; a cached file is only read again if it changed on disk.
 
-### A host's previewer
+### Your own previewer
 
-`rolltui_windows_set_picker_previewer` puts a host's function before the built-in preview, for a
-document's pages or another program's output. It is asked for each file previewed. It fills the
-`RolltuiAnsiText` with text and SGR colour and returns 1, or returns 0 and the built-in preview
-draws the file.
+`rolltui_windows_set_picker_previewer` adds a function that runs before the built-in preview, for
+things like document pages or another program's output. It's called for each file previewed. It
+fills the `RolltuiAnsiText` with text and SGR colours and returns 1, or returns 0 to let the
+built-in preview handle the file.
 
 ```c
 static int pdf_pages(void* ctx, const char* path, size_t len, size_t offset, RolltuiAnsiText* out, size_t* bound) {
@@ -1552,11 +1584,12 @@ static int pdf_pages(void* ctx, const char* path, size_t len, size_t offset, Rol
 rolltui_windows_set_picker_previewer(w, "picker:files", sizeof "picker:files" - 1, pdf_pages, docs);
 ```
 
-`offset` is where the person has scrolled the preview. With `*bound` left at 0 it is a line of what
-the function filled, and scrolling moves through those lines. With `*bound` set it is a place of
-the function's own (a page, a percent) from 0 to `*bound` - 1: each scroll asks again at the new
-offset, and Page Up and Page Down move one place. The text stays the preview's until the next ask,
-so a function may go on feeding it, on the thread that draws, as a command's output arrives.
+`offset` is how far the user has scrolled the preview. If `*bound` is left at 0, it's a line of
+the text the function filled in, and scrolling moves through those lines. If `*bound` is set, it's a
+position of the function's own choosing (a page, a percentage) from 0 to `*bound` - 1; each scroll
+calls the function again with the new offset, and Page Up and Page Down move by one. The text
+belongs to the preview until the next call, so the function can keep adding to it (on the drawing
+thread) as a command's output arrives.
 
 ### A command as the previewer
 
@@ -1567,33 +1600,33 @@ static const char* const pv[] = {"pistol", NULL};
 rolltui_windows_set_picker_preview_command(w, "picker:files", sizeof "picker:files" - 1, pv);
 ```
 
-The program gets the file's path, the preview's width and its height after its own arguments
-(`pistol notes.md 50 30`). It runs on a pseudo-terminal that size, so it writes colour, and what it
-writes is the preview, drawn as it arrives. The cursor resting on a file for 30 ms starts it, so a
-cursor moving over files starts nothing; moving away stops it. A program that cannot start leaves
-the built-in preview. A host's previewer function is asked before the command.
+The program gets the file's path and the preview's width and height after its own arguments
+(`pistol notes.md 50 30`). It runs in a pseudo-terminal of that size, so it can write colour, and
+its output is shown as it arrives. It starts once the cursor has rested on a file for 30 ms, so
+moving quickly over files doesn't start anything, and moving away stops it. If the program can't
+start, the built-in preview is used. Your own previewer function, if set, is asked first.
 
 ## Mermaid diagrams
 
-A ```` ```mermaid ```` block is drawn as a diagram wherever Markdown is rendered: previews,
-transcripts, documents. Diagrams use box-drawing characters in the theme's colours, or
-`+ - | > v` where the terminal draws ambiguous-width characters two cells wide.
+A ```` ```mermaid ```` block is drawn as a diagram anywhere Markdown is rendered: previews,
+transcripts and documents. Diagrams use box-drawing characters in the theme's colours, or
+`+ - | > v` where ambiguous characters are two cells wide.
 
-Supported: flowcharts (all four directions, every node shape and edge style, subgraphs), sequence
-diagrams (loop, alt and opt frames, notes, activations), state diagrams, class diagrams, ER
-diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts. Other diagram types
-are shown as source, with a line naming the reason.
+Supported diagram types are flowcharts (all four directions, every node shape and edge style, and
+subgraphs), sequence diagrams (loop, alt and opt frames, notes, activations), state diagrams, class
+diagrams, ER diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts. Other types
+are shown as source, with a line explaining why.
 
-A diagram wider than its space is drawn with its nodes one column closer, then with its labels
-wrapped to narrower and narrower widths. Labels are never cut. A diagram that still does not fit
+If a diagram is too wide, it is first drawn with its nodes closer together, then with labels
+wrapped to narrower and narrower widths. Labels are never cut off. A diagram that still doesn't fit
 is shown as source.
 
 ## Syntax highlighting
 
-A previewed file in a known language is highlighted, and the preview heading names the language
-(`Python · 27 lines · 722 B`). A fenced block in Markdown is highlighted by its tag (```` ```rust ````,
-```` ```yaml ````). `RolltuiPickerOptions.no_syntax` turns highlighting off (dirktui: Settings ›
-Look › Colour source code in the preview).
+Previews of files in a known language are highlighted, and the preview heading names the language
+(`Python · 27 lines · 722 B`). Fenced code blocks in Markdown are highlighted according to their
+tag (```` ```rust ````, ```` ```yaml ````). `RolltuiPickerOptions.no_syntax` turns highlighting off
+(in dirktui, Settings › Look › Colour source code in the preview).
 
 ### Languages
 
@@ -1602,21 +1635,22 @@ zsh), Windows batch, PowerShell, CMake, HTML, CSS, XML, JSON, YAML, INI, TOML, i
 (`.gitignore`, `.dockerignore`, `.npmignore` and the rest), `.gitattributes`, DagOnC (`.jc`) and
 shader (`.shader`) files.
 
-A file's language is found by its whole name (`CMakeLists.txt`, `.bashrc`), then its longest
-extension (`.d.ts` before `.ts`), then its first line (a `#!` line, `<?xml`, `<!DOCTYPE html`).
+The language is detected from the full file name (`CMakeLists.txt`, `.bashrc`), then the longest
+matching extension (`.d.ts` before `.ts`), then the first line (a `#!` line, `<?xml`,
+`<!DOCTYPE html`).
 
 ### Styles
 
 Each token class (keyword, type, function, string, escape, number, constant, comment,
-documentation, punctuation, preprocessor, variable, attribute, tag, property, section) is drawn
-in an existing theme role, so every theme highlights code. Keywords are bold and comments italic
-on top of their role. `mono` tells classes apart by bold, italic, underline and dim.
+documentation, punctuation, preprocessor, variable, attribute, tag, property, section) uses an
+existing theme role, so every theme can highlight code. Keywords are also bold and comments italic.
+`mono` distinguishes the classes with bold, italic, underline and dim.
 
 ### Grammar files
 
-A language is a JSON file. The shipped grammars are in `presets/syntax/`. Your own go in
-`<config>/rolltui/syntax/` and are read when the browser starts. A file with the name of a
-shipped language replaces it, and every language that includes it follows.
+Each language is a JSON file. The built-in grammars are in `presets/syntax/`, and your own go in
+`<config>/rolltui/syntax/`, which is read when the browser starts. A file with the same name as a
+built-in language replaces it, and languages that include it use the replacement.
 
 ```json
 {
@@ -1635,7 +1669,7 @@ shipped language replaces it, and every language that includes it follows.
 }
 ```
 
-Rules are tried in order at each position; the first that matches wins.
+At each position the rules are tried in order, and the first match wins.
 
 | Rule | |
 |---|---|
@@ -1644,38 +1678,39 @@ Rules are tried in order at each position; the first that matches wins.
 | `region` | from `begin` to `end`, with an optional `escape` and nested `rules`; `\\1` in `end` is what `begin` captured (here-documents, Lua long brackets) |
 | `include` | another context, or another language |
 
-A context can carry its own `class` (`"block": { "class": "comment", "rules": [...] }`), used for
-text no rule matches.
+A context can have its own `class` (`"block": { "class": "comment", "rules": [...] }`), which
+applies to text no rule matches.
 
 Patterns support character classes, groups, `* + ? {n,m}`, lazy quantifiers, `^ $ \\b`,
-look-ahead and back-references. Look-behind is not supported. A pattern that runs away is
-stopped. Backslashes are doubled in JSON.
+look-ahead and back-references, but not look-behind. Patterns that take too long are stopped.
+Remember to double backslashes in JSON.
 
 ### Checking a grammar
 
-A grammar with an error is skipped. `dirktui languages` lists the shipped languages and yours,
-and for each file that failed to load, its language, the rule and the reason.
-`dirktui languages my.json` checks one file and exits 1 if anything failed. The library function
-is `rolltui_syntax_check`.
+Grammars with errors are skipped. `dirktui languages` lists the built-in languages and yours, and
+for each file that failed to load, the language, the rule and the reason.
+`dirktui languages my.json` checks a single file and exits with 1 if anything failed. The library
+function behind it is `rolltui_syntax_check`.
 
 ### Limits
 
-Highlighting works line by line, carrying state from one line to the next (multi-line comments
-and strings, here-documents). It is not a parser, so an unusual construct can be miscoloured: a
-YAML block scalar whose body looks like keys is drawn as keys. Highlighting covers the first
-4,000 bytes of a line and the first 256 KB of a file. It changes styles only, never characters or
-their positions.
+Highlighting works line by line, carrying state from one line to the next for multi-line comments,
+strings and here-documents. It isn't a parser, so unusual constructs can be miscoloured; for
+example, a YAML block scalar whose content looks like keys is coloured as keys. Only the first 4,000
+bytes of a line and the first 256 KB of a file are highlighted. Highlighting only changes styles,
+never the characters or their positions.
 
 ## File info row
 
-`RolltuiPickerOptions.info` (dirktui: Settings › General, on by default) adds a row under the
-column headings showing the mode and modification time, local and to the minute, of the entry to
-the right of the cursor: a folder's above its column (`drwxr-x--- 2026-06-01 12:34`), a file's
-under its preview heading. With no preview, a file gets a small pane with its name, its size
-(unless a size column shows it) and the same row.
+`RolltuiPickerOptions.info` (in dirktui, Settings › General, on by default) adds a row under the
+column headings with the mode and modification time (local, to the minute) of the entry to the
+right of the cursor. For a directory it goes above its column (`drwxr-x--- 2026-06-01 12:34`), and
+for a file under its preview heading. Without a preview, a file gets a small pane with its name,
+its size (unless a size column already shows it) and the same row.
 
-The values come from the directory listing, with no extra `stat`, and the watcher keeps them
-current. The row takes one line from the columns and is left out when the browser is too short.
+The values come from the directory listing without any extra `stat` calls, and the watcher keeps
+them up to date. The row takes one line from the columns and is left out when the browser is too
+short.
 
 # Running
 
