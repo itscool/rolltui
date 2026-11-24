@@ -392,6 +392,124 @@ void test_gradient_axes() {
 
 }  // namespace
 
+
+// ---- hanging charts and a mirrored pair ----------------------------------------------------------------------------------------
+
+void test_hanging_and_mirrored() {
+  RolltuiChart* c = rolltui_chart_new();
+  RolltuiDrawScratch* ds = rolltui_draw_scratch_new();
+  std::vector<double> up;
+  for (int i = 0; i <= 50; ++i) up.push_back(i * 2.0);
+  // A HANGING LINE: the least at the top, its names at the bottom, the range labels the other way up
+  rolltui_chart_set_series(c, 0, "cpu", 3, 0, up.data(), up.size());
+  rolltui_chart_set_range(c, 0, 100);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_INVERT);
+  Drawn d(40, 10);
+  rolltui_chart_draw(c, d.f, ds, RolltuiRect{0, 0, 40, 10}, d.styles, 0);
+  d.read();
+  check(d.rows[9].find("cpu") == 0 && d.rows[0].find("cpu") == std::string::npos, "a hanging chart has its names on the bottom row [" + d.rows[9] + "]");
+  check(d.rows[0].find("0 ") == 2 && d.rows[8].find("100") == 0, "…the least labelled at the top and the most at the foot [" + d.rows[0] + "|" + d.rows[8] + "]");
+  check(d.braille_at(4, 0) && d.braille_at(39, 8) && !d.braille_at(4, 8), "…and a rising series runs from the top left down to the bottom right");
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_INVERT | ROLLTUI_CHART_AXES);
+  Drawn ax(40, 10);
+  rolltui_chart_draw(c, ax.f, ds, RolltuiRect{0, 0, 40, 10}, ax.styles, 0);
+  ax.read();
+  int corner = -1;
+  for (int y = 0; y < 10; ++y)
+    if (ax.rows[y].find("\xE2\x94\x8C\xE2\x94\x80") != std::string::npos) corner = y;
+  check(corner == 0 && !has(ax.rows, "\xE2\x94\x94") && ax.rows[3].find("\xE2\x94\x82") != std::string::npos,
+        "a hanging chart's axes run along its top (┌─) and down its left [" + (corner >= 0 ? ax.rows[corner] : std::string()) + "]");
+  check(ax.rows[1].find("0 ") == 2, "…its least labelled under the axis [" + ax.rows[1] + "]");
+  // A HANGING AREA fills from its line up to the top
+  const std::vector<double> half(40, 50.0);
+  rolltui_chart_clear(c);
+  rolltui_chart_set_series(c, 0, "", 0, 0, half.data(), half.size());
+  rolltui_chart_set_range(c, 0, 100);
+  rolltui_chart_set_kind(c, ROLLTUI_CHART_AREA);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_INVERT);
+  Drawn a(10, 4);
+  rolltui_chart_draw(c, a.f, ds, RolltuiRect{0, 0, 10, 4}, a.styles, 0);
+  check(glyph(a, 5, 0) == "\xE2\xA3\xBF" && a.braille_at(5, 1) && !a.braille_at(5, 3), "a hanging area fills from the top down to its value");
+  // HANGING BARS: from the top row, a part of a cell the empty part's block in reverse
+  const double v[3] = {1, 2.5, 4};
+  rolltui_chart_clear(c);
+  rolltui_chart_set_kind(c, ROLLTUI_CHART_BARS);
+  rolltui_chart_set_series(c, 0, "", 0, 0, v, 3);
+  rolltui_chart_set_range(c, 0, 4);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_INVERT);
+  Drawn b(12, 5);
+  rolltui_chart_draw(c, b.f, ds, RolltuiRect{0, 0, 12, 5}, b.styles, 0);
+  int full_col = -1, short_col = -1;
+  for (int x = 0; x < 12; ++x) {
+    if (glyph(b, x, 4) == "\xE2\x96\x88" && full_col < 0) full_col = x;
+    if (glyph(b, x, 0) == "\xE2\x96\x88" && glyph(b, x, 4) != "\xE2\x96\x88" && short_col < 0) short_col = x;
+  }
+  check(full_col >= 0 && glyph(b, full_col, 0) == "\xE2\x96\x88", "hanging bars start at the top: the tallest full from the top row to the foot");
+  check(short_col >= 0 && short_col < full_col && glyph(b, short_col, 1) == "\xE2\x96\x86" && b.cell(short_col, 1).style.reverse,
+        "…a shorter one ends in the empty part's block, ▆ in reverse, for a quarter of a cell [" + glyph(b, short_col, 1) + "]");
+  Drawn ba(12, 5);
+  rolltui_chart_draw(c, ba.f, ds, RolltuiRect{0, 0, 12, 5}, ba.styles, 1);
+  ba.read();
+  check(has(ba.rows, "#") && has(ba.rows, "'") && !has(ba.rows, "\xE2\x96\x88"), "…ASCII where ambiguous glyphs are wide");
+  // A HANGING SPARKLINE
+  const double s8[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+  rolltui_chart_clear(c);
+  rolltui_chart_set_kind(c, ROLLTUI_CHART_SPARK);
+  rolltui_chart_set_series(c, 0, "", 0, 0, s8, 8);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_INVERT);
+  Drawn sp(8, 1);
+  rolltui_chart_draw(c, sp.f, ds, RolltuiRect{0, 0, 8, 1}, sp.styles, 0);
+  check(glyph(sp, 0, 0) == "\xE2\x96\x87" && sp.cell(0, 0).style.reverse && glyph(sp, 7, 0) == "\xE2\x96\x88" && !sp.cell(7, 0).style.reverse,
+        "a hanging sparkline: the least an eighth from the top (▇ reversed), the most a full block");
+  // A MIRRORED PAIR: each half its own range, the second hanging, a rule between them
+  std::vector<double> small;
+  for (int i = 0; i <= 50; ++i) small.push_back(i * 0.2);
+  rolltui_chart_clear(c);
+  rolltui_chart_set_series(c, 0, "", 0, 0, up.data(), up.size());
+  rolltui_chart_set_series(c, 1, "", 0, 0, small.data(), small.size());
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_MIRROR | ROLLTUI_CHART_MID);
+  Drawn m(10, 9);
+  rolltui_chart_draw(c, m.f, ds, RolltuiRect{0, 0, 10, 9}, m.styles, 0);
+  m.read();
+  bool rule = true;
+  for (int x = 0; x < 10; ++x) rule = rule && glyph(m, x, 4) == "\xE2\x94\x80";
+  check(rule, "MID draws a rule between the pair [" + m.rows[4] + "]");
+  check(m.braille_at(0, 3) && m.braille_at(9, 0) && !m.braille_at(0, 0), "the first series stands on the rule, rising to the top right");
+  check(m.braille_at(0, 5) && m.braille_at(9, 8) && !m.braille_at(9, 5),
+        "the second hangs under it, its most at the bottom: a range of its own, tenfold smaller and still the full height");
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_MIRROR);
+  Drawn nm(10, 9);
+  rolltui_chart_draw(c, nm.f, ds, RolltuiRect{0, 0, 10, 9}, nm.styles, 0);
+  check(glyph(nm, 4, 4) != "\xE2\x94\x80", "without MID there is no rule");
+  // ONE SERIES under MIRROR is a chart like any other
+  rolltui_chart_clear(c);
+  rolltui_chart_set_series(c, 0, "", 0, 0, up.data(), up.size());
+  Drawn plain(10, 9), one(10, 9);
+  rolltui_chart_draw(c, plain.f, ds, RolltuiRect{0, 0, 10, 9}, plain.styles, 0);
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_MIRROR | ROLLTUI_CHART_MID);
+  rolltui_chart_draw(c, one.f, ds, RolltuiRect{0, 0, 10, 9}, one.styles, 0);
+  plain.read();
+  one.read();
+  check(plain.rows == one.rows, "a mirrored chart of one series is drawn as a plain one");
+  // THE NAMES: the first's at the top, the second's at the bottom
+  rolltui_chart_clear(c);
+  rolltui_chart_set_series(c, 0, "rx", 2, 0, up.data(), up.size());
+  rolltui_chart_set_series(c, 1, "tx", 2, 0, small.data(), small.size());
+  rolltui_chart_set_flags(c, ROLLTUI_CHART_MIRROR);
+  Drawn names(30, 12);
+  rolltui_chart_draw(c, names.f, ds, RolltuiRect{0, 0, 30, 12}, names.styles, 0);
+  names.read();
+  check(names.rows[0].find("rx") == 0 && names.rows[11].find("tx") == 0 && names.rows[0].find("tx") == std::string::npos,
+        "the pair's names: the first's on the top row, the second's on the bottom one");
+  check(names.cell(0, 11).style.fg.r == names.styles[ROLLTUI_ROLE_ACCENT_2].fg.r, "…each in its own series' colour");
+  // THE HALVES LINE UP: the range labels as wide as the wider half's, so a column is the same moment in both
+  check(names.rows[1].find("100") == 0 && names.rows[10].find("10") == 1 && names.rows[10].find(" 10 ") == 0,
+        "the pair's labels share one width, the narrower right-aligned to the wider, so their plots start in the same column [" +
+            names.rows[1] + "|" + names.rows[10] + "]");
+  rolltui_draw_scratch_free(ds);
+  rolltui_chart_free(c);
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_line();
@@ -400,5 +518,6 @@ int main() {
   test_symbols_area_floor();
   test_meter_auto_flow();
   test_gradient_axes();
+  test_hanging_and_mirrored();
   return testkit::report("chart_test");
 }

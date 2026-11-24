@@ -1340,10 +1340,20 @@ ASCII.
 - `rolltui_chart_set_gradient(chart, i, &gradient)` colours series `i` from a gradient: lines and
   areas by height, bars and sparklines per value, and meters along their length.
 - `rolltui_chart_set_flags` takes `ROLLTUI_CHART_FLOW` for a time series (one value per column,
-  newest on the right, the left left empty until the chart fills up, never stretched),
-  `ROLLTUI_CHART_AXES` for axis lines on the left and bottom, and `ROLLTUI_CHART_INVERT` to fill a
-  meter from the right. With axes, `rolltui_chart_set_time(chart, newest_s, step_s)` labels the
-  bottom axis with HH:MM every ten columns.
+  newest on the right, the left left empty until the chart fills up, never stretched) and
+  `ROLLTUI_CHART_AXES` for axis lines on the left and bottom. With axes,
+  `rolltui_chart_set_time(chart, newest_s, step_s)` labels the bottom axis with HH:MM every ten
+  columns.
+- `ROLLTUI_CHART_INVERT` hangs the chart from its top: lines, areas, bars and sparklines grow
+  downward, the minimum is labelled at the top, the axis runs along the top and the series names
+  go on the bottom row. Part of a hanging cell is drawn as the empty part's lower block in reverse
+  video, since fonts don't have the upper eighth blocks. A meter fills from the right instead.
+- `ROLLTUI_CHART_MIRROR` draws the first two series as a pair, like a network graph with download
+  above and upload below. The first stands on the middle of the chart and the second hangs under
+  it. Each half gets its own range unless one is set, and their range labels share a width so the
+  columns line up. `ROLLTUI_CHART_MID` adds a rule between the halves. A mirrored chart with one
+  series is drawn as a plain one, and the halves swap when the series are given in the other
+  order.
 - `RolltuiHistory` keeps a rolling window of values (`rolltui_history_new`, `_push`, `_resize`).
   `rolltui_chart_capacity(chart, cells)` says how many values a chart of that width shows, and
   `rolltui_chart_set_series_history` turns a history into a series.

@@ -40,6 +40,7 @@ struct RolltuiChart {
   double lo, hi;
   int fixed;
   double newest_s, step_s; /* time along the foot, when `step_s` > 0 */
+  int label_floor;          /* a mirrored pair's halves: the range labels as wide as the wider half's, so the plots line up */
   unsigned char* dots; /* the dot grid, a byte a cell */
   unsigned char* owner;
   size_t dots_cap, owner_cap;
@@ -275,7 +276,7 @@ static void range_of(const RolltuiChart* c, int w, double* lo, double* hi) {
   }
   *lo = 0, *hi = 1;
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i)
-    for (k = first_shown(c, (int)i, w); k < c->s[i].n; ++k) {
+    for (k = c->s[i].used ? first_shown(c, (int)i, w) : c->s[i].n; k < c->s[i].n; ++k) {
       const double v = c->s[i].v[k];
       if (v != v) continue; /* NaN: a gap */
       if (!any || v < *lo) *lo = v;
@@ -363,6 +364,7 @@ static void draw_plot(RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo
   const unsigned char sym = symbols_of(c);
   const int DX = dots_x(c), DY = dots_y(c), W = r.w * DX, H = r.h * DY;
   const int area = c->drawn_kind == ROLLTUI_CHART_AREA, flow = (c->flags & ROLLTUI_CHART_FLOW) != 0;
+  const int invert = (c->flags & ROLLTUI_CHART_INVERT) != 0; /* hanging from the top: the least there, the most at the foot */
   const size_t cells = (size_t)r.w * (size_t)r.h;
   int i, x, y;
   c->dots = (unsigned char*)rolltui_grow(c->dots, &c->dots_cap, cells ? cells : 1, 1);
@@ -385,7 +387,7 @@ static void draw_plot(RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo
       }
       if (flow) qx = W - (int)shown + (int)(k - first); /* a value a dot across, the left empty while short */
       else qx = shown <= 1 ? 0 : (int)((double)(k - first) * (W - 1) / (double)(shown - 1) + 0.5);
-      qy = (int)((hi - v) / (hi - lo) * (H - 1) + 0.5);
+      qy = (int)((invert ? v - lo : hi - v) / (hi - lo) * (H - 1) + 0.5);
       if (qy < 0) qy = 0;
       if (qy > H - 1) qy = H - 1;
       if (area && v <= lo) { /* the least: nothing to fill */
@@ -393,14 +395,14 @@ static void draw_plot(RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo
         continue;
       }
       if (px < 0) px = qx, py = qy;
-      { /* Bresenham from the last point to this one; an area fills below each dot it reaches */
+      { /* Bresenham from the last point to this one; an area fills from each dot it reaches to its foot (the top, hanging) */
         int dx = qx - px, dy = qy - py, sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1, err, ex = px, ey = py;
         dx = dx < 0 ? -dx : dx;
         dy = dy < 0 ? -dy : dy;
         err = dx - dy;
         for (;;) {
           int fy;
-          for (fy = ey; fy < (area ? H : ey + 1); ++fy) {
+          for (fy = area && invert ? 0 : ey; fy < (area && !invert ? H : ey + 1); ++fy) {
             const size_t cell = (size_t)(fy / DY) * (size_t)r.w + (size_t)(ex / DX);
             c->dots[cell] |= dot_bit(sym, ex % DX, fy % DY);
             if (!c->owner[cell] || fy == ey) c->owner[cell] = (unsigned char)(i + 1);
@@ -421,7 +423,8 @@ static void draw_plot(RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo
       const size_t cell = (size_t)y * (size_t)r.w + (size_t)x;
       char g[4];
       size_t gn;
-      const double t = r.h > 1 ? 1.0 - (double)y / (double)(r.h - 1) : 1.0; /* a gradient by height: the foot its start */
+      /* a gradient by height: the foot its start, the top when the chart hangs */
+      const double t = r.h > 1 ? (invert ? (double)y / (double)(r.h - 1) : 1.0 - (double)y / (double)(r.h - 1)) : 1.0;
       if (!c->dots[cell]) continue;
       gn = dot_glyph(sym, c->dots[cell], aw, g);
       rolltui_frame_put(f, r.x + x, r.y + y, g, gn, 1, series_style_at(c, c->owner[cell] - 1, styles, roles, ground, t), 0);
@@ -438,9 +441,20 @@ static const char* eighth(int eighths, int aw) {
   return blocks[eighths];
 }
 
+/* A cell `eighths` of eight full from its TOP. No font has the upper eighths but one, so a part is the empty part's lower block drawn
+ * in reverse (`*reversed`): the series' colour above it, the ground's in it. ASCII where ambiguous glyphs are wide. */
+static const char* hang(int eighths, int aw, int* reversed) {
+  *reversed = 0;
+  if (eighths <= 0) return "";
+  if (eighths >= 8) return eighth(8, aw);
+  if (aw) return eighths >= 4 ? "=" : "'";
+  *reversed = 1;
+  return eighth(8 - eighths, 0);
+}
+
 static void draw_bars(const RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo, double hi, const RolltuiStyle* styles,
                       const RolltuiChartRoles* roles, RolltuiStyleColorRaw ground, int aw) {
-  const int ns = series_count(c), flow = (c->flags & ROLLTUI_CHART_FLOW) != 0;
+  const int ns = series_count(c), flow = (c->flags & ROLLTUI_CHART_FLOW) != 0, invert = (c->flags & ROLLTUI_CHART_INVERT) != 0;
   size_t n = 0, k;
   int i, slot, bar_w, gap;
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i)
@@ -472,9 +486,11 @@ static void draw_bars(const RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, dou
         total = (int)((v - lo) / (hi - lo) * r.h * 8 + 0.5);
         if (total == 0 && v > lo) total = 1; /* a value above the least is never no bar */
         for (cy = 0; cy < r.h && total > 0; ++cy, total -= 8) {
-          const char* g = eighth(total, aw);
-          const RolltuiStyle st = series_style_at(c, i, styles, roles, ground, (v - lo) / (hi - lo));
-          for (bx = 0; bx < bar_w; ++bx) rolltui_frame_put(f, x0 + bx, r.y + r.h - 1 - cy, g, strlen(g), 1, st, 0);
+          int rev = 0;
+          const char* g = invert ? hang(total, aw, &rev) : eighth(total, aw);
+          RolltuiStyle st = series_style_at(c, i, styles, roles, ground, (v - lo) / (hi - lo));
+          st.reverse = rev ? 1 : st.reverse;
+          for (bx = 0; bx < bar_w; ++bx) rolltui_frame_put(f, x0 + bx, invert ? r.y + cy : r.y + r.h - 1 - cy, g, strlen(g), 1, st, 0);
         }
       }
     }
@@ -484,7 +500,7 @@ static void draw_bars(const RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, dou
 static void draw_spark(const RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, double lo, double hi, const RolltuiStyle* styles,
                        const RolltuiChartRoles* roles, RolltuiStyleColorRaw ground, int aw) {
   int i, row = 0;
-  const int flow = (c->flags & ROLLTUI_CHART_FLOW) != 0;
+  const int flow = (c->flags & ROLLTUI_CHART_FLOW) != 0, invert = (c->flags & ROLLTUI_CHART_INVERT) != 0;
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX && row < r.h; ++i) {
     const Series* s = &c->s[i];
     size_t first, k;
@@ -500,8 +516,13 @@ static void draw_spark(const RolltuiChart* c, RolltuiFrame* f, RolltuiRect r, do
       if (v != v) continue;
       t = ((v < lo ? lo : v > hi ? hi : v) - lo) / (hi - lo);
       e = 1 + (int)(t * 7 + 0.5); /* the least is still a mark */
-      g = eighth(e, aw);
-      rolltui_frame_put(f, r.x + pad + (int)(k - first), r.y + row, g, strlen(g), 1, series_style_at(c, i, styles, roles, ground, t), 0);
+      {
+        int rev = 0;
+        RolltuiStyle st = series_style_at(c, i, styles, roles, ground, t);
+        g = invert ? hang(e, aw, &rev) : eighth(e, aw);
+        st.reverse = rev ? 1 : st.reverse;
+        rolltui_frame_put(f, r.x + pad + (int)(k - first), r.y + row, g, strlen(g), 1, st, 0);
+      }
     }
     ++row; /* a sparkline a series, one under another */
   }
@@ -550,11 +571,13 @@ static void draw_meters(const RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
 /* THE AXES: a line up the plot's left and one along its foot, in box drawing; and with a time, HH:MM under it every ten columns. */
 static void draw_axes(const RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect* plot, RolltuiStyle st, int aw) {
   const int labels = c->step_s > 0 && plot->h >= 4;
-  const int foot = plot->y + plot->h - 1 - labels;
+  const int invert = (c->flags & ROLLTUI_CHART_INVERT) != 0; /* hanging: the foot is the top row, its times above it */
+  const int foot = invert ? plot->y + labels : plot->y + plot->h - 1 - labels;
   int x, y;
   if (plot->w < 4 || plot->h < 3) return;
-  for (y = plot->y; y < foot; ++y) rolltui_frame_put(f, plot->x, y, aw ? "|" : "\xe2\x94\x82", aw ? 1 : 3, 1, st, 0); /* │ */
-  rolltui_frame_put(f, plot->x, foot, aw ? "+" : "\xe2\x94\x94", aw ? 1 : 3, 1, st, 0);                             /* └ */
+  for (y = invert ? foot + 1 : plot->y; y < (invert ? plot->y + plot->h : foot); ++y)
+    rolltui_frame_put(f, plot->x, y, aw ? "|" : "\xe2\x94\x82", aw ? 1 : 3, 1, st, 0); /* │ */
+  rolltui_frame_put(f, plot->x, foot, aw ? "+" : invert ? "\xe2\x94\x8c" : "\xe2\x94\x94", aw ? 1 : 3, 1, st, 0); /* └, ┌ */
   for (x = plot->x + 1; x < plot->x + plot->w; ++x) rolltui_frame_put(f, x, foot, aw ? "-" : "\xe2\x94\x80", aw ? 1 : 3, 1, st, 0);
   if (labels) { /* the time of the value in the column, every ten from the right */
     const double per_col = plotted(c->drawn_kind) ? (double)dots_x(c) : 1.0;
@@ -565,13 +588,59 @@ static void draw_axes(const RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch
       const int cx = plot->x + plot->w - 1 - col;
       const double at = c->newest_s - (double)col * per_col * c->step_s;
       if (!rolltui_os_localtime((long long)at, &tm) || strftime(hm, sizeof hm, "%H:%M", &tm) == 0) continue;
-      rolltui_frame_put_text(f, draw, cx - 4, foot + 1, hm, 5, st, 5, aw, 0);
-      rolltui_frame_put(f, cx, foot, aw ? "+" : "\xe2\x94\xac", aw ? 1 : 3, 1, st, 0); /* ┬, the tick */
+      rolltui_frame_put_text(f, draw, cx - 4, invert ? foot - 1 : foot + 1, hm, 5, st, 5, aw, 0);
+      rolltui_frame_put(f, cx, foot, aw ? "+" : invert ? "\xe2\x94\xb4" : "\xe2\x94\xac", aw ? 1 : 3, 1, st, 0); /* ┬, ┴: the tick */
     }
   }
   plot->x += 1;
   plot->w -= 1;
-  plot->h = foot - plot->y;
+  if (invert) {
+    plot->h -= foot + 1 - plot->y;
+    plot->y = foot + 1;
+  } else {
+    plot->h = foot - plot->y;
+  }
+}
+
+/* A MIRRORED PAIR: the first series standing on the middle, the second hanging under it, each a chart of its own with its own range,
+ * and a rule between them with MID. Drawn as two charts over the halves, the other series set aside for each. */
+static void draw_mirrored(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect area, const RolltuiStyle* styles,
+                          const RolltuiChartRoles* roles, int aw, int a, int b) {
+  const unsigned flags = c->flags;
+  const int mid = (flags & ROLLTUI_CHART_MID) != 0 && area.h >= 3;
+  const int top_h = (area.h - mid + 1) / 2, bottom_h = area.h - mid - top_h;
+  int used[ROLLTUI_CHART_SERIES_MAX], i, half;
+  for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) used[i] = c->s[i].used;
+  c->label_floor = 0;
+  for (half = 0; half < 2; ++half) { /* the wider of the two halves' range labels */
+    char s[24];
+    double lo, hi;
+    int n, w = 0;
+    for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) c->s[i].used = i == (half ? b : a);
+    range_of(c, area.w, &lo, &hi);
+    n = axis_label(hi, s, sizeof s);
+    if (n > w) w = n;
+    n = axis_label(lo, s, sizeof s);
+    if (n > w) w = n;
+    if (w + 1 > c->label_floor) c->label_floor = w + 1;
+  }
+  for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) c->s[i].used = i == a;
+  c->flags = flags & ~(unsigned)(ROLLTUI_CHART_MIRROR | ROLLTUI_CHART_MID | ROLLTUI_CHART_INVERT);
+  rolltui_chart_draw_roles(c, f, draw, (RolltuiRect){area.x, area.y, area.w, top_h}, styles, roles, aw);
+  for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) c->s[i].used = i == b;
+  c->flags = (flags & ~(unsigned)(ROLLTUI_CHART_MIRROR | ROLLTUI_CHART_MID)) | ROLLTUI_CHART_INVERT;
+  if (bottom_h > 0) rolltui_chart_draw_roles(c, f, draw, (RolltuiRect){area.x, area.y + top_h + mid, area.w, bottom_h}, styles, roles, aw);
+  for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) c->s[i].used = used[i];
+  c->flags = flags;
+  c->label_floor = 0;
+  if (mid) {
+    RolltuiStyle rule = styles[roles->axis];
+    RolltuiStyle ground;
+    int x;
+    rolltui_frame_ground(f, &ground);
+    rule.bg = ground.bg;
+    for (x = area.x; x < area.x + area.w; ++x) rolltui_frame_put(f, x, area.y + top_h, aw ? "-" : "\xe2\x94\x80", aw ? 1 : 3, 1, rule, 0);
+  }
 }
 
 void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect area, const RolltuiStyle* styles,
@@ -579,7 +648,7 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
   RolltuiStyle ground, muted;
   RolltuiRect plot = area;
   double lo, hi;
-  int i, legend = 0, label_w = 0;
+  int i, legend = 0, label_w = 0, invert;
   char lo_s[24], hi_s[24];
   int lo_n = 0, hi_n = 0;
   if (!c || area.w <= 0 || area.h <= 0) return;
@@ -587,6 +656,19 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
                   : area.h <= 1                 ? ROLLTUI_CHART_METER
                   : area.h <= 3                 ? ROLLTUI_CHART_SPARK
                                                 : ROLLTUI_CHART_LINE;
+  if ((c->flags & ROLLTUI_CHART_MIRROR) && c->drawn_kind != ROLLTUI_CHART_METER && area.h >= 2) {
+    int a = -1, b = -1;
+    for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i)
+      if (c->s[i].used) {
+        if (a < 0) a = i;
+        else if (b < 0) b = i;
+      }
+    if (b >= 0) { /* with one series it is a chart like any other */
+      draw_mirrored(c, f, draw, area, styles, roles, aw, a, b);
+      return;
+    }
+  }
+  invert = (c->flags & ROLLTUI_CHART_INVERT) != 0 && c->drawn_kind != ROLLTUI_CHART_METER;
   rolltui_frame_ground(f, &ground);
   muted = styles[roles->axis];
   muted.bg = ground.bg;
@@ -596,21 +678,23 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
     return;
   }
   for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) legend |= c->s[i].used && c->s[i].label.n;
-  /* THE LEGEND, on the top row: each series' name in its own colour, bold, so it reads in every theme */
+  /* THE LEGEND, on the top row (the bottom one when the chart hangs): each series' name in its own colour, bold, so it reads in every
+   * theme */
   if (legend && c->drawn_kind != ROLLTUI_CHART_SPARK && area.h >= 3) {
     int x = area.x;
+    const int ly = invert ? area.y + area.h - 1 : area.y;
     for (i = 0; i < ROLLTUI_CHART_SERIES_MAX; ++i) {
       RolltuiStyle st;
       if (!c->s[i].used || !c->s[i].label.n) continue;
       st = series_style(c, i, styles, roles, ground.bg);
       st.bold = 1;
       if (x > area.x) x += 2;
-      x += rolltui_frame_put_text(f, draw, x, area.y, c->s[i].label.p, c->s[i].label.n, st, area.x + area.w - x, aw, 0);
+      x += rolltui_frame_put_text(f, draw, x, ly, c->s[i].label.p, c->s[i].label.n, st, area.x + area.w - x, aw, 0);
     }
-    plot.y += 1;
+    if (!invert) plot.y += 1;
     plot.h -= 1;
   }
-  /* THE RANGE, on the left: the most at the top, the least at the foot */
+  /* THE RANGE, on the left: the most at the top, the least at the foot; hanging, the least at the top */
   if (c->drawn_kind != ROLLTUI_CHART_SPARK && plot.h >= 2 && area.w >= 12) {
     hi_n = axis_label(hi, hi_s, sizeof hi_s);
     lo_n = axis_label(lo, lo_s, sizeof lo_s);
@@ -625,13 +709,14 @@ void rolltui_chart_draw_roles(RolltuiChart* c, RolltuiFrame* f, RolltuiDrawScrat
       if (hi_n < 0) hi_n = 0;
       if (lo_n < 0) lo_n = 0;
       if ((hi_n > lo_n ? hi_n : lo_n) + 1 > label_w && (hi_n > lo_n ? hi_n : lo_n) + 1 <= area.w / 3) label_w = (hi_n > lo_n ? hi_n : lo_n) + 1;
+      if (c->label_floor > label_w && c->label_floor <= area.w / 3) label_w = c->label_floor;
     }
   }
   if (label_w) {
-    const int axes = (c->flags & ROLLTUI_CHART_AXES) != 0;
-    const int foot_label_y = plot.y + plot.h - 1 - (axes ? 1 + (c->step_s > 0 && plot.h >= 4) : 0);
-    rolltui_frame_put_text(f, draw, plot.x + label_w - 1 - hi_n, plot.y, hi_s, (size_t)hi_n, muted, hi_n, aw, 0);
-    rolltui_frame_put_text(f, draw, plot.x + label_w - 1 - lo_n, foot_label_y, lo_s, (size_t)lo_n, muted, lo_n, aw, 0);
+    const int axes = (c->flags & ROLLTUI_CHART_AXES) != 0, axis_rows = axes ? 1 + (c->step_s > 0 && plot.h >= 4) : 0;
+    const int top_y = plot.y + (invert ? axis_rows : 0), foot_y = plot.y + plot.h - 1 - (invert ? 0 : axis_rows);
+    rolltui_frame_put_text(f, draw, plot.x + label_w - 1 - hi_n, invert ? foot_y : top_y, hi_s, (size_t)hi_n, muted, hi_n, aw, 0);
+    rolltui_frame_put_text(f, draw, plot.x + label_w - 1 - lo_n, invert ? top_y : foot_y, lo_s, (size_t)lo_n, muted, lo_n, aw, 0);
     plot.x += label_w;
     plot.w -= label_w;
   }

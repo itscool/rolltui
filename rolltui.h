@@ -4130,10 +4130,15 @@ void rolltui_chart_set_range(RolltuiChart* c, double lo, double hi);
 void rolltui_chart_set_symbols(RolltuiChart* c, unsigned char symbols);
 /* WAYS A CHART IS DRAWN, OR'd. FLOW: a time series, a value a column (a dot across in a line or area, a cell in bars and a sparkline),
  * the newest at the right and the left empty while there are fewer than fit, never stretched. AXES: a line up the plot's left and
- * one along its foot, in box drawing. INVERT: a meter fills from its right. */
+ * one along its foot, in box drawing. INVERT: the chart hangs from its top, the least there and the most at the foot, its names on
+ * the bottom row; a meter fills from its right. MIRROR: the first two series as a pair, the first standing on the middle and the
+ * second hanging under it, each with its own range (one series is drawn as usual; give them in the other order to swap them). MID: a
+ * rule between the pair. */
 #define ROLLTUI_CHART_FLOW 1
 #define ROLLTUI_CHART_AXES 2
 #define ROLLTUI_CHART_INVERT 4
+#define ROLLTUI_CHART_MIRROR 8
+#define ROLLTUI_CHART_MID 16
 void rolltui_chart_set_flags(RolltuiChart* c, unsigned flags);
 /* How many values a series shows in `cells` columns at this chart's kind and symbols: the most a history for it needs to keep. */
 size_t rolltui_chart_capacity(const RolltuiChart* c, int cells);
