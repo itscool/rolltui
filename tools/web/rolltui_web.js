@@ -82,6 +82,84 @@
     };
   }
 
+  // TOUCH AS THE POINTER: a phone has no mouse, and xterm.js reports only a mouse, so a touch is made the report a mouse would
+  // send (SGR, 1006, which is what a rolltui program asks for), straight to the program, while it asks for the mouse at all:
+  //   a tap         a left press and its release in that cell (two quick taps are a double-click, as two clicks are)
+  //   a swipe       the wheel, a notch for each cell the finger travels: up and down, and sideways for a sideways swipe;
+  //                 the content follows the finger, as a page does under a touch
+  // `cell(x, y)` gives the 1-based cell under a point and the size of a cell in pixels; `send(text)` hands the report in.
+  // Pure, so it is tested without a page (tests/web_touch.js).
+  function touchPointer(cell, send) {
+    const SLOP = 8; // pixels a finger may wander and still be a tap
+    let down = null;
+    const report = (code, c, final) => send(`\x1b[<${code};${c.col};${c.row}${final}`);
+    return {
+      start(x, y) {
+        down = { x0: x, y0: y, ax: x, ay: y, moved: false, at: cell(x, y) };
+      },
+      move(x, y) {
+        if (!down) return;
+        if (!down.moved && Math.hypot(x - down.x0, y - down.y0) < SLOP) return;
+        down.moved = true;
+        const c = cell(x, y);
+        while (Math.abs(y - down.ay) >= c.h) { // the finger up: what is below comes into view, as the wheel down shows it
+          const up = y < down.ay;
+          report(up ? 65 : 64, c, "M");
+          down.ay += up ? -c.h : c.h;
+        }
+        while (Math.abs(x - down.ax) >= c.w) {
+          const left = x < down.ax;
+          report(left ? 67 : 66, c, "M");
+          down.ax += left ? -c.w : c.w;
+        }
+      },
+      end() {
+        if (down && !down.moved) {
+          report(0, down.at, "M");
+          report(0, down.at, "m");
+        }
+        down = null;
+      },
+      cancel() { down = null; },
+    };
+  }
+
+  // The touches on the terminal, while the program asks for the mouse: the page neither scrolls nor makes mouse events of its own
+  // under them. Two fingers are the page's (a pinch zooms it).
+  function wireTouch(term, input) {
+    const el = term.element;
+    if (!el) return;
+    const tracking = () => !term.modes || term.modes.mouseTrackingMode !== "none";
+    const cell = (x, y) => {
+      const screen = el.querySelector(".xterm-screen") || el;
+      const r = screen.getBoundingClientRect();
+      const w = r.width / Math.max(term.cols, 1), h = r.height / Math.max(term.rows, 1);
+      return {
+        col: Math.min(Math.max(Math.floor((x - r.left) / w) + 1, 1), term.cols),
+        row: Math.min(Math.max(Math.floor((y - r.top) / h) + 1, 1), term.rows),
+        w, h,
+      };
+    };
+    const touch = touchPointer(cell, input);
+    const one = (e) => e.touches.length === 1 || (e.type === "touchend" && e.touches.length === 0);
+    el.addEventListener("touchstart", (e) => {
+      if (!tracking() || e.touches.length !== 1) return touch.cancel();
+      touch.start(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }, { passive: false });
+    el.addEventListener("touchmove", (e) => {
+      if (!tracking() || !one(e)) return touch.cancel();
+      touch.move(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }, { passive: false });
+    el.addEventListener("touchend", (e) => {
+      if (!tracking()) return touch.cancel();
+      touch.end();
+      e.preventDefault();
+    }, { passive: false });
+    el.addEventListener("touchcancel", () => touch.cancel());
+  }
+
   async function start(term, url, options = {}) {
     const response = await fetch(url);
     const module = await WebAssembly.compile(await response.arrayBuffer());
@@ -139,6 +217,7 @@
     if (!ex.tour_start()) throw new Error("the program did not start");
     term.onData(input);
     term.onBinary((s) => input(Uint8Array.from(s, (c) => c.charCodeAt(0))));
+    wireTouch(term, input);
     kick();
     return {
       resize(cols, rows) {
@@ -149,5 +228,5 @@
     };
   }
 
-  global.rolltuiWeb = { start };
+  global.rolltuiWeb = { start, touchPointer };
 })(typeof window !== "undefined" ? window : globalThis);

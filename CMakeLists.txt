@@ -532,6 +532,12 @@ add_rolltui_test(rolltui-tasks-test tests/tasks_test.cpp)
 add_rolltui_test(rolltui-list-test tests/list_test.cpp)
 add_rolltui_test(rolltui-dialog-test tests/dialog_test.cpp)
 add_rolltui_test(rolltui-viewer-test tests/viewer_test.cpp)
+# THE WEB PAGE'S TOUCH (tools/web/rolltui_web.js), run by JavaScriptCore's shell where the machine has it (macOS).
+find_program(ROLLTUI_JSC NAMES jsc PATHS /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers NO_DEFAULT_PATH)
+if(ROLLTUI_JSC)
+  add_test(NAME rolltui-web-touch-test COMMAND ${ROLLTUI_JSC} ${CMAKE_CURRENT_SOURCE_DIR}/tests/web_touch.js --
+           ${CMAKE_CURRENT_SOURCE_DIR}/tools/web/rolltui_web.js)
+endif()
 add_rolltui_test(rolltui-layout-runtime-test tests/layout_runtime_test.cpp)
 add_rolltui_test(rolltui-terminal-events-test tests/terminal_events_test.cpp)
 add_rolltui_test(rolltui-sequences-test tests/sequences_test.cpp)
