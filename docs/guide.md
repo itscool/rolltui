@@ -471,6 +471,15 @@ A popup is a separate layer with its own `root`, `focus` and `id`, plus its posi
 | `clamp` | `false` lets it extend past the screen edge; by default it's moved to fit |
 | `margin` | columns to leave free at the left and right edges when it's moved to fit |
 
+### Popups and the mouse
+
+A click outside a popup closes it when `dismiss` is true, and is ignored when it's modal. Holding
+Alt makes the click reach the window under it instead. The focus, the popup and the window's own
+cursor all stay where they are. A link there opens, a list reports `ROLLTUI_LIST_EVENT_PEEK` with
+the row's key, and the row is lit in the `menu_selected` role for 200 ms. Your program needs no
+code for this beyond passing delivered events to `rolltui_windows_handle`. A program could use it
+to show details of a file behind a dialog, or to add the clicked row to what the popup is editing.
+
 ## The layout at run time
 
 The layout file sets up the screen; the window stack can change what is shown while the program
@@ -1105,8 +1114,9 @@ row (`src/main/java`), give the list that row yourself, since only your program 
 join.
 
 `rolltui_windows_list_event` returns what happened, oldest first: `MOVED`, `ACTIVATE`, `MARKED`,
-`SORTED`, `OPENED`, `CLOSED`, `FILTERED` and `REORDER`, each with the row's key (or the filter text
-for `FILTERED`). Other calls:
+`SORTED`, `OPENED`, `CLOSED`, `FILTERED`, `REORDER` and `PEEK`, each with the row's key (or the
+filter text for `FILTERED`). `PEEK` is an Alt-click on the row through a popup (see [Popups and
+the mouse](#popups-and-the-mouse)). Other calls:
 
 - `rolltui_windows_list_cursor` and `rolltui_windows_list_marked` return the keys to act on, and
   `_set_cursor` and `_set_filter` set them.

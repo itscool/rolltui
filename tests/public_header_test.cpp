@@ -559,7 +559,8 @@ int main() {
     // list (INTERNAL 974).
     // A count window bound, its count released, and big digits drawn and measured (PUBLIC 677); the kind's binding asked and its
     // body (INTERNAL 977).
-    check(totals["PUBLIC"] == 677 && totals["INTERNAL"] == 977 && totals.size() == 2,
+    // A press through a popup, marked by the stack and handed to a list (INTERNAL 979).
+    check(totals["PUBLIC"] == 677 && totals["INTERNAL"] == 979 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

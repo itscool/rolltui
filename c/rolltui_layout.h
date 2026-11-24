@@ -159,6 +159,8 @@ void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_widt
 RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len);
 size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
+/* The last press through a popup (Alt held, outside it): the window it reached, and how many there have been. */
+unsigned long long rolltui_window_stack_through(const RolltuiWindowStack* s, const char** window, size_t* len);
 /* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,

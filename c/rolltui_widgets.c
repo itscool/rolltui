@@ -120,6 +120,8 @@ typedef struct RowsBinding {
   void (*free_ctx)(void*);
 } RowsBinding;
 
+#define PEEK_FLASH_MS 200 /* how long a row a press through a popup reached stays lit */
+
 typedef struct GaugeBinding {
   RolltuiGaugeFn fn;
   void* ctx;
@@ -350,6 +352,12 @@ void rolltui_window_config_free(RolltuiWindowConfig* c) {
 struct RolltuiWindows {
   const RolltuiWindowStack* stack; /* BORROWED: the stack last synced, which says which window has focus */
   int want_ms; /* the soonest a window drawn this frame wants the next (`rolltui_windows_want_frame`); -1 none */
+  /* A PRESS THROUGH A POPUP, acknowledged: the stack's count of them last handled, and the row it reached, lit for PEEK_FLASH_MS from
+   * the first frame drawn after it (`flash_since` 0 until then) */
+  unsigned long long through_seen;
+  unsigned char flash_on;
+  RolltuiRect flash;
+  unsigned long long flash_since;
   struct RolltuiPresetStore* keys_store; /* BORROWED: the bindings store a host handed over for its keys, which every keys sheet edits into */
   int keys_persist;
   /* BORROWED, and it must outlive this: the session whose widget-kind registry
@@ -1457,6 +1465,16 @@ int rolltui_windows_draw_toasts(RolltuiWindows* w, RolltuiFrame* f, RolltuiRect 
   int toasts, which;
   if (!w || !f || !styles) return -1;
   draw_completions(w, f, screen, styles);
+  if (w->flash_on) { /* a press through a popup, acknowledged on the row it reached */
+    if (!w->flash_since) w->flash_since = now_ms ? now_ms : 1;
+    if (now_ms < w->flash_since + PEEK_FLASH_MS) {
+      const int left = (int)(w->flash_since + PEEK_FLASH_MS - now_ms);
+      rolltui_frame_tint(f, w->flash, styles[w->cfg->builtin_roles.cursor]);
+      if (w->want_ms < 0 || left < w->want_ms) w->want_ms = left;
+    } else {
+      w->flash_on = 0;
+    }
+  }
   toasts = rolltui_message_log_draw_toasts(&w->messages, f, screen, styles, &w->cfg->builtin_roles, now_ms, w->cfg->env.ambiguous_wide,
                                            w->cfg->env.still);
   draw_empty_keys(w, f, screen, styles);
@@ -2300,12 +2318,44 @@ static int ends_with(const char* a, size_t n, const char* tail) {
   return n >= t && memcmp(a + n - t, tail, t) == 0;
 }
 
+/* AN ALT-PRESS THROUGH A POPUP, given to the window it reached: a link there opens, a list names its row (a PEEK event), and the row
+ * is lit for a moment. Nothing moves: no cursor, no focus, no popup. */
+static int peek(RolltuiWindows* w, const char* window, size_t len, const RolltuiMouseEvent* m) {
+  WindowSlot* s = slot_of(w, window, len);
+  size_t i;
+  if (press_link(w, window, len, m->x, m->y)) return 1;
+  for (i = 0; i < w->node_n; ++i) {
+    RolltuiRect r;
+    if (w->nodes[i].node->kind != ROLLTUI_NODE_WINDOW || !rolltui_str_eq(&w->nodes[i].node->id, window, len)) continue;
+    rolltui_content_rect(&w->nodes[i], &r);
+    if (m->y < r.y || m->y >= r.y + r.h) break;
+    w->flash.x = r.x, w->flash.y = m->y, w->flash.w = r.w, w->flash.h = 1;
+    w->flash_on = 1;
+    w->flash_since = 0;
+    break;
+  }
+  if (s && s->content.n > 5 && memcmp(s->content.p, "list:", 5) == 0) {
+    RolltuiList* l = rolltui_windows_list(w, s->content.p + 5, s->content.n - 5);
+    if (l) rolltui_list_peek(l, m->x, m->y);
+  }
+  return 1;
+}
+
 int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
   RolltuiWidget* wd = rolltui_windows_at(w, window, len);
   const char* scope = NULL;
   size_t slen = 0, alen = 0;
   const char* action = NULL;
   int counts;
+  if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 && e->mouse.alt && w->stack) { /* the stack's mark: a press through a popup */
+    const char* through;
+    size_t tl = 0;
+    const unsigned long long seq = rolltui_window_stack_through(w->stack, &through, &tl);
+    if (seq != w->through_seen && tl == len && memcmp(through, window, len) == 0) {
+      w->through_seen = seq;
+      return peek(w, window, len, &e->mouse);
+    }
+  }
   if (rolltui_windows_held(w)) { /* HELD: Escape cancels the work and lets go; nothing else reaches a window */
     if (e->kind == ROLLTUI_EVENT_KEY && e->key.key == ROLLTUI_KEY_ESCAPE && !e->key.ctrl && !e->key.alt && !e->key.shift) {
       if (w->hold_job && w->tasks) rolltui_tasks_cancel(w->tasks, w->hold_job);

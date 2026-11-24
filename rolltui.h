@@ -4023,6 +4023,8 @@ typedef struct RolltuiListOptions {
 #define ROLLTUI_LIST_EVENT_FILTERED 7
 /* `key` moved to go just before `before` ("" : to the end). With `marks`, a moved row that is marked moves every marked row. */
 #define ROLLTUI_LIST_EVENT_REORDER 8
+/* An Alt-press on a row behind a popup: the row named, nothing moved (the cursor, the marks, the focus, the popup). */
+#define ROLLTUI_LIST_EVENT_PEEK 9
 typedef struct RolltuiListEvent {
   unsigned char kind;
   RolltuiStr key;

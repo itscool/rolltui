@@ -833,6 +833,8 @@ ROLLTUI_API(rolltui_windows_has_gauge, INTERNAL)  /* the gauge kind's problem() 
 ROLLTUI_API(rolltui_windows_call_gauge, INTERNAL)  /* the gauge kind's draw asks it */
 ROLLTUI_API(rolltui_windows_has_count, INTERNAL)  /* the count kind's problem() asks it */
 ROLLTUI_API(rolltui_windows_call_count, INTERNAL)  /* the count kind's draw asks it */
+ROLLTUI_API(rolltui_window_stack_through, INTERNAL)  /* the window table asks which window a press through a popup reached */
+ROLLTUI_API(rolltui_list_peek, INTERNAL)  /* the window table hands a list a press through a popup */
 ROLLTUI_API(rolltui_windows_post, PUBLIC)  /* a failure said where it is seen: dirktui, paint, the studio, chat */
 ROLLTUI_API(rolltui_windows_message_count, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */
 ROLLTUI_API(rolltui_windows_message_at, PUBLIC)  /* KEPT: a host that shows the history its own way reads it */

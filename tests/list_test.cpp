@@ -7,12 +7,14 @@
 //
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_screen.h" /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN, to read cells back */
+#include "rolltui/c/rolltui_layout_tree.h" /* INTERNAL: the focused node's id */
 #include "rolltui_test.hpp"
 
 using testkit::check;
@@ -1089,6 +1091,160 @@ void test_views_fit_empty() {
   check(keys, "an empty layout shows the program's keys");
 }
 
+
+// ALT-PRESS THROUGH A POPUP: the row behind it is named and lit, and nothing moves
+void test_press_through_a_popup() {
+  constexpr std::string_view screen = R"({ "resizable": false, "name": "p", "root": { "column": [
+      { "id": "rows", "content": "list:things", "focusable": true } ] },
+    "popups": [ { "id": "menu", "x": 20, "y": 1, "w": 16, "h": 4, "modal": true, "dismiss": true,
+                  "root": { "id": "pick", "content": "text:a popup", "border": "rounded", "focusable": true } } ] })";
+  RolltuiLayoutReport rep{};
+  std::size_t nd = 0;
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx(), &nd);
+  RolltuiLayout* l = rolltui_load_layout_text(screen.data(), screen.size(), defaults, nd, rolltui_layout_default_hooks(), &rep);
+  rolltui_layout_report_release(&rep);
+  Data d;
+  d.keys = {"alpha", "beta", "gamma", "delta", "epsilon"};
+  d.a = d.keys;
+  RolltuiWindows* w = rolltui_windows_new(ctx());
+  rolltui_windows_bind_list(w, "things", 6, count_fn, row_fn, &d, nullptr);
+  RolltuiWindowStack* st = rolltui_window_stack_new();
+  rolltui_window_stack_set_base(st, rolltui_layout_base(l));
+  const RolltuiRect area{0, 0, 40, 8};
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* fx = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
+  RolltuiFrame* f = nullptr;
+  int wait = -1;
+  auto frame = [&](unsigned long long now) {
+    if (f) rolltui_frame_free(f);
+    rolltui_windows_sync(w, st);
+    rolltui_windows_layout(w, st, area);
+    f = rolltui_frame_new(40, 8, styles[ROLLTUI_ROLE_BACKGROUND]);
+    RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
+    struct Slot {
+      RolltuiWindows* w;
+      RolltuiStyle* s;
+    } slot{w, styles};
+    rolltui_window_stack_compose(
+        st, f, area, styles, rolltui_layout_default_roles(),
+        [](void* c, const RolltuiResolvedNode* rn, RolltuiFrame* fr) {
+          Slot* sl = static_cast<Slot*>(c);
+          rolltui_windows_draw(sl->w, rn, fr, sl->s, rolltui_windows_default_roles());
+        },
+        &slot, 0, cs);
+    wait = rolltui_windows_draw_toasts(w, f, area, styles, now);
+    rolltui_compose_scratch_free(cs);
+  };
+  auto press = [&](int x, int y, bool alt) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_MOUSE;
+    e.mouse.kind = RolltuiMouseEvent::Kind::Press;
+    e.mouse.x = x;
+    e.mouse.y = y;
+    e.mouse.button = 1;
+    e.mouse.alt = alt ? 1 : 0;
+    RolltuiStr window{};
+    const unsigned char kind = rolltui_window_stack_route(st, &e, area, rolltui_bindings_default(ctx()), rolltui_stack_default_actions(), &window);
+    std::string id = str_of(window);
+    if (kind == ROLLTUI_ROUTE_DELIVER) rolltui_windows_handle(w, window.p ? window.p : "", window.n, &e);
+    rolltui_str_free(&window);
+    return std::make_pair(kind, id);
+  };
+  auto drain = [&](unsigned char want, std::string* key) {
+    RolltuiListEvent ev{};
+    int n = 0;
+    while (rolltui_windows_list_event(w, "things", 6, &ev))
+      if (ev.kind == want) ++n, *key = str_of(ev.key);
+    rolltui_list_event_release(&ev);
+    return n;
+  };
+  auto cursor = [&]() {
+    RolltuiStr k{};
+    std::string out;
+    if (rolltui_windows_list_cursor(w, "things", 6, &k)) out = str_of(k);
+    rolltui_str_free(&k);
+    return out;
+  };
+  frame(1000);
+  std::string k;
+  drain(ROLLTUI_LIST_EVENT_PEEK, &k);
+  rolltui_window_stack_push_popup(st, l, "menu", 4);
+  frame(1000);
+  const std::string before = cursor();
+  // the third row, gamma, at y 2: left of the popup
+  const auto through = press(2, 2, true);
+  check(through.first == ROLLTUI_ROUTE_DELIVER && through.second == "rows" && rolltui_window_stack_depth(st) == 2,
+        "an Alt-press outside a modal popup reaches the window under it, and the popup stays [" + through.second + "]");
+  const RolltuiLayoutNode* focused = rolltui_window_stack_focused(st);
+  check(focused && std::string(focused->id.p, focused->id.n) == "pick", "…the focus stays in the popup");
+  std::string peeked;
+  check(drain(ROLLTUI_LIST_EVENT_PEEK, &peeked) == 1 && peeked == "gamma", "…the list names the row as a PEEK [" + peeked + "]");
+  check(cursor() == before && drain(ROLLTUI_LIST_EVENT_MOVED, &k) == 0, "…and its cursor does not move [" + cursor() + "]");
+  frame(1000);
+  RolltuiCellRaw lit{}, plain{};
+  rolltui_frame_cell(f, 2, 2, &lit);
+  rolltui_frame_cell(f, 2, 3, &plain);
+  check(lit.style.bg == styles[ROLLTUI_ROLE_MENU_SELECTED].bg && !(plain.style.bg == styles[ROLLTUI_ROLE_MENU_SELECTED].bg) && wait > 0 && wait <= 200,
+        "the row it reached is lit on the next frame, and a frame is asked for when the light goes out [" + std::to_string(wait) + "]");
+  frame(1150);
+  rolltui_frame_cell(f, 2, 2, &lit);
+  check(lit.style.bg == styles[ROLLTUI_ROLE_MENU_SELECTED].bg, "…still lit 150 ms on");
+  frame(1201);
+  rolltui_frame_cell(f, 2, 2, &lit);
+  check(!(lit.style.bg == styles[ROLLTUI_ROLE_MENU_SELECTED].bg), "…and not after 200 ms");
+  // CONTROLS: without Alt the press is the popup's rule; on the popup Alt is an ordinary press
+  check(press(2, 2, false).first == ROLLTUI_ROUTE_CLOSED_POPUP && drain(ROLLTUI_LIST_EVENT_PEEK, &k) == 0,
+        "CONTROL: the same press without Alt closes the dismissing popup and names no row");
+  rolltui_window_stack_push_popup(st, l, "menu", 4);
+  frame(2000);
+  const auto on = press(24, 2, true);
+  check(on.first == ROLLTUI_ROUTE_DELIVER && on.second == "pick" && drain(ROLLTUI_LIST_EVENT_PEEK, &k) == 0,
+        "an Alt-press on the popup itself is an ordinary press [" + on.second + "]");
+  // EVERY SHIPPED THEME, both modes: the lit row stands apart from the one under it
+  {
+    namespace fs = std::filesystem;
+    std::string bad;
+    std::size_t scanned = 0;
+    unsigned long long now = 3000;
+    for (const fs::directory_entry& de : fs::directory_iterator(ROLLTUI_PRESETS_DIR)) {
+      if (de.path().extension() != ".json") continue;
+      std::FILE* fp = std::fopen(de.path().string().c_str(), "rb");
+      if (!fp) continue;
+      std::string text;
+      char buf[4096];
+      for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, fp)) > 0;) text.append(buf, n);
+      std::fclose(fp);
+      RolltuiJsonValue* root = rolltui_json_parse(text.data(), text.size(), nullptr);
+      if (!root) continue;
+      for (int mode : {ROLLTUI_MODE_DARK, ROLLTUI_MODE_LIGHT}) {
+        RolltuiStr name{};
+        RolltuiThemeReport trep{};
+        const RolltuiJsonValue* colours = rolltui_json_get(root, "colours", 7);
+        RolltuiEffectMap* eff = rolltui_theme_load(colours ? colours : root, mode, rolltui_theme_default_vocab(), styles, &name, &trep);
+        ++scanned;
+        press(2, 2, true);
+        now += 1000;
+        frame(now);
+        RolltuiCellRaw on_row{}, off_row{};
+        rolltui_frame_cell(f, 2, 2, &on_row);
+        rolltui_frame_cell(f, 2, 3, &off_row);
+        if (on_row.style == off_row.style) bad += " " + de.path().stem().string() + (mode == ROLLTUI_MODE_DARK ? " dark;" : " light;");
+        rolltui_effect_map_free(eff);
+        rolltui_theme_report_release(&trep);
+        rolltui_str_free(&name);
+      }
+      rolltui_json_free(root);
+    }
+    drain(ROLLTUI_LIST_EVENT_PEEK, &k);
+    check(scanned >= 16 && bad.empty(), "in every shipped theme, both modes, the lit row stands apart (" + std::to_string(scanned) + ") [" + bad + "]");
+  }
+  rolltui_frame_free(f);
+  rolltui_effect_map_free(fx);
+  rolltui_window_stack_free(st);
+  rolltui_windows_free(w);
+  rolltui_layout_free(l);
+}
+
 int main() {
   rolltui_context_set_library_defaults(ctx());
   test_natural();
@@ -1114,5 +1270,6 @@ int main() {
   test_sparkline();
   test_cursor_shape();
   test_views_fit_empty();
+  test_press_through_a_popup();
   return testkit::report("list_test");
 }

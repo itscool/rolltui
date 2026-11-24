@@ -1917,6 +1917,17 @@ static int handle_mouse(RolltuiList* l, const RolltuiMouseEvent* m) {
   return 0;
 }
 
+int rolltui_list_peek(RolltuiList* l, int x, int y) {
+  const RolltuiRect a = l->area;
+  size_t i;
+  if (x < a.x || x >= a.x + a.w || y < l->body_y || y >= l->body_y + l->body_h) return 0;
+  i = l->top + (size_t)(y - l->body_y);
+  if (i >= shown_n(l) || heading_at(l, i)) return 0;
+  fetch(l, source_of(l, i));
+  push_event(l, ROLLTUI_LIST_EVENT_PEEK, &l->tmp.key);
+  return 1;
+}
+
 int rolltui_list_handle(RolltuiList* l, const RolltuiEvent* e, const RolltuiBindings* b, const RolltuiListActions* a) {
   ensure(l);
   if (e->kind == ROLLTUI_EVENT_MOUSE) return handle_mouse(l, &e->mouse);

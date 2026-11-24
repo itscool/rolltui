@@ -86,6 +86,9 @@ void rolltui_list_layout(RolltuiList* l, RolltuiRect area, int ambiguous_wide);
 void rolltui_list_draw(RolltuiList* l, RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiListRoles* roles, int focused,
                        int hover_y, int ambiguous_wide);
 int rolltui_list_handle(RolltuiList* l, const RolltuiEvent* e, const RolltuiBindings* b, const RolltuiListActions* a);
+/* A press through a popup at (x, y): the row there reported as a PEEK event, the cursor and the marks left alone. 1 when a row was
+ * there. */
+int rolltui_list_peek(RolltuiList* l, int x, int y);
 int rolltui_list_scroll_extent(RolltuiList* l, RolltuiScrollExtent* out);
 int rolltui_list_scroll_to(RolltuiList* l, size_t first);
 

@@ -2481,6 +2481,10 @@ struct RolltuiWindowStack {
   RolltuiLayer* layers; /* OWNED; always at least one (the base) */
   size_t n, cap;
   RolltuiStr captured;
+  /* THE LAST PRESS THROUGH A POPUP (Alt held, outside it): the window under it, counted so the window table gives each one to its
+   * window once, as a peek (`rolltui_window_stack_through`) */
+  RolltuiStr through;
+  unsigned long long through_seq;
   RolltuiStackLevelFn level_fn; /* BORROWED with its ctx: the window table's `back` */
   void* level_ctx;
   /* THE POINTER, where the terminal last reported it. Known from the first report of it moving with no button held, which a
@@ -2760,6 +2764,7 @@ void rolltui_window_stack_free(RolltuiWindowStack* s) {
   for (i = 0; i < s->n; ++i) rolltui_layer_release(&s->layers[i]);
   rolltui_mem_free(s->layers);
   rolltui_str_free(&s->captured);
+  rolltui_str_free(&s->through);
   rolltui_str_free(&s->maximized);
   rolltui_str_free(&s->label);
   rolltui_str_free(&s->half);
@@ -3477,6 +3482,15 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       const RolltuiResolvedNode* rn = &c.v[k];
       if (rn->node->kind != ROLLTUI_NODE_WINDOW || !rect_contains(rect_intersect(rn->outer, screen), m->x, m->y))
         continue;
+      if (rn->layer != top && m->kind == 0 && m->button == 1 && m->alt && !m->ctrl) {
+        /* ALT HELD, A PRESS THROUGH THE POPUP reaches the window under it and moves nothing else: the focus, the popup and any
+         * capture stay. The window table gives it to that window as a peek. */
+        ++s->through_seq;
+        rolltui_str_set(&s->through, rn->node->id.p, rn->node->id.n);
+        rolltui_str_set(window, rn->node->id.p, rn->node->id.n);
+        rolltui_mem_free(c.v);
+        return ROLLTUI_ROUTE_DELIVER;
+      }
       if (rn->layer != top && m->kind == 0 && s->layers[top].dismiss) break; /* outside: closes, below */
       if (s->layers[top].modal && rn->layer != top) break; /* dropped under a modal */
       if (m->kind == 0 /* Press */ && m->button == 1 && rn->node->tab_count && m->y == rn->outer.y && rn->node->border) {
@@ -3641,6 +3655,11 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
     rolltui_str_set(window, f->id.p, f->id.n);
     return ROLLTUI_ROUTE_DELIVER;
   }
+}
+
+unsigned long long rolltui_window_stack_through(const RolltuiWindowStack* s, const char** window, size_t* len) {
+  *window = rolltui_str_get(&s->through, len);
+  return s->through_seq;
 }
 
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len) {
