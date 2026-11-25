@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_widget_menu.h"
@@ -61,6 +62,21 @@ static void list_add_action(RolltuiMenuItemList* l, const char* id, size_t id_le
   list_add(l, ROLLTUI_MENU_ACTION, id, id_len, label, label_len);
 }
 
+/* A ROW WHOSE LABEL IS A TEXT, in the person's language (rolltui_texts.h). */
+static RolltuiMenuItem* list_addt(RolltuiMenuItemList* l, unsigned char kind, const char* id, size_t id_len, int text) {
+  size_t n = 0;
+  const char* t = rolltui_text(text, &n);
+  return list_add(l, kind, id, id_len, t, n);
+}
+static void list_add_actiont(RolltuiMenuItemList* l, const char* id, size_t id_len, int text) {
+  list_addt(l, ROLLTUI_MENU_ACTION, id, id_len, text);
+}
+/* `s` becomes a text, in the person's language. */
+static void text_set(RolltuiStr* s, int text) {
+  rolltui_str_clear(s);
+  rolltui_text_format(s, text, NULL, 0, NULL, 0);
+}
+
 static void adopt_children(RolltuiMenuItem* it, RolltuiMenuItemList* children) {
   rolltui_menu_list_release(&it->children);
   it->children = *children;
@@ -112,11 +128,6 @@ static const char* said_of(const RolltuiKeysEditor* e, const char* action, size_
   return verb_of(action, len, out_len);
 }
 
-static void append_count(RolltuiStr* out, size_t n) {
-  char buf[24];
-  const int len = snprintf(buf, sizeof buf, "%zu", n);
-  rolltui_str_append(out, buf, len > 0 ? (size_t)len : 0);
-}
 
 /* Undo and redo are never a pick-and-see-a-status control: a menu with nothing to walk to
  * disables the row rather than let it be chosen for "nothing to undo"/"nothing to redo" to
@@ -171,7 +182,7 @@ void rolltui_keys_editor_load(RolltuiKeysEditor* e, const RolltuiBindings* b) {
   rolltui_undo_reset(e->undo, rolltui_bindings_clone(e->current));
   e->capturing = 0;
   rebuild_menu(e);
-  rolltui_str_set(&e->status, K("loaded"));
+  text_set(&e->status, ROLLTUI_TEXT_ED_LOADED);
 }
 
 void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrListRaw* names) {
@@ -248,7 +259,7 @@ static void action_label(RolltuiKeysEditor* e, const char* action, size_t alen) 
   rolltui_str_clear(&e->label_buf);
   rolltui_str_append(&e->label_buf, v, vlen);
   rolltui_str_append(&e->label_buf, K("  "));
-  if (e->chords_buf.n == 0) rolltui_str_append(&e->label_buf, K("(unbound)"));
+  if (e->chords_buf.n == 0) rolltui_text_format(&e->label_buf, ROLLTUI_TEXT_UNBOUND, NULL, 0, NULL, 0);
   else rolltui_str_append_str(&e->label_buf, &e->chords_buf);
 }
 
@@ -259,7 +270,7 @@ static void action_items(RolltuiKeysEditor* e, const char* action, size_t alen, 
   rolltui_str_clear(&e->id_buf);
   rolltui_str_append(&e->id_buf, K("bind."));
   rolltui_str_append(&e->id_buf, action, alen);
-  list_add_action(out, e->id_buf.p, e->id_buf.n, K("add a chord (press it)\xE2\x80\xA6"));
+  list_add_actiont(out, e->id_buf.p, e->id_buf.n, ROLLTUI_TEXT_KE_ADD_CHORD);
   for (i = 0; i < chords; ++i) {
     RolltuiChord k;
     char id[ROLLTUI_CHORD_STRING_MAX], disp[ROLLTUI_CHORD_STRING_MAX];
@@ -275,14 +286,14 @@ static void action_items(RolltuiKeysEditor* e, const char* action, size_t alen, 
     rolltui_str_append(&e->id_buf, id, id_len);
     /* The label buffer is free here: `action_label` runs after this list is built. */
     rolltui_str_clear(&e->label_buf);
-    rolltui_str_append(&e->label_buf, K("remove "));
+    rolltui_text_format(&e->label_buf, ROLLTUI_TEXT_KE_REMOVE, NULL, 0, NULL, 0);
     rolltui_str_append(&e->label_buf, disp, disp_len);
     list_add_action(out, e->id_buf.p, e->id_buf.n, e->label_buf.p, e->label_buf.n);
   }
   rolltui_str_clear(&e->id_buf);
   rolltui_str_append(&e->id_buf, K("clear."));
   rolltui_str_append(&e->id_buf, action, alen);
-  list_add_action(out, e->id_buf.p, e->id_buf.n, K("clear every chord"));
+  list_add_actiont(out, e->id_buf.p, e->id_buf.n, ROLLTUI_TEXT_KE_CLEAR_EVERY);
 }
 
 static void rebuild_menu(RolltuiKeysEditor* e) {
@@ -327,37 +338,41 @@ static void rebuild_menu(RolltuiKeysEditor* e) {
     adopt_children(it, &actions);
   }
 
-  it = list_add(&top, ROLLTUI_MENU_SUBMENU, K("scopes"), K("Actions by scope"));
+  it = list_addt(&top, ROLLTUI_MENU_SUBMENU, K("scopes"), ROLLTUI_TEXT_KE_ACTIONS_BY_SCOPE);
   adopt_children(it, &scopes);
 
-  it = list_add(&top, ROLLTUI_MENU_ACTION, K("undo"), K("Undo"));
+  it = list_addt(&top, ROLLTUI_MENU_ACTION, K("undo"), ROLLTUI_TEXT_ED_UNDO);
   rolltui_str_set(&it->shortcut, K("Ctrl-Z"));
-  it = list_add(&top, ROLLTUI_MENU_ACTION, K("redo"), K("Redo"));
+  it = list_addt(&top, ROLLTUI_MENU_ACTION, K("redo"), ROLLTUI_TEXT_ED_REDO);
   rolltui_str_set(&it->shortcut, K("Ctrl-Y"));
 
   if (e->show_presets) {
-    it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load keys"));
+    it = list_addt(&top, ROLLTUI_MENU_CHOICE, K("load"), ROLLTUI_TEXT_KE_LOAD);
     memset(&opts, 0, sizeof opts);
     names_to_options(&e->presets, &opts);
     adopt_children(it, &opts);
 
-    it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save keys as"));
+    it = list_addt(&top, ROLLTUI_MENU_INPUT, K("save"), ROLLTUI_TEXT_KE_SAVE);
     it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
 
     /* A row that can NEVER be actioned by this host is not a disabled control, it is clutter —
      * shown only when the privilege that would ever enable it is there at all. */
     if (e->may_write_shipped) {
-      it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
+      it = list_addt(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), ROLLTUI_TEXT_ED_WRITE_SHIPPED);
       memset(&opts, 0, sizeof opts);
       names_to_options(&e->shipped, &opts);
       adopt_children(it, &opts);
     }
   }
 
-  list_add_action(&top, K("reset_loaded"), K("Reset to the loaded preset\xE2\x80\xA6"));
+  list_add_actiont(&top, K("reset_loaded"), ROLLTUI_TEXT_ED_RESET_LOADED);
 
   rolltui_menu_item_init(&root);
-  rolltui_menu_item_set(&root, ROLLTUI_MENU_SUBMENU, K("root"), K("keys editor"), NULL, 0);
+  {
+    size_t tn = 0;
+    const char* t = rolltui_text(ROLLTUI_TEXT_KE_EDITOR, &tn);
+    rolltui_menu_item_set(&root, ROLLTUI_MENU_SUBMENU, K("root"), t, tn, NULL, 0);
+  }
   adopt_children(&root, &top);
   rolltui_menu_set_root(e->menu, &root);
   rolltui_menu_item_release(&root);
@@ -398,18 +413,18 @@ static void commit_current(RolltuiKeysEditor* e, RolltuiKeysEditorOutcome* out) 
 }
 
 /* An undo or a redo replaces the whole table, so the menu is rebuilt rather than patched. */
-static int walk_history(RolltuiKeysEditor* e, int moved, const char* what) {
+static int walk_history(RolltuiKeysEditor* e, int moved, int what) {
   e->capturing = 0;
   if (!moved) return 0;
   rolltui_bindings_free(e->current);
   e->current = rolltui_bindings_clone(committed_of(e));
   rebuild_menu(e);
-  rolltui_str_set(&e->status, what, strlen(what));
+  text_set(&e->status, what);
   return 1;
 }
 
-int rolltui_keys_editor_undo(RolltuiKeysEditor* e) { return walk_history(e, rolltui_undo_undo(e->undo), "undone"); }
-int rolltui_keys_editor_redo(RolltuiKeysEditor* e) { return walk_history(e, rolltui_undo_redo(e->undo), "redone"); }
+int rolltui_keys_editor_undo(RolltuiKeysEditor* e) { return walk_history(e, rolltui_undo_undo(e->undo), ROLLTUI_TEXT_ED_UNDONE); }
+int rolltui_keys_editor_redo(RolltuiKeysEditor* e) { return walk_history(e, rolltui_undo_redo(e->undo), ROLLTUI_TEXT_ED_REDONE); }
 
 void rolltui_keys_editor_replace(RolltuiKeysEditor* e, RolltuiBindings* b) {
   e->capturing = 0;
@@ -419,7 +434,15 @@ void rolltui_keys_editor_replace(RolltuiKeysEditor* e, RolltuiBindings* b) {
   rebuild_menu(e);
 }
 
-void rolltui_keys_editor_status_line(const RolltuiKeysEditor* e, RolltuiStr* out) {
+/* " · undo N · redo M": the history's depth either way, in the person's language */
+static void append_counts(RolltuiStr* out, size_t undo, size_t redo) {
+  char u[24], r[24];
+  const int un = snprintf(u, sizeof u, "%zu", undo), rn = snprintf(r, sizeof r, "%zu", redo);
+  rolltui_str_append(out, K(" \xC2\xB7 "));
+  rolltui_text_format(out, ROLLTUI_TEXT_ED_UNDO_REDO, u, un > 0 ? (size_t)un : 0, r, rn > 0 ? (size_t)rn : 0);
+}
+
+void rolltui_keys_editor_status(const RolltuiKeysEditor* e, RolltuiStr* out) {
   /* While capturing, a refusal (an unnameable key) is shown WITH the prompt, so the reason and
    * what to do next are both on the line. */
   if (e->capturing) {
@@ -427,18 +450,17 @@ void rolltui_keys_editor_status_line(const RolltuiKeysEditor* e, RolltuiStr* out
       rolltui_str_append_str(out, &e->status);
       rolltui_str_append(out, K(" \xE2\x80\x94 "));
     }
-    rolltui_str_append(out, K("press the chord for "));
-    rolltui_str_append_str(out, &e->capture);
-    rolltui_str_append(out, K(" (Esc cancels)"));
+    rolltui_text_format(out, ROLLTUI_TEXT_KE_PRESS_FOR, e->capture.p, e->capture.n, NULL, 0);
   } else if (e->status.n == 0) {
-    rolltui_str_append(out, K("Enter on an action: add, remove or clear its chords"));
+    rolltui_text_format(out, ROLLTUI_TEXT_KE_ENTER_ON_ACTION, NULL, 0, NULL, 0);
   } else {
     rolltui_str_append_str(out, &e->status);
   }
-  rolltui_str_append(out, K(" \xC2\xB7 undo "));
-  append_count(out, rolltui_undo_undo_depth(e->undo));
-  rolltui_str_append(out, K(" \xC2\xB7 redo "));
-  append_count(out, rolltui_undo_redo_depth(e->undo));
+}
+
+void rolltui_keys_editor_status_line(const RolltuiKeysEditor* e, RolltuiStr* out) {
+  rolltui_keys_editor_status(e, out);
+  append_counts(out, rolltui_undo_undo_depth(e->undo), rolltui_undo_redo_depth(e->undo));
 }
 
 /* ---- handling ------------------------------------------------------------------------------*/
@@ -449,8 +471,8 @@ static int action_is(const RolltuiBindings* nav, const RolltuiChord* k, const ch
   return a && len == strlen(want) && memcmp(a, want, len) == 0;
 }
 
-static void undo_outcome(RolltuiKeysEditor* e, int did, RolltuiKeysEditorOutcome* out, const char* nothing) {
-  if (!did) rolltui_str_set(&e->status, nothing, strlen(nothing));
+static void undo_outcome(RolltuiKeysEditor* e, int did, RolltuiKeysEditorOutcome* out, int nothing) {
+  if (!did) text_set(&e->status, nothing);
   out->kind = did ? ROLLTUI_KEYS_EDIT_COMMITTED : ROLLTUI_KEYS_EDIT_CHANGED;
 }
 
@@ -465,12 +487,12 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
 
   if (k->key == ROLLTUI_KEY_ESCAPE && !k->ctrl && !k->alt && !k->shift) {
     e->capturing = 0;
-    rolltui_str_set(&e->status, K("capture cancelled"));
+    text_set(&e->status, ROLLTUI_TEXT_KE_CAPTURE_CANCELLED);
     out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
     return;
   }
   if (k->key == ROLLTUI_KEY_UNKNOWN) {
-    rolltui_str_set(&e->status, K("that key has no chord name; try another"));
+    text_set(&e->status, ROLLTUI_TEXT_KE_NO_CHORD_NAME);
     out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
     return;
   }
@@ -482,7 +504,7 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
   disp_len = chord_disp(k, disp, sizeof disp);
 
   if (!rolltui_bindings_bind(e->current, action.p ? action.p : "", action.n, k, &moved_from, &moved_len)) {
-    rolltui_str_set(&e->status, K("refused: "));
+    text_set(&e->status, ROLLTUI_TEXT_ED_REFUSED);
     rolltui_str_append(&e->status, disp, disp_len);
     rolltui_str_append(&e->status, K(" cannot be bound to "));
     {
@@ -503,7 +525,7 @@ static void take_capture(RolltuiKeysEditor* e, const RolltuiChord* k, RolltuiKey
     const char* v;
     memset(&moved, 0, sizeof moved);
     if (moved_from) rolltui_str_set(&moved, moved_from, moved_len);
-    rolltui_str_set(&e->status, K("bound "));
+    text_set(&e->status, ROLLTUI_TEXT_KE_BOUND);
     rolltui_str_append(&e->status, disp, disp_len);
     rolltui_str_append(&e->status, K(" \xE2\x86\x92 "));
     v = said_of(e, action.p ? action.p : "", action.n, &vlen);
@@ -547,7 +569,7 @@ void rolltui_keys_editor_unbind(RolltuiKeysEditor* e, const char* action, size_t
   rolltui_str_set(&name, action, len); /* `action` may borrow into the table the unbind changes */
   disp_len = chord_disp(k, disp, sizeof disp);
   if (!rolltui_bindings_unbind(e->current, name.p, name.n, k)) {
-    rolltui_str_set(&e->status, K("refused: "));
+    text_set(&e->status, ROLLTUI_TEXT_ED_REFUSED);
     rolltui_str_append(&e->status, disp, disp_len);
     rolltui_str_append(&e->status, K(" cannot be removed"));
     if (k->key == ROLLTUI_KEY_ENTER) rolltui_str_append(&e->status, K(" (Enter always sends the line)"));
@@ -555,7 +577,7 @@ void rolltui_keys_editor_unbind(RolltuiKeysEditor* e, const char* action, size_t
     rolltui_str_free(&name);
     return;
   }
-  rolltui_str_set(&e->status, K("removed "));
+  text_set(&e->status, ROLLTUI_TEXT_KE_REMOVED);
   rolltui_str_append(&e->status, disp, disp_len);
   rolltui_str_append(&e->status, K(" from "));
   v = said_of(e, name.p, name.n, &vlen);
@@ -602,8 +624,8 @@ void rolltui_keys_editor_handle(RolltuiKeysEditor* e, const RolltuiEvent* ev, co
     return;
   }
   if (ev->kind == ROLLTUI_EVENT_KEY) {
-    if (action_is(nav, &ev->key, "editor.undo")) { undo_outcome(e, rolltui_keys_editor_undo(e), out, "nothing to undo"); return; }
-    if (action_is(nav, &ev->key, "editor.redo")) { undo_outcome(e, rolltui_keys_editor_redo(e), out, "nothing to redo"); return; }
+    if (action_is(nav, &ev->key, "editor.undo")) { undo_outcome(e, rolltui_keys_editor_undo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO); return; }
+    if (action_is(nav, &ev->key, "editor.redo")) { undo_outcome(e, rolltui_keys_editor_redo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_REDO); return; }
   }
   rolltui_str_clear(&e->status);
 
@@ -637,14 +659,14 @@ void rolltui_keys_editor_handle(RolltuiKeysEditor* e, const RolltuiEvent* ev, co
       if (!rolltui_chord_parse(chord, clen, &k)) goto done;
       disp_len = chord_disp(&k, disp, sizeof disp);
       if (!rolltui_bindings_unbind(e->current, rest, alen, &k)) {
-        rolltui_str_set(&e->status, K("refused: "));
+        text_set(&e->status, ROLLTUI_TEXT_ED_REFUSED);
         rolltui_str_append(&e->status, disp, disp_len);
         rolltui_str_append(&e->status, K(" stays on "));
         rolltui_str_append(&e->status, rest, alen);
         out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
         goto done;
       }
-      rolltui_str_set(&e->status, K("removed "));
+      text_set(&e->status, ROLLTUI_TEXT_KE_REMOVED);
       rolltui_str_append(&e->status, disp, disp_len);
       rolltui_str_append(&e->status, K(" from "));
       rolltui_str_append(&e->status, rest, alen);
@@ -659,17 +681,17 @@ void rolltui_keys_editor_handle(RolltuiKeysEditor* e, const RolltuiEvent* ev, co
       /* The Enter rule keeps input.submit's chord whatever this asks for, so the line says what
        * happened rather than what was requested. */
       if (alen == 12 && memcmp(action, "input.submit", 12) == 0) {
-        rolltui_str_set(&e->status, K("input.submit keeps Enter"));
+        text_set(&e->status, ROLLTUI_TEXT_KE_SUBMIT_KEEPS_ENTER);
       } else {
-        rolltui_str_set(&e->status, K("cleared "));
+        text_set(&e->status, ROLLTUI_TEXT_KE_CLEARED);
         rolltui_str_append(&e->status, action, alen);
       }
       rebuild_action(e, action, alen);
       commit_current(e, out);
       goto done;
     }
-    if (rolltui_str_eq(&id, K("undo"))) { undo_outcome(e, rolltui_keys_editor_undo(e), out, "nothing to undo"); goto done; }
-    if (rolltui_str_eq(&id, K("redo"))) { undo_outcome(e, rolltui_keys_editor_redo(e), out, "nothing to redo"); goto done; }
+    if (rolltui_str_eq(&id, K("undo"))) { undo_outcome(e, rolltui_keys_editor_undo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO); goto done; }
+    if (rolltui_str_eq(&id, K("redo"))) { undo_outcome(e, rolltui_keys_editor_redo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_REDO); goto done; }
     if (rolltui_str_eq(&id, K("reset_loaded"))) { out->kind = ROLLTUI_KEYS_EDIT_RESET_LOADED; goto done; }
     goto done;
   }
@@ -699,7 +721,7 @@ int rolltui_keys_editor_back(RolltuiKeysEditor* e, RolltuiKeysEditorOutcome* out
   rolltui_keys_editor_outcome_release(out);
   if (e->capturing) { /* a chord being captured is what a close abandons first, as `take_capture` does for the key itself */
     e->capturing = 0;
-    rolltui_str_set(&e->status, K("capture cancelled"));
+    text_set(&e->status, ROLLTUI_TEXT_KE_CAPTURE_CANCELLED);
     out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
     return 1;
   }

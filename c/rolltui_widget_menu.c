@@ -185,19 +185,21 @@ void rolltui_input_hint(const RolltuiInputSpecRaw* spec, RolltuiStr* out) {
       hint_bound(spec, spec->max, 0, out);
       if (spec->precision >= 0) {
         char buf[32];
-        snprintf(buf, sizeof buf, " (%d digits)", spec->precision);
-        str_add(out, buf);
+        const int bn = snprintf(buf, sizeof buf, "%d", spec->precision);
+        str_add(out, " (");
+        rolltui_text_format(out, ROLLTUI_TEXT_MV_DIGITS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
+        str_add(out, ")");
       }
       return;
     case ROLLTUI_INPUT_TYPE_COLOR: str_add(out, "#rrggbb | 0-255 | none"); return;
     case ROLLTUI_INPUT_TYPE_SIZE: str_add(out, "fill | fill N | N% | N% \xC2\xB1 cells | cells"); return;
     case ROLLTUI_INPUT_TYPE_DIM: str_add(out, "cells | N% | N% \xC2\xB1 cells"); return;
-    case ROLLTUI_INPUT_TYPE_NAME: str_add(out, "a name: letters, digits, - _ ."); return;
+    case ROLLTUI_INPUT_TYPE_NAME: rolltui_text_format(out, ROLLTUI_TEXT_MV_NAME_HINT, NULL, 0, NULL, 0); return;
     default:
       if (spec->max_len) {
         char buf[48];
-        snprintf(buf, sizeof buf, "up to %zu characters", spec->max_len);
-        str_add(out, buf);
+        const int bn = snprintf(buf, sizeof buf, "%zu", spec->max_len);
+        rolltui_text_format(out, ROLLTUI_TEXT_MV_UP_TO_CHARS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
       }
       return;
   }
@@ -226,11 +228,10 @@ int rolltui_input_type_from_name(const char* name, size_t len, unsigned char* ou
 
 /* Every check builds its reason out of the hint, so the hint is computed once here and lent
  * to whichever branch needs it. */
-static void empty_rule(const RolltuiInputSpecRaw* spec, const RolltuiStr* range, const char* noun,
-                       RolltuiInputCheck* c) {
+static void empty_rule(const RolltuiInputSpecRaw* spec, const RolltuiStr* range, int noun, RolltuiInputCheck* c) {
   c->valid = spec->optional;
   if (!spec->optional) {
-    str_add(&c->reason, noun);
+    rolltui_text_format(&c->reason, noun, NULL, 0, NULL, 0);
     if (range->n) {
       str_add(&c->reason, " (");
       rolltui_str_append_str(&c->reason, range);
@@ -247,48 +248,34 @@ static void check_int(const RolltuiInputSpecRaw* spec, const char* text, size_t 
   memset(&range, 0, sizeof range);
   rolltui_input_hint(spec, &range);
   if (!split_number(text, n, &p) || p.dot) {
-    str_add(&c->reason, "only digits");
-    if (spec->min < 0) str_add(&c->reason, " and a leading '-'");
-    str_add(&c->reason, " (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, spec->min < 0 ? ROLLTUI_TEXT_MV_ONLY_DIGITS_SIGNED : ROLLTUI_TEXT_MV_ONLY_DIGITS, range.p, range.n, NULL, 0);
     goto done;
   }
   if (p.neg && spec->min >= 0) {
-    str_add(&c->reason, "no negatives (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NO_NEGATIVES, range.p, range.n, NULL, 0);
     goto done;
   }
   v = p.ip_n ? span_to_double(p.ip, p.ip_n) : 0;
   if (p.ip_n && !int_reachable(v, p.neg, spec->min, spec->max)) {
-    str_add(&c->reason, "nothing starting with '");
-    rolltui_str_append(&c->reason, text, n);
-    str_add(&c->reason, "' fits ");
-    rolltui_str_append_str(&c->reason, &range);
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NOTHING_FITS, text, n, range.p, range.n);
     goto done;
   }
   if (p.ip_n == 0 && p.neg && !int_reachable(0, 1, spec->min, spec->max) && !(spec->min < 0)) {
-    str_add(&c->reason, "no negatives (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NO_NEGATIVES, range.p, range.n, NULL, 0);
     goto done;
   }
   c->prefix_ok = 1;
   if (n == 0) {
-    empty_rule(spec, &range, "a value is needed", c);
+    empty_rule(spec, &range, ROLLTUI_TEXT_MV_VALUE_NEEDED, c);
     goto done;
   }
   if (p.ip_n == 0) {
-    str_add(&c->reason, "a whole number (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_WHOLE_NUMBER, range.p, range.n, NULL, 0);
     goto done;
   }
   signed_v = p.neg ? -v : v;
   if (signed_v < spec->min || signed_v > spec->max) {
-    str_add(&c->reason, "a whole number ");
-    rolltui_str_append_str(&c->reason, &range);
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_WHOLE_NUMBER_IN, range.p, range.n, NULL, 0);
     goto done;
   }
   c->valid = 1;
@@ -307,22 +294,18 @@ static void check_float(const RolltuiInputSpecRaw* spec, const char* text, size_
   memset(&range, 0, sizeof range);
   rolltui_input_hint(spec, &range);
   if (!split_number(text, n, &p)) {
-    str_add(&c->reason, "only digits, one '.'");
-    if (spec->min < 0) str_add(&c->reason, " and a leading '-'");
-    str_add(&c->reason, " (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, spec->min < 0 ? ROLLTUI_TEXT_MV_ONLY_DIGITS_POINT_SIGNED : ROLLTUI_TEXT_MV_ONLY_DIGITS_POINT, range.p, range.n, NULL, 0);
     goto done;
   }
   if (p.neg && spec->min >= 0) {
-    str_add(&c->reason, "no negatives (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NO_NEGATIVES, range.p, range.n, NULL, 0);
     goto done;
   }
   if (spec->precision >= 0 && (int)p.fp_n > spec->precision) {
-    snprintf(buf, sizeof buf, "at most %d digits after the point", spec->precision);
-    str_add(&c->reason, buf);
+    {
+      const int bn = snprintf(buf, sizeof buf, "%d", spec->precision);
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_AT_MOST_DIGITS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
+    }
     goto done;
   }
   {
@@ -358,27 +341,21 @@ static void check_float(const RolltuiInputSpecRaw* spec, const char* text, size_
     }
   }
   if (!reachable) {
-    str_add(&c->reason, "nothing starting with '");
-    rolltui_str_append(&c->reason, text, n);
-    str_add(&c->reason, "' fits ");
-    rolltui_str_append_str(&c->reason, &range);
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NOTHING_FITS, text, n, range.p, range.n);
     goto done;
   }
   c->prefix_ok = 1;
   if (n == 0) {
-    empty_rule(spec, &range, "a value is needed", c);
+    empty_rule(spec, &range, ROLLTUI_TEXT_MV_VALUE_NEEDED, c);
     goto done;
   }
   if (p.ip_n == 0 && p.fp_n == 0) {
-    str_add(&c->reason, "a number (");
-    rolltui_str_append_str(&c->reason, &range);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NUMBER, range.p, range.n, NULL, 0);
     goto done;
   }
   v = span_to_double(text, n);
   if (v < spec->min || v > spec->max) {
-    str_add(&c->reason, "a number ");
-    rolltui_str_append_str(&c->reason, &range);
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NUMBER_IN, range.p, range.n, NULL, 0);
     goto done;
   }
   c->valid = 1;
@@ -408,18 +385,14 @@ static void check_color(const RolltuiInputSpecRaw* spec, const char* text, size_
     prefix = n <= 3 && int_reachable(span_to_double(text, n), 0, 0, 255);
   }
   if (!prefix) {
-    str_add(&c->reason, "not the start of a colour (");
-    str_add(&c->reason, kHint);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_COLOUR_START, kHint, strlen(kHint), NULL, 0);
     return;
   }
   c->prefix_ok = 1;
   if (n == 0) {
     c->valid = spec->optional;
     if (!spec->optional) {
-      str_add(&c->reason, "a colour is needed (");
-      str_add(&c->reason, kHint);
-      str_add(&c->reason, ")");
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_COLOUR_NEEDED, kHint, strlen(kHint), NULL, 0);
     }
     return;
   }
@@ -439,9 +412,7 @@ static void check_color(const RolltuiInputSpecRaw* spec, const char* text, size_
       return;
     }
   }
-  str_add(&c->reason, "not a colour yet (");
-  str_add(&c->reason, kHint);
-  str_add(&c->reason, ")");
+  rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_COLOUR_YET, kHint, strlen(kHint), NULL, 0);
 }
 
 /* N | N% | N% ± M — the shapes a Dim can be typed in; `size` adds fill / fill N. */
@@ -476,18 +447,14 @@ static void check_size(const RolltuiInputSpecRaw* spec, const char* text, size_t
   static const char* const kHint = "fill | fill N | N% | N% \xC2\xB1 cells | cells";
   RolltuiSplitSizeRaw s;
   if (!dim_prefix(text, n, 1)) {
-    str_add(&c->reason, "not the start of a size (");
-    str_add(&c->reason, kHint);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_SIZE_START, kHint, strlen(kHint), NULL, 0);
     return;
   }
   c->prefix_ok = 1;
   if (n == 0) {
     c->valid = spec->optional;
     if (!spec->optional) {
-      str_add(&c->reason, "a size is needed (");
-      str_add(&c->reason, kHint);
-      str_add(&c->reason, ")");
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_SIZE_NEEDED, kHint, strlen(kHint), NULL, 0);
     }
     return;
   }
@@ -498,9 +465,7 @@ static void check_size(const RolltuiInputSpecRaw* spec, const char* text, size_t
     rolltui_str_set(&c->canonical, out, on);
     return;
   }
-  str_add(&c->reason, "not a size yet (");
-  str_add(&c->reason, kHint);
-  str_add(&c->reason, ")");
+  rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_SIZE_YET, kHint, strlen(kHint), NULL, 0);
 }
 
 static void check_dim(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
@@ -508,18 +473,14 @@ static void check_dim(const RolltuiInputSpecRaw* spec, const char* text, size_t 
   RolltuiDim d;
   int have = 0;
   if (!dim_prefix(text, n, 0)) {
-    str_add(&c->reason, "not the start of a dim (");
-    str_add(&c->reason, kHint);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_DIM_START, kHint, strlen(kHint), NULL, 0);
     return;
   }
   c->prefix_ok = 1;
   if (n == 0) {
     c->valid = spec->optional;
     if (!spec->optional) {
-      str_add(&c->reason, "a dim is needed (");
-      str_add(&c->reason, kHint);
-      str_add(&c->reason, ")");
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_DIM_NEEDED, kHint, strlen(kHint), NULL, 0);
     }
     return;
   }
@@ -536,9 +497,7 @@ static void check_dim(const RolltuiInputSpecRaw* spec, const char* text, size_t 
     rolltui_str_set(&c->canonical, out, on);
     return;
   }
-  str_add(&c->reason, "not a dim yet (");
-  str_add(&c->reason, kHint);
-  str_add(&c->reason, ")");
+  rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_DIM_YET, kHint, strlen(kHint), NULL, 0);
 }
 
 static void check_name(const RolltuiInputSpecRaw* spec, const char* text, size_t n, RolltuiInputCheck* c) {
@@ -547,28 +506,27 @@ static void check_name(const RolltuiInputSpecRaw* spec, const char* text, size_t
   size_t i;
   char buf[64];
   if (n > cap) {
-    snprintf(buf, sizeof buf, "at most %zu characters", cap);
-    str_add(&c->reason, buf);
+    {
+      const int bn = snprintf(buf, sizeof buf, "%zu", cap);
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_AT_MOST_CHARS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
+    }
     return;
   }
   if (n && text[0] == '.') {
-    str_add(&c->reason, "a name cannot start with a dot (");
-    str_add(&c->reason, kHint);
-    str_add(&c->reason, ")");
+    rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NAME_DOT, kHint, strlen(kHint), NULL, 0);
     return;
   }
   for (i = 0; i < n; ++i) {
     const unsigned char ch = (unsigned char)text[i];
     if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) {
-      str_add(&c->reason, "only ");
-      str_add(&c->reason, kHint);
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_ONLY, kHint, strlen(kHint), NULL, 0);
       return;
     }
   }
   c->prefix_ok = 1;
   if (n == 0) {
     c->valid = spec->optional;
-    if (!spec->optional) str_add(&c->reason, "a name is needed");
+    if (!spec->optional) rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_NAME_NEEDED, NULL, 0, NULL, 0);
     return;
   }
   c->valid = 1;
@@ -587,8 +545,10 @@ static void check_text(const RolltuiInputSpecRaw* spec, const char* text, size_t
     rolltui_mem_free(g);
   }
   if (spec->max_len && len > spec->max_len) {
-    snprintf(buf, sizeof buf, "at most %zu characters", spec->max_len);
-    str_add(&c->reason, buf);
+    {
+      const int bn = snprintf(buf, sizeof buf, "%zu", spec->max_len);
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_AT_MOST_CHARS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
+    }
     return;
   }
   c->prefix_ok = 1;
@@ -600,12 +560,14 @@ static void check_text(const RolltuiInputSpecRaw* spec, const char* text, size_t
      * source is a Text field, so the commit succeeds and hands the host an empty path
      * instead of refusing - a legal-looking event carrying a value nothing can use. */
     c->valid = testkit_ctl_on("menu.empty_text_is_always_valid") ? 1 : spec->optional;
-    if (!c->valid) str_add(&c->reason, "a value is needed");
+    if (!c->valid) rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_VALUE_NEEDED, NULL, 0, NULL, 0);
     return;
   }
   if (spec->min_len && len < spec->min_len) {
-    snprintf(buf, sizeof buf, "at least %zu characters", spec->min_len);
-    str_add(&c->reason, buf);
+    {
+      const int bn = snprintf(buf, sizeof buf, "%zu", spec->min_len);
+      rolltui_text_format(&c->reason, ROLLTUI_TEXT_MV_AT_LEAST_CHARS, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
+    }
     return;
   }
   c->valid = 1;

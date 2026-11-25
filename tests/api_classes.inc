@@ -534,6 +534,7 @@ ROLLTUI_API(rolltui_keys_editor_replace, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_set_presets, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_set_shipped, INTERNAL)
 ROLLTUI_API(rolltui_keys_editor_status_line, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_status, INTERNAL)  /* the keys sheet's hint: what happened, without the counts */
 ROLLTUI_API(rolltui_keys_editor_capture, INTERNAL)   /* the keys sheet starts a capture on the row Enter was pressed on */
 ROLLTUI_API(rolltui_keys_editor_take_key, INTERNAL)  /* …and hands it the key that came */
 ROLLTUI_API(rolltui_keys_editor_unbind, INTERNAL)    /* …and removes a row's key */

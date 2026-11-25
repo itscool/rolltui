@@ -21,7 +21,7 @@ std::string description(const RolltuiBindings* b, const char* action) {
 }
 
 // The screen of one window showing `content`, as text.
-std::string screen_of(RolltuiContext* ctx, const char* content) {
+std::string screen_of(RolltuiContext* ctx, const char* content, int width = 50, int height = 5) {
   const std::string layout = std::string(R"({ "resizable": false, "name": "t", "root": { "id": "w", "content": ")") + content +
                              R"(", "border": "rounded" } })";
   RolltuiLayoutReport rep{};
@@ -30,11 +30,11 @@ std::string screen_of(RolltuiContext* ctx, const char* content) {
   RolltuiWindows* w = rolltui_windows_new(ctx);
   RolltuiWindowStack* st = rolltui_window_stack_new();
   rolltui_window_stack_set_base(st, rolltui_layout_base(l));
-  const RolltuiRect area{0, 0, 50, 5};
+  const RolltuiRect area{0, 0, width, height};
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   rolltui_windows_sync(w, st);
   rolltui_windows_layout(w, st, area);
-  RolltuiFrame* f = rolltui_frame_new(50, 5, styles[0]);
+  RolltuiFrame* f = rolltui_frame_new(width, height, styles[0]);
   RolltuiComposeScratch* cs = rolltui_compose_scratch_new();
   struct Slot {
     RolltuiWindows* w;
@@ -127,6 +127,25 @@ void test_load() {
   rolltui_context_free(ctx);
 }
 
+// THE EDITORS' OWN WORDS: the keys sheet's headings and its column, and the theme sheet's title, from the same file
+void test_editors() {
+  RolltuiContext* ctx = rolltui_context_new();
+  rolltui_context_set_library_defaults(ctx);
+  const std::string before = screen_of(ctx, "keys", 100, 30);
+  check(before.find("Typing") != std::string::npos && before.find("this program keeps no changes to its keys") != std::string::npos,
+        "CONTROL: the keys sheet heads its rows in English, and its hint is English");
+  const std::string fr = R"J({ "texts": { "text.keys.scope.input": "Saisie",
+                                            "text.keys.keeps_no_changes": "ce programme ne garde pas les touches changées" } })J";
+  RolltuiStr err{};
+  rolltui_texts_load(fr.data(), fr.size(), &err);
+  const std::string after = screen_of(ctx, "keys", 100, 30);
+  check(after.find("Saisie") != std::string::npos && after.find("Typing") == std::string::npos, "the keys sheet's scope heading is the file's");
+  check(after.find("ce programme ne garde pas les touches") != std::string::npos, "…and so is its hint");
+  rolltui_texts_clear();
+  rolltui_str_free(&err);
+  rolltui_context_free(ctx);
+}
+
 void test_language() {
   char lang[16];
   for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) ::unsetenv(v);
@@ -150,6 +169,7 @@ void test_language() {
 int main() {
   test_template();
   test_load();
+  test_editors();
   test_language();
   return testkit::report("texts_test");
 }

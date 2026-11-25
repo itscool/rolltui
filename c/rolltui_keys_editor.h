@@ -137,6 +137,8 @@ void rolltui_keys_editor_replace(RolltuiKeysEditor* e, RolltuiBindings* b);
  * doing — the capture prompt, a refusal, or the last thing that landed — and how deep undo
  * goes. */
 void rolltui_keys_editor_status_line(const RolltuiKeysEditor* e, RolltuiStr* out);
+/* The same line without the history's counts: what a sheet's bottom line says happened. */
+void rolltui_keys_editor_status(const RolltuiKeysEditor* e, RolltuiStr* out);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -288,6 +288,28 @@ static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolved
 
 #define K(s) (s), strlen(s)
 
+/* `s` becomes a text in the person's language (rolltui_texts.h); and one with {1} put in, into a buffer of the caller's. */
+static void text_set(RolltuiStr* s, int text) {
+  rolltui_str_clear(s);
+  rolltui_text_format(s, text, NULL, 0, NULL, 0);
+}
+static void text_into(char* buf, size_t cap, int text, const char* a, size_t n) {
+  RolltuiStr s;
+  memset(&s, 0, sizeof s);
+  rolltui_text_format(&s, text, a, n, NULL, 0);
+  snprintf(buf, cap, "%.*s", (int)s.n, s.p ? s.p : "");
+  rolltui_str_free(&s);
+}
+/* How many cells a text takes, for what is laid out after it. */
+static int text_cells(int text, int aw) {
+  size_t n = 0;
+  const char* t = rolltui_text(text, &n);
+  RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+  const int w = rolltui_frame_text_width(d, t, n, aw);
+  rolltui_draw_scratch_free(d);
+  return w;
+}
+
 static int str_eq_lit(const char* a, size_t alen, const char* b) { return b && alen == strlen(b) && memcmp(a, b, alen) == 0; }
 
 /* Mirrors `rolltui::scroll_by_action` exactly, over `rolltui_bindings.h`. */
@@ -3320,16 +3342,15 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
        * the store deliberately offers to refuse, and a widget has nowhere to ask. */
       r = rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/0, &err);
       if (r == ROLLTUI_SAVE_SAVED) {
-        snprintf(buf, sizeof buf, "saved preset '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_SAVED_PRESET, o->value.p ? o->value.p : "", o->value.n);
         rolltui_str_set(&tc->hint, buf, strlen(buf));
         theme_ctx_sync_store(tc); /* the new name joins the Load choice */
       } else if (r == ROLLTUI_SAVE_EXISTS_ASK) {
-        snprintf(buf, sizeof buf, "'%.*s' already exists \xE2\x80\x94 choose another name",
-                 (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_EXISTS, o->value.p ? o->value.p : "", o->value.n);
         rolltui_str_set(&tc->hint, buf, strlen(buf));
         tc->hint_is_problem = 1;
       } else {
-        rolltui_str_set(&tc->hint, K("cannot save: "));
+        text_set(&tc->hint, ROLLTUI_TEXT_ED_CANNOT_SAVE);
         rolltui_str_append_str(&tc->hint, &err);
         tc->hint_is_problem = 1;
       }
@@ -3342,9 +3363,9 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
       memset(&rep, 0, sizeof rep);
       if (rolltui_preset_store_load(tc->store, o->value.p ? o->value.p : "", o->value.n, &rep, tc->persist)) {
         theme_ctx_sync_store(tc);
-        snprintf(buf, sizeof buf, "loaded '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_LOADED_PRESET, o->value.p ? o->value.p : "", o->value.n);
       } else {
-        snprintf(buf, sizeof buf, "cannot load '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_CANNOT_LOAD, o->value.p ? o->value.p : "", o->value.n);
         tc->hint_is_problem = 1;
       }
       rolltui_str_set(&tc->hint, buf, strlen(buf));
@@ -3369,9 +3390,9 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
         rolltui_theme_report_release(&tr);
         rolltui_preset_store_value_free(tc->store, v);
         theme_ctx_write_back(tc);
-        rolltui_str_set(&tc->hint, K("reset to the loaded preset (undoable)"));
+        text_set(&tc->hint, ROLLTUI_TEXT_ED_RESET_TO_LOADED_UNDOABLE);
       } else {
-        rolltui_str_set(&tc->hint, K("the loaded preset is no longer readable"));
+        text_set(&tc->hint, ROLLTUI_TEXT_ED_LOADED_UNREADABLE);
         tc->hint_is_problem = 1;
       }
       rolltui_theme_preset_report_release(&rep);
@@ -3383,7 +3404,7 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
       rolltui_effect_map_free(rolltui_theme_builtin_fill(K("default-light"), light, ROLLTUI_ROLE_COUNT));
       rolltui_theme_editor_replace(tc->ed, dark, light, K("default-dark"), K("default-light"), NULL, NULL, eff);
       theme_ctx_write_back(tc);
-      rolltui_str_set(&tc->hint, K("reset to the built-in default (undoable)"));
+      text_set(&tc->hint, ROLLTUI_TEXT_TH_RESET_TO_BUILTIN);
       break;
     }
     case ROLLTUI_THEME_EDIT_WRITE_SHIPPED:
@@ -3397,9 +3418,9 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
         theme_ctx_write_back(tc);
         if (rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/1,
                                          &err) == ROLLTUI_SAVE_SAVED) {
-          snprintf(buf, sizeof buf, "wrote shipped '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+          text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_WROTE_SHIPPED, o->value.p ? o->value.p : "", o->value.n);
         } else {
-          snprintf(buf, sizeof buf, "refused: %.*s", (int)err.n, err.p ? err.p : "");
+          text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_REFUSED_WHY, err.p ? err.p : "", err.n);
           tc->hint_is_problem = 1;
         }
         rolltui_str_set(&tc->hint, buf, strlen(buf));
@@ -3561,7 +3582,7 @@ static void theme_edit_end(RolltuiThemeCtx* tc, int keep) {
   } else if (rolltui_theme_editor_previewing(tc->ed)) {
     rolltui_theme_editor_drop_preview(tc->ed);
     theme_ctx_push(tc, 0);
-    rolltui_str_set(&tc->hint, K("dropped"));
+    text_set(&tc->hint, ROLLTUI_TEXT_TH_DROPPED);
   }
 }
 
@@ -3725,12 +3746,12 @@ static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
       const int undo = theme_action(nav, k, "sheet", "sheet.undo");
       if (undo ? rolltui_theme_editor_undo(tc->ed) : rolltui_theme_editor_redo(tc->ed)) {
         theme_ctx_push(tc, tc->persist);
-        if (undo) rolltui_str_set(&tc->hint, K("undone"));
-        else rolltui_str_set(&tc->hint, K("redone"));
+        if (undo) text_set(&tc->hint, ROLLTUI_TEXT_ED_UNDONE);
+        else text_set(&tc->hint, ROLLTUI_TEXT_ED_REDONE);
       } else if (undo) {
-        rolltui_str_set(&tc->hint, K("nothing to undo"));
+        text_set(&tc->hint, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO);
       } else {
-        rolltui_str_set(&tc->hint, K("nothing to redo"));
+        text_set(&tc->hint, ROLLTUI_TEXT_ED_NOTHING_TO_REDO);
       }
       return 1;
     }
@@ -3752,20 +3773,23 @@ static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
     if (theme_action(nav, k, "theme", "theme.variant")) {
       rolltui_theme_editor_set_mode(tc->ed, rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT);
       theme_ctx_preview_mode(tc);
-      if (rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT) rolltui_str_set(&tc->hint, K("editing the light variant"));
-      else rolltui_str_set(&tc->hint, K("editing the dark variant"));
+      if (rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT) text_set(&tc->hint, ROLLTUI_TEXT_TH_EDITING_LIGHT);
+      else text_set(&tc->hint, ROLLTUI_TEXT_TH_EDITING_DARK);
       return 1;
     }
     if (theme_action(nav, k, "theme", "theme.generate")) {
       const uint64_t seed = ++tc->seed;
       size_t nl = 0;
       const char* nm;
-      char buf[160];
       rolltui_theme_editor_generate(tc->ed, (unsigned char)(seed % ROLLTUI_RULESET_COUNT), seed, 0.0, &o);
       if (o.kind == ROLLTUI_THEME_EDIT_COMMITTED) theme_ctx_push(tc, tc->persist);
       nm = rolltui_theme_editor_variant_name(tc->ed, rolltui_theme_editor_mode(tc->ed), &nl);
-      snprintf(buf, sizeof buf, "made %.*s from seed %llu; Ctrl-Z goes back", (int)nl, nm ? nm : "", (unsigned long long)seed);
-      rolltui_str_set(&tc->hint, buf, strlen(buf));
+      {
+        char seed_s[24];
+        const int sn = snprintf(seed_s, sizeof seed_s, "%llu", (unsigned long long)seed);
+        rolltui_str_clear(&tc->hint);
+        rolltui_text_format(&tc->hint, ROLLTUI_TEXT_TH_MADE, nm ? nm : "", nm ? nl : 0, seed_s, sn > 0 ? (size_t)sn : 0);
+      }
       rolltui_theme_editor_outcome_release(&o);
       return 1;
     }
@@ -3773,9 +3797,9 @@ static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
       const ThemeRow* r = theme_sheet_cursor(tc);
       if (r && r->fix >= 0 && rolltui_theme_editor_apply_fix(tc->ed, (size_t)r->fix, &o)) {
         if (o.kind == ROLLTUI_THEME_EDIT_COMMITTED) theme_ctx_push(tc, tc->persist);
-        rolltui_str_set(&tc->hint, K("fixed; Ctrl-Z puts it back"));
+        text_set(&tc->hint, ROLLTUI_TEXT_TH_FIXED);
       } else {
-        rolltui_str_set(&tc->hint, K("nothing to fix on this row"));
+        text_set(&tc->hint, ROLLTUI_TEXT_TH_NOTHING_TO_FIX_ROW);
       }
       rolltui_theme_editor_outcome_release(&o);
       return 1;
@@ -3832,7 +3856,10 @@ static void theme_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
     RolltuiRect ir;
     rolltui_content_rect(rn, &ir);
     ir.y = hy, ir.h = 1;
-    ir.x += 9, ir.w -= 9; /* after "save as: " */
+    {
+      const int sw = text_cells(ROLLTUI_TEXT_ED_SAVE_AS, rolltui_windows_env(tc->w)->ambiguous_wide); /* after "save as: " */
+      ir.x += sw, ir.w -= sw;
+    }
     rolltui_input_layout(tc->name, ir);
   }
 }
@@ -3963,19 +3990,17 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     const ThemeRow* cr = theme_sheet_cursor(tc);
     rolltui_str_clear(&tc->line);
     if (tc->sheet_mode == THEME_CHOOSING) {
-      rolltui_str_append(&tc->line, K("load a theme: Enter loads, Esc goes back"));
+      rolltui_text_format(&tc->line, ROLLTUI_TEXT_TH_LOAD_HINT, NULL, 0, NULL, 0);
     } else if (tc->sheet_mode == THEME_EDITING) {
       if (tc->field < THEME_FIELD_ATTR) {
-        rolltui_str_append(&tc->line, tc->field == THEME_FIELD_FG ? "the text colour" : "the ground colour",
-                           tc->field == THEME_FIELD_FG ? 15 : 17);
-        rolltui_str_append(&tc->line, K(": type #rrggbb, 0-255 or none"));
+        size_t wn = 0;
+        const char* which = rolltui_text(tc->field == THEME_FIELD_FG ? ROLLTUI_TEXT_TH_TEXT_COLOUR : ROLLTUI_TEXT_TH_GROUND_COLOUR, &wn);
+        rolltui_text_format(&tc->line, ROLLTUI_TEXT_TH_TYPE_COLOUR, which, wn, NULL, 0);
       } else {
         size_t al = 0;
         const int on = theme_attr_on(tc, (size_t)(tc->field - THEME_FIELD_ATTR));
-        const char* a = rolltui_theme_editor_attr_name((size_t)(tc->field - THEME_FIELD_ATTR), &al);
-        rolltui_str_append(&tc->line, a, al);
-        if (on) rolltui_str_append(&tc->line, K(": on, Space turns it off"));
-        else rolltui_str_append(&tc->line, K(": off, Space turns it on"));
+        const char* a = rolltui_text(ROLLTUI_TEXT_TH_ATTR_BOLD + (tc->field - THEME_FIELD_ATTR), &al); /* the six are in order */
+        rolltui_text_format(&tc->line, on ? ROLLTUI_TEXT_TH_ATTR_ON : ROLLTUI_TEXT_TH_ATTR_OFF, a, al, NULL, 0);
       }
     } else if (cr) {
       rolltui_str_append_str(&tc->line, &cr->key);
@@ -3995,8 +4020,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
         memset(&fk, 0, sizeof fk);
         if (rolltui_bindings_chord_at(rolltui_windows_bindings(tc->w), K("theme.fix"), 0, &fk)) {
           rolltui_str_append(&tc->line, K("  \xC2\xB7  "));
-          rolltui_str_append(&tc->line, disp, rolltui_chord_display(&fk, disp, sizeof disp));
-          rolltui_str_append(&tc->line, K(" fixes it"));
+          rolltui_text_format(&tc->line, ROLLTUI_TEXT_TH_FIXES_IT, disp, rolltui_chord_display(&fk, disp, sizeof disp), NULL, 0);
         }
       }
     }
@@ -4005,7 +4029,11 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   if (hy >= 0) { /* THE BOTTOM LINE: what just happened, else the sheet's own keys */
     if (tc->sheet_mode == THEME_NAMING) {
       RolltuiInputRoles iroles;
-      theme_put(tc, f, r.x, hy, K("save as: "), styles[br->label], 9);
+      {
+        size_t sn = 0;
+        const char* sa = rolltui_text(ROLLTUI_TEXT_ED_SAVE_AS, &sn);
+        theme_put(tc, f, r.x, hy, sa, sn, styles[br->label], text_cells(ROLLTUI_TEXT_ED_SAVE_AS, rolltui_windows_env(tc->w)->ambiguous_wide));
+      }
       iroles.text = br->input_text;
       iroles.selection = br->input_selection;
       iroles.placeholder = br->input_placeholder;
@@ -4015,8 +4043,8 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
       rolltui_str_clear(&tc->line);
       if (tc->hint.n) rolltui_str_append_str(&tc->line, &tc->hint);
       else if (tc->sheet_mode == THEME_EDITING && tc->field < THEME_FIELD_ATTR)
-        rolltui_str_append(&tc->line, K("Enter keeps  Esc drops  Left Right fields  Up Down the theme's colours"));
-      else if (tc->sheet_mode == THEME_EDITING) rolltui_str_append(&tc->line, K("Enter keeps  Esc drops  Left Right fields  Space on, off"));
+        rolltui_text_format(&tc->line, ROLLTUI_TEXT_TH_KEYS_COLOURS, NULL, 0, NULL, 0);
+      else if (tc->sheet_mode == THEME_EDITING) rolltui_text_format(&tc->line, ROLLTUI_TEXT_TH_KEYS_TOGGLES, NULL, 0, NULL, 0);
       else theme_sheet_hints(tc, &tc->line);
       theme_put(tc, f, r.x, hy, tc->line.p, tc->line.n, tc->hint_is_problem ? styles[br->error] : value, r.w);
     }
@@ -4037,7 +4065,7 @@ static int theme_ctx_title(void* ctx, const char* given, size_t given_len, Rollt
   (void)ctx;
   (void)given;
   if (given_len) return 0;
-  rolltui_str_set(out, K("theme"));
+  text_set(out, ROLLTUI_TEXT_TH_TITLE);
   return 1;
 }
 
@@ -4049,11 +4077,12 @@ static int theme_ctx_footer(void* ctx, RolltuiStr* out) {
   rolltui_str_clear(out);
   if (tc->store) rolltui_preset_store_label(tc->store, out);
   if (out->n) rolltui_str_append(out, K(" \xC2\xB7 "));
-  rolltui_str_append(out, rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? "light" : "dark",
-                     rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? 5 : 4);
+  rolltui_text_format(out, rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? ROLLTUI_TEXT_TH_LIGHT : ROLLTUI_TEXT_TH_DARK, NULL, 0,
+                      NULL, 0);
   if (problems) {
-    snprintf(buf, sizeof buf, " \xC2\xB7 %zu problem%s", problems, problems == 1 ? "" : "s");
-    rolltui_str_append(out, buf, strlen(buf));
+    const int pn = snprintf(buf, sizeof buf, "%zu", problems);
+    rolltui_str_append(out, K(" \xC2\xB7 "));
+    rolltui_text_format(out, problems == 1 ? ROLLTUI_TEXT_TH_PROBLEM : ROLLTUI_TEXT_TH_PROBLEMS, buf, pn > 0 ? (size_t)pn : 0, NULL, 0);
   }
   return 1;
 }
@@ -4135,7 +4164,7 @@ static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char
   rolltui_str_set(&cols[0].title, K("role"));
   rolltui_str_set(&cols[1].title, K("fg"));
   rolltui_str_set(&cols[2].title, K("bg"));
-  rolltui_str_set(&cols[3].title, K("attributes"));
+  text_set(&cols[3].title, ROLLTUI_TEXT_TH_ATTRIBUTES);
   cols[3].max_share = 25;
   cols[3].min_screen = 64; /* narrower, the words keep the room and the detail line names the attributes */
   rolltui_list_set_columns(tc->list, cols, 4);
@@ -4373,16 +4402,15 @@ static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o
        * deliberately offers to refuse, and a widget has nowhere to ask. */
       r = rolltui_preset_store_save_as(kc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/0, &err);
       if (r == ROLLTUI_SAVE_SAVED) {
-        snprintf(buf, sizeof buf, "saved preset '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_SAVED_PRESET, o->value.p ? o->value.p : "", o->value.n);
         rolltui_str_set(&kc->hint, buf, strlen(buf));
         keys_ctx_sync_store(kc); /* the new name joins the Load choice */
       } else if (r == ROLLTUI_SAVE_EXISTS_ASK) {
-        snprintf(buf, sizeof buf, "'%.*s' already exists \xE2\x80\x94 choose another name", (int)o->value.n,
-                 o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_EXISTS, o->value.p ? o->value.p : "", o->value.n);
         rolltui_str_set(&kc->hint, buf, strlen(buf));
         kc->hint_is_problem = 1;
       } else {
-        rolltui_str_set(&kc->hint, K("cannot save: "));
+        text_set(&kc->hint, ROLLTUI_TEXT_ED_CANNOT_SAVE);
         rolltui_str_append_str(&kc->hint, &err);
         kc->hint_is_problem = 1;
       }
@@ -4400,9 +4428,9 @@ static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o
           rolltui_preset_store_value_free(kc->store, v);
         }
         keys_ctx_sync_store(kc);
-        snprintf(buf, sizeof buf, "loaded '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_LOADED_PRESET, o->value.p ? o->value.p : "", o->value.n);
       } else {
-        snprintf(buf, sizeof buf, "cannot load '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        text_into(buf, sizeof buf, ROLLTUI_TEXT_ED_CANNOT_LOAD, o->value.p ? o->value.p : "", o->value.n);
         kc->hint_is_problem = 1;
       }
       rolltui_str_set(&kc->hint, buf, strlen(buf));
@@ -4423,9 +4451,9 @@ static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o
       if (v) {
         keys_ctx_load_rows(kc, v);
         rolltui_preset_store_set_working(kc->store, v, kc->persist); /* the preset itself: the copy is no longer modified */
-        rolltui_str_set(&kc->hint, K("reset to the loaded preset"));
+        text_set(&kc->hint, ROLLTUI_TEXT_ED_RESET_TO_LOADED);
       } else {
-        rolltui_str_set(&kc->hint, K("the loaded preset is no longer readable"));
+        text_set(&kc->hint, ROLLTUI_TEXT_ED_LOADED_UNREADABLE);
         kc->hint_is_problem = 1;
       }
       rolltui_bindings_preset_report_release(&rep);
@@ -4452,19 +4480,17 @@ typedef struct KeysRow {
   RolltuiStr problem; /* what is wrong with its keys, for the detail line; empty when nothing is */
 } KeysRow;
 
-static const struct { const char* scope; const char* title; } kScopeTitles[] = {
-    {"app", "This program"},     {"input", "Typing"},        {"list", "Lists and tables"}, {"menu", "Menus"},
-    {"picker", "Files"},         {"transcript", "Reading"},  {"stack", "Windows"},         {"edit", "Editing a value"},
-    {"sheet", "Editing a sheet"},   {"editor", "The editor"},   {"studio", "The studio"},
+static const struct { const char* scope; int title; } kScopeTitles[] = {
+    {"app", ROLLTUI_TEXT_KE_SC_APP},       {"input", ROLLTUI_TEXT_KE_SC_INPUT},   {"list", ROLLTUI_TEXT_KE_SC_LIST},
+    {"menu", ROLLTUI_TEXT_KE_SC_MENU},     {"picker", ROLLTUI_TEXT_KE_SC_PICKER}, {"transcript", ROLLTUI_TEXT_KE_SC_TRANSCRIPT},
+    {"stack", ROLLTUI_TEXT_KE_SC_STACK},   {"edit", ROLLTUI_TEXT_KE_SC_EDIT},     {"sheet", ROLLTUI_TEXT_KE_SC_SHEET},
+    {"editor", ROLLTUI_TEXT_KE_SC_EDITOR}, {"studio", ROLLTUI_TEXT_KE_SC_STUDIO},
 };
 
 static const char* scope_title(const char* s, size_t n, size_t* len) {
   size_t i;
   for (i = 0; i < sizeof kScopeTitles / sizeof kScopeTitles[0]; ++i)
-    if (strlen(kScopeTitles[i].scope) == n && memcmp(kScopeTitles[i].scope, s, n) == 0) {
-      *len = strlen(kScopeTitles[i].title);
-      return kScopeTitles[i].title;
-    }
+    if (strlen(kScopeTitles[i].scope) == n && memcmp(kScopeTitles[i].scope, s, n) == 0) return rolltui_text(kScopeTitles[i].title, len);
   *len = n;
   return s;
 }
@@ -4686,7 +4712,7 @@ static void keys_sheet_build(RolltuiKeysCtx* kc) {
           if (r->what.p[k] == '_') r->what.p[k] = ' ';
       }
       if (capturing && cap_len == al && memcmp(capturing, a, al) == 0) {
-        rolltui_str_set(&r->chords, K("press a key \xE2\x80\xA6"));
+        text_set(&r->chords, ROLLTUI_TEXT_KE_PRESS_A_KEY);
         r->role = kc->capture_role;
         continue;
       }
@@ -4699,7 +4725,7 @@ static void keys_sheet_build(RolltuiKeysCtx* kc) {
       }
       if (stuck) r->role = br->warning;
       else if (r->chords.n == 0) {
-        rolltui_str_set(&r->chords, K("no key"));
+        text_set(&r->chords, ROLLTUI_TEXT_KE_NO_KEY);
         r->role = br->text_muted;
       }
     }
@@ -4751,7 +4777,10 @@ static void keys_sheet_hints(RolltuiKeysCtx* kc, RolltuiStr* out) {
     rolltui_str_append(out, K(" "));
     rolltui_str_append(out, kHints[i].say, strlen(kHints[i].say));
   }
-  if (!kc->editable) rolltui_str_append(out, K("  \xC2\xB7  this program keeps no changes to its keys"));
+  if (!kc->editable) {
+    rolltui_str_append(out, K("  \xC2\xB7  "));
+    rolltui_text_format(out, ROLLTUI_TEXT_KE_KEEPS_NO_CHANGES, NULL, 0, NULL, 0);
+  }
 }
 
 static void keys_sheet_rects(const RolltuiKeysCtx* kc, const RolltuiResolvedNode* rn, RolltuiRect* list, int* detail_y,
@@ -4781,7 +4810,10 @@ static void keys_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
     RolltuiRect ir;
     rolltui_content_rect(rn, &ir);
     ir.y = hy, ir.h = 1;
-    ir.x += 9, ir.w -= 9; /* after "save as: " */
+    {
+      const int sw = text_cells(ROLLTUI_TEXT_ED_SAVE_AS, rolltui_windows_env(kc->w)->ambiguous_wide); /* after "save as: " */
+      ir.x += sw, ir.w -= sw;
+    }
     rolltui_input_layout(kc->name, ir);
   }
 }
@@ -4826,7 +4858,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   if (dy >= 0) { /* THE DETAIL LINE: the row's action as a file names it, and what is wrong with it */
     rolltui_str_clear(&kc->line);
     if (kc->mode == KEYS_CHOOSING) {
-      rolltui_str_append(&kc->line, K("load a set of keys: Enter loads, Esc goes back"));
+      rolltui_text_format(&kc->line, ROLLTUI_TEXT_KE_LOAD_HINT, NULL, 0, NULL, 0);
     } else if (keys_sheet_cursor(kc)) {
       const RolltuiBindings* b = keys_sheet_table(kc);
       const size_t n = rolltui_bindings_chord_count(b, kc->scratch.p, kc->scratch.n);
@@ -4853,8 +4885,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
         if (!rolltui_bindings_chord_at(b, kc->scratch.p, kc->scratch.n, c, &k) || rolltui_key_deliverable(&k, rolltui_key_active_protocol()))
           continue;
         rolltui_str_append(&kc->line, K("  \xC2\xB7  "));
-        rolltui_str_append(&kc->line, disp, rolltui_chord_display(&k, disp, sizeof disp));
-        rolltui_str_append(&kc->line, K(" cannot be sent by this terminal"));
+        rolltui_text_format(&kc->line, ROLLTUI_TEXT_KE_CANNOT_BE_SENT, disp, rolltui_chord_display(&k, disp, sizeof disp), NULL, 0);
       }
     } else if (kc->scratch.n > 5 && memcmp(kc->scratch.p, "note:", 5) == 0) { /* a line of the help's text: in full, if cut */
       size_t c;
@@ -4872,7 +4903,11 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   if (hy >= 0) { /* THE BOTTOM LINE: what just happened, else the sheet's own keys */
     if (kc->mode == KEYS_NAMING) {
       RolltuiInputRoles iroles;
-      keys_put(kc, f, r.x, hy, K("save as: "), styles[br->label], 9);
+      {
+        size_t sn = 0;
+        const char* sa = rolltui_text(ROLLTUI_TEXT_ED_SAVE_AS, &sn);
+        keys_put(kc, f, r.x, hy, sa, sn, styles[br->label], text_cells(ROLLTUI_TEXT_ED_SAVE_AS, rolltui_windows_env(kc->w)->ambiguous_wide));
+      }
       iroles.text = br->input_text;
       iroles.selection = br->input_selection;
       iroles.placeholder = br->input_placeholder;
@@ -4881,7 +4916,7 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
     } else {
       rolltui_str_clear(&kc->line);
       if (kc->editable && rolltui_keys_editor_capturing(kc->ed)) {
-        rolltui_str_append(&kc->line, K("press the key to add; Esc cancels"));
+        rolltui_text_format(&kc->line, ROLLTUI_TEXT_KE_PRESS_TO_ADD, NULL, 0, NULL, 0);
       } else if (kc->hint.n) {
         rolltui_str_append_str(&kc->line, &kc->hint);
       } else {
@@ -4899,14 +4934,14 @@ static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
 static void keys_sheet_said(RolltuiKeysCtx* kc) {
   RolltuiStr s;
   memset(&s, 0, sizeof s);
-  rolltui_keys_editor_status_line(kc->ed, &s);
-  {
-    /* the status ends " · undo N · redo M": the hint keeps what happened */
-    const char* cut = s.p ? strstr(s.p, " \xC2\xB7 undo ") : NULL;
-    if (cut) s.n = (size_t)(cut - s.p);
-  }
+  rolltui_keys_editor_status(kc->ed, &s); /* what happened, without the history's counts */
   if (s.n) rolltui_str_set(&kc->hint, s.p, s.n);
-  kc->hint_is_problem = s.n > 8 && memcmp(s.p, "refused:", 8) == 0;
+  { /* a refusal, in whatever language it is said */
+    size_t rn = 0;
+    const char* refused = rolltui_text(ROLLTUI_TEXT_ED_REFUSED, &rn);
+    while (rn && refused[rn - 1] == ' ') --rn;
+    kc->hint_is_problem = rn && s.n >= rn && memcmp(s.p, refused, rn) == 0;
+  }
   rolltui_str_free(&s);
 }
 
@@ -4987,7 +5022,7 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
       rolltui_str_clear(&kc->hint);
       kc->hint_is_problem = 0;
       if (!kc->editable) {
-        rolltui_str_set(&kc->hint, K("this program keeps no changes to its keys"));
+        text_set(&kc->hint, ROLLTUI_TEXT_KE_KEEPS_NO_CHANGES);
         return 1;
       }
       if (an == 12 && memcmp(a, "sheet.remove", 12) == 0) {
@@ -5000,7 +5035,7 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
             rolltui_keys_editor_unbind(kc->ed, kc->scratch.p, kc->scratch.n, &k, &o);
             keys_sheet_done(kc, &o);
           } else {
-            rolltui_str_set(&kc->hint, K("it has no key to remove"));
+            text_set(&kc->hint, ROLLTUI_TEXT_KE_NOTHING_TO_REMOVE);
           }
         }
         return 1;
@@ -5012,8 +5047,8 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
           o.kind = ROLLTUI_KEYS_EDIT_COMMITTED;
           keys_sheet_done(kc, &o);
         } else {
-          if (undo) rolltui_str_set(&kc->hint, K("nothing to undo"));
-          else rolltui_str_set(&kc->hint, K("nothing to redo"));
+          if (undo) text_set(&kc->hint, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO);
+          else text_set(&kc->hint, ROLLTUI_TEXT_ED_NOTHING_TO_REDO);
         }
         return 1;
       }
@@ -5040,7 +5075,7 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
     if (le.kind == ROLLTUI_LIST_EVENT_ACTIVATE && keys_row_is_action(le.key.p, le.key.n)) {
       rolltui_str_clear(&kc->hint);
       if (kc->editable) rolltui_keys_editor_capture(kc->ed, le.key.p, le.key.n);
-      else rolltui_str_set(&kc->hint, K("this program keeps no changes to its keys"));
+      else text_set(&kc->hint, ROLLTUI_TEXT_KE_KEEPS_NO_CHANGES);
       handled = 1;
     }
   rolltui_list_event_release(&le);
@@ -5059,7 +5094,7 @@ static int keys_ctx_back(void* ctx) {
     esc.key = ROLLTUI_KEY_ESCAPE;
     rolltui_keys_editor_take_key(kc->ed, &esc, &o);
     rolltui_keys_editor_outcome_release(&o);
-    rolltui_str_set(&kc->hint, K("no key added"));
+    text_set(&kc->hint, ROLLTUI_TEXT_KE_NO_KEY_ADDED);
     return 1;
   }
   if (kc->mode != KEYS_SHEET) {
@@ -5106,9 +5141,8 @@ static int keys_ctx_problem(void* ctx, RolltuiStr* out) {
     const char* a = rolltui_bindings_action_at(b, i, &al);
     if (al > kc->scope.n && memcmp(a, kc->scope.p, kc->scope.n) == 0 && a[kc->scope.n] == '.') return 0;
   }
-  rolltui_str_set(out, K("'"));
-  rolltui_str_append_str(out, &kc->scope);
-  rolltui_str_append(out, K("' is not one of this program's key scopes"));
+  rolltui_str_clear(out);
+  rolltui_text_format(out, ROLLTUI_TEXT_KE_NOT_A_SCOPE, kc->scope.p, kc->scope.n, NULL, 0);
   return 1;
 }
 
@@ -5117,7 +5151,7 @@ static int keys_ctx_title(void* ctx, const char* given, size_t given_len, Rolltu
   (void)ctx;
   if (given_len) return 0;
   (void)given;
-  rolltui_str_set(out, K("keys"));
+  text_set(out, ROLLTUI_TEXT_KE_TITLE);
   return 1;
 }
 
@@ -5200,7 +5234,7 @@ static RolltuiKeysCtx* keys_sheet_new(RolltuiWindows* w, const char* scope, size
   lo.scrolloff = 2;
   rolltui_list_set_options(kc->list, &lo);
   memset(cols, 0, sizeof cols);
-  rolltui_str_set(&cols[0].title, K("what it does"));
+  text_set(&cols[0].title, ROLLTUI_TEXT_KE_WHAT_IT_DOES);
   rolltui_str_set(&cols[1].title, K("keys"));
   cols[1].role = rolltui_windows_menu_roles(w)->shortcut; /* keys are drawn as a shortcut is, everywhere */
   cols[1].max_share = 40; /* what a key does is the row's subject: a long list of keys is cut first */

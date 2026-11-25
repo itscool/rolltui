@@ -13,6 +13,7 @@
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 
@@ -158,9 +159,8 @@ static void dialog_ctx_destroy(void* ctx) {
 static int dialog_ctx_problem(void* ctx, RolltuiStr* out) {
   DialogCtx* c = (DialogCtx*)ctx;
   if (dialog_of(c)) return 0;
-  rolltui_str_set(out, "no dialog is asked under '", sizeof "no dialog is asked under '" - 1);
-  rolltui_str_append_str(out, &c->id);
-  rolltui_str_append(out, "'", 1);
+  rolltui_str_clear(out);
+  rolltui_text_format(out, ROLLTUI_TEXT_NO_DIALOG, c->id.p, c->id.n, NULL, 0);
   return 1;
 }
 static void dialog_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
@@ -231,16 +231,22 @@ static void dialog_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFra
   }
   c->item_rows = item_rows;
   if (d->phrase.n && y + 2 < r.y + r.h) { /* THE PHRASE: what to type, and the field it is typed in */
-    char lead[] = "Type ";
-    char tail[] = " to confirm";
+    size_t tn = 0;
+    const char* say = rolltui_text(ROLLTUI_TEXT_TYPE_TO_CONFIRM, &tn); /* "Type {1} to confirm", the phrase in bold where {1} is */
+    const char* at = NULL;
+    size_t k;
     RolltuiStyle prompt, field;
+    for (k = 0; k + 2 < tn && !at; ++k)
+      if (say[k] == '{' && say[k + 1] == '1' && say[k + 2] == '}') at = say + k;
     if (y > r.y) ++y;
     prompt = on_ground(styles[roles->prompt], f, r.x, y);
-    x = r.x + rolltui_frame_put_text(f, c->draw, r.x, y, lead, sizeof lead - 1, prompt, r.w, amb, 0);
-    prompt.bold = 1;
-    x += rolltui_frame_put_text(f, c->draw, x, y, d->phrase.p, d->phrase.n, prompt, r.x + r.w - x, amb, 0);
-    prompt.bold = 0;
-    rolltui_frame_put_text(f, c->draw, x, y, tail, sizeof tail - 1, prompt, r.x + r.w - x, amb, 0);
+    x = r.x + rolltui_frame_put_text(f, c->draw, r.x, y, say, at ? (size_t)(at - say) : tn, prompt, r.w, amb, 0);
+    if (at) {
+      prompt.bold = 1;
+      x += rolltui_frame_put_text(f, c->draw, x, y, d->phrase.p, d->phrase.n, prompt, r.x + r.w - x, amb, 0);
+      prompt.bold = 0;
+      rolltui_frame_put_text(f, c->draw, x, y, at + 3, tn - (size_t)(at + 3 - say), prompt, r.x + r.w - x, amb, 0);
+    }
     ++y;
     field = styles[roles->input_text];
     field.underline = 1; /* the field's extent, in every theme */

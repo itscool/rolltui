@@ -644,11 +644,14 @@ int main() {
       (void)r.frame();  // starts the clock
       write_file(d / "another.txt", "x");
       rolltui_picker_set_now(r.p, 100600);
+      const unsigned reads_before = rolltui_picker_focus_reads(r.p);
       clock_gettime(CLOCK_MONOTONIC, &t0);
       (void)r.frame();  // the look that reads all twenty thousand again
       const double reread_ms = ms_since(t0);
       RolltuiPickerStatus st = r.status();
-      check(has(r.frame(), "another.txt") && reread_ms < 2000.0 * rolltui_test::kClockScale, "…the folder is read again when it changed (" + std::to_string(reread_ms) + " ms)");
+      /* counted, not timed: a read of twenty thousand entries takes what the machine's load lets it */
+      check(has(r.frame(), "another.txt") && rolltui_picker_focus_reads(r.p) == reads_before + 1,
+            "…the folder is read again when it changed, once (" + std::to_string(reread_ms) + " ms)");
       // (the interval is twenty times what the look itself took, and this timed the whole frame, so only the fact of the
       // back-off is asserted, and only when the read was slow enough to call for one)
       check(st.wake_ms >= 500 && (reread_ms < 60.0 * rolltui_test::kClockScale || st.wake_ms > 600),

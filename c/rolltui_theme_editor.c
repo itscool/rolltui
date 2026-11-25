@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_effects.h"
 #include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_json.h"
@@ -29,6 +30,8 @@ static const char* mode_word(unsigned char m) { return m == ROLLTUI_MODE_LIGHT ?
 /* The five attribute names a role carries, in the order the menu lists them. One table, read
  * by the menu builder, the value sync and the toggle handler. */
 static const char* const kAttrs[] = {"bold", "italic", "underline", "dim", "reverse", "strikethrough"};
+static const int kAttrTexts[] = {ROLLTUI_TEXT_TH_ATTR_BOLD,    ROLLTUI_TEXT_TH_ATTR_ITALIC,  ROLLTUI_TEXT_TH_ATTR_UNDERLINE,
+                                 ROLLTUI_TEXT_TH_ATTR_DIM,     ROLLTUI_TEXT_TH_ATTR_REVERSE, ROLLTUI_TEXT_TH_ATTR_STRIKE};
 #define ATTR_COUNT 6
 
 static unsigned char* attr_of(RolltuiStyle* s, const char* name, size_t len) {
@@ -149,6 +152,21 @@ static RolltuiMenuItem* list_add(RolltuiMenuItemList* l, unsigned char kind, con
 static void list_add_action(RolltuiMenuItemList* l, const char* id, size_t id_len, const char* label,
                             size_t label_len) {
   list_add(l, ROLLTUI_MENU_ACTION, id, id_len, label, label_len);
+}
+
+/* A ROW WHOSE LABEL IS A TEXT, in the person's language (rolltui_texts.h). */
+static RolltuiMenuItem* list_addt(RolltuiMenuItemList* l, unsigned char kind, const char* id, size_t id_len, int text) {
+  size_t n = 0;
+  const char* t = rolltui_text(text, &n);
+  return list_add(l, kind, id, id_len, t, n);
+}
+static void list_add_actiont(RolltuiMenuItemList* l, const char* id, size_t id_len, int text) {
+  list_addt(l, ROLLTUI_MENU_ACTION, id, id_len, text);
+}
+/* `s` becomes a text, in the person's language. */
+static void text_set(RolltuiStr* s, int text) {
+  rolltui_str_clear(s);
+  rolltui_text_format(s, text, NULL, 0, NULL, 0);
 }
 
 /* ---- colour text -------------------------------------------------------------------------- */
@@ -323,7 +341,7 @@ int rolltui_theme_editor_load(RolltuiThemeEditor* e, const RolltuiJsonValue* col
   e->previewing = 0;
   rebuild_palette(e);
   rebuild_menu(e);
-  rolltui_str_set(&e->status, K("loaded"));
+  text_set(&e->status, ROLLTUI_TEXT_ED_LOADED);
   return 1;
 }
 
@@ -552,12 +570,11 @@ static void role_base(unsigned char role, char* out, size_t cap, size_t* len) {
  * unless it opens one of its own, which is one line here rather than 49 kept in sync by hand. */
 static const struct {
   const char* role;
-  const char* label;
+  int label; /* a text (rolltui_texts.h) */
 } kRoleSections[] = {
-    {"text", "Text & backgrounds"},        {"border", "Borders & labels"},
-    {"accent_1", "Accents & status"},      {"md_heading", "Markdown"},
-    {"diff_added", "Diff"},                {"input_text", "Input & selection"},
-    {"menu_item", "Menus, find & scrollbar"},
+    {"text", ROLLTUI_TEXT_TH_SEC_TEXT},     {"border", ROLLTUI_TEXT_TH_SEC_BORDER}, {"accent_1", ROLLTUI_TEXT_TH_SEC_ACCENT},
+    {"md_heading", ROLLTUI_TEXT_TH_SEC_MD}, {"diff_added", ROLLTUI_TEXT_TH_SEC_DIFF}, {"input_text", ROLLTUI_TEXT_TH_SEC_INPUT},
+    {"menu_item", ROLLTUI_TEXT_TH_SEC_MENU},
 };
 #define ROLLTUI_ROLE_SECTION_COUNT (sizeof kRoleSections / sizeof kRoleSections[0])
 
@@ -579,8 +596,7 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
       if (rn == sl && memcmp(rname, kRoleSections[s].role, rn) == 0) {
         char sec_id[24];
         const int sn = snprintf(sec_id, sizeof sec_id, "rolesec.%s", kRoleSections[s].role);
-        list_add(&roles, ROLLTUI_MENU_SECTION, sec_id, (size_t)sn, kRoleSections[s].label,
-                 strlen(kRoleSections[s].label));
+        list_addt(&roles, ROLLTUI_MENU_SECTION, sec_id, (size_t)sn, kRoleSections[s].label);
         break;
       }
     }
@@ -599,14 +615,13 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
     }
     for (a = 0; a < 2; ++a) {
       const char* which = a == 0 ? "fg" : "bg";
-      const char* label = a == 0 ? "custom fg" : "custom bg";
       int n = snprintf(id, sizeof id, "%.*s.%s.custom", (int)blen, base, which);
-      it = list_add(&fields, ROLLTUI_MENU_INPUT, id, (size_t)n, label, strlen(label));
+      it = list_addt(&fields, ROLLTUI_MENU_INPUT, id, (size_t)n, a == 0 ? ROLLTUI_TEXT_TH_CUSTOM_FG : ROLLTUI_TEXT_TH_CUSTOM_BG);
       it->spec.type = ROLLTUI_INPUT_TYPE_COLOR;
     }
     for (a = 0; a < ATTR_COUNT; ++a) {
       int n = snprintf(id, sizeof id, "%.*s.%s", (int)blen, base, kAttrs[a]);
-      list_add(&fields, ROLLTUI_MENU_TOGGLE, id, (size_t)n, kAttrs[a], strlen(kAttrs[a]));
+      list_addt(&fields, ROLLTUI_MENU_TOGGLE, id, (size_t)n, kAttrTexts[a]);
     }
     it = list_add(&roles, ROLLTUI_MENU_SUBMENU, base, blen, rname, rn);
     rolltui_menu_list_release(&it->children);
@@ -614,9 +629,9 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
     memset(&fields, 0, sizeof fields);
   }
 
-  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_edit"), K("Edit \xE2\x80\x94 applies live, everywhere"));
+  list_addt(&top, ROLLTUI_MENU_SECTION, K("sec_edit"), ROLLTUI_TEXT_TH_SEC_EDIT);
 
-  it = list_add(&top, ROLLTUI_MENU_SUBMENU, K("roles"), K("Roles"));
+  it = list_addt(&top, ROLLTUI_MENU_SUBMENU, K("roles"), ROLLTUI_TEXT_TH_ROLES);
   rolltui_menu_list_release(&it->children);
   it->children = roles;
   memset(&roles, 0, sizeof roles);
@@ -624,15 +639,15 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   memset(&modes, 0, sizeof modes);
   list_add_action(&modes, K("dark"), K("dark"));
   list_add_action(&modes, K("light"), K("light"));
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("mode"), K("Preview variant (dark/light)"));
+  it = list_addt(&top, ROLLTUI_MENU_CHOICE, K("mode"), ROLLTUI_TEXT_TH_MODE);
   rolltui_menu_list_release(&it->children);
   it->children = modes;
   memset(&modes, 0, sizeof modes);
   rolltui_str_set(&it->value, K(mode_word(e->mode)));
 
-  list_add_action(&top, K("check"), K("Check: contrast, colour-vision, badges"));
+  list_add_actiont(&top, K("check"), ROLLTUI_TEXT_TH_CHECK);
 
-  list_add(&top, ROLLTUI_MENU_SUBMENU, K("fixes"), K("Fixes (proposals; Enter applies one, undoable)"));
+  list_addt(&top, ROLLTUI_MENU_SUBMENU, K("fixes"), ROLLTUI_TEXT_TH_FIXES);
 
   memset(&gen, 0, sizeof gen);
   memset(&rulesets, 0, sizeof rulesets);
@@ -641,51 +656,51 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
     const char* rn = rolltui_ruleset_name((unsigned char)i, &len);
     list_add_action(&rulesets, rn, len, rn, len);
   }
-  it = list_add(&gen, ROLLTUI_MENU_CHOICE, K("gen.ruleset"), K("Ruleset"));
+  it = list_addt(&gen, ROLLTUI_MENU_CHOICE, K("gen.ruleset"), ROLLTUI_TEXT_TH_RULESET);
   rolltui_menu_list_release(&it->children);
   it->children = rulesets;
   memset(&rulesets, 0, sizeof rulesets);
   rolltui_str_set(&it->value, K("analogous"));
-  it = list_add(&gen, ROLLTUI_MENU_INPUT, K("gen.seed"), K("Seed"));
+  it = list_addt(&gen, ROLLTUI_MENU_INPUT, K("gen.seed"), ROLLTUI_TEXT_TH_SEED);
   it->spec.type = ROLLTUI_INPUT_TYPE_INT;
   it->spec.min = 0;
   rolltui_str_set(&it->value, K("1"));
-  it = list_add(&gen, ROLLTUI_MENU_INPUT, K("gen.chaos"), K("Chaos"));
+  it = list_addt(&gen, ROLLTUI_MENU_INPUT, K("gen.chaos"), ROLLTUI_TEXT_TH_CHAOS);
   it->spec.type = ROLLTUI_INPUT_TYPE_FLOAT;
   it->spec.min = 0;
   it->spec.max = 1;
   it->spec.step = 0.1;
   it->spec.precision = 2;
   rolltui_str_set(&it->value, K("0"));
-  list_add_action(&gen, K("gen.run"), K("Generate (replaces both variants, undoable)"));
-  it = list_add(&top, ROLLTUI_MENU_SUBMENU, K("generate"), K("Generate a theme (seeded)"));
+  list_add_actiont(&gen, K("gen.run"), ROLLTUI_TEXT_TH_GEN_RUN);
+  it = list_addt(&top, ROLLTUI_MENU_SUBMENU, K("generate"), ROLLTUI_TEXT_TH_GENERATE);
   rolltui_menu_list_release(&it->children);
   it->children = gen;
   memset(&gen, 0, sizeof gen);
 
-  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_history"), K("History"));
+  list_addt(&top, ROLLTUI_MENU_SECTION, K("sec_history"), ROLLTUI_TEXT_TH_SEC_HISTORY);
 
-  it = list_add(&top, ROLLTUI_MENU_ACTION, K("undo"), K("Undo"));
+  it = list_addt(&top, ROLLTUI_MENU_ACTION, K("undo"), ROLLTUI_TEXT_ED_UNDO);
   rolltui_str_set(&it->shortcut, K("Ctrl-Z"));
-  it = list_add(&top, ROLLTUI_MENU_ACTION, K("redo"), K("Redo"));
+  it = list_addt(&top, ROLLTUI_MENU_ACTION, K("redo"), ROLLTUI_TEXT_ED_REDO);
   rolltui_str_set(&it->shortcut, K("Ctrl-Y"));
 
-  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_file"), K("File"));
+  list_addt(&top, ROLLTUI_MENU_SECTION, K("sec_file"), ROLLTUI_TEXT_TH_SEC_FILE);
 
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load theme"));
+  it = list_addt(&top, ROLLTUI_MENU_CHOICE, K("load"), ROLLTUI_TEXT_TH_LOAD);
   memset(&opts, 0, sizeof opts);
   names_to_options(&e->presets, &opts);
   rolltui_menu_list_release(&it->children);
   it->children = opts;
   memset(&opts, 0, sizeof opts);
 
-  it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save theme as"));
+  it = list_addt(&top, ROLLTUI_MENU_INPUT, K("save"), ROLLTUI_TEXT_TH_SAVE);
   it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
 
   /* A row that can NEVER be actioned by this host is not a disabled control, it is clutter —
    * shown only when the privilege that would ever enable it is there at all. */
   if (e->may_write_shipped) {
-    it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
+    it = list_addt(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), ROLLTUI_TEXT_ED_WRITE_SHIPPED);
     memset(&opts, 0, sizeof opts);
     names_to_options(&e->shipped, &opts);
     rolltui_menu_list_release(&it->children);
@@ -693,11 +708,15 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
     memset(&opts, 0, sizeof opts);
   }
 
-  list_add_action(&top, K("reset_loaded"), K("Reset to the loaded preset\xE2\x80\xA6"));
-  list_add_action(&top, K("reset_builtin"), K("Reset to the built-in default\xE2\x80\xA6"));
+  list_add_actiont(&top, K("reset_loaded"), ROLLTUI_TEXT_ED_RESET_LOADED);
+  list_add_actiont(&top, K("reset_builtin"), ROLLTUI_TEXT_TH_RESET_BUILTIN);
 
   rolltui_menu_item_init(&root);
-  rolltui_menu_item_set(&root, ROLLTUI_MENU_SUBMENU, K("root"), K("theme editor"), NULL, 0);
+  {
+    size_t tn = 0;
+    const char* t = rolltui_text(ROLLTUI_TEXT_TH_EDITOR, &tn);
+    rolltui_menu_item_set(&root, ROLLTUI_MENU_SUBMENU, K("root"), t, tn, NULL, 0);
+  }
   rolltui_menu_list_release(&root.children);
   root.children = top;
   memset(&top, 0, sizeof top);
@@ -751,7 +770,7 @@ static void refresh_fixes(RolltuiThemeEditor* e) {
     list_add_action(&items, id, (size_t)n, e->fixes.v[i].what.p, e->fixes.v[i].what.n);
   }
   if (e->fixes.n == 0) {
-    RolltuiMenuItem* it = list_add(&items, ROLLTUI_MENU_ACTION, K("fix.none"), K("(nothing to fix in this variant)"));
+    RolltuiMenuItem* it = list_addt(&items, ROLLTUI_MENU_ACTION, K("fix.none"), ROLLTUI_TEXT_TH_NOTHING_TO_FIX);
     it->enabled = 0;
   }
   set_options_list(e->menu, "fixes", &items);
@@ -775,12 +794,15 @@ void rolltui_theme_editor_badges_line(const RolltuiThemeEditor* e, RolltuiStr* o
   memset(&badges, 0, sizeof badges);
   rolltui_theme_analyse(rolltui_theme_editor_styles(e, e->mode, 0), ROLLTUI_ROLE_COUNT, roles, pairs, &badges);
   rolltui_badge_names(&badges, &names);
-  rolltui_str_append(out, K("badges:"));
+  rolltui_text_format(out, ROLLTUI_TEXT_TH_BADGES, NULL, 0, NULL, 0);
   for (i = 0; i < names.n; ++i) {
     rolltui_str_append(out, K(" "));
     rolltui_str_append_str(out, &names.v[i]);
   }
-  if (names.n == 0) rolltui_str_append(out, K(" (none)"));
+  if (names.n == 0) {
+    rolltui_str_append(out, K(" "));
+    rolltui_text_format(out, ROLLTUI_TEXT_TH_NONE, NULL, 0, NULL, 0);
+  }
   rolltui_str_array_release(&names);
 }
 
@@ -794,10 +816,12 @@ void rolltui_theme_editor_report(const RolltuiThemeEditor* e, RolltuiStr* out) {
                             rolltui_theme_default_vocab(), out);
 }
 
-static void append_count(RolltuiStr* out, size_t n) {
-  char buf[24];
-  const int len = snprintf(buf, sizeof buf, "%zu", n);
-  rolltui_str_append(out, buf, len > 0 ? (size_t)len : 0);
+/* " · undo N · redo M": the history's depth either way, in the person's language */
+static void append_counts(RolltuiStr* out, size_t undo, size_t redo) {
+  char u[24], r[24];
+  const int un = snprintf(u, sizeof u, "%zu", undo), rn = snprintf(r, sizeof r, "%zu", redo);
+  rolltui_str_append(out, K(" \xC2\xB7 "));
+  rolltui_text_format(out, ROLLTUI_TEXT_ED_UNDO_REDO, u, un > 0 ? (size_t)un : 0, r, rn > 0 ? (size_t)rn : 0);
 }
 
 void rolltui_theme_editor_status_line(const RolltuiThemeEditor* e, RolltuiStr* out) {
@@ -805,21 +829,18 @@ void rolltui_theme_editor_status_line(const RolltuiThemeEditor* e, RolltuiStr* o
   const char* reason = rolltui_menu_edit_reason(e->menu, &reason_len);
   const int editing = rolltui_menu_editing(e->menu) != 0;
   if (editing && reason_len > 0) {
-    rolltui_str_append(out, K("refused: "));
+    rolltui_text_format(out, ROLLTUI_TEXT_ED_REFUSED, NULL, 0, NULL, 0);
     rolltui_str_append(out, reason, reason_len);
   } else if (e->previewing) {
-    rolltui_str_append(out, K("previewing \xE2\x80\x94 Enter commits, Esc cancels"));
+    rolltui_text_format(out, ROLLTUI_TEXT_TH_PREVIEWING, NULL, 0, NULL, 0);
   } else if (e->status.n == 0) {
-    rolltui_str_append(out, K("Enter commits, Esc cancels"));
+    rolltui_text_format(out, ROLLTUI_TEXT_TH_ENTER_COMMITS, NULL, 0, NULL, 0);
   } else {
     rolltui_str_append_str(out, &e->status);
   }
-  rolltui_str_append(out, K(" \xC2\xB7 undo "));
-  append_count(out, rolltui_undo_undo_depth(e->undo));
-  rolltui_str_append(out, K(" \xC2\xB7 redo "));
-  append_count(out, rolltui_undo_redo_depth(e->undo));
+  append_counts(out, rolltui_undo_undo_depth(e->undo), rolltui_undo_redo_depth(e->undo));
   rolltui_str_append(out, K(" \xC2\xB7 "));
-  rolltui_str_append(out, K(mode_word(e->mode)));
+  rolltui_text_format(out, e->mode == ROLLTUI_MODE_LIGHT ? ROLLTUI_TEXT_TH_LIGHT : ROLLTUI_TEXT_TH_DARK, NULL, 0, NULL, 0);
 }
 
 /* ---- editing ------------------------------------------------------------------------------- */
@@ -896,7 +917,7 @@ int rolltui_theme_editor_undo(RolltuiThemeEditor* e) {
   cancel_preview(e);
   if (!rolltui_undo_undo(e->undo)) return 0;
   restore_from_undo(e);
-  rolltui_str_set(&e->status, K("undone"));
+  text_set(&e->status, ROLLTUI_TEXT_ED_UNDONE);
   return 1;
 }
 
@@ -904,7 +925,7 @@ int rolltui_theme_editor_redo(RolltuiThemeEditor* e) {
   cancel_preview(e);
   if (!rolltui_undo_redo(e->undo)) return 0;
   restore_from_undo(e);
-  rolltui_str_set(&e->status, K("redone"));
+  text_set(&e->status, ROLLTUI_TEXT_ED_REDONE);
   return 1;
 }
 
@@ -973,7 +994,7 @@ static void run_generator(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out)
   RolltuiMenuItem* chaos_item = rolltui_menu_find(e->menu, K("gen.chaos"));
   unsigned char rs = 0;
   if (!ruleset_item || !rolltui_ruleset_from_name(ruleset_item->value.p, ruleset_item->value.n, &rs)) {
-    rolltui_str_set(&e->status, K("pick a ruleset first"));
+    text_set(&e->status, ROLLTUI_TEXT_TH_PICK_RULESET);
     out->kind = ROLLTUI_THEME_EDIT_CHANGED;
     return;
   }
@@ -1024,7 +1045,7 @@ static void generate_with(RolltuiThemeEditor* e, unsigned char rs, uint64_t seed
   rolltui_str_free(&light_name);
 
   rolltui_str_clear(&e->status);
-  rolltui_str_append(&e->status, K("generated "));
+  rolltui_text_format(&e->status, ROLLTUI_TEXT_TH_GENERATED, NULL, 0, NULL, 0);
   {
     size_t len = 0;
     const char* nm = rolltui_theme_editor_variant_name(e, e->mode, &len);
@@ -1033,7 +1054,10 @@ static void generate_with(RolltuiThemeEditor* e, unsigned char rs, uint64_t seed
   rolltui_str_append(&e->status, K(" \xE2\x80\x94"));
   memset(&badge_names, 0, sizeof badge_names);
   rolltui_badge_names(dark_mode ? &dark_badges : &light_badges, &badge_names);
-  if (badge_names.n == 0) rolltui_str_append(&e->status, K(" no badges"));
+  if (badge_names.n == 0) {
+    rolltui_str_append(&e->status, K(" "));
+    rolltui_text_format(&e->status, ROLLTUI_TEXT_TH_NO_BADGES, NULL, 0, NULL, 0);
+  }
   for (i = 0; i < badge_names.n; ++i) {
     rolltui_str_append(&e->status, K(" "));
     rolltui_str_append_str(&e->status, &badge_names.v[i]);
@@ -1042,7 +1066,8 @@ static void generate_with(RolltuiThemeEditor* e, unsigned char rs, uint64_t seed
   {
     const RolltuiStr* broken = dark_mode ? &dark_broken : &light_broken;
     if (broken->n != 0) {
-      rolltui_str_append(&e->status, K("; broken: "));
+      rolltui_str_append(&e->status, K("; "));
+      rolltui_text_format(&e->status, ROLLTUI_TEXT_TH_BROKEN, NULL, 0, NULL, 0);
       rolltui_str_append_str(&e->status, broken);
     }
   }
@@ -1059,8 +1084,8 @@ static int action_is(const RolltuiBindings* nav, const RolltuiChord* k, const ch
   return a && len == strlen(want) && memcmp(a, want, len) == 0;
 }
 
-static void undo_outcome(RolltuiThemeEditor* e, int did, RolltuiThemeEditorOutcome* out, const char* nothing) {
-  if (!did) rolltui_str_set(&e->status, nothing, strlen(nothing));
+static void undo_outcome(RolltuiThemeEditor* e, int did, RolltuiThemeEditorOutcome* out, int nothing) {
+  if (!did) text_set(&e->status, nothing);
   out->kind = did ? ROLLTUI_THEME_EDIT_COMMITTED : ROLLTUI_THEME_EDIT_CHANGED;
 }
 
@@ -1122,8 +1147,8 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
 
   if (ev->kind == ROLLTUI_EVENT_KEY) {
     /* An undo or redo changes the COMMITTED value: whoever mounted this writes it back. */
-    if (action_is(nav, &ev->key, "editor.undo")) { undo_outcome(e, rolltui_theme_editor_undo(e), out, "nothing to undo"); return; }
-    if (action_is(nav, &ev->key, "editor.redo")) { undo_outcome(e, rolltui_theme_editor_redo(e), out, "nothing to redo"); return; }
+    if (action_is(nav, &ev->key, "editor.undo")) { undo_outcome(e, rolltui_theme_editor_undo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO); return; }
+    if (action_is(nav, &ev->key, "editor.redo")) { undo_outcome(e, rolltui_theme_editor_redo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_REDO); return; }
   }
   rolltui_str_clear(&e->status);
 
@@ -1191,8 +1216,8 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
     goto done;
   }
   if (kind == ROLLTUI_MENU_EVENT_ACTIVATE) {
-    if (rolltui_str_eq(&id, K("undo"))) { undo_outcome(e, rolltui_theme_editor_undo(e), out, "nothing to undo"); goto done; }
-    if (rolltui_str_eq(&id, K("redo"))) { undo_outcome(e, rolltui_theme_editor_redo(e), out, "nothing to redo"); goto done; }
+    if (rolltui_str_eq(&id, K("undo"))) { undo_outcome(e, rolltui_theme_editor_undo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_UNDO); goto done; }
+    if (rolltui_str_eq(&id, K("redo"))) { undo_outcome(e, rolltui_theme_editor_redo(e), out, ROLLTUI_TEXT_ED_NOTHING_TO_REDO); goto done; }
     if (rolltui_str_eq(&id, K("reset_loaded"))) { out->kind = ROLLTUI_THEME_EDIT_RESET_LOADED; goto done; }
     if (rolltui_str_eq(&id, K("reset_builtin"))) { out->kind = ROLLTUI_THEME_EDIT_RESET_BUILTIN; goto done; }
     if (rolltui_str_eq(&id, K("check"))) { out->kind = ROLLTUI_THEME_EDIT_CHECK; goto done; }
@@ -1205,7 +1230,7 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
         RolltuiMenuEvent discard;
         begin_preview(e);
         rolltui_apply_fix(style_table(e, e->mode), ROLLTUI_ROLE_COUNT, e->fixes.v[i].role, &e->fixes.v[i].after);
-        rolltui_str_set(&e->status, K("applied: "));
+        text_set(&e->status, ROLLTUI_TEXT_TH_APPLIED);
         rolltui_str_append_str(&e->status, &e->fixes.v[i].what);
         commit_current(e, out);
         memset(&left, 0, sizeof left);
@@ -1273,7 +1298,7 @@ int rolltui_theme_editor_apply_fix(RolltuiThemeEditor* e, size_t i, RolltuiTheme
   if (i >= e->fixes.n) return 0;
   begin_preview(e);
   rolltui_apply_fix(style_table(e, e->mode), ROLLTUI_ROLE_COUNT, e->fixes.v[i].role, &e->fixes.v[i].after);
-  rolltui_str_set(&e->status, K("applied: "));
+  text_set(&e->status, ROLLTUI_TEXT_TH_APPLIED);
   rolltui_str_append_str(&e->status, &e->fixes.v[i].what);
   commit_current(e, out);
   return 1;
@@ -1284,8 +1309,7 @@ const char* rolltui_theme_editor_section_at(unsigned char role, size_t* len) {
   const char* name = rolltui_role_name(role, &rn);
   for (s = 0; s < ROLLTUI_ROLE_SECTION_COUNT; ++s)
     if (strlen(kRoleSections[s].role) == rn && memcmp(kRoleSections[s].role, name, rn) == 0) {
-      if (len) *len = strlen(kRoleSections[s].label);
-      return kRoleSections[s].label;
+      return rolltui_text(kRoleSections[s].label, len);
     }
   return NULL;
 }
