@@ -26,9 +26,11 @@ xterm.js). The file browser in the screenshot is on Homebrew: `brew install itsc
 - Headless runs for end-to-end tests (`rolltui_run_begin_headless`) and asciinema recordings of any
   run (`ROLLTUI_RECORD=demo.cast`)
 - Markdown with Mermaid diagrams, syntax highlighting, images (kitty, iTerm2, sixel or half
-  blocks), tables and trees, charts, a multi-line editor, a command palette, toasts, dialogs, and a
-  file browser with previews
+  blocks), tables and trees, charts, count panels, a multi-line editor with completion, a command
+  palette, toasts, dialogs, and a file browser with previews and `LS_COLORS`
+- Panes resized by dragging their edges, where the layout allows it
 - 10 themes with light and dark variants, checked for contrast and colour blindness
+- The words the library draws, the key help included, can be translated with a texts file
 - Fast; see [Speed](#speed)
 - No dependencies beyond a C and C++ compiler. The C API is one header, `rolltui.h`
 
