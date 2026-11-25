@@ -22,6 +22,7 @@
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_render.h" /* an inline region: drawing from a row, committing lines */
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
 
@@ -419,14 +420,21 @@ RolltuiTerminal* rolltui_terminal_new_sized(int in_fd, int out_fd, RolltuiTermin
   if (t->tty) { /* A LOCALE THAT IS NOT UTF-8: the library writes UTF-8 whatever it says, so the person is told the terminal may not show it */
     const char *name, *value;
     if (!rolltui_locale_utf8(&name, &value)) {
-      char note[256];
-      if (name)
-        snprintf(note, sizeof note, "The locale isn't UTF-8 (%s=%s), so the terminal may not show some characters. Set %s to a UTF-8 locale such as en_US.UTF-8.",
-                 name, value, name);
-      else
-        snprintf(note, sizeof note, "No locale is set (LANG, LC_CTYPE and LC_ALL are empty), so the terminal may not show some characters. Set LANG to a UTF-8 locale such as en_US.UTF-8.");
-      rolltui_logf(ROLLTUI_LOG_WARN, "locale: %s", note);
-      rolltui_termfacts_set_note(note);
+      RolltuiStr note, pair;
+      memset(&note, 0, sizeof note);
+      memset(&pair, 0, sizeof pair);
+      if (name) {
+        rolltui_str_set(&pair, name, strlen(name));
+        rolltui_str_append(&pair, "=", 1);
+        rolltui_str_append(&pair, value, strlen(value));
+        rolltui_text_format(&note, ROLLTUI_TEXT_LOCALE_NOT_UTF8, pair.p, pair.n, name, strlen(name));
+      } else {
+        rolltui_text_format(&note, ROLLTUI_TEXT_LOCALE_NONE, NULL, 0, NULL, 0);
+      }
+      rolltui_logf(ROLLTUI_LOG_WARN, "locale: %.*s", (int)note.n, note.p ? note.p : "");
+      rolltui_termfacts_set_note(note.p ? note.p : "");
+      rolltui_str_free(&note);
+      rolltui_str_free(&pair);
     }
   }
 #endif

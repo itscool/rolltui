@@ -5,8 +5,8 @@ rest as you need it. Every function is documented in `rolltui.h`.
 
 - **Getting started**: [How the parts fit](#how-the-parts-fit) · [A first program](#a-first-program) · [Testing a program](#testing-a-program) · [Embedding rolltui](#embedding-rolltui) · [Ownership](#ownership) · [Strings](#strings)
 - **Screens**: [Layout files](#layout-files) · [The layout at run time](#the-layout-at-run-time) · [Theme files](#theme-files) · [Cut text, footers, strikethrough and focus](#cut-text-footers-strikethrough-and-focus) · [Hover](#hover)
-- **Keys**: [Bindings files](#bindings-files) · [Key sequences and counts](#key-sequences-and-counts) · [The keys sheet](#the-keys-sheet) · [The theme sheet](#the-theme-sheet)
-- **Widgets**: [Lists, tables and trees](#lists-tables-and-trees) · [The editor](#the-editor) · [Menu files](#menu-files) · [Charts and dashboards](#charts-and-dashboards) · [Progress](#progress) · [Messages](#messages) · [Dialogs](#dialogs) · [Pictures](#pictures) · [The column browser](#the-column-browser) · [Previews](#previews) · [Mermaid diagrams](#mermaid-diagrams) · [Syntax highlighting](#syntax-highlighting) · [File info row](#file-info-row)
+- **Keys**: [Bindings files](#bindings-files) · [Key sequences and counts](#key-sequences-and-counts) · [The keys sheet](#the-keys-sheet) · [The theme sheet](#the-theme-sheet) · [Languages](#languages)
+- **Widgets**: [Lists, tables and trees](#lists-tables-and-trees) · [The editor](#the-editor) · [Menu files](#menu-files) · [Charts and dashboards](#charts-and-dashboards) · [Progress](#progress) · [Counts](#counts) · [Messages](#messages) · [Dialogs](#dialogs) · [Pictures](#pictures) · [The column browser](#the-column-browser) · [Previews](#previews) · [Mermaid diagrams](#mermaid-diagrams) · [Syntax highlighting](#syntax-highlighting) · [File info row](#file-info-row)
 - **Running**: [The run loop](#the-run-loop) · [Inline mode](#inline-mode) · [In a web page](#in-a-web-page) · [Work off the UI thread](#work-off-the-ui-thread) · [Other programs](#other-programs) · [File watching](#file-watching) · [The clipboard, the title and the terminal](#the-clipboard-the-title-and-the-terminal) · [Diagnostics](#diagnostics)
 - **The terminal**: [Terminal detection](#terminal-detection) · [What a frame sends](#what-a-frame-sends)
 
@@ -955,6 +955,34 @@ and how many problems the theme has.
 - Ctrl-D (`theme.variant`) switches to editing the other variant, light or dark. Ctrl-G
   (`theme.generate`) generates a theme from the next seed. Undo, load, save and reset are the
   `sheet.*` keys shared by all the editor sheets.
+
+## Languages
+
+The words the library draws can be in the user's language. A texts file maps ids to translations:
+
+```json
+{ "language": "fr", "texts": {
+    "input.complete": "compléter le mot, ou la suivante dans la liste",
+    "text.list.empty": "(vide)",
+    "text.window.nothing_bound": "rien n'est lié à « {1} »" } }
+```
+
+An action's description has the action's name as its id, so loading a file translates the help,
+the keys sheet and the key hints, including your program's own actions. The library's other texts
+have ids starting with `text.`. `{1}` and `{2}` stand for what a text names, such as a source or a
+count, and a translation can put them anywhere. Anything the file doesn't give stays English.
+
+`rolltui_texts_load(json, len, &err)` loads a file, replacing what an earlier one gave, and
+`rolltui_texts_clear()` goes back to English. Load it before anything is drawn. One language
+applies to the whole process. `rolltui_texts_template(bindings, &out)` writes a file with every
+library text and every action the table declares, each in English, for a translator to start from.
+
+Translations are your program's to ship. `rolltui_locale_language(out, cap)` gives the language the
+locale names (`fr` for `fr_CA.UTF-8`, from the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is
+set, and `en` for none or the POSIX locale), so a program can choose its file by it. dirktui looks
+for `texts.<language>.json` beside its binary or in `<config>/rolltui/dirktui/`, takes the
+language from its settings' `"language"` before the locale's, and `dirktui texts` prints its
+template.
 
 # Widgets
 

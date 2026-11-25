@@ -7,6 +7,7 @@
  * Everything allocates through the closed set in `rolltui_alloc.h`. The only process-wide
  * state is the active protocol, which is a scalar and retains nothing. */
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_texts.h"
 
 #include <stdatomic.h>
 #include <string.h>
@@ -888,20 +889,22 @@ const char* rolltui_key_protocol_name(unsigned char p, size_t* len) {
 /* Indexed by ROLLTUI_UNDELIVERABLE_*. The reason names the CHEAPEST protocol that would carry
  * the chord, so a person is told what to turn on rather than that something is impossible —
  * `Keys.cpp`'s own comment, moved with the words it described. */
-static const char* const kUndeliverableText[] = {
-    "",
-    "it is not a key",
-    "shift on a character key other than a letter is the shifted character itself, which no terminal reports as a chord",
-    "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
-    "it needs the kitty keyboard protocol",
-    "no keyboard protocol this library speaks can report it",
+static const int kUndeliverableText[] = {
+    -1,
+    ROLLTUI_TEXT_NOT_A_KEY,
+    ROLLTUI_TEXT_SHIFT_ON_CHAR,
+    ROLLTUI_TEXT_NEEDS_KITTY_OR_MOK,
+    ROLLTUI_TEXT_NEEDS_KITTY,
+    ROLLTUI_TEXT_NO_PROTOCOL,
 };
 
-const char* rolltui_key_undeliverable_text(int code, size_t* len) {
+const char* rolltui_key_undeliverable_text(int code, size_t* len) { /* in the person's language (rolltui_texts.h) */
   const size_t n = sizeof kUndeliverableText / sizeof kUndeliverableText[0];
-  const char* s = (code >= 0 && (size_t)code < n) ? kUndeliverableText[code] : "";
-  if (len) *len = strlen(s);
-  return s;
+  if (code < 0 || (size_t)code >= n || kUndeliverableText[code] < 0) {
+    if (len) *len = 0;
+    return "";
+  }
+  return rolltui_text(kUndeliverableText[code], len);
 }
 
 /* ---- the key names, both spellings ----------------------------------------------------------

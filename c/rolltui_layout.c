@@ -3,6 +3,7 @@
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -3117,11 +3118,16 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
   size_t i;
   /* A SCREEN SMALLER THAN THE LAYOUT NEEDS is told so, centred on the layout's ground, rather than given a layout squeezed past use. */
   if (s->layers[0].min_width > screen.w || s->layers[0].min_height > screen.h) {
-    char msg[96];
+    char msg[192], now[24], need[24];
     const char* x = ambiguous_wide ? "x" : "\xC3\x97"; /* × */
-    int n = snprintf(msg, sizeof msg, "the screen is %d%s%d; this needs %d%s%d", screen.w, x, screen.h, s->layers[0].min_width, x,
-                     s->layers[0].min_height);
-    int mw;
+    const int nn = snprintf(now, sizeof now, "%d%s%d", screen.w, x, screen.h);
+    const int dn = snprintf(need, sizeof need, "%d%s%d", s->layers[0].min_width, x, s->layers[0].min_height);
+    RolltuiStr said;
+    int n, mw;
+    memset(&said, 0, sizeof said);
+    rolltui_text_format(&said, ROLLTUI_TEXT_TOO_SMALL, now, nn > 0 ? (size_t)nn : 0, need, dn > 0 ? (size_t)dn : 0);
+    n = snprintf(msg, sizeof msg, "%.*s", (int)said.n, said.p ? said.p : "");
+    rolltui_str_free(&said);
     RolltuiStyle ground = styles[s->layers[0].root.background], text = styles[roles->title];
     text.bg = ground.bg;
     rolltui_frame_fill(f, scratch->draw, screen, ground, NULL, 0);
@@ -3133,9 +3139,6 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
     }
     if (n > 0 && mw <= screen.w) {
       const int nx = screen.x + (screen.w - mw) / 2, ny = screen.y + (screen.h - 1) / 2;
-      char now[24], need[24];
-      const int nn = snprintf(now, sizeof now, "%d%s%d", screen.w, x, screen.h);
-      const int dn = snprintf(need, sizeof need, "%d%s%d", s->layers[0].min_width, x, s->layers[0].min_height);
       rolltui_frame_put_text(f, scratch->draw, nx, ny, msg, (size_t)n, text, mw, ambiguous_wide, 0);
       { /* THE TWO SIZES IN THEIR OWN ROLES: what the screen is, and what it needs; bold, so they read in every theme */
         const char* hit = nn > 0 ? strstr(msg, now) : NULL;

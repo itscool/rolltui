@@ -358,6 +358,7 @@ int main() {
                            strings: OWNED, allocated by `rolltui_mem_alloc` and freed by its destructor, moved (never copied) between lists */
         {"c/rolltui_layout.h", 0},
         {"c/rolltui_widget_input.h", 0},
+        {"c/rolltui_texts.h", 0},
         {"c/rolltui_theme.h", 0},
         {"c/rolltui_undo.h", 0},
         {"c/rolltui_widget_menu.h", 0},
@@ -641,9 +642,10 @@ int main() {
     // from outside has been continued. 42: whether the entered terminal's window has the person's focus. 43: a web page's side of
     // its terminal (rolltui_os_web.c, compiled for wasm32-wasi in place of the POSIX and Windows sets).
     // 45: the program a SIGTERM is passed on to while it has the terminal, and the signal that came. 46: a pseudo-terminal refused. 47: a SIGUSR1 heard.
-    /* 52: the log's five, one log a process as stderr is. 54: the note entering a terminal leaves, and whether it is waiting */
-    check(ctx == 0 && proc == 54,
-          "the boundary is 0 CONTEXT + 54 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    /* 52: the log's five, one log a process as stderr is. 54: the note entering a terminal leaves, and whether it is waiting.
+     * 56: the person's language, as texts by id and the library's own looked up. 57: whether shutdown frees it */
+    check(ctx == 0 && proc == 57,
+          "the boundary is 0 CONTEXT + 57 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

@@ -5120,6 +5120,19 @@ int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, in
  * NULL) are the variable that decided and what it says, NULL when none is set. Entering a terminal whose locale is not UTF-8 leaves a
  * warning that the first window table to draw its toasts shows, since the library writes UTF-8 whatever the locale says. */
 int rolltui_locale_utf8(const char** name, const char** value);
+/* THE PERSON'S LANGUAGE: the words the library draws, by id, from a texts file `{ "language": "fr", "texts": { id: text } }`, one a
+ * process. An action's description is the text named by the action (`"input.complete": "…"`), the host's own actions' too, so the help
+ * and the keys sheet are in that language; the library's own notes have ids of their own (`"text.list.empty": "(vide)"`), and `{1}` and
+ * `{2}` in one stand for what it names. An id the file does not give stays English. REPLACES what an earlier load gave; 0 with the
+ * reason in `err` (may be NULL) when the text is not a texts file. Load it before anything is drawn. */
+int rolltui_texts_load(const char* json, size_t len, RolltuiStr* err);
+void rolltui_texts_clear(void); /* back to English */
+/* A TEXTS FILE TO TRANSLATE: every id the library draws and every action `b` declares (may be NULL), each with its English. APPENDS. */
+void rolltui_texts_template(const RolltuiBindings* b, RolltuiStr* out);
+/* THE LANGUAGE THE LOCALE NAMES: the first of LC_ALL, LC_MESSAGES and LANG that is set, the letters before its territory or codeset
+ * ("fr" of fr_CA.UTF-8), in lower case; "en" for POSIX's locale or none. Into `out` (`cap` bytes, terminated); its length. Which file
+ * that language's texts are in is the host's: its own, beside its other presets. */
+size_t rolltui_locale_language(char* out, size_t cap);
 void rolltui_terminal_facts(RolltuiTerminal* t, RolltuiTermFacts* out);
 
 /* SAYS THE DEPTH OUTRIGHT, over whatever was detected: a theme file's `depth` other than "auto", or a person who knows better than the

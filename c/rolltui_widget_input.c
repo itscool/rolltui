@@ -2,6 +2,7 @@
  * rules are rolltui/Input.hpp's. */
 #include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1826,7 +1827,13 @@ int rolltui_input_draw_completions(RolltuiInput* in, RolltuiFrame* f, RolltuiDra
   if ((int)in->comp_sel >= in->comp_top + rows) in->comp_top = (int)in->comp_sel - rows + 1;
   {
     const RolltuiRect box = {x, y, w, h};
-    hn = snprintf(head, sizeof head, "%zu of %zu", in->comp_sel + 1, in->comp.n);
+    char a[24], b[24];
+    const int an = snprintf(a, sizeof a, "%zu", in->comp_sel + 1), bn = snprintf(b, sizeof b, "%zu", in->comp.n);
+    RolltuiStr said;
+    memset(&said, 0, sizeof said);
+    rolltui_text_format(&said, ROLLTUI_TEXT_COMPLETIONS, a, an > 0 ? (size_t)an : 0, b, bn > 0 ? (size_t)bn : 0);
+    hn = snprintf(head, sizeof head, "%.*s", (int)said.n, said.p ? said.p : "");
+    rolltui_str_free(&said);
     rolltui_frame_fill(f, draw, box, ground, NULL, 0);
     rolltui_draw_border(f, draw, box, ROLLTUI_BORDER_ROUNDED, border, head, hn > 0 ? (size_t)hn : 0, styles[ROLLTUI_ROLE_TITLE], aw);
   }

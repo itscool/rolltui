@@ -137,7 +137,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 48; /* +rolltui_widget_dialog.h; +rolltui_chart.h; +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 49; /* +rolltui_texts.h; +rolltui_widget_dialog.h; +rolltui_chart.h; +rolltui_widget_list.h; +rolltui_image.h; +rolltui_feedback.h; +rolltui_os.h; +rolltui_regex.h; +rolltui_syntax.h; +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -563,7 +563,9 @@ int main() {
     // File colours made, filled from LS_COLORS, LSCOLORS, the environment and rules, matched, freed and handed to the browser
     // (PUBLIC 685); the browser's own setter (INTERNAL 980).
     // Whether the locale says UTF-8 (PUBLIC 686), and the note entering a terminal leaves when it does not (INTERNAL 982).
-    check(totals["PUBLIC"] == 686 && totals["INTERNAL"] == 982 && totals.size() == 2,
+    // A texts file loaded and cleared, its template written, and the locale's language (PUBLIC 690); a text looked up, formatted
+    // and named, and a description's English (INTERNAL 986).
+    check(totals["PUBLIC"] == 690 && totals["INTERNAL"] == 986 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }
@@ -759,12 +761,12 @@ int main() {
     // Bind 122: a field's completer, its candidates added and their range, and the ready-made words and paths.
     // Bind 123, release 20, widget 89: a count window bound and its count released; big digits drawn and measured.
     // Run 271, release 21, widget 90: file colours made, filled four ways and handed to the browser; freed; matched.
-    // Run 272: whether the locale says UTF-8.
-    check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 35 && rt["HOST_SETTINGS"] == 100 &&
-              rt["HOST_BIND"] == 123 && rt["HOST_RUN"] == 272 && rt["HOST_RELEASE"] == 21 &&
+    // Run 272: whether the locale says UTF-8. Load 38, release 22: a texts file loaded, its template, the locale's language; cleared.
+    check(rt["VOCAB"] == 45 && rt["HOST_LOAD"] == 38 && rt["HOST_SETTINGS"] == 100 &&
+              rt["HOST_BIND"] == 123 && rt["HOST_RUN"] == 272 && rt["HOST_RELEASE"] == 22 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 90,
-          "the roles are the recorded shape — vocab 45, host load 35 / settings 100 / bind 123 / run 272 / "
-          "release 21, tool interop 0, widget 90 (got " +
+          "the roles are the recorded shape — vocab 45, host load 38 / settings 100 / bind 123 / run 272 / "
+          "release 22, tool interop 0, widget 90 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

@@ -13,6 +13,7 @@
 #include "rolltui/c/rolltui_os.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_unicode.h"
 
@@ -1205,7 +1206,11 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
 
   switch (pv->kind) {
     case ROLLTUI_PREVIEW_EMPTY:
-      put_row(pv, f, body.x, body.y, "(empty file)", 12, dim, dim, body.w, ambiguous_wide);
+      {
+        size_t el = 0;
+        const char* empty = rolltui_text(ROLLTUI_TEXT_EMPTY_FILE, &el);
+        put_row(pv, f, body.x, body.y, empty, el, dim, dim, body.w, ambiguous_wide);
+      }
       break;
     case ROLLTUI_PREVIEW_LOADING:
       if (pv->now_ms >= pv->loading_since + LOADING_SHOWN_MS)

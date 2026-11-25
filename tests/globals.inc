@@ -191,6 +191,11 @@ ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_focused", PROCESS)
  * that draws its toasts. One terminal a process, as above. */
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_note", PROCESS)
 ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_note_set", PROCESS)
+/* THE PERSON'S LANGUAGE (`rolltui_texts_load`): every text a texts file gave, by id, and the library's own found in it once. One a
+ * process, as the log is: a person reads one language, and it is set before anything is drawn. */
+ROLLTUI_GLOBAL("rolltui_texts.c", "g_named", PROCESS)
+ROLLTUI_GLOBAL("rolltui_texts.c", "g_own", PROCESS)
+ROLLTUI_GLOBAL("rolltui_texts.c", "g_on_shutdown", PROCESS)
 /* A web page's side of its terminal: what was typed and not yet read, the size, a pending resize or wake. One page, one terminal;
  * compiled only for wasm32-wasi. */
 ROLLTUI_GLOBAL("rolltui_os_web.c", "g_web", PROCESS)

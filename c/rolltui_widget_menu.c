@@ -18,6 +18,7 @@
 #include "rolltui/c/rolltui_widget_menu_tree.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_unicode.h"
@@ -2386,13 +2387,8 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
   if (vis_n == 0) {
     if (rows > 0) {
       rolltui_str_clear(&line);
-      if (m->filter.n) {
-        str_add(&line, "(no match for /");
-        rolltui_str_append_str(&line, &m->filter);
-        str_add(&line, ")");
-      } else {
-        str_add(&line, "(empty)");
-      }
+      if (m->filter.n) rolltui_text_format(&line, ROLLTUI_TEXT_NO_MATCH, m->filter.p, m->filter.n, NULL, 0);
+      else rolltui_text_format(&line, ROLLTUI_TEXT_EMPTY, NULL, 0, NULL, 0);
       rolltui_frame_put_text(f, draw, x0, y, line.p, line.n, styles[roles->text_muted], w, aw, 0);
     }
     rolltui_str_free(&line);

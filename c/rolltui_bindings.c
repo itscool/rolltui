@@ -22,6 +22,7 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_texts.h" /* a description in the person's language */
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_terminal.h"
@@ -372,7 +373,7 @@ const char* rolltui_bindings_action_at(const RolltuiBindings* b, size_t i, size_
   return b->actions[i].p;
 }
 
-const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len) {
+const char* rolltui_bindings_english(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len) {
   size_t i;
   for (i = 0; i < b->action_count; ++i)
     if (str_is(&b->actions[i], action, len)) {
@@ -381,6 +382,17 @@ const char* rolltui_bindings_description(const RolltuiBindings* b, const char* a
     }
   *out_len = 0;
   return NULL;
+}
+
+/* THE DESCRIPTION A PERSON READS: the texts file's, by the action's name, for a declared action; else the one it was declared with. */
+const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len) {
+  const char* en = rolltui_bindings_english(b, action, len, out_len);
+  const char* own;
+  size_t own_len = 0;
+  if (!en) return NULL;
+  own = rolltui_text_named(action, len, &own_len);
+  if (own) *out_len = own_len;
+  return own ? own : en;
 }
 
 void rolltui_bindings_undeclare_others(RolltuiBindings* b, RolltuiScopeFn is_library, void* ctx) {

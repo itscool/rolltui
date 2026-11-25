@@ -436,6 +436,7 @@ ROLLTUI_API(rolltui_theme_generate, INTERNAL)
 
 /* ---- rolltui_bindings.h — a host holds a bindings table and its report; default PUBLIC --- */
 ROLLTUI_API(rolltui_bindings_action_at, INTERNAL)
+ROLLTUI_API(rolltui_bindings_english, INTERNAL)  /* a description as it was declared: the template's English */
 ROLLTUI_API(rolltui_bindings_action_count, INTERNAL)
 ROLLTUI_API(rolltui_bindings_action_for, PUBLIC)
 ROLLTUI_API(rolltui_bindings_add_action, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
@@ -1936,6 +1937,13 @@ ROLLTUI_API(rolltui_termenv_read, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_mode, INTERNAL)
 ROLLTUI_API(rolltui_termfacts_active_wide, INTERNAL)
 ROLLTUI_API(rolltui_locale_utf8, PUBLIC)  /* `dirktui check-terminal` names the locale and whether it says UTF-8 */
+ROLLTUI_API(rolltui_locale_language, PUBLIC)  /* dirktui picks its texts file by the locale's language */
+ROLLTUI_API(rolltui_texts_load, PUBLIC)  /* …and loads it */
+ROLLTUI_API(rolltui_texts_clear, PUBLIC)  /* KEPT: back to English, and the table freed: a host that changes language, and a leak check's release */
+ROLLTUI_API(rolltui_texts_template, PUBLIC)  /* `dirktui texts` writes what a translator starts from */
+ROLLTUI_API(rolltui_text, INTERNAL)  /* a library text in the person's language */
+ROLLTUI_API(rolltui_text_format, INTERNAL)  /* …with what it names put in */
+ROLLTUI_API(rolltui_text_named, INTERNAL)  /* a text by its id: an action's description */
 ROLLTUI_API(rolltui_termfacts_set_note, INTERNAL)  /* …and leaves the person a note when it does not */
 ROLLTUI_API(rolltui_termfacts_take_note, INTERNAL)  /* the window table shows it, once */
 ROLLTUI_API(rolltui_termfacts_active_focused, INTERNAL)

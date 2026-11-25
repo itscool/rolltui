@@ -158,7 +158,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_widget_input.c c/rolltui_widget_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_image.c c/rolltui_tasks.c c/rolltui_watch.c c/rolltui_widget_transcript.c c/rolltui_widget_list.c c/rolltui_widget_dialog.c c/rolltui_log.c c/rolltui_match.c c/rolltui_chart.c c/rolltui_file_colors.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_mermaid.c c/rolltui_hints.c c/rolltui_feedback.c c/rolltui_ansi.c c/rolltui_image.c c/rolltui_tasks.c c/rolltui_watch.c c/rolltui_widget_transcript.c c/rolltui_widget_list.c c/rolltui_widget_dialog.c c/rolltui_log.c c/rolltui_match.c c/rolltui_chart.c c/rolltui_file_colors.c c/rolltui_texts.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -476,7 +476,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
   layout_editor.cpp layout_editor.hpp menu_editor.cpp menu_editor.hpp tool_actions.hpp undo_stack.hpp
   # suites that test an implementation
-  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp image_test.cpp process_test.cpp tasks_test.cpp list_test.cpp file_colors_test.cpp dialog_test.cpp viewer_test.cpp layout_runtime_test.cpp terminal_events_test.cpp sequences_test.cpp chart_test.cpp text_details_test.cpp render_replay_test.cpp vt_model.hpp dirktui_test.cpp studio_golden_test.cpp dirktui_hover_test.cpp
+  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp feedback_test.cpp grapheme_break_test.cpp image_test.cpp process_test.cpp tasks_test.cpp list_test.cpp file_colors_test.cpp texts_test.cpp dialog_test.cpp viewer_test.cpp layout_runtime_test.cpp terminal_events_test.cpp sequences_test.cpp chart_test.cpp text_details_test.cpp render_replay_test.cpp vt_model.hpp dirktui_test.cpp studio_golden_test.cpp dirktui_hover_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp normalization_test.cpp fatal_test.cpp
@@ -587,6 +587,7 @@ add_rolltui_test(rolltui-files-test tests/files_test.cpp)
 add_rolltui_test(rolltui-app-files-test tests/app_files_test.cpp)
 add_rolltui_test(rolltui-picker-kind-test tests/picker_kind_test.cpp)
 add_rolltui_test(rolltui-file-colors-test tests/file_colors_test.cpp)
+add_rolltui_test(rolltui-texts-test tests/texts_test.cpp)
 
 # THE PARITY PROBE — can a HOST build what the LIBRARY builds? `menu` reimplemented as a host
 # kind through the public API alone, both driven by one script, the presented BYTES compared,

@@ -14,6 +14,7 @@
 #include "rolltui/c/rolltui_preview.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_texts.h"
 #include "rolltui/c/rolltui_syntax.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_widgets.h"
@@ -1759,7 +1760,11 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       const int failed = c->error.n != 0;
       const int room = failed ? (d.r.x + d.r.w - (x + 1)) : (cw - 1);
       if (failed) fit_into(p, c->error.p, c->error.n, room, &p->s1);
-      else fit_into(p, "(empty)", 7, room, &p->s1);
+      else {
+        size_t el = 0;
+        const char* empty = rolltui_text(ROLLTUI_TEXT_EMPTY, &el);
+        fit_into(p, empty, el, room, &p->s1);
+      }
       put_clipped(&d, x + 1, d.r.y + hr, p->s1.p ? p->s1.p : "", p->s1.n, failed ? err_style : dim, room);
     }
   }

@@ -98,6 +98,8 @@ void rolltui_bindings_set_enter_rule(RolltuiBindings* b, const char* action, siz
  * must not throw its chords away. */
 void rolltui_bindings_add_action(RolltuiBindings* b, const char* action, size_t alen, const char* desc, size_t dlen);
 const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len);
+/* The description it was declared with, whatever a texts file says: what a translator starts from. */
+const char* rolltui_bindings_english(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len);
 size_t rolltui_bindings_row_count(const RolltuiBindings* b);
 const char* rolltui_bindings_row_at(const RolltuiBindings* b, size_t i, size_t* len);
 int rolltui_bindings_has_row(const RolltuiBindings* b, const char* action, size_t len);

@@ -689,6 +689,7 @@ struct Options {
   bool preview = false;  // a file's contents in the right half: off until a person asks (it reads the file under the cursor)
   bool syntax = true;    // source in the preview drawn in colour, when it is in a language the library knows; off draws every file plain
   bool ls_colors = false; // names in the colours LS_COLORS (or LSCOLORS) gives them, as `ls` draws them; off, the theme's alone
+  RolltuiStr language;    // the language of the words on screen, "fr"; empty: the locale's
   bool info = true;      // what the cursor is on — its mode and time, a file's size beside its name — said at the head of the pane right of it
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
@@ -1219,6 +1220,20 @@ struct App {
     const char* s = rolltui_json_as_string(v, "sort", 4, &n);
     return show_from(StrView(s, n));
   }
+  // THE WORDS ON SCREEN IN THE PERSON'S LANGUAGE: the settings file's `language`, else the locale's, from `texts.<language>.json`
+  // beside the binary or in <config>/rolltui/dirktui/. None is shipped; `dirktui texts` writes what a translation starts from.
+  void load_texts(const char* argv0) {
+    char lang[16];
+    if (!opt.language.empty()) std::snprintf(lang, sizeof lang, "%s", opt.language.c_str());
+    else rolltui_locale_language(lang, sizeof lang);
+    const std::string kind = std::string("texts.") + lang;
+    RolltuiStr t{};
+    if (rolltui_app_file(argv0, "dirktui", kind.c_str(), nullptr, 0, &t, nullptr)) {
+      RolltuiStr err{};
+      if (!rolltui_texts_load(t.p ? t.p : "", t.n, &err)) hint = rolltui::format("texts.%s.json: %s", lang, err.c_str());
+    }
+    rolltui_str_free(&t);
+  }
   void load_settings(const char* argv0) {
     RolltuiStr t{};
     if (rolltui_app_file(argv0, "dirktui", "settings", nullptr, 0, &t, nullptr)) {
@@ -1232,6 +1247,7 @@ struct App {
         { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = StrView(pv, pn) == "right"; }
         opt.syntax = rolltui_json_as_bool(rolltui_json_get(root, "syntax", 6), 1) != 0;
         opt.ls_colors = rolltui_json_as_bool(rolltui_json_get(root, "ls_colors", 9), 0) != 0;
+        { std::size_t ln = 0; const char* lv = rolltui_json_as_string(rolltui_json_get(root, "language", 8), "", 0, &ln); opt.language.assign(lv, ln); }
         opt.info = rolltui_json_as_bool(rolltui_json_get(root, "info", 4), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
@@ -1267,10 +1283,10 @@ struct App {
     auto tf = [](bool b) { return b ? "true" : "false"; };
     RolltuiStr out;
     rolltui::appendf(out,
-                     "{ \"motion\": %s, \"sparkle\": %s, \"highlight\": %s, \"dividers\": %s, \"preview\": \"%s\", \"syntax\": %s, \"ls_colors\": %s, \"info\": %s, "
+                     "{ \"motion\": %s, \"sparkle\": %s, \"highlight\": %s, \"dividers\": %s, \"preview\": \"%s\", \"syntax\": %s, \"ls_colors\": %s, \"language\": \"%s\", \"info\": %s, "
                      "\"show_size\": \"%s\", \"show_modified\": \"%s\", \"hidden\": %s, \"sort\": \"%s\", \"reversed\": %s, \"leave\": %s, "
                      "\"exec\": \"%s\", \"land\": \"%s\", \"paths\": \"%s\", \"open\": {",
-                     tf(opt.motion), tf(opt.sparkle), tf(opt.highlight), tf(opt.dividers), opt.preview ? "right" : "off", tf(opt.syntax), tf(opt.ls_colors), tf(opt.info),
+                     tf(opt.motion), tf(opt.sparkle), tf(opt.highlight), tf(opt.dividers), opt.preview ? "right" : "off", tf(opt.syntax), tf(opt.ls_colors), opt.language.c_str(), tf(opt.info),
                      show_name(opt.show_size), show_name(opt.show_modified), tf(opt.hidden), sort_name(opt.sort), tf(opt.reversed), tf(opt.leave),
                      exec_name(opt.exec), opt.land_in_file_folder ? "file" : "start", opt.copy_relative ? "relative" : "absolute");
     // In the order of the group ids, as a sorted map would write them, so a settings file reads the same whoever wrote it.
@@ -2588,6 +2604,9 @@ int usage() {
                "                                           in <config>/rolltui/syntax/, and why one of yours did\n"
                "                                           not load; FILE.json checks a language you are writing;\n"
                "                                           exit 1 when any did not\n"
+               "       dirktui texts                       a texts file to translate: every word dirktui draws, in English, by id;\n"
+               "                                           saved as texts.LANG.json in <config>/rolltui/dirktui/, it is used\n"
+               "                                           where the locale (or the settings' \"language\") says LANG\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
                "                                           fish: dirktui init fish | source\n"
@@ -3278,13 +3297,14 @@ int main(int argc, char** argv) {
   if (argc >= 2 && StrView(argv[1]) == "check-terminal") return check_terminal_command();
   if (argc >= 2 && StrView(argv[1]) == "languages") return languages_command(argc, argv);
   if (argc >= 2 && StrView(argv[1]) == "install") return install_command(argc, argv, false);
+  const bool print_texts = argc >= 2 && StrView(argv[1]) == "texts"; /* answered once the app's own actions are declared */
   if (argc >= 2 && StrView(argv[1]) == "uninstall") return install_command(argc, argv, true);
   RolltuiStr start;
   [[maybe_unused]] RolltuiStr presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] RolltuiStr frame_spec, keys_spec;
   [[maybe_unused]] bool frame_sgr = false;
   RolltuiStr apps_dirs = default_apps_dirs();  // where application bundles live
-  for (int i = 1; i < argc; ++i) {
+  for (int i = print_texts ? 2 : 1; i < argc; ++i) {
     const StrView a(argv[i]);
     [[maybe_unused]] auto next = [&]() -> RolltuiStr { return i + 1 < argc ? RolltuiStr(argv[++i]) : RolltuiStr(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
@@ -3336,6 +3356,7 @@ int main(int argc, char** argv) {
       app.matches_json.assign(mm.p ? mm.p : "", mm.n);
     rolltui_str_free(&mm);
     app.load_settings(argv[0]);  // before the browser exists: it reads sort and dotfiles as it opens
+    app.load_texts(argv[0]);     // …and before anything is drawn
     app.installed = detect_programs(apps_dirs);
   }
   app.set_theme(theme_arg.c_str());
@@ -3467,6 +3488,14 @@ int main(int argc, char** argv) {
       rolltui_str_free(&why);
       rolltui_bindings_report_release(&brep);
     }
+  }
+  // `dirktui texts`: the template, now that this app's own actions are declared beside the library's
+  if (print_texts) {
+    RolltuiStr out{};
+    rolltui_texts_template(app.bindings, &out);
+    std::fwrite(out.p ? out.p : "", 1, out.n, stdout);
+    rolltui_str_free(&out);
+    return 0;
   }
 
   // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE --------

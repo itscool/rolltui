@@ -36,6 +36,7 @@
 #include "rolltui/c/rolltui_theme_gen.h"
 #include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
+#include "rolltui/c/rolltui_texts.h"
 
 /* ---- the key scope each kind reads, and whether a digit is a count ------------------------------------------------------------- */
 static int keys_transcript(void* ctx, const char** scope, size_t* len) {
@@ -512,9 +513,7 @@ static int file_ctx_problem(void* ctx, RolltuiStr* out) {
   memset(&p, 0, sizeof p);
   file_ctx_path(fc, &p);
   rolltui_str_clear(out);
-  rolltui_str_append(out, "cannot read '", sizeof("cannot read '") - 1);
-  rolltui_str_append_str(out, &p);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_CANNOT_READ, p.p, p.n, NULL, 0);
   rolltui_str_free(&p);
   return 1;
 }
@@ -644,8 +643,10 @@ static void help_scope_lines_impl(const RolltuiBindings* b, const char* scope, s
     rolltui_str_append(out, indent ? indent : "", indent ? indent_len : 0);
     rolltui_bindings_chords_text(b, a, alen, &chord);
     if (chord.n == 0) {
-      rolltui_str_append(out, "(unbound)", sizeof("(unbound)") - 1);
-      linelen = sizeof("(unbound)") - 1;
+      size_t ul = 0;
+      const char* u = rolltui_text(ROLLTUI_TEXT_UNBOUND, &ul);
+      rolltui_str_append(out, u, ul);
+      linelen = ul;
     } else {
       rolltui_str_append_str(out, &chord);
       linelen = chord.n;
@@ -710,9 +711,7 @@ static int rows_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiRowsCtx* rc = (RolltuiRowsCtx*)ctx;
   if (rolltui_windows_has_rows(rc->w, rc->source.p ? rc->source.p : "", rc->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &rc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, rc->source.p, rc->source.n, NULL, 0);
   return 1;
 }
 static void rows_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
@@ -829,9 +828,7 @@ static int gauge_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiGaugeCtx* gc = (RolltuiGaugeCtx*)ctx;
   if (rolltui_windows_has_gauge(gc->w, gc->source.p ? gc->source.p : "", gc->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &gc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, gc->source.p, gc->source.n, NULL, 0);
   return 1;
 }
 static void gauge_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
@@ -956,11 +953,12 @@ static void messages_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiF
   }
   messages_ctx_layout(ctx, rn);
   if (n == 0) { /* AN EMPTY HISTORY SAYS SO, centred, rather than a blank that reads as broken */
-    static const char kEmpty[] = "no messages yet";
+    size_t kn = 0;
+    const char* kEmpty = rolltui_text(ROLLTUI_TEXT_NO_MESSAGES, &kn);
     RolltuiStyle muted = styles[m->base.roles.text_muted];
-    const int w = (int)sizeof kEmpty - 1;
+    const int w = rolltui_frame_text_width(m->base.draw, kEmpty, kn, env->ambiguous_wide);
     muted.bg = scroll_text_ground(f, r.x, r.y + r.h / 2);
-    rolltui_frame_put_text(f, m->base.draw, r.x + (r.w > w ? (r.w - w) / 2 : 0), r.y + r.h / 2, kEmpty, sizeof kEmpty - 1, muted,
+    rolltui_frame_put_text(f, m->base.draw, r.x + (r.w > w ? (r.w - w) / 2 : 0), r.y + r.h / 2, kEmpty, kn, muted,
                            r.w, env->ambiguous_wide, 0);
     return;
   }
@@ -1031,9 +1029,7 @@ static int output_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiOutputCtx* o = (RolltuiOutputCtx*)ctx;
   if (output_text(o)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &o->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, o->source.p, o->source.n, NULL, 0);
   return 1;
 }
 
@@ -1309,17 +1305,23 @@ static int output_ctx_footer(void* ctx, RolltuiStr* out) {
   char buf[64];
   if (!opt || !opt->status) return 0;
   rolltui_str_clear(out);
-  if (o->follow) rolltui_str_append(out, "following", sizeof "following" - 1);
-  else {
-    snprintf(buf, sizeof buf, "paused \xc2\xb7 %zu below", o->below);
-    rolltui_str_append(out, buf, strlen(buf));
+  if (o->follow) {
+    rolltui_text_format(out, ROLLTUI_TEXT_FOLLOWING, NULL, 0, NULL, 0);
+  } else {
+    const int bn = snprintf(buf, sizeof buf, "%zu", o->below);
+    rolltui_text_format(out, ROLLTUI_TEXT_PAUSED, buf, bn > 0 ? (size_t)bn : 0, NULL, 0);
   }
   if (rolltui_windows_output_running(o->w, name, o->source.n, &status)) {
-    rolltui_str_append(out, " \xc2\xb7 running", sizeof " \xc2\xb7 running" - 1);
+    rolltui_str_append(out, " \xc2\xb7 ", sizeof " \xc2\xb7 " - 1);
+    rolltui_text_format(out, ROLLTUI_TEXT_RUNNING, NULL, 0, NULL, 0);
   } else if (rolltui_windows_output_ran(o->w, name, o->source.n)) {
-    if (status < 0) snprintf(buf, sizeof buf, " \xc2\xb7 stopped");
-    else snprintf(buf, sizeof buf, " \xc2\xb7 exited %d", status);
-    rolltui_str_append(out, buf, strlen(buf));
+    rolltui_str_append(out, " \xc2\xb7 ", sizeof " \xc2\xb7 " - 1);
+    if (status < 0) {
+      rolltui_text_format(out, ROLLTUI_TEXT_STOPPED, NULL, 0, NULL, 0);
+    } else {
+      const int sn = snprintf(buf, sizeof buf, "%d", status);
+      rolltui_text_format(out, ROLLTUI_TEXT_EXITED, buf, sn > 0 ? (size_t)sn : 0, NULL, 0);
+    }
   }
   return 1;
 }
@@ -1509,9 +1511,7 @@ static int list_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiListCtx* lc = (RolltuiListCtx*)ctx;
   if (rolltui_list_has_source(list_of(lc))) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &lc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, lc->source.p, lc->source.n, NULL, 0);
   return 1;
 }
 static void list_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
@@ -1616,9 +1616,7 @@ static int chart_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiChartCtx* cc = (RolltuiChartCtx*)ctx;
   if (rolltui_windows_has_chart(cc->w, cc->source.p ? cc->source.p : "", cc->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &cc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, cc->source.p, cc->source.n, NULL, 0);
   return 1;
 }
 static void chart_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
@@ -1816,9 +1814,7 @@ static int count_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiCountCtx* cc = (RolltuiCountCtx*)ctx;
   if (rolltui_windows_has_count(cc->w, cc->source.p ? cc->source.p : "", cc->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &cc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, cc->source.p, cc->source.n, NULL, 0);
   return 1;
 }
 static void count_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) { (void)ctx; (void)rn; }
@@ -2467,9 +2463,7 @@ static int input_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
   if (rolltui_windows_has_submit(ic->w, ic->source.p ? ic->source.p : "", ic->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &ic->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, ic->source.p, ic->source.n, NULL, 0);
   return 1;
 }
 static int input_ctx_desired_outer(void* ctx, int inner_w, int parent_extent, int border, int* out) {
@@ -2735,9 +2729,7 @@ static int transcript_ctx_problem(void* ctx, RolltuiStr* out) {
   RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
   if (rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n)) return 0;
   rolltui_str_clear(out);
-  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
-  rolltui_str_append_str(out, &tc->source);
-  rolltui_str_append(out, "'", 1);
+  rolltui_text_format(out, ROLLTUI_TEXT_NOTHING_BOUND, tc->source.p, tc->source.n, NULL, 0);
   return 1;
 }
 static void transcript_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {

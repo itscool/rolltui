@@ -907,6 +907,31 @@ int main() {
     check(has(again, "[ ] Colour source code in the preview"), "…and the box reads back unchecked on the next run");
   }
 
+  // ---- THE WORDS ON SCREEN IN THE PERSON'S LANGUAGE: texts.<lang>.json in the config, chosen by the locale or the settings ----
+  {
+    int trc = 0;
+    const fs::path cfg = scratch / "texts-cfg";
+    write_file(cfg / "rolltui" / "dirktui" / "texts.fr.json",
+               "{ \"language\": \"fr\", \"texts\": { \"text.list.empty\": \"(vide)\", \"app.quit\": \"quitter dirk\" } }");
+    write_file(cfg / "rolltui" / "dirktui" / "settings.json", "{ \"motion\": false }");
+    auto with = [&](const char* lang) {
+      return std::string("LANG=") + lang + " LC_ALL= LC_MESSAGES= ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" +
+             (tree / "empty-dir").string() + "'" + presets + " --theme default-dark";
+    };
+    const std::string fr = run(with("fr_FR.UTF-8") + " --frame 60x10 2>/dev/null", trc);
+    const std::string en = run(with("en_US.UTF-8") + " --frame 60x10 2>/dev/null", trc);
+    check(has(fr, "(vide)") && !has(fr, "(empty)"), "with a French locale and texts.fr.json, an empty folder says (vide)");
+    check(has(en, "(empty)") && !has(en, "(vide)"), "…and with an English locale it says (empty)");
+    const std::string help = run(with("fr_FR.UTF-8") + " --frame 100x40 --keys \"F1\" 2>/dev/null", trc);
+    check(has(help, "quitter dirk"), "the help is the live table's, so an app action's description is the file's too");
+    write_file(cfg / "rolltui" / "dirktui" / "settings.json", "{ \"motion\": false, \"language\": \"fr\" }");
+    check(has(run(with("en_US.UTF-8") + " --frame 60x10 2>/dev/null", trc), "(vide)"), "the settings' \"language\" is chosen over the locale's");
+    int src = 0;
+    const std::string tpl = run(std::string("ROLL_CONFIG_DIR='") + cfg.string() + "' " + bin + " texts" + presets + " 2>/dev/null", src);
+    check(src == 0 && has(tpl, "\"text.list.empty\": \"(empty)\"") && has(tpl, "\"app.quit\":"),
+          "`dirktui texts` writes the template: the library's words and the app's own actions, in English");
+  }
+
   // ---- FILE NAMES IN LS_COLORS'S COLOURS: a Look setting, off by default, reading the environment's variable ----
   {
     int lrc = 0;
