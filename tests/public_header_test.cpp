@@ -565,7 +565,8 @@ int main() {
     // Whether the locale says UTF-8 (PUBLIC 686), and the note entering a terminal leaves when it does not (INTERNAL 982).
     // A texts file loaded and cleared, its template written, and the locale's language (PUBLIC 690); a text looked up, formatted
     // and named, and a description's English (INTERNAL 986).
-    check(totals["PUBLIC"] == 690 && totals["INTERNAL"] == 986 && totals.size() == 2,
+    // How many times the browser's focused folder was read, a self-test's number (INTERNAL 987).
+    check(totals["PUBLIC"] == 690 && totals["INTERNAL"] == 987 && totals.size() == 2,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", INTERNAL " +
               std::to_string(totals["INTERNAL"]) + ", " + std::to_string(totals.size()) + " classes) — a moved class re-records them");
   }

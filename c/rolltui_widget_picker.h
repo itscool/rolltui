@@ -96,6 +96,9 @@ int rolltui_picker_scrolling(const RolltuiPicker* p);
 int rolltui_picker_preview_focused(const RolltuiPicker* p);
 /* How many cells the last frame drew faded at the left edge — a self-test's number. */
 size_t rolltui_picker_faded_cells(const RolltuiPicker* p);
+/* How many times the focused column's folder has been read — a self-test's number: a look at a folder that did not change reads
+ * nothing. */
+unsigned rolltui_picker_focus_reads(const RolltuiPicker* p);
 
 #ifdef __cplusplus
 } /* extern "C" */

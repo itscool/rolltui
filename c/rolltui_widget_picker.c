@@ -23,6 +23,7 @@
 struct FolderRead;
 typedef struct Column {
   RolltuiStr dir;
+  unsigned reads; /* how many times it has been read: a self-test's number (`rolltui_picker_focus_reads`) */
   /* BEING READ on a worker (the job's, BORROWED), since `load_since_ms`: drawn "loading…" from 100 ms, filled when the read is back */
   struct FolderRead* load;
   unsigned long long load_since_ms;
@@ -245,6 +246,7 @@ static void read_column(RolltuiPicker* p, Column* c) {
   memset(&err, 0, sizeof err);
   rolltui_str_clear(&c->error);
   /* DESCRIBED BEFORE IT IS READ, so a change made while it is being read is seen at the next look rather than trusted. */
+  ++c->reads;
   c->read_pass = p->watch_pass;
   c->scan_at = 0;
   c->sig_read_secs = (long long)time(NULL);
@@ -2297,3 +2299,4 @@ int rolltui_picker_scroll_to(RolltuiPicker* p, size_t first) {
 int rolltui_picker_scrolling(const RolltuiPicker* p) { return p->scrolling; }
 int rolltui_picker_preview_focused(const RolltuiPicker* p) { return preview_shown(p) && p->pv_focus; }
 size_t rolltui_picker_faded_cells(const RolltuiPicker* p) { return p->faded_cells; }
+unsigned rolltui_picker_focus_reads(const RolltuiPicker* p) { return p->n ? p->cols[p->focus_col].reads : 0; }

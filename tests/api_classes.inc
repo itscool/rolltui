@@ -719,6 +719,7 @@ ROLLTUI_API(rolltui_picker_scroll_extent, INTERNAL)
 ROLLTUI_API(rolltui_picker_scroll_to, INTERNAL)
 ROLLTUI_API(rolltui_picker_scrolling, INTERNAL)
 ROLLTUI_API(rolltui_picker_faded_cells, INTERNAL)
+ROLLTUI_API(rolltui_picker_focus_reads, INTERNAL)  /* a self-test's number: the focused folder's reads */
 ROLLTUI_API(rolltui_window_stack_layer, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_new, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
