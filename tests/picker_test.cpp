@@ -15,6 +15,7 @@
 #include <string>
 #include <algorithm>
 #include <thread>
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <cstdio>
@@ -1209,11 +1210,20 @@ int main() {
         e.key.key = k;
         rolltui_picker_handle(r, &e, b, A);
       };
-      auto block_worker = [&]() { /* the one worker held, so a read waits behind it */
-        rolltui_tasks_start(tasks, [](void*, const RolltuiJob*) { std::this_thread::sleep_for(std::chrono::milliseconds(300)); },
-                            [](void*, int) {}, nullptr);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      /* THE ONE WORKER HELD until the test lets go, so a read waits behind it however slowly this thread is scheduled: a timed
+       * hold let the read finish first on a loaded machine. Ten seconds at most, so a failing test cannot hang. */
+      std::atomic<bool> held{false};
+      auto block_worker = [&]() {
+        held = true;
+        rolltui_tasks_start(
+            tasks,
+            [](void* c, const RolltuiJob*) {
+              auto* h = static_cast<std::atomic<bool>*>(c);
+              for (int i = 0; i < 2000 && h->load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            },
+            [](void*, int) {}, &held);
       };
+      auto release_worker = [&]() { held = false; };
       const std::string slow = (root / "slow").string();
       rolltui_picker_set_now(r, 1000);
       rolltui_picker_go_to(r, slow.data(), slow.size());
@@ -1231,6 +1241,7 @@ int main() {
       rolltui_picker_status_release(&st);
       rolltui_picker_set_now(r, 1150);
       check(has(draw_r(), "loading\xE2\x80\xA6"), "…then says \"loading…\" once it has taken 100 ms");
+      release_worker();
       rolltui_tasks_wait_idle(tasks, 5000);
       t2 = draw_r();
       check(has(t2, "y1.txt") && has(t2, "y2.txt") && !has(t2, "loading"), "…and shows the folder when its read is back");
@@ -1242,6 +1253,7 @@ int main() {
       block_worker();
       key_r(ROLLTUI_KEY_UP); /* onto one, its read held */
       key_r(ROLLTUI_KEY_RIGHT);
+      release_worker();
       rolltui_tasks_wait_idle(tasks, 5000);
       RolltuiStr sel{};
       int sel_dir = 0;
@@ -1252,6 +1264,7 @@ int main() {
       rolltui_str_free(&sel);
       rolltui_picker_free(r); /* a read still out when the picker goes is dropped, not shown */
       block_worker();
+      release_worker(); /* the pool waits for its job as it goes, and `held` must outlive it */
       rolltui_tasks_free(tasks);
     }
 #if !defined(_WIN32)

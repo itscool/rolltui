@@ -55,6 +55,7 @@
 #include <cstring>
 #include <new>
 #include <chrono>
+#include <ctime>
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -160,9 +161,17 @@ struct Cost {
 // only `operator new` would report zero for them — exactly the failure this file's header
 // is built around, aimed at its own counter. `mem_stats()` is read across the same window
 // and the deltas are summed.
+// THIS THREAD'S CPU TIME, its system calls included: the work a frame does. Not the wall clock, which also counts the time the
+// thread waits for a core while something else on the machine is busy, and which is not the frame's cost.
+long thread_micros() {
+  timespec t{};
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
+  return static_cast<long>(t.tv_sec * 1000000L + t.tv_nsec / 1000L);
+}
+
 template <typename F>
 Cost measure(F&& fn) {
-  const auto t0 = std::chrono::steady_clock::now();
+  const long t0 = thread_micros();
   g_allocs = 0;
   g_bytes = 0;
   const MemStats m0 = mem_stats();
@@ -173,7 +182,7 @@ Cost measure(F&& fn) {
   Cost c;
   c.allocs = g_allocs + static_cast<long>(m1.allocations - m0.allocations);
   c.bytes = g_bytes + static_cast<long long>(m1.bytes_requested - m0.bytes_requested);
-  c.micros = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+  c.micros = thread_micros() - t0;
   return c;
 }
 
@@ -503,7 +512,7 @@ int main() {
                                                ", band " + std::to_string(lo) + "-" + std::to_string(hi) + "]");
   }
   check(resize.allocs > steady.allocs * 10, "…and it is an order of magnitude more than a steady frame, not a rounding error");
-  // Wall-clock, gated only where a catastrophe lives — see the header for why this is not
+  // CPU time, gated only where a catastrophe lives — see the header for why this is not
   // a tight assertion.
   check(steady.micros < 20000 * rolltui_test::kClockScale,
         "a steady-state frame is far inside a terminal's ~16 ms budget [" + std::to_string(steady.micros) + " us]");
